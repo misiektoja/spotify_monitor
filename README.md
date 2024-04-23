@@ -9,7 +9,7 @@ spotify_monitor is a Python script which allows for real-time monitoring of Spot
 - Information about context of listened song (playlist/artist/album) with clickable URLs
 - Email notifications for different events (user gets active/inactive, specific/all songs, errors)
 - Saving all listened songs with timestamps to the CSV file
-- Clickable Apple and Genius search URLs printed in the console & included in email notifications
+- Clickable Apple Music and Genius search URLs printed in the console & included in email notifications
 - Showing basic statistics for user's playing session (how long, time span)
 - Possibility to control the running copy of the script via signals
 
@@ -138,7 +138,7 @@ There is also other mode of the tool which prints the list of all your followed 
 It also displays your friends Spotify username (very often first and last name of the user) and user URI ID (very often string of random characters). The latter one should be used as parameter to monitor the user.
 
 <p align="center">
-   <img src="./assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="80%"/>
+   <img src="./assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="75%"/>
 </p>
 
 In my case both values are the same.
