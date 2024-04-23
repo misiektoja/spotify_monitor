@@ -14,7 +14,7 @@ spotify_monitor is a Python script which allows for real-time monitoring of Spot
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
-   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="80%"/>
+   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="85%"/>
 </p>
 
 ## Change Log
