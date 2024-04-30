@@ -2,6 +2,17 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.1 (30 Apr 2024)
+
+**Features and Improvements**:
+
+- New feature to detect songs listened on loop; if user plays the same song consecutively SONG_ON_LOOP_VALUE times (3 by default, configurable in the .py file) then there will be proper message on the console + you can get email notification (new -x / --song_on_loop_notification parameter); the alarm is triggered only once, when the SONG_ON_LOOP_VALUE is reached and once the user changes the song the timer is zeroed
+- New feature to detect skipped songs; if the user plays the song for <= SKIPPED_SONG_THRESHOLD (0.6 by default = 60%, configurable in the .py file) of track duration, then the song is treated as skipped with proper message on the console & email notifications
+- Information about number of listened songs in the session (console + notification emails)
+- Adding info about Artist and Album context of listened songs to notification emails
+- Adding info about Artist and Album context URLs in the console & email notifications
+- Information about readjusting session start due to too low inactivity timer is also in the notification email now
+
 # Changes in 1.0 (23 Apr 2024)
 
 **Features and Improvements**:

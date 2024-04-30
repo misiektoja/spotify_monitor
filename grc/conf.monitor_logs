@@ -97,7 +97,7 @@ colours=yellow
 regexp=(\* Added tracks:|\* Removed tracks:)
 colours=yellow
 -
-regexp=(User played the previous track for|User PAUSED playing|User RESUMED playing|User SKIPPED the previous track)
+regexp=(User played the previous track for|User PAUSED playing|User RESUMED playing|User SKIPPED the previous track|User plays song on LOOP)
 colours=yellow
 -
 regexp=(User )(SKIPPED)( the previous track)
@@ -108,6 +108,9 @@ colours=unchanged, unchanged, yellow, unchanged
 -
 regexp=(User )(PAUSED)( playing)
 colours=unchanged, unchanged, red, unchanged
+-
+regexp=(User plays song on )(LOOP)( \()(.*times)(\))
+colours=unchanged, unchanged, green, unchanged, green, unchanged
 -
 regexp=(User )(RESUMED)( playing)
 colours=unchanged, unchanged, green, unchanged
