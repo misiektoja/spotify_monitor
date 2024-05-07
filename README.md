@@ -4,7 +4,7 @@ spotify_monitor is a Python script which allows for real-time monitoring of Spot
 
 ## Features
 
-- Real-time monitoring of songs listened by Spotify friend (including detection when user gets online & offline)
+- Real-time monitoring of songs listened by Spotify users (including detection when user gets online & offline)
 - Information about how long the user listened to a song, if song has been skipped
 - Information about context of listened song (playlist/artist/album) with clickable URLs
 - Email notifications for different events (user gets active/inactive, specific/all songs, songs on loop, errors)
@@ -63,11 +63,11 @@ Edit the *[spotify_monitor.py](spotify_monitor.py)* file and change any desired 
 
 ### Spotify sp_dc cookie
 
-Log in to Spotify web client [https://open.spotify.com/](https://open.spotify.com/) in your web browser and copy the value of sp_dc cookie to **SP_DC_COOKIE** variable. 
+Log in to Spotify web client [https://open.spotify.com/](https://open.spotify.com/) in your web browser and copy the value of sp_dc cookie to **SP_DC_COOKIE** variable (or use **-u** parameter). 
 
 You can use Cookie-Editor by cgagnier to get it easily (available for all major web browsers): [https://cookie-editor.com/](https://cookie-editor.com/)
 
-Newly generated Spotify's sp_dc cookie should be valid for 1 year. You will be informed by the tool once the cookie expires (proper message on the console and in email if errors notifications have not been disabled via **-e**).
+Newly generated Spotify's sp_dc cookie should be valid for 1 year. You will be informed by the tool once the cookie expires (proper message on the console and in email if errors notifications have not been disabled via **-e** parameter).
 
 It is suggested to create a new Spotify account for usage with the tool since we are not using official Spotify Web API (it does not support fetching friend activity).
 
@@ -115,7 +115,7 @@ You can monitor multiple Spotify friends by spawning multiple copies of the scri
 
 It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server.
 
-The tool automatically saves its output to *spotify_monitor_userid.log* file (can be changed in the settings or disabled with **-d**).
+The tool automatically saves its output to *spotify_monitor_userid.log* file (can be changed in the settings or disabled with **-d** parameter).
 
 Keep in mind that monitoring reports the listened track AFTER the user finishes listening to it. It is how activities are reported by Spotify. 
 
@@ -129,7 +129,7 @@ You can also easily get user URI IDs for all your followed friends by using [Lis
 
 ### Listing mode
 
-There is also other mode of the tool which prints the list of all your followed friends with their recently listened tracks (**-l** parameter):
+There is also other mode of the tool which prints the list of all your friends you follow, with their recently listened tracks (**-l** parameter):
 
 ```sh
 ./spotify_monitor.py -l
@@ -163,7 +163,7 @@ Example email:
    <img src="./assets/spotify_monitor_email_notifications.png" alt="spotify_monitor_email_notifications" width="70%"/>
 </p>
 
-If you also want to be informed every time a user listens to specific songs, you can use **track_notification** functionality (**-t**). 
+If you also want to be informed every time a user listens to specific songs, you can use **track_notification** functionality (**-t** parameter).
 
 For that you need to create a file with list of songs you want to track (one track/album/playlist per line). The file needs to be indicated by **-s** parameter. The script checks if the listened track, album or playlist is in the file. Example file *spotify_tracks_misiektoja*:
 
@@ -175,19 +175,19 @@ Something Changed
 I Will Be There
 ```
 
-Then run the tool with **-t** & **-s** parameters:
+Then run the tool with **-t** and **-s** parameters:
 
 ```sh
 ./spotify_monitor.py misiektoja -t -s ./spotify_tracks_misiektoja
 ```
 
-If you want to get email notifications for every listened song (**-j**):
+If you want to get email notifications for every listened song (**-j** parameter):
 
 ```sh
 ./spotify_monitor.py misiektoja -j
 ```
 
-If you want to get email notifications when user listens to the same song on loop (**-x**):
+If you want to get email notifications when user listens to the same song on loop (**-x** parameter):
 
 ```sh
 ./spotify_monitor.py misiektoja -x
@@ -203,7 +203,7 @@ If you want to save all the listened songs in the CSV file, use **-b** parameter
 
 ### Automatic playing of tracks listened by the user in Spotify client
 
-If you want the script to automatically track what the user listens and to play it in your Spotify client (**-g**):
+If you want the script to automatically track what the user listens and to play it in your Spotify client (**-g** parameter):
 
 ```sh
 ./spotify_monitor.py misiektoja -g
@@ -217,13 +217,13 @@ If you want to have more real-time monitoring of user's music activity, ask your
 
 ### Check intervals and offline timer 
 
-If you want to change the check interval to 20 seconds (**-c**):
+If you want to change the check interval to 20 seconds (**-c** parameter):
 
 ```sh
 ./spotify_monitor.py misiektoja -c 20
 ```
 
-If you want to change the time required to mark the user as inactive to 15 mins - 900 seconds (**-o**, the timer starts from the last reported track):
+If you want to change the time required to mark the user as inactive to 15 mins - 900 seconds (**-o** parameter, the timer starts from the last reported track):
 
 ```sh
 ./spotify_monitor.py misiektoja -o 900
@@ -256,7 +256,7 @@ pkill -f -USR2 "python3 ./spotify_monitor.py misiektoja"
 
 Check other supported parameters using **-h**.
 
-You can of course combine all the parameters mentioned earlier together (in monitoring mode, listing mode only supports **-l**).
+You can combine all the parameters mentioned earlier in monitoring mode (listing mode only supports **-l**).
 
 ## Limitations
 

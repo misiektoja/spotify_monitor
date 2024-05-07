@@ -2,6 +2,16 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.2 (07 May 2024)
+
+**Features and Improvements**:
+
+- Possbility to define SP_DC_COOKIE via command line argument (-u / --spotify_dc_cookie)
+- SPOTIFY_ACTIVITY_CHECK and -p / --online_timer parameter have been removed as it only complicated the code with no visible benefit; SPOTIFY_INACTIVITY_CHECK is used in all places now, so user is considered active if the time of last activity is <= SPOTIFY_INACTIVITY_CHECK
+- Email sending function send_email() has been rewritten to detect invalid SMTP settings
+- Strings have been converted to f-strings for better code visibility
+- Info about CSV file name in the start screen
+
 # Changes in 1.1 (30 Apr 2024)
 
 **Features and Improvements**:
