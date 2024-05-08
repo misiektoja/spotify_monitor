@@ -19,51 +19,10 @@ VERSION=1.2
 # CONFIGURATION SECTION START
 # ---------------------------
 
-# Log in to Spotify web client (https://open.spotify.com/) and put the value of sp_dc cookie below
+# Log in to Spotify web client (https://open.spotify.com/) and put the value of sp_dc cookie below (or use -u parameter)
 # Newly generated Spotify's sp_dc cookie should be valid for 1 year
 # You can use Cookie-Editor by cgagnier to get it easily (available for all major web browsers): https://cookie-editor.com/
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
-
-# Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality; 
-# leave empty to simply pause
-#SP_USER_GOT_OFFLINE_TRACK_ID="5wCjNjnugSUqGDBrmQhn0e"
-SP_USER_GOT_OFFLINE_TRACK_ID=""
-
-# Delay after which the above track gets paused, type 0 to play infinitely until user pauses manually; in seconds
-SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE=5 # 5 seconds
-
-# How often do we perform checks for user activity; in seconds
-SPOTIFY_CHECK_INTERVAL=30 # 30 seconds
-
-# After which time do we consider user as inactive (after last activity); in seconds
-# Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
-SPOTIFY_INACTIVITY_CHECK=660 # 11 mins
-
-# How many consecutive plays of the same song is considered as being on loop
-SONG_ON_LOOP_VALUE=3
-
-# When do we consider the song as being skipped; fraction 
-SKIPPED_SONG_THRESHOLD=0.6 # song is treated as skipped if played for <=60% of track duration
-
-# Sometimes the monitored Spotify user disappears from the list of recently active friends/buddies; it happens on few occasions:
-#   - you unfollowed the monitored user
-#   - issue with Spotify services
-#   - Spotify user listens on private mode and sometimes the Spotify client messes some things up
-#   - Spotify user was inactive for more than a week
-# In such case we will continuously check for the user to reappear using the time interval below; in seconds
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL=120 # 2 mins
-
-# How often do we perform alive check by printing "alive check" message in the output; in seconds
-TOOL_ALIVE_INTERVAL=21600 # 6 hours
-
-# Default value for network-related timeouts in functions + alarm signal handler; in seconds
-FUNCTION_TIMEOUT=15
-
-# URL we check in the beginning to make sure we have internet connectivity
-CHECK_INTERNET_URL='http://www.google.com/'
-
-# Default value for initial checking of internet connectivity; in seconds
-CHECK_INTERNET_TIMEOUT=5
 
 # SMTP settings for sending email notifications
 SMTP_HOST = "your_smtp_server_ssl"
@@ -80,9 +39,46 @@ SENDER_EMAIL = "your_sender_email"
 #SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
-# Strings removed from track names for generating proper Genius search URLs
-re_search_str=r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
-re_replace_str=r'( - (\d*)( )*remaster$)|( - (\d*)( )*remastered( version)*( \d*)*.*$)|( \((\d*)( )*remaster\)$)|( - (\d+) - remaster$)|( - extended$)|( - extended mix$)|( - (.*); extended mix$)|( - extended version$)|( - (.*) remix$)|( - remix$)|( - remixed by .*$)|( - original mix$)|( - .*original soundtrack$)|( - .*radio( |-)edit$)|( \(feat\. .*\)$)|( \(\d+.*Remaster.*\)$)|( \(.*Version\))|( - .*version)'
+# How often do we perform checks for user activity; in seconds
+SPOTIFY_CHECK_INTERVAL=30 # 30 seconds
+
+# After which time do we consider user as inactive (after last activity); in seconds
+# Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
+SPOTIFY_INACTIVITY_CHECK=660 # 11 mins
+
+# How many consecutive plays of the same song is considered as being on loop
+SONG_ON_LOOP_VALUE=3
+
+# When do we consider the song as being skipped; fraction 
+SKIPPED_SONG_THRESHOLD=0.55 # song is treated as skipped if played for <=55% of track duration
+
+# Sometimes the monitored Spotify user disappears from the list of recently active friends/buddies; it happens on few occasions:
+#   - you unfollowed the monitored user
+#   - issue with Spotify services
+#   - Spotify user listens on private mode and sometimes the Spotify client messes some things up
+#   - Spotify user was inactive for more than a week
+# In such case we will continuously check for the user to reappear using the time interval below; in seconds
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL=120 # 2 mins
+
+# Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality; 
+# leave empty to simply pause
+#SP_USER_GOT_OFFLINE_TRACK_ID="5wCjNjnugSUqGDBrmQhn0e"
+SP_USER_GOT_OFFLINE_TRACK_ID=""
+
+# Delay after which the above track gets paused, type 0 to play infinitely until user pauses manually; in seconds
+SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE=5 # 5 seconds
+
+# How often do we perform alive check by printing "alive check" message in the output; in seconds
+TOOL_ALIVE_INTERVAL=21600 # 6 hours
+
+# Default value for network-related timeouts in functions + alarm signal handler; in seconds
+FUNCTION_TIMEOUT=15
+
+# URL we check in the beginning to make sure we have internet connectivity
+CHECK_INTERNET_URL='http://www.google.com/'
+
+# Default value for initial checking of internet connectivity; in seconds
+CHECK_INTERNET_TIMEOUT=5
 
 # The name of the .log file; the tool by default will output its messages to spotify_monitor_userid.log file
 sp_logfile="spotify_monitor"
@@ -93,6 +89,10 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE=30 # 30 seconds
 # -------------------------
 # CONFIGURATION SECTION END
 # -------------------------
+
+# Strings removed from track names for generating proper Genius search URLs
+re_search_str=r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
+re_replace_str=r'( - (\d*)( )*remaster$)|( - (\d*)( )*remastered( version)*( \d*)*.*$)|( \((\d*)( )*remaster\)$)|( - (\d+) - remaster$)|( - extended$)|( - extended mix$)|( - (.*); extended mix$)|( - extended version$)|( - (.*) remix$)|( - remix$)|( - remixed by .*$)|( - original mix$)|( - .*original soundtrack$)|( - .*radio( |-)edit$)|( \(feat\. .*\)$)|( \(\d+.*Remaster.*\)$)|( \(.*Version\))|( - .*version)'
 
 TOOL_ALIVE_COUNTER=TOOL_ALIVE_INTERVAL/SPOTIFY_CHECK_INTERVAL
 
