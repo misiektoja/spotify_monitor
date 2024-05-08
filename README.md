@@ -79,7 +79,7 @@ Your friend needs to have sharing of listening activity enabled in their Spotify
 
 ### SMTP settings
 
-If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient).
+If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient). If you leave the default settings then no notifications will be sent.
 
 ### Other settings
 

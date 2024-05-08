@@ -24,7 +24,7 @@ VERSION=1.2
 # You can use Cookie-Editor by cgagnier to get it easily (available for all major web browsers): https://cookie-editor.com/
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
-# SMTP settings for sending email notifications
+# SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
 SMTP_HOST = "your_smtp_server_ssl"
 SMTP_PORT = 587
 SMTP_USER = "your_smtp_user"
@@ -1180,21 +1180,22 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("spotify_monitor")
     parser.add_argument("spotify_user_uri_id", nargs="?", default="test", help="Spotify user URI ID", type=str)
-    parser.add_argument("-s", "--spotify_tracks", help="Filename with Spotify tracks/playlists/albums to monitor.", type=str, metavar="TRACKS_FILENAME")
-    parser.add_argument("-b", "--csv_file", help="Write every listened track to CSV file", type=str, metavar="CSV_FILENAME")
+    parser.add_argument("-u", "--spotify_dc_cookie", help="Spotify sp_dc cookie to override the value defined within the script (SP_DC_COOKIE)", type=str)    
     parser.add_argument("-a","--active_notification", help="Send email notification once user gets active", action='store_true')
     parser.add_argument("-i","--inactive_notification", help="Send email notification once user gets inactive", action='store_true')
     parser.add_argument("-t","--track_notification", help="Send email notification once monitored track/playlist/album is found", action='store_true')
     parser.add_argument("-j","--song_notification", help="Send email notification for every changed song", action='store_true')
     parser.add_argument("-x","--song_on_loop_notification", help="Send email notification if user plays a song on loop (>= SONG_ON_LOOP_VALUE times)", action='store_true')       
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like expired sp_dc", action='store_false')
-    parser.add_argument("-u", "--spotify_dc_cookie", help="Specify Spotify sp_dc cookie to override the value defined within the script (SP_DC_COOKIE)", type=str)    
+
     parser.add_argument("-c", "--check_interval", help="Time between monitoring checks, in seconds", type=int)
     parser.add_argument("-o", "--offline_timer", help="Time required to mark inactive user as offline, in seconds", type=int)
     parser.add_argument("-m", "--disappeared_timer", help="Wait time between checks once the user disappears from friends list, in seconds", type=int)
-    parser.add_argument("-g", "--track_songs", help="Automatically track listened songs by playing it in Spotify client", action='store_true')    
-    parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'spotify_monitor_UserURIID.log' file", action='store_true')
+    parser.add_argument("-g", "--track_songs", help="Automatically track listened songs by playing it in Spotify client", action='store_true')
+    parser.add_argument("-b", "--csv_file", help="Write every listened track to CSV file", type=str, metavar="CSV_FILENAME")
+    parser.add_argument("-s", "--spotify_tracks", help="Filename with Spotify tracks/playlists/albums to monitor.", type=str, metavar="TRACKS_FILENAME")
     parser.add_argument("-l","--list_friends", help="List Spotify friends", action='store_true')    
+    parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'spotify_monitor_UserURIID.log' file", action='store_true')
     args = parser.parse_args()
 
     if args.spotify_dc_cookie:
