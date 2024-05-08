@@ -109,6 +109,12 @@ To monitor specific user activity, just type Spotify user URI ID as parameter (*
 ./spotify_monitor.py misiektoja
 ```
 
+If you have not changed **SP_DC_COOKIE** variable in the *[spotify_monitor.py](spotify_monitor.py)* file, you can use **-u** parameter:
+
+```sh
+./spotify_monitor.py misiektoja -u "your_sp_dc_cookie_value"
+```
+
 The tool will run infinitely and monitor the user until the script is interrupted (Ctrl+C) or killed the other way.
 
 You can monitor multiple Spotify friends by spawning multiple copies of the script. 
