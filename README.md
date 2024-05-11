@@ -2,6 +2,8 @@
 
 spotify_monitor is a Python script which allows for real-time monitoring of Spotify friends music activity. 
 
+NOTE: If you want to monitor Spotify users profile information check out the other tool I developed: [spotify_profile_monitor](https://github.com/misiektoja/sspotify_profile_monitor).
+
 ## Features
 
 - Real-time monitoring of songs listened by Spotify users (including detection when user gets online & offline)
@@ -9,12 +11,12 @@ spotify_monitor is a Python script which allows for real-time monitoring of Spot
 - Information about context of listened song (playlist/artist/album) with clickable URLs
 - Email notifications for different events (user gets active/inactive, specific/all songs, songs on loop, errors)
 - Saving all listened songs with timestamps to the CSV file
-- Clickable Spotify, Apple Music and Genius search URLs printed in the console & included in email notifications
+- Clickable Spotify, Apple Music and Genius Lyrics search URLs printed in the console & included in email notifications
 - Showing basic statistics for user's playing session (how long, time span, number of listened & skipped songs, songs on loop)
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
-   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
+   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="100%"/>
 </p>
 
 ## Change Log
@@ -144,7 +146,7 @@ There is also other mode of the tool which prints the list of all your friends y
 It also displays your friends Spotify username (very often first and last name of the user) and user URI ID (very often string of random characters). The latter one should be used as parameter to monitor the user.
 
 <p align="center">
-   <img src="./assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="80%"/>
+   <img src="./assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
 
 In my case both values are the same.
@@ -155,7 +157,7 @@ You can use the **-l** functionality regardless if the monitoring is used or not
 
 ### Email notifications
 
-If you want to get email notifications once user gets active (**-a**) and inactive (**-i**):
+If you want to get email notifications once user gets active (**-a** parameter) and inactive (**-i** parameter):
 
 ```sh
 ./spotify_monitor.py misiektoja -a -i
@@ -166,7 +168,7 @@ Make sure you defined your SMTP settings earlier (see [SMTP settings](#smtp-sett
 Example email:
 
 <p align="center">
-   <img src="./assets/spotify_monitor_email_notifications.png" alt="spotify_monitor_email_notifications" width="70%"/>
+   <img src="./assets/spotify_monitor_email_notifications.png" alt="spotify_monitor_email_notifications" width="80%"/>
 </p>
 
 If you also want to be informed every time a user listens to specific songs, you can use **track_notification** functionality (**-t** parameter).
@@ -223,13 +225,13 @@ If you want to have more real-time monitoring of user's music activity, ask your
 
 ### Check intervals and offline timer 
 
-If you want to change the check interval to 20 seconds (**-c** parameter):
+If you want to change the check interval to 20 seconds use **-c** parameter:
 
 ```sh
 ./spotify_monitor.py misiektoja -c 20
 ```
 
-If you want to change the time required to mark the user as inactive to 15 mins - 900 seconds (**-o** parameter, the timer starts from the last reported track):
+If you want to change the time required to mark the user as inactive to 15 mins (900 seconds) use **-o** parameter (the timer starts from the last reported track):
 
 ```sh
 ./spotify_monitor.py misiektoja -o 900
@@ -237,16 +239,15 @@ If you want to change the time required to mark the user as inactive to 15 mins 
 
 ### Controlling the script via signals
 
-
 The tool has several signal handlers implemented which allow to change behaviour of the tool without a need to restart it with new parameters.
 
 List of supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
-| USR1 | Toggle email notifications when user gets active/inactive |
-| USR2 | Toggle email notifications for every song |
-| CONT | Toggle email notifications for tracked songs |
+| USR1 | Toggle email notifications when user gets active/inactive (-a, -i) |
+| USR2 | Toggle email notifications for every song (-j) |
+| CONT | Toggle email notifications for tracked songs (-t) |
 | TRAP | Increase the inactivity check timer (by 30 seconds) |
 | ABRT | Decrease the inactivity check timer (by 30 seconds) |
 
@@ -266,7 +267,7 @@ You can combine all the parameters mentioned earlier in monitoring mode (listing
 
 ## Limitations
 
-Currently the ***'track_songs'*** functionality (**-g** parameter) only supports playing the songs in Spotify client in Mac OS. There are conditionals in the code prepared for Linux and Windows, so feel free to test it and add proper commands.
+Currently the ***track_songs*** functionality (**-g** parameter) only supports playing the songs in Spotify client in Mac OS. There are conditionals in the code prepared for Linux and Windows, so feel free to test it and add proper commands.
 
 ## Colouring log output with GRC
 
