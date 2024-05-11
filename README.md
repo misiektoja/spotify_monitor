@@ -2,7 +2,7 @@
 
 spotify_monitor is a Python script which allows for real-time monitoring of Spotify friends music activity. 
 
-NOTE: If you want to monitor Spotify users profile information check out the other tool I developed: [spotify_profile_monitor](https://github.com/misiektoja/sspotify_profile_monitor).
+NOTE: If you want to monitor Spotify users profile information check out the other tool I developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
 ## Features
 
