@@ -184,7 +184,7 @@ def signal_handler(sig, frame):
 def check_internet():
     url=CHECK_INTERNET_URL
     try:
-        _ = req.get(url, timeout=CHECK_INTERNET_TIMEOUT)
+        _=req.get(url, timeout=CHECK_INTERNET_TIMEOUT)
         print("OK")
         return True
     except Exception as e:
@@ -294,8 +294,8 @@ def send_email(subject,body,body_html,use_ssl):
         if not (1 <= port <= 65535):
             raise ValueError
     except ValueError:
-            print("Error sending email - SMTP settings are incorrect (invalid port number in SMTP_PORT)")
-            return 1
+        print("Error sending email - SMTP settings are incorrect (invalid port number in SMTP_PORT)")
+        return 1
 
     if not email_re.search(str(SENDER_EMAIL)) or not email_re.search(str(RECEIVER_EMAIL)):
         print("Error sending email - SMTP settings are incorrect (invalid email in SENDER_EMAIL or RECEIVER_EMAIL)")
@@ -460,11 +460,9 @@ def spotify_get_access_token(sp_dc):
     try:
         response=req.get(url, cookies=cookies, timeout=FUNCTION_TIMEOUT)
         response.raise_for_status()
-        return response.json()["accessToken"]
+        return response.json().get("accessToken","")
     except Exception as e:
-        print(f"spotify_get_access_token error - {e}")
         raise
-        return ""
 
 # Function getting list of Spotify friends
 def spotify_get_friends_json(access_token):
@@ -473,16 +471,13 @@ def spotify_get_friends_json(access_token):
     try:
         response=req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
         response.raise_for_status()
-        error_str=response.json().get("error")
+        friends_json=response.json()
+        error_str=friends_json.get("error")
         if error_str:
-            raise ValueError(error_str) 
+            raise ValueError(error_str)
+        return friends_json
     except Exception as e:
-        print(f"spotify_get_friends_json error - {e}")
-        if hasattr(e, 'response'):
-            if hasattr(e.response, 'text'):
-                print (e.response.text)
         raise
-    return response.json()
 
 # Function converting Spotify URI (e.g. spotify:user:username) to URL (e.g. https://open.spotify.com/user/username)
 def spotify_convert_uri_to_url(uri):
@@ -595,10 +590,6 @@ def spotify_get_track_info(access_token,track_uri):
         sp_album_name=json_response["album"].get("name")
         return {"sp_track_duration": sp_track_duration, "sp_track_url": sp_track_url, "sp_artist_url": sp_artist_url, "sp_album_url": sp_album_url, "sp_track_name": sp_track_name, "sp_artist_name": sp_artist_name, "sp_album_name": sp_album_name}
     except Exception as e:
-        print(f"spotify_get_track_info error - {e}")
-        if hasattr(e, 'response'):
-            if hasattr(e.response, 'text'):
-                print (e.response.text)
         raise
 
 # Function returning information for specific Spotify playlist URI
@@ -611,8 +602,8 @@ def spotify_get_playlist_info(access_token,playlist_uri):
 
     try:
         response=req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
-        json_response=response.json()
         response.raise_for_status()
+        json_response=response.json()
         sp_playlist_name=json_response.get("name")
         sp_playlist_owner=json_response["owner"].get("display_name")
         sp_playlist_owner_url=json_response["owner"]["external_urls"].get("spotify")
@@ -620,10 +611,6 @@ def spotify_get_playlist_info(access_token,playlist_uri):
         sp_playlist_url=json_response["external_urls"].get("spotify") + si
         return {"sp_playlist_name": sp_playlist_name, "sp_playlist_owner": sp_playlist_owner, "sp_playlist_owner_url": sp_playlist_owner_url, "sp_playlist_followers": sp_playlist_followers, "sp_playlist_url": sp_playlist_url}
     except Exception as e:
-        print(f"spotify_get_playlist_info error - {e}")
-        if hasattr(e, 'response'):
-            if hasattr(e.response, 'text'):
-                print (e.response.text)
         raise
 
 def spotify_macos_play_song(sp_track_uri_id,method=SPOTIFY_MACOS_PLAYING_METHOD):
@@ -726,7 +713,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
             continue
         except Exception as e:
             signal.alarm(0)
-            print(f"Retrying in {display_time(SPOTIFY_CHECK_INTERVAL)}, error - {e}")
+            print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
             if ('access token' in str(e)) or ('Unauthorized' in str(e)):
                 print("* sp_dc might have expired!")
                 if error_notification and not email_sent:
@@ -766,7 +753,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                 else:
                     is_playlist=False
             except Exception as e:
-                print(f"Retrying in {display_time(SPOTIFY_CHECK_INTERVAL)}, error - {e}")
+                print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
                 print_cur_ts("Timestamp:\t\t")
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
                 continue
@@ -910,7 +897,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                         time.sleep(FUNCTION_TIMEOUT)           
                     except Exception as e:
                         signal.alarm(0)
-                        print(f"Retrying in {display_time(SPOTIFY_CHECK_INTERVAL)}, error - {e}")
+                        print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
                         if ('access token' in str(e)) or ('Unauthorized' in str(e)):
                             print("* sp_dc might have expired!")
                             if error_notification and not email_sent:
@@ -974,7 +961,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                         else:
                            is_playlist=False
                     except Exception as e:
-                        print(f"Retrying in {display_time(SPOTIFY_CHECK_INTERVAL)}, error - {e}")
+                        print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
                         print_cur_ts("Timestamp:\t\t")
                         time.sleep(SPOTIFY_CHECK_INTERVAL)
                         continue
@@ -1310,7 +1297,6 @@ if __name__ == "__main__":
             print("---------------------------------------------------------------------------------------------------------")
         except Exception as e:
             print(f"* Error - {e}")
-            traceback.print_exc()
             sys.exit(1)
         sys.exit(0)
 
@@ -1324,7 +1310,7 @@ if __name__ == "__main__":
                 sp_tracks=file.read().splitlines()
             file.close()
         except Exception as e:
-            print(f"\n* Error: file with Spotify tracks cannot be opened - {e}")
+            print(f"* Error: file with Spotify tracks cannot be opened - {e}")
             sys.exit(1)
     else:
         sp_tracks=[]
@@ -1335,7 +1321,7 @@ if __name__ == "__main__":
         try:
             csv_file=open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
         except Exception as e:
-            print(f"\n* Error: CSV file cannot be opened for writing - {e}")
+            print(f"* Error: CSV file cannot be opened for writing - {e}")
             sys.exit(1)
         csv_file.close()
     else:
