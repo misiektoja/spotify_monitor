@@ -46,6 +46,29 @@ SPOTIFY_CHECK_INTERVAL=30 # 30 seconds
 # Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
 SPOTIFY_INACTIVITY_CHECK=660 # 11 mins
 
+# What method should we use to play the song listened by the tracked user in local Spotify client under macOS
+# (i.e. when -g / --track_songs functionality is enabled)
+# Methods:
+#       "apple-script" (recommended)
+#       "trigger-url"
+SPOTIFY_MACOS_PLAYING_METHOD="apple-script"
+
+# What method should we use to play the song listened by the tracked user in local Spotify client under Linux OS 
+# (i.e. when -g / --track_songs functionality is enabled)
+# Methods:
+#       "dbus-send" (most common one)
+#       "qdbus"
+#       "trigger-url"
+SPOTIFY_LINUX_PLAYING_METHOD="dbus-send"
+
+# What method should we use to play the song listened by the tracked user in local Spotify client under Windows OS 
+# (if -g / --track_songs functionality is enabled)
+# Methods:
+#       "start-uri" (recommended)
+#       "spotify-cmd"
+#       "trigger-url"
+SPOTIFY_WINDOWS_PLAYING_METHOD="start-uri"
+
 # How many consecutive plays of the same song is considered as being on loop
 SONG_ON_LOOP_VALUE=3
 
@@ -544,9 +567,11 @@ def spotify_get_friend_info(friend_activity,uri):
             sp_playlist=friend["track"]["context"].get("name")
             sp_playlist_uri=friend["track"]["context"].get("uri")
             sp_track=friend["track"].get("name")
-            sp_track_uri=friend["track"].get("uri")
+            sp_track_uri=str(friend["track"].get("uri"))
+            if "spotify:track:" in sp_track_uri:
+                sp_track_uri_id=sp_track_uri.split(':', 2)[2]            
             sp_ts=int(str(friend.get("timestamp"))[0:-3])
-            return True, {"sp_uri": sp_uri, "sp_username": sp_username, "sp_artist": sp_artist, "sp_track": sp_track, "sp_track_uri": sp_track_uri, "sp_album": sp_album, "sp_album_uri": sp_album_uri, "sp_playlist": sp_playlist, "sp_playlist_uri": sp_playlist_uri, "sp_ts": sp_ts}
+            return True, {"sp_uri": sp_uri, "sp_username": sp_username, "sp_artist": sp_artist, "sp_track": sp_track, "sp_track_uri": sp_track_uri, "sp_track_uri_id": sp_track_uri_id, "sp_album": sp_album, "sp_album_uri": sp_album_uri, "sp_playlist": sp_playlist, "sp_playlist_uri": sp_playlist_uri, "sp_ts": sp_ts}
     return False, {}
 
 # Function returning information for specific Spotify track URI
@@ -600,6 +625,55 @@ def spotify_get_playlist_info(access_token,playlist_uri):
             if hasattr(e.response, 'text'):
                 print (e.response.text)
         raise
+
+def spotify_macos_play_song(sp_track_uri_id,method=SPOTIFY_MACOS_PLAYING_METHOD):
+    if method=="apple-script":    # apple-script
+        script=f'tell app "Spotify" to play track "spotify:track:{sp_track_uri_id}"'
+        proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr=proc.communicate(script)
+    else:                       # trigger-url - just trigger track URL in the client
+        subprocess.call(('open', spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}")))
+
+def spotify_macos_play_pause(action,method=SPOTIFY_MACOS_PLAYING_METHOD):
+    if method=="apple-script":    # apple-script
+        if str(action).lower()=="pause":
+            script='tell app "Spotify" to pause'
+            proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            stdout, stderr=proc.communicate(script)
+        elif str(action).lower()=="play":
+            script='tell app "Spotify" to play'
+            proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            stdout, stderr=proc.communicate(script)         
+
+def spotify_linux_play_song(sp_track_uri_id,method=SPOTIFY_LINUX_PLAYING_METHOD):
+    if method=="dbus-send":     # dbus-send
+        subprocess.call((f"dbus-send --type=method_call --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.OpenUri string:'spotify:track:{sp_track_uri_id}'"), shell=True)
+    elif method=="qdbus":       # qdbus
+        subprocess.call((f"qdbus org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.OpenUri spotify:track:{sp_track_uri_id}"), shell=True)        
+    else:                       # trigger-url - just trigger track URL in the client
+        subprocess.call(('xdg-open', spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}")), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+def spotify_linux_play_pause(action,method=SPOTIFY_LINUX_PLAYING_METHOD):
+    if method=="dbus-send":     # dbus-send
+        if str(action).lower()=="pause":
+            subprocess.call((f"dbus-send --type=method_call --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause"), shell=True)
+        elif str(action).lower()=="play":
+            subprocess.call((f"dbus-send --type=method_call --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play"), shell=True)            
+    elif method=="qdbus":       # qdbus
+        if str(action).lower()=="pause":
+            subprocess.call((f"qdbus org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause"), shell=True)
+        elif str(action).lower()=="play":
+            subprocess.call((f"qdbus org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Play"), shell=True) 
+
+def spotify_win_play_song(sp_track_uri_id,method=SPOTIFY_WINDOWS_PLAYING_METHOD):
+    WIN_SPOTIFY_APP_PATH=r'%APPDATA%\Spotify\Spotify.exe'
+
+    if method=="start-uri":     # start-uri
+        subprocess.call((f"start spotify:track:{sp_track_uri_id}"), shell=True)        
+    elif method=="spotify-cmd": # spotify-cmd
+        subprocess.call((f"{WIN_SPOTIFY_APP_PATH} --uri=spotify:track:{sp_track_uri_id}"), shell=True)
+    else:                       # trigger-url - just trigger track URL in the client
+        os.startfile(spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}"))
 
 # Main function monitoring activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_name,csv_exists):
@@ -678,6 +752,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
             print("* User found, starting monitoring ....")
 
             sp_track_uri=sp_data["sp_track_uri"]
+            sp_track_uri_id=sp_data["sp_track_uri_id"]
             sp_album_uri=sp_data["sp_album_uri"]
             sp_playlist_uri=sp_data["sp_playlist_uri"]
 
@@ -792,16 +867,14 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject,m_body, m_body_html, SMTP_SSL)
 
-                if track_songs:                                     
+
+                if track_songs and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
-                        # subprocess.call(('open', sp_track_url))
-                        script=f'tell app "Spotify" to play track "{sp_track_uri}"'
-                        proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                        stdout, stderr=proc.communicate(script)
+                        spotify_macos_play_song(sp_track_uri_id)
                     elif platform.system() == 'Windows':    # Windows
-                        os.startfile(sp_track_url)
-                    else:                                   # linux variants
-                        subprocess.call(('xdg-open', sp_track_url))
+                        spotify_win_play_song(sp_track_uri_id)
+                    else:                                   # Linux variants
+                        spotify_linux_play_song(sp_track_uri_id)
 
             # Friend is currently offline (does not play music)
             else:
@@ -888,6 +961,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                     alive_counter=0
                     sp_playlist=sp_data["sp_playlist"]               
                     sp_track_uri=sp_data["sp_track_uri"]
+                    sp_track_uri_id=sp_data["sp_track_uri_id"]
                     sp_album_uri=sp_data["sp_album_uri"]
                     sp_playlist_uri=sp_data["sp_playlist_uri"]
                     try:
@@ -925,16 +999,14 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                     sp_album_url=sp_track_data["sp_album_url"]
 
                     # If tracking functionality is enabled then play the current song via Spotify client
-                    if track_songs:                                     
+
+                    if track_songs and sp_track_uri_id:
                         if platform.system() == 'Darwin':       # macOS
-                            # subprocess.call(('open', sp_track_url))
-                            script=f'tell app "Spotify" to play track "{sp_track_uri}"'
-                            proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                            stdout, stderr=proc.communicate(script)
+                            spotify_macos_play_song(sp_track_uri_id)
                         elif platform.system() == 'Windows':    # Windows
-                            os.startfile(sp_track_url)
-                        else:                                   # linux variants
-                            subprocess.call(('xdg-open', sp_track_url))
+                            spotify_win_play_song(sp_track_uri_id)
+                        else:                                   # Linux variants
+                            spotify_linux_play_song(sp_track_uri_id)
 
                     if is_playlist:
                         sp_playlist_url=sp_playlist_data.get("sp_playlist_url")
@@ -1113,22 +1185,26 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
                         
                         # If tracking functionality is enabled then either pause the current song via Spotify client or play the indicated SP_USER_GOT_OFFLINE_TRACK_ID "finishing" song
                         if track_songs:
-                            sp_track_id=SP_USER_GOT_OFFLINE_TRACK_ID
-
-                            if sp_track_id:
+                            if SP_USER_GOT_OFFLINE_TRACK_ID:
                                 if platform.system() == 'Darwin':       # macOS
-                                    script=f'tell app "Spotify" to play track "spotify:track:{sp_track_id}"'
-                                    proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                                    stdout, stderr=proc.communicate(script)
+                                    spotify_macos_play_song(SP_USER_GOT_OFFLINE_TRACK_ID)
                                     if SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0:
                                         time.sleep(SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE)
-                                        script='tell app "Spotify" to pause'
-                                        proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)                                                     
-                                        stdout, stderr=proc.communicate(script)
+                                        spotify_macos_play_pause("pause")
+                                elif platform.system() == 'Windows':    # Windows
+                                    pass
+                                else:                                   # Linux variants
+                                    spotify_linux_play_song(SP_USER_GOT_OFFLINE_TRACK_ID)
+                                    if SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0:
+                                        time.sleep(SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE)
+                                        spotify_linux_play_pause("pause")                                
                             else:
-                                script='tell app "Spotify" to pause'
-                                proc=subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)                                                     
-                                stdout, stderr=proc.communicate(script)
+                                if platform.system() == 'Darwin':       # macOS
+                                    spotify_macos_play_pause("pause")
+                                elif platform.system() == 'Windows':    # Windows
+                                    pass
+                                else:                                   # Linux variants
+                                    spotify_linux_play_pause("pause")
                                                                        
                         if inactive_notification:
                             m_subject=f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop),int(sp_active_ts_start),show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start,sp_active_ts_stop,short=True)})"
@@ -1207,7 +1283,7 @@ if __name__ == "__main__":
         SP_DC_COOKIE=args.spotify_dc_cookie
 
     if not SP_DC_COOKIE or SP_DC_COOKIE=="your_sp_dc_cookie_value":
-        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect\n")
+        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
         sys.exit(1)
 
     if args.check_interval:
