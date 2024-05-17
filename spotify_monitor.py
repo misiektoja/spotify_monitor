@@ -132,7 +132,7 @@ import ipaddress
 class Logger(object):
     def __init__(self, filename):
         self.terminal=sys.stdout
-        self.logfile=open(filename, "a", buffering=1)
+        self.logfile=open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
         self.terminal.write(message)
@@ -323,7 +323,7 @@ def send_email(subject,body,body_html,use_ssl):
 # Function to write CSV entry
 def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, last_activity_ts):
     try:
-        csv_file=open(csv_file_name, 'a', newline='', buffering=1)
+        csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
         csvwriter=csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
         csvwriter.writerow({'Date': timestamp, 'Artist': artist, 'Track': track, 'Playlist': playlist, 'Album': album, 'Last activity': last_activity_ts})
         csv_file.close()
@@ -621,7 +621,7 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
 
     try:
         if csv_file_name:
-            csv_file=open(csv_file_name, 'a', newline='', buffering=1)
+            csv_file=open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
             csvwriter=csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             if not csv_exists:
                 csvwriter.writeheader()
@@ -1171,7 +1171,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        os.system('clear')
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
     except:
         print("* Cannot clear the screen contents")
 
@@ -1241,7 +1244,7 @@ if __name__ == "__main__":
 
     if args.spotify_tracks:
         try:
-            with open(args.spotify_tracks) as file:
+            with open(args.spotify_tracks, encoding="utf-8") as file:
                 sp_tracks=file.read().splitlines()
             file.close()
         except Exception as e:
@@ -1254,7 +1257,7 @@ if __name__ == "__main__":
         csv_enabled=True
         csv_exists=os.path.isfile(args.csv_file)
         try:
-            csv_file=open(args.csv_file, 'a', newline='', buffering=1)
+            csv_file=open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
         except Exception as e:
             print(f"\n* Error: CSV file cannot be opened for writing - {e}")
             sys.exit(1)
@@ -1284,11 +1287,13 @@ if __name__ == "__main__":
     else:
         print(f"* CSV logging enabled:\t\t{csv_enabled}\n")
 
-    signal.signal(signal.SIGUSR1, toggle_active_inactive_notifications_signal_handler)
-    signal.signal(signal.SIGUSR2, toggle_song_notifications_signal_handler)
-    signal.signal(signal.SIGCONT, toggle_track_notifications_signal_handler)
-    signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
-    signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
+    # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
+    if platform.system() != 'Windows':
+        signal.signal(signal.SIGUSR1, toggle_active_inactive_notifications_signal_handler)
+        signal.signal(signal.SIGUSR2, toggle_song_notifications_signal_handler)
+        signal.signal(signal.SIGCONT, toggle_track_notifications_signal_handler)
+        signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
+        signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
 
     out=f"Monitoring user {args.SPOTIFY_USER_URI_ID}"
     print(out)
@@ -1298,4 +1303,3 @@ if __name__ == "__main__":
 
     sys.stdout=stdout_bck
     sys.exit(0)
-
