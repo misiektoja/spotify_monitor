@@ -94,11 +94,14 @@ colours=unchanged, unchanged, magenta
 regexp=^(Old account update date:|New account update date:)\s+(.*)$
 colours=unchanged, unchanged, magenta
 -
-regexp=(^Event ID:)\s+(\d+).*$
-colours=unchanged, yellow, cyan, unchanged
+regexp=(^Event date:)\s+(\w+ \d+ \w+ \d+, \d\d:\d\d:\d\d)$
+colours=unchanged, yellow, magenta, unchanged
 -
-regexp=^Event ID:\s+.*\((.*:\d\d)(.*)\)$
-colours=unchanged, magenta, unchanged
+regexp=(^Event date:)\s+(\w+ \d+ \w+ \d+, \d\d:\d\d:\d\d) \(.*\)$
+colours=unchanged, yellow, magenta, unchanged
+-
+regexp=^Event ID:\s+(\d+).*$
+colours=unchanged, cyan, unchanged
 -
 regexp=^ - Commit date:\s+(.*)$
 colours=unchanged, magenta
@@ -214,7 +217,10 @@ colours=unchanged, magenta
 regexp=\*\*\* (Friend|User) played music from (.*) to (.*)$
 colours=unchanged, unchanged, magenta, magenta
 -
-regexp=\*\*\* Duplicate entries found, possible private mode \((.*)\)$
+regexp=(?i)\*\*\* Duplicate entries \((\d+)\) found, possible private mode \((.*)\)$
+colours=unchanged, green, magenta
+-
+regexp=(?i)\*\*\* Duplicate entries found, possible private mode \((.*)\)$
 colours=unchanged, magenta
 -
 regexp=^\*\*\* User got .* \(after.*\: (.*)\)
@@ -298,7 +304,7 @@ colours=unchanged, green, unchanged
 regexp=^\*\*\* User paused music (\d+) times.*$
 colours=unchanged, green, unchanged
 -
-regexp=(?i)(Error |Error:|Warning|Failure|connect error|HTTP redirect| disappeared|Redirected to login|Forbidden| timeout)
+regexp=(?i)(Error |Error:|Warning|Failure|connect error|HTTP redirect| disappeared|Redirected to login| timeout)
 colours=red
 count=more
 -
