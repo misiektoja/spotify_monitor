@@ -39,10 +39,10 @@ SENDER_EMAIL="your_sender_email"
 #SENDER_EMAIL="your_sender_email"
 RECEIVER_EMAIL="your_receiver_email"
 
-# How often do we perform checks for user activity; in seconds
+# How often do we perform checks for user activity, you can also use -c parameter; in seconds
 SPOTIFY_CHECK_INTERVAL=30 # 30 seconds
 
-# After which time do we consider user as inactive (after last activity); in seconds
+# After which time do we consider user as inactive (after last activity), you can also use -o parameter; in seconds
 # Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
 SPOTIFY_INACTIVITY_CHECK=660 # 11 mins
 
@@ -58,6 +58,7 @@ SKIPPED_SONG_THRESHOLD=0.55 # song is treated as skipped if played for <=55% of 
 #   - Spotify user listens on private mode and sometimes the Spotify client messes some things up
 #   - Spotify user was inactive for more than a week
 # In such case we will continuously check for the user to reappear using the time interval below; in seconds
+# You can also use -m parameter
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL=120 # 2 mins
 
 # Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality; 
@@ -439,6 +440,7 @@ def spotify_get_access_token(sp_dc):
         return response.json()["accessToken"]
     except Exception as e:
         print(f"spotify_get_access_token error - {e}")
+        raise
         return ""
 
 # Function getting list of Spotify friends
@@ -1176,7 +1178,7 @@ if __name__ == "__main__":
     print(f"Spotify Monitoring Tool v{VERSION}\n")
 
     parser=argparse.ArgumentParser("spotify_monitor")
-    parser.add_argument("spotify_user_uri_id", nargs="?", default="test", help="Spotify user URI ID", type=str)
+    parser.add_argument("SPOTIFY_USER_URI_ID", nargs="?", help="Spotify user URI ID", type=str)
     parser.add_argument("-u", "--spotify_dc_cookie", help="Spotify sp_dc cookie to override the value defined within the script (SP_DC_COOKIE)", type=str)    
     parser.add_argument("-a","--active_notification", help="Send email notification once user gets active", action='store_true')
     parser.add_argument("-i","--inactive_notification", help="Send email notification once user gets inactive", action='store_true')
@@ -1184,7 +1186,6 @@ if __name__ == "__main__":
     parser.add_argument("-j","--song_notification", help="Send email notification for every changed song", action='store_true')
     parser.add_argument("-x","--song_on_loop_notification", help="Send email notification if user plays a song on loop (>= SONG_ON_LOOP_VALUE times)", action='store_true')       
     parser.add_argument("-e","--error_notification", help="Disable sending email notifications in case of errors like expired sp_dc", action='store_false')
-
     parser.add_argument("-c", "--check_interval", help="Time between monitoring checks, in seconds", type=int)
     parser.add_argument("-o", "--offline_timer", help="Time required to mark inactive user as offline, in seconds", type=int)
     parser.add_argument("-m", "--disappeared_timer", help="Wait time between checks once the user disappears from friends list, in seconds", type=int)
@@ -1195,17 +1196,16 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'spotify_monitor_UserURIID.log' file", action='store_true')
     args=parser.parse_args()
 
+    if len(sys.argv)==1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
     if args.spotify_dc_cookie:
         SP_DC_COOKIE=args.spotify_dc_cookie
 
     if not SP_DC_COOKIE or SP_DC_COOKIE=="your_sp_dc_cookie_value":
-        print("* SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect\n")
+        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect\n")
         sys.exit(1)
-
-    sys.stdout.write("* Checking internet connectivity ... ")
-    sys.stdout.flush()
-    check_internet()
-    print("")
 
     if args.check_interval:
         SPOTIFY_CHECK_INTERVAL=args.check_interval
@@ -1216,6 +1216,11 @@ if __name__ == "__main__":
 
     if args.disappeared_timer:
         SPOTIFY_DISAPPEARED_CHECK_INTERVAL=args.disappeared_timer
+
+    sys.stdout.write("* Checking internet connectivity ... ")
+    sys.stdout.flush()
+    check_internet()
+    print("")
 
     if args.list_friends:
         print("* Listing Spotify friends ...\n")
@@ -1230,13 +1235,17 @@ if __name__ == "__main__":
             sys.exit(1)
         sys.exit(0)
 
+    if not args.SPOTIFY_USER_URI_ID:
+        print("* Error: SPOTIFY_USER_URI_ID argument is required !")
+        sys.exit(1)
+
     if args.spotify_tracks:
         try:
             with open(args.spotify_tracks) as file:
                 sp_tracks=file.read().splitlines()
             file.close()
         except Exception as e:
-            print(f"\n* Error, file with Spotify tracks cannot be opened!\n* {e}")
+            print(f"\n* Error: file with Spotify tracks cannot be opened - {e}")
             sys.exit(1)
     else:
         sp_tracks=[]
@@ -1247,7 +1256,7 @@ if __name__ == "__main__":
         try:
             csv_file=open(args.csv_file, 'a', newline='', buffering=1)
         except Exception as e:
-            print(f"\n* Error, CSV file cannot be opened for writing - {e}")
+            print(f"\n* Error: CSV file cannot be opened for writing - {e}")
             sys.exit(1)
         csv_file.close()
     else:
@@ -1256,7 +1265,7 @@ if __name__ == "__main__":
         csv_exists=False
 
     if not args.disable_logging:
-        SP_LOGFILE=f"{SP_LOGFILE}_{args.spotify_user_uri_id}.log"
+        SP_LOGFILE=f"{SP_LOGFILE}_{args.SPOTIFY_USER_URI_ID}.log"
         sys.stdout=Logger(SP_LOGFILE)
 
     active_notification=args.active_notification
@@ -1281,11 +1290,11 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
     signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
 
-    out=f"Monitoring user {args.spotify_user_uri_id}"
+    out=f"Monitoring user {args.SPOTIFY_USER_URI_ID}"
     print(out)
     print("-" * len(out))
 
-    spotify_monitor_friend_uri(args.spotify_user_uri_id,sp_tracks,args.error_notification,args.csv_file,csv_exists)
+    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID,sp_tracks,args.error_notification,args.csv_file,csv_exists)
 
     sys.stdout=stdout_bck
     sys.exit(0)
