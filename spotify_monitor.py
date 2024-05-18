@@ -696,23 +696,27 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
     while True:
 
         # Sometimes Spotify network functions halt even though we specified the timeout
-        # To overcome this we use alarm signal functionality to kill it inevitably
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(FUNCTION_TIMEOUT)        
+        # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
+        if platform.system() != 'Windows':
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(FUNCTION_TIMEOUT)
         try:
             sp_accessToken=spotify_get_access_token(SP_DC_COOKIE)
             sp_friends=spotify_get_friends_json(sp_accessToken)
             sp_found, sp_data=spotify_get_friend_info(sp_friends,user_uri_id)
             email_sent=False
-            signal.alarm(0)
+            if platform.system() != 'Windows':
+                signal.alarm(0)
         except TimeoutException:
-            signal.alarm(0)
+            if platform.system() != 'Windows':
+                signal.alarm(0)
             print(f"spotify_*() function timeout, retrying in {display_time(FUNCTION_TIMEOUT)}")
             print_cur_ts("Timestamp:\t\t")
             time.sleep(FUNCTION_TIMEOUT)
             continue
         except Exception as e:
-            signal.alarm(0)
+            if platform.system() != 'Windows':
+                signal.alarm(0)
             print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
             if ('access token' in str(e)) or ('Unauthorized' in str(e)):
                 print("* sp_dc might have expired!")
@@ -880,23 +884,27 @@ def spotify_monitor_friend_uri(user_uri_id,tracks,error_notification,csv_file_na
 
                 while True:
                     # Sometimes Spotify network functions halt even though we specified the timeout
-                    # To overcome this we use alarm signal functionality to kill it inevitably                    
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(FUNCTION_TIMEOUT)
+                    # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
+                    if platform.system() != 'Windows':
+                        signal.signal(signal.SIGALRM, timeout_handler)
+                        signal.alarm(FUNCTION_TIMEOUT)
                     try:
                         sp_accessToken=spotify_get_access_token(SP_DC_COOKIE)
                         sp_friends=spotify_get_friends_json(sp_accessToken)
                         sp_found, sp_data=spotify_get_friend_info(sp_friends,user_uri_id) 
                         email_sent=False                      
-                        signal.alarm(0)
+                        if platform.system() != 'Windows':
+                            signal.alarm(0)
                         break
                     except TimeoutException:
-                        signal.alarm(0)
+                        if platform.system() != 'Windows':
+                            signal.alarm(0)
                         print(f"spotify_*() function timeout, retrying in {display_time(FUNCTION_TIMEOUT)}")
                         print_cur_ts("Timestamp:\t\t")
                         time.sleep(FUNCTION_TIMEOUT)           
                     except Exception as e:
-                        signal.alarm(0)
+                        if platform.system() != 'Windows':
+                            signal.alarm(0)
                         print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
                         if ('access token' in str(e)) or ('Unauthorized' in str(e)):
                             print("* sp_dc might have expired!")
