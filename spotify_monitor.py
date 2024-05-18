@@ -31,12 +31,12 @@ SMTP_USER = "your_smtp_user"
 SMTP_PASSWORD = "your_smtp_password"
 SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
-#SMTP_HOST = "your_smtp_server_plaintext"
-#SMTP_PORT = 25
-#SMTP_USER = "your_smtp_user"
-#SMTP_PASSWORD = "your_smtp_password"
-#SMTP_SSL = False
-#SENDER_EMAIL = "your_sender_email"
+# SMTP_HOST = "your_smtp_server_plaintext"
+# SMTP_PORT = 25
+# SMTP_USER = "your_smtp_user"
+# SMTP_PASSWORD = "your_smtp_password"
+# SMTP_SSL = False
+# SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
 # How often do we perform checks for user activity, you can also use -c parameter; in seconds
@@ -508,7 +508,7 @@ def spotify_get_friends_json(access_token):
 def spotify_convert_uri_to_url(uri):
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
-#    si=""
+    # si=""
 
     url = ""
     if "spotify:user:" in uri:
@@ -644,11 +644,11 @@ def spotify_get_playlist_info(access_token, playlist_uri):
 
 
 def spotify_macos_play_song(sp_track_uri_id, method=SPOTIFY_MACOS_PLAYING_METHOD):
-    if method == "apple-script":    # apple-script
+    if method == "apple-script":   # apple-script
         script = f'tell app "Spotify" to play track "spotify:track:{sp_track_uri_id}"'
         proc = subprocess.Popen(['osascript', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         stdout, stderr = proc.communicate(script)
-    else:                       # trigger-url - just trigger track URL in the client
+    else:                          # trigger-url - just trigger track URL in the client
         subprocess.call(('open', spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}")))
 
 
@@ -669,7 +669,7 @@ def spotify_linux_play_song(sp_track_uri_id, method=SPOTIFY_LINUX_PLAYING_METHOD
         subprocess.call((f"dbus-send --type=method_call --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.OpenUri string:'spotify:track:{sp_track_uri_id}'"), shell=True)
     elif method == "qdbus":        # qdbus
         subprocess.call((f"qdbus org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.OpenUri spotify:track:{sp_track_uri_id}"), shell=True)
-    else:                       # trigger-url - just trigger track URL in the client
+    else:                          # trigger-url - just trigger track URL in the client
         subprocess.call(('xdg-open', spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}")), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
