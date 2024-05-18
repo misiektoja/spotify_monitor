@@ -304,7 +304,7 @@ colours=unchanged, green, unchanged
 regexp=^\*\*\* User paused music (\d+) times.*$
 colours=unchanged, green, unchanged
 -
-regexp=(?i)(Error |Error:|Warning|Failure|connect error|HTTP redirect| disappeared|Redirected to login| timeout)
+regexp=(?i)(Error |Error:|^Error|Warning|Failure|connect error|HTTP redirect| disappeared|Redirected to login| timeout)
 colours=red
 count=more
 -
