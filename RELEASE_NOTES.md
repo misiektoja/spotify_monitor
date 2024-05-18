@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes. 
 
-# Changes in 1.3 (17 May 2024)
+# Changes in 1.3 (18 May 2024)
 
 **Features and Improvements**:
 
@@ -11,6 +11,7 @@ This is a high-level summary of the most important changes.
 - Rewritten code for playing tracked songs (**-g**) in Spotify client in **macOS**
 - Improvements for running the code in Python under Windows
 - Better checking for wrong command line arguments
+- pep8 style convention corrections
 
 **Bugfixes**:
 
