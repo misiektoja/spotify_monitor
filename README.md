@@ -127,7 +127,7 @@ You can monitor multiple Spotify friends by spawning multiple copies of the scri
 
 It is suggested to use sth like **tmux** or **screen** to have the script running after you log out from the server (unless you are running it on your desktop).
 
-The tool automatically saves its output to *spotify_monitor_{userid}.log* file (can be changed in the settings or disabled with **-d** parameter).
+The tool automatically saves its output to *spotify_monitor_{user_uri_id}.log* log file (the file name suffix can be changed via **-y** parameter or logging can be disabled completely with **-d** parameter).
 
 Keep in mind that monitoring reports the listened track AFTER the user finishes listening to it. It is how activities are reported by Spotify. 
 
