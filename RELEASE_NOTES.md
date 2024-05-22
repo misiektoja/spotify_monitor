@@ -2,6 +2,18 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.4 (23 May 2024)
+
+**Features and Improvements**:
+
+- Possibility to define output log file name suffix (**-y** / **--log_file_suffix**)
+- Information about log file name visible in the start screen
+- Rewritten get_date_from_ts(), get_short_date_from_ts(), get_hour_min_from_ts() and get_range_of_dates_from_tss() functions to automatically detect if time object is timestamp or datetime
+
+**Bugfixes**:
+
+- Fixed issues with sporadic broken links in HTML emails (vars with special characters are now escaped properly)
+
 # Changes in 1.3 (18 May 2024)
 
 **Features and Improvements**:
