@@ -17,7 +17,7 @@ NOTE: If you want to track Spotify users profile changes check out the other too
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
-   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="100%"/>
+   <img src="./assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
 </p>
 
 ## Change Log
