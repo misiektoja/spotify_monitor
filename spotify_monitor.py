@@ -107,6 +107,16 @@ SP_LOGFILE = "spotify_monitor"
 # Value used by signal handlers increasing/decreasing the inactivity check (SPOTIFY_INACTIVITY_CHECK); in seconds
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 
+# How many 50x errors need to show up in the defined time to display error message in the console - it is to suppress sporadic issues with Spotify API endpoint; adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# If more than 6 Spotify API related issues in 4 mins - we will show the error message
+ERROR_500_NUMBER_LIMIT = 6
+ERROR_500_TIME_LIMIT = 240  # 4 min
+
+# How many network related errors need to show up in the defined time to display error message in the console - it is to suppress sporadic issues with internet connectivity; adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# If more than 6 network related issues in 4 mins - we will show the error message
+ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
+ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
+
 # -------------------------
 # CONFIGURATION SECTION END
 # -------------------------
@@ -749,6 +759,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
     sp_artist_old = ""
     sp_track_old = ""
     song_on_loop = 0
+    error_500_counter = 0
+    error_500_start_ts = 0
+    error_network_issue_counter = 0
+    error_network_issue_start_ts = 0
 
     try:
         if csv_file_name:
@@ -948,6 +962,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
             email_sent = False
 
+            # Main loop
             while True:
 
                 while True:
@@ -973,17 +988,45 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     except Exception as e:
                         if platform.system() != 'Windows':
                             signal.alarm(0)
-                        print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
-                        if ('access token' in str(e)) or ('Unauthorized' in str(e)):
-                            print("* sp_dc might have expired!")
-                            if error_notification and not email_sent:
-                                m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                                m_body = f"sp_dc might have expired: {e}{get_cur_ts("\n\nTimestamp: ")}"
-                                m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(e)}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
-                                print(f"Sending email notification to {RECEIVER_EMAIL}")
-                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                                email_sent = True
-                        print_cur_ts("Timestamp:\t\t")
+
+                        if '500 Server' in str(e) or '504 Server' in str(e) or '502 Server' in str(e) or '503 Server' in str(e):
+                            if not error_500_start_ts:
+                                error_500_start_ts = int(time.time())
+                                error_500_counter = 1
+                            else:
+                                error_500_counter += 1
+
+                        if 'timed out' in str(e) or 'name resolution' in str(e) or 'family not supported' in str(e) or '429 Client' in str(e) or str(e) == '':
+                            if not error_network_issue_start_ts:
+                                error_network_issue_start_ts = int(time.time())
+                                error_network_issue_counter = 1
+                            else:
+                                error_network_issue_counter += 1
+
+                        if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
+                            print(f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}) - '{e}'")
+                            print_cur_ts("Timestamp:\t\t")
+                            error_500_start_ts = 0
+                            error_500_counter = 0
+
+                        elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
+                            print(f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}) - '{e}'")
+                            print_cur_ts("Timestamp:\t\t")
+                            error_network_issue_start_ts = 0
+                            error_network_issue_counter = 0
+
+                        elif not error_500_start_ts and not error_network_issue_start_ts:
+                            print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - '{e}'")
+                            if ('access token' in str(e)) or ('Unauthorized' in str(e)):
+                                print("* sp_dc might have expired!")
+                                if error_notification and not email_sent:
+                                    m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
+                                    m_body = f"sp_dc might have expired: {e}{get_cur_ts("\n\nTimestamp: ")}"
+                                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(e)}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
+                                    print(f"Sending email notification to {RECEIVER_EMAIL}")
+                                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                                    email_sent = True
+                            print_cur_ts("Timestamp:\t\t")
                         time.sleep(SPOTIFY_CHECK_INTERVAL)
 
                 if sp_found is False:
@@ -1285,6 +1328,22 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         alive_counter = 0
 
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
+
+                ERROR_500_ZERO_TIME_LIMIT = ERROR_500_TIME_LIMIT + SPOTIFY_CHECK_INTERVAL
+                if SPOTIFY_CHECK_INTERVAL * ERROR_500_NUMBER_LIMIT > ERROR_500_ZERO_TIME_LIMIT:
+                    ERROR_500_ZERO_TIME_LIMIT = SPOTIFY_CHECK_INTERVAL * (ERROR_500_NUMBER_LIMIT + 1)
+
+                if error_500_start_ts and ((int(time.time()) - error_500_start_ts) >= ERROR_500_ZERO_TIME_LIMIT):
+                    error_500_start_ts = 0
+                    error_500_counter = 0
+
+                ERROR_NETWORK_ZERO_TIME_LIMIT = ERROR_NETWORK_ISSUES_TIME_LIMIT + SPOTIFY_CHECK_INTERVAL
+                if SPOTIFY_CHECK_INTERVAL * ERROR_NETWORK_ISSUES_NUMBER_LIMIT > ERROR_NETWORK_ZERO_TIME_LIMIT:
+                    ERROR_NETWORK_ZERO_TIME_LIMIT = SPOTIFY_CHECK_INTERVAL * (ERROR_NETWORK_ISSUES_NUMBER_LIMIT + 1)
+
+                if error_network_issue_start_ts and ((int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ZERO_TIME_LIMIT):
+                    error_network_issue_start_ts = 0
+                    error_network_issue_counter = 0
 
         # User is not found in the Spotify's friend list just after starting the tool
         else:
