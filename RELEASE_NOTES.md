@@ -2,12 +2,13 @@
 
 This is a high-level summary of the most important changes. 
 
-# Changes in 1.4 (23 May 2024)
+# Changes in 1.4 (24 May 2024)
 
 **Features and Improvements**:
 
 - Possibility to define output log file name suffix (**-y** / **--log_file_suffix**)
 - Information about log file name visible in the start screen
+- New feature allowing to suppress repeating API or network related errors (check **ERROR_500_NUMBER_LIMIT**, **ERROR_500_TIME_LIMIT**, **ERROR_NETWORK_ISSUES_NUMBER_LIMIT** and **ERROR_NETWORK_ISSUES_TIME_LIMIT** variables)
 - Rewritten get_date_from_ts(), get_short_date_from_ts(), get_hour_min_from_ts() and get_range_of_dates_from_tss() functions to automatically detect if time object is timestamp or datetime
 
 **Bugfixes**:
