@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.4
+v1.5
 
 Script implementing real-time monitoring of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -13,7 +13,7 @@ requests
 urllib3
 """
 
-VERSION = 1.4
+VERSION = 1.5
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -487,6 +487,16 @@ def toggle_track_notifications_signal_handler(sig, frame):
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
     print(f"* Email notifications: [tracked = {track_notification}]")
+    print_cur_ts("Timestamp:\t\t")
+
+
+# Signal handler for SIGPIPE allowing to switch songs on loop email notifications
+def toggle_songs_on_loop_notifications_signal_handler(sig, frame):
+    global song_on_loop_notification
+    song_on_loop_notification = not song_on_loop_notification
+    sig_name = signal.Signals(sig).name
+    print(f"* Signal {sig_name} received")
+    print(f"* Email notifications: [songs on loop = {song_on_loop_notification}]")
     print_cur_ts("Timestamp:\t\t")
 
 
@@ -1492,6 +1502,7 @@ if __name__ == "__main__":
         signal.signal(signal.SIGUSR1, toggle_active_inactive_notifications_signal_handler)
         signal.signal(signal.SIGUSR2, toggle_song_notifications_signal_handler)
         signal.signal(signal.SIGCONT, toggle_track_notifications_signal_handler)
+        signal.signal(signal.SIGPIPE, toggle_songs_on_loop_notifications_signal_handler)
         signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
 
