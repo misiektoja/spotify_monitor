@@ -999,14 +999,16 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         if platform.system() != 'Windows':
                             signal.alarm(0)
 
-                        if '500 Server' in str(e) or '504 Server' in str(e) or '502 Server' in str(e) or '503 Server' in str(e):
+                        str_matches = ["500 server", "504 server", "502 server", "503 server"]
+                        if any(x in str(e).lower() for x in str_matches):
                             if not error_500_start_ts:
                                 error_500_start_ts = int(time.time())
                                 error_500_counter = 1
                             else:
                                 error_500_counter += 1
 
-                        if 'timed out' in str(e) or 'name resolution' in str(e) or 'family not supported' in str(e) or '429 Client' in str(e) or str(e) == '':
+                        str_matches = ["timed out", "timeout", "name resolution", "failed to resolve", "family not supported", "429 client", "aborted"]
+                        if any(x in str(e).lower() for x in str_matches) or str(e) == '':
                             if not error_network_issue_start_ts:
                                 error_network_issue_start_ts = int(time.time())
                                 error_network_issue_counter = 1
