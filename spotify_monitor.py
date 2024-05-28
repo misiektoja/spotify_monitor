@@ -648,6 +648,8 @@ def spotify_get_friend_info(friend_activity, uri):
             sp_track_uri = str(friend["track"].get("uri"))
             if "spotify:track:" in sp_track_uri:
                 sp_track_uri_id = sp_track_uri.split(':', 2)[2]
+            else:
+                sp_track_uri_id = ""
             sp_ts = int(str(friend.get("timestamp"))[0:-3])
             return True, {"sp_uri": sp_uri, "sp_username": sp_username, "sp_artist": sp_artist, "sp_track": sp_track, "sp_track_uri": sp_track_uri, "sp_track_uri_id": sp_track_uri_id, "sp_album": sp_album, "sp_album_uri": sp_album_uri, "sp_playlist": sp_playlist, "sp_playlist_uri": sp_playlist_uri, "sp_ts": sp_ts}
     return False, {}
@@ -817,7 +819,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 if error_notification and not email_sent:
                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                     m_body = f"sp_dc might have expired: {e}{get_cur_ts("\n\nTimestamp: ")}"
-                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(e)}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
+                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(str(e))}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
@@ -840,6 +842,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
             sp_album_uri = sp_data["sp_album_uri"]
             sp_playlist_uri = sp_data["sp_playlist_uri"]
 
+            sp_playlist_data = {}
             try:
                 sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
                 if 'spotify:playlist:' in sp_playlist_uri:
@@ -879,6 +882,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
             sp_artist_url = sp_track_data["sp_artist_url"]
             sp_album_url = sp_track_data["sp_album_url"]
 
+            sp_playlist_url = ""
             if is_playlist:
                 sp_playlist_url = sp_playlist_data.get("sp_playlist_url")
                 playlist_m_body = f"\nPlaylist: {sp_playlist}"
@@ -1034,7 +1038,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                                 if error_notification and not email_sent:
                                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                                     m_body = f"sp_dc might have expired: {e}{get_cur_ts("\n\nTimestamp: ")}"
-                                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(e)}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
+                                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(str(e))}{get_cur_ts("<br><br>Timestamp: ")}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
