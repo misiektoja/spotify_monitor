@@ -92,7 +92,7 @@ colours=unchanged, magenta, unchanged
 regexp=^(Account creation date:|Account updated date:)\s+(.*)\(.*\)$
 colours=unchanged, unchanged, magenta
 -
-regexp=^(Old account update date:|New account update date:)\s+(.*)$
+regexp=^(Old account update date:|New account update date:|Old repo update date:|New repo update date:)\s+(.*)$
 colours=unchanged, unchanged, magenta
 -
 regexp=(^Event date:)\s+(\w+ \d+ \w+ \d+, \d\d:\d\d:\d\d)$
@@ -245,7 +245,7 @@ colours=unchanged, bold magenta, bold magenta
 regexp=.*\(was offline since.*, (\d\d:\d\d:\d\d)
 colours=unchanged, bold magenta
 -
-regexp=(?i).*(story for user|Newest post|Followers number changed|Followings number changed|Playlists number changed|Bio changed for|New post for user|number changed|Followings changed|Followers changed|name changed to|has changed for user|has been updated for user|number of tracks changed|number of likes changed|name changed to new name|description changed from|changed profile picture|removed profile picture|set profile picture).*
+regexp=(?i).*(story for user|Newest post|Followers number changed|Followings number changed|Playlists number changed|Bio changed for|New post for user|number changed|number of|Followings changed|Followers changed|name changed to|has changed for user|has been updated for user|number of tracks changed|number of likes changed|name changed to new name|description changed from|changed profile picture|removed profile picture|set profile picture|update date changed|has new story item|story items:).*
 colours=yellow
 -
 regexp=.*number.*from (\d+ )to (\d+)
@@ -334,7 +334,19 @@ colours=unchanged, blue underline, unchanged
 regexp=^\* User [\w_-]+ has .* added on (\d+ \w+ \d+, \d\d:\d\d)
 colours=unchanged, magenta, unchanged
 -
-regexp=^.*; previous update: (\w+ \d+ \w+ \d\d:\d\d)\)
+regexp=^\* User [\w_-]+ has .* added on (\w+ \d+ \w+( \d+,)* \d\d:\d\d)
+colours=unchanged, magenta, unchanged
+-
+regexp=^\* User [\w_-]+ has set .* \((\w+ \d+ \w+( \d+,)* \d\d:\d\d)\)
+colours=unchanged, magenta, unchanged
+-
+regexp=^\* Profile picture has been added on (\w+ \d+ \w+( \d+,)* \d\d:\d\d).*
+colours=unchanged, magenta, unchanged
+-
+regexp=^\* New post for user .* after .* \((\w+ \d+ \w+ \d+, \d\d:\d\d:\d\d)\)
+colours=unchanged, magenta, unchanged
+-
+regexp=^.*; previous update: (\w+ \d+ \w+( \d+,)* \d\d:\d\d)\)
 colours=unchanged, magenta, unchanged
 -
 regexp=^User played (\d+) games for total time of (.*)
@@ -356,4 +368,10 @@ count=more
 -
 regexp=^Event actor login:\s+(.*)$
 colours=unchanged, blue, unchanged
+-
+regexp=^\* Repo \'(.*)\'([: ]).*$
+colours=unchanged, green, unchanged
+-
+regexp=^\* Playlist URL: (.*)
+colours=unchanged, blue
 
