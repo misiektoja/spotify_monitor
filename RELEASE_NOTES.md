@@ -11,7 +11,7 @@ This is a high-level summary of the most important changes.
 - New feature allowing to suppress repeating API or network related errors (check **ERROR_500_NUMBER_LIMIT**, **ERROR_500_TIME_LIMIT**, **ERROR_NETWORK_ISSUES_NUMBER_LIMIT** and **ERROR_NETWORK_ISSUES_TIME_LIMIT** variables)
 - Rewritten get_date_from_ts(), get_short_date_from_ts(), get_hour_min_from_ts() and get_range_of_dates_from_tss() functions to automatically detect if time object is timestamp or datetime
 
-**Bugfixes**:
+**Bug fixes**:
 
 - Fixed issues with sporadic broken links in HTML emails (vars with special characters are now escaped properly)
 
@@ -26,7 +26,7 @@ This is a high-level summary of the most important changes.
 - Better checking for wrong command line arguments
 - pep8 style convention corrections
 
-**Bugfixes**:
+**Bug fixes**:
 
 - Improved exception handling for some functions
 
@@ -34,7 +34,7 @@ This is a high-level summary of the most important changes.
 
 **Features and Improvements**:
 
-- Possbility to define SP_DC_COOKIE via command line argument (-u / --spotify_dc_cookie)
+- Possibility to define SP_DC_COOKIE via command line argument (-u / --spotify_dc_cookie)
 - SPOTIFY_ACTIVITY_CHECK and -p / --online_timer parameter have been removed as it only complicated the code with no visible benefit; SPOTIFY_INACTIVITY_CHECK is used in all places now, so user is considered active if the time of last activity is <= SPOTIFY_INACTIVITY_CHECK
 - Email sending function send_email() has been rewritten to detect invalid SMTP settings
 - Strings have been converted to f-strings for better code visibility
@@ -58,6 +58,6 @@ This is a high-level summary of the most important changes.
 - Support for detecting Artist context of listened songs
 - Additional search/replace strings to sanitize tracks for Genius URLs
 
-**Bugfixes**:
+**Bug fixes**:
 
-- Fix for "SyntaxWarning: invalid escape sequence '\d'" in regexes
+- Fix for "SyntaxWarning: invalid escape sequence '\d'" in regexps
