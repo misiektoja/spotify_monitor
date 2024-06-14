@@ -1,6 +1,6 @@
 # spotify_monitor
 
-spotify_monitor is a Python script which allows for real-time monitoring of Spotify friends music activity. 
+spotify_monitor is a Python tool which allows for real-time monitoring of Spotify friends music activity. 
 
 NOTE: If you want to track Spotify users profile changes check out the other tool I developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
@@ -36,7 +36,11 @@ It uses requests, python-dateutil and urllib3.
 
 It has been tested successfully on:
 - macOS (Ventura & Sonoma)
-- Linux (Raspberry Pi Bullseye & Bookworm based on Debian, Ubuntu 24)
+- Linux:
+   - Raspberry Pi Bullseye & Bookworm
+   - Ubuntu 24
+   - Rocky Linux 8.x
+   - Kali Linux 2024
 - Windows (10 & 11)
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
@@ -85,7 +89,13 @@ Your friend needs to have sharing of listening activity enabled in their Spotify
 
 ### SMTP settings
 
-If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient). If you leave the default settings then no notifications will be sent.
+If you want to use email notifications functionality you need to change the SMTP settings (host, port, user, password, sender, recipient) in the *[spotify_monitor.py](spotify_monitor.py)* file. If you leave the default settings then no notifications will be sent.
+
+You can verify if your SMTP settings are correct by using **-z** parameter (the tool will try to send a test email notification):
+
+```sh
+./spotify_monitor.py -z
+```
 
 ### Other settings
 
