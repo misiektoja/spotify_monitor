@@ -284,8 +284,9 @@ List of supported signals:
 | USR1 | Toggle email notifications when user gets active/inactive (-a, -i) |
 | USR2 | Toggle email notifications for every song (-j) |
 | CONT | Toggle email notifications for tracked songs (-t) |
-| TRAP | Increase the inactivity check timer (by 30 seconds) |
-| ABRT | Decrease the inactivity check timer (by 30 seconds) |
+| PIPE | Toggle email notifications when user plays song on loop (-x) |
+| TRAP | Increase the inactivity check timer (by 30 seconds) (-o) |
+| ABRT | Decrease the inactivity check timer (by 30 seconds) (-o) |
 
 So if you want to change functionality of the running tool, just send the proper signal to the desired copy of the script.
 
