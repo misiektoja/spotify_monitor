@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.7 (03 Nov 2024)
+
+**Features and Improvements**:
+
+- **NEW:** Support for YouTube Music search URLs
+
 # Changes in 1.6 (15 Jun 2024)
 
 **Features and Improvements**:
