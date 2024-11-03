@@ -12,7 +12,7 @@ NOTE: If you want to track Spotify users profile changes check out the other too
 - Information about context of listened song (playlist/artist/album) with clickable URLs
 - Email notifications for different events (user gets active/inactive, specific/all songs, songs on loop, errors)
 - Saving all listened songs with timestamps to the CSV file
-- Clickable Spotify, Apple Music and Genius Lyrics search URLs printed in the console & included in email notifications
+- Clickable Spotify, Apple Music, YouTube Music and Genius Lyrics search URLs printed in the console & included in email notifications
 - Showing basic statistics for user's playing session (how long, time span, number of listened & skipped songs, songs on loop)
 - Possibility to control the running copy of the script via signals
 
@@ -35,7 +35,7 @@ The script requires Python 3.x.
 It uses requests, python-dateutil and urllib3.
 
 It has been tested successfully on:
-- macOS (Ventura & Sonoma)
+- macOS (Ventura, Sonoma & Sequoia)
 - Linux:
    - Raspberry Pi Bullseye & Bookworm
    - Ubuntu 24
