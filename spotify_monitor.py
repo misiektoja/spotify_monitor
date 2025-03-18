@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.7
+v1.8
 
-Tool implementing real-time tracking of Spotify friends music activity:
+Tool implementing real-time tracking of Spotify friends' music activity:
 https://github.com/misiektoja/spotify_monitor/
 
 Python pip3 requirements:
@@ -11,9 +11,10 @@ Python pip3 requirements:
 python-dateutil
 requests
 urllib3
+pyotp
 """
 
-VERSION = 1.7
+VERSION = 1.8
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -86,7 +87,7 @@ SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 120  # 2 mins
 
 # Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality;
 # leave empty to simply pause
-#SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
+# SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
 # Delay after which the above track gets paused, type 0 to play infinitely until user pauses manually; in seconds
@@ -128,6 +129,19 @@ re_replace_str = r'( - (\d*)( )*remaster$)|( - (\d*)( )*remastered( version)*( \
 # Default value for network-related timeouts in functions + alarm signal handler; in seconds
 FUNCTION_TIMEOUT = 15
 
+# Variables for caching functionality of the Spotify access token to avoid unnecessary refreshing
+from typing import Optional
+SP_CACHED_ACCESS_TOKEN: Optional[str] = None
+SP_TOKEN_EXPIRES_AT = 0
+SP_CACHED_CLIENT_ID = ""
+SP_CACHED_USER_AGENT = ""
+
+TOKEN_URL = "https://open.spotify.com/get_access_token"
+SERVER_TIME_URL = "https://open.spotify.com/server-time"
+
+TOKEN_MAX_RETRIES = 20
+TOKEN_RETRY_TIMEOUT = 1.5
+
 TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / SPOTIFY_CHECK_INTERVAL
 
 stdout_bck = None
@@ -160,11 +174,15 @@ from email.mime.text import MIMEText
 import argparse
 import csv
 import urllib
+from urllib.parse import quote_plus, quote, urlparse
 import subprocess
 import platform
 import re
 import ipaddress
 from html import escape
+import pyotp
+import base64
+from random import randrange
 
 
 # Logger class to output messages to stdout and log file
@@ -210,7 +228,6 @@ def check_internet():
     except Exception as e:
         print(f"No connectivity, please check your network - {e}")
         sys.exit(1)
-    return False
 
 
 # Function to convert absolute value of seconds to human readable format
@@ -312,7 +329,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
 
     try:
-        is_ip = ipaddress.ip_address(str(SMTP_HOST))
+        ipaddress.ip_address(str(SMTP_HOST))
     except ValueError:
         if not fqdn_re.search(str(SMTP_HOST)):
             print("Error sending email - SMTP settings are incorrect (invalid IP address/FQDN in SMTP_HOST)")
@@ -353,7 +370,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         email_msg = MIMEMultipart('alternative')
         email_msg["From"] = SENDER_EMAIL
         email_msg["To"] = RECEIVER_EMAIL
-        email_msg["Subject"] = Header(subject, 'utf-8')
+        email_msg["Subject"] = str(Header(subject, 'utf-8'))
 
         if body:
             part1 = MIMEText(body, 'plain')
@@ -380,22 +397,22 @@ def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, la
         csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
         csvwriter.writerow({'Date': timestamp, 'Artist': artist, 'Track': track, 'Playlist': playlist, 'Album': album, 'Last activity': last_activity_ts})
         csv_file.close()
-    except Exception as e:
+    except Exception:
         raise
 
 
-# Function to return the timestamp in human readable format; eg. Sun, 21 Apr 2024, 15:08:45
+# Function to return the timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def get_cur_ts(ts_str=""):
     return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
-# Function to print the current timestamp in human readable format; eg. Sun, 21 Apr 2024, 15:08:45
+# Function to print the current timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
     print(get_cur_ts(str(ts_str)))
     print("---------------------------------------------------------------------------------------------------------")
 
 
-# Function to return the timestamp/datetime object in human readable format (long version); eg. Sun, 21 Apr 2024, 15:08:45
+# Function to return the timestamp/datetime object in human readable format (long version); eg. Sun 21 Apr 2024, 15:08:45
 def get_date_from_ts(ts):
     if type(ts) is datetime:
         ts_new = int(round(ts.timestamp()))
@@ -558,32 +575,205 @@ def decrease_inactivity_check_signal_handler(sig, frame):
 # Function preparing Apple & Genius search URLs for specified track
 def get_apple_genius_search_urls(artist, track):
     genius_search_string = f"{artist} {track}"
-    youtube_music_search_string = urllib.parse.quote_plus(f"{artist} {track}")
+    youtube_music_search_string = quote_plus(f"{artist} {track}")
     if re.search(re_search_str, genius_search_string, re.IGNORECASE):
         genius_search_string = re.sub(re_replace_str, '', genius_search_string, flags=re.IGNORECASE)
-    apple_search_string = urllib.parse.quote(f"{artist} {track}")
+    apple_search_string = quote(f"{artist} {track}")
     apple_search_url = f"https://music.apple.com/pl/search?term={apple_search_string}"
-    genius_search_url = f"https://genius.com/search?q={urllib.parse.quote_plus(genius_search_string)}"
+    genius_search_url = f"https://genius.com/search?q={quote_plus(genius_search_string)}"
     youtube_music_search_url = f"https://music.youtube.com/search?q={youtube_music_search_string}"
     return apple_search_url, genius_search_url, youtube_music_search_url
 
 
-# Function getting Spotify access token based on provided sp_dc cookie value
-def spotify_get_access_token(sp_dc):
-    url = "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
-    cookies = {"sp_dc": sp_dc}
+# Function returning random user agent string
+def get_random_user_agent():
+    return (
+        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{randrange(11, 15)}_{randrange(4, 9)}) "
+        f"AppleWebKit/{randrange(530, 537)}.{randrange(30, 37)} (KHTML, like Gecko) "
+        f"Chrome/{randrange(80, 105)}.0.{randrange(3000, 4500)}.{randrange(60, 125)} "
+        f"Safari/{randrange(530, 537)}.{randrange(30, 36)}"
+    )
+
+
+# Function converting a bytes object into a Base32‑encoded string using a custom alphabet
+def base32_from_bytes(e: bytes, secret_sauce: str) -> str:
+    t = 0
+    n = 0
+    r = ""
+    for byte in e:
+        n = (n << 8) | byte
+        t += 8
+        while t >= 5:
+            index = (n >> (t - 5)) & 31
+            r += secret_sauce[index]
+            t -= 5
+    if t > 0:
+        r += secret_sauce[(n << (5 - t)) & 31]
+    return r
+
+
+# Function removing spaces from a hex string and converting it into a corresponding bytes object
+def clean_buffer(e: str) -> bytes:
+    e = e.replace(" ", "")
+    return bytes(int(e[i:i + 2], 16) for i in range(0, len(e), 2))
+
+
+# Function creating a TOTP object using a secret derived from transformed cipher bytes
+def generate_totp():
+    secret_cipher_bytes = [
+        12, 56, 76, 33, 88, 44, 88, 33,
+        78, 78, 11, 66, 22, 22, 55, 69, 54,
+    ]
+
+    transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
+    joined = "".join(str(num) for num in transformed)
+    utf8_bytes = joined.encode("utf-8")
+    hex_str = "".join(format(b, 'x') for b in utf8_bytes)
+    secret_bytes = clean_buffer(hex_str)
+    secret_sauce = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+    secret = base32_from_bytes(secret_bytes, secret_sauce)
+
+    headers = {
+        "Host": "open.spotify.com",
+        "User-Agent": get_random_user_agent(),
+        "Accept": "*/*",
+    }
+
+    resp = req.get(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT)
+    resp.raise_for_status()
+    json_data = resp.json()
+    server_time = json_data.get("serverTime")
+
+    if server_time is None:
+        raise Exception("Failed to get server time")
+
+    totp_obj = pyotp.TOTP(secret, digits=6, interval=30)
+
+    return totp_obj, server_time
+
+
+# Function retrieving a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
+def refresh_token(sp_dc: str) -> dict:
+    session = req.Session()
+    session.cookies.set("sp_dc", sp_dc)
+
+    totp_obj, server_time = generate_totp()
+    timestamp = int(time.time())
+    otp_value = totp_obj.at(server_time)
+
+    params = {
+        "reason": "transport",
+        "productType": "web_player",
+        "totp": otp_value,
+        "totpVer": 5,
+        "ts": timestamp,
+    }
+    ua = get_random_user_agent()
+    headers = {
+        "User-Agent": ua,
+        "Accept": "application/json",
+        "Cookie": f"sp_dc={sp_dc}",
+    }
+    response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
+    response.raise_for_status()
     try:
-        response = req.get(url, cookies=cookies, timeout=FUNCTION_TIMEOUT)
+        data = response.json()
+    except Exception as ex:
+        raise Exception("Failed to decode JSON: " + response.text) from ex
+
+    token = data.get("accessToken", "")
+
+    if len(token) != 374:
+        params["reason"] = "init"
+        response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
         response.raise_for_status()
-        return response.json().get("accessToken", "")
-    except Exception as e:
-        raise
+        data = response.json()
+        token = data.get("accessToken", "")
+
+    if not data or "accessToken" not in data:
+        raise Exception("Unsuccessful token request")
+
+    return {
+        "access_token": token,
+        "expires_at": data["accessTokenExpirationTimestampMs"] // 1000,
+        "client_id": data.get("clientId", ""),
+        "user_agent": ua,
+        "length": len(token)
+    }
+
+
+# Function sending a lightweight request to check token validity
+def check_token_validity(token: str, client_id: str, user_agent: str) -> bool:
+    # url = "https://spclient.wg.spotify.com/get_status"
+    url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Client-Id": client_id,
+        "User-Agent": user_agent,
+    }
+    response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
+    return response.status_code == 200
+
+
+# Function getting Spotify access token based on provided SP_DC value
+def spotify_get_access_token(sp_dc: str) -> str:
+    global SP_CACHED_ACCESS_TOKEN, SP_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT
+
+    now = time.time()
+
+    if SP_CACHED_ACCESS_TOKEN and now < SP_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+        return SP_CACHED_ACCESS_TOKEN
+
+    print("* Fetching a new Spotify access token, it might take a while ...")
+
+    max_retries = TOKEN_MAX_RETRIES
+    retry = 0
+
+    while retry < max_retries:
+        token_data = refresh_token(sp_dc)
+        token = token_data["access_token"]
+        client_id = token_data.get("client_id", "")
+        user_agent = token_data.get("user_agent", get_random_user_agent())
+        length = token_data["length"]
+
+        if length != 378:
+            # print(f"Token length {length} is not 378. Retrying in {TOKEN_RETRY_TIMEOUT} seconds...")
+            retry += 1
+            time.sleep(TOKEN_RETRY_TIMEOUT)
+            continue
+
+        SP_CACHED_ACCESS_TOKEN = token
+        SP_TOKEN_EXPIRES_AT = token_data["expires_at"]
+        SP_CACHED_CLIENT_ID = client_id
+        SP_CACHED_USER_AGENT = user_agent
+
+        assert SP_CACHED_ACCESS_TOKEN is not None, "SP_CACHED_ACCESS_TOKEN is None"
+        if check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+            print("* Token is valid\n")
+            break
+        else:
+            # print(f"Token is invalid, retrying in {TOKEN_RETRY_TIMEOUT} seconds... (attempt {retry + 1} of {max_retries})")
+            retry += 1
+            time.sleep(TOKEN_RETRY_TIMEOUT)
+
+    if retry == max_retries:
+        print(f"* Token appears to be still invalid after {max_retries} attempts. Returning token anyway\n")
+
+    # print("Spotify Access Token:", SP_CACHED_ACCESS_TOKEN)
+    # print("Token expires at:", time.ctime(SP_TOKEN_EXPIRES_AT))
+
+    assert SP_CACHED_ACCESS_TOKEN is not None, "SP_CACHED_ACCESS_TOKEN is None"
+    return SP_CACHED_ACCESS_TOKEN
 
 
 # Function getting list of Spotify friends
 def spotify_get_friends_json(access_token):
     url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
-    headers = {"Authorization": "Bearer " + access_token}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": SP_CACHED_CLIENT_ID,
+        "User-Agent": SP_CACHED_USER_AGENT,
+    }
     try:
         response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
         response.raise_for_status()
@@ -592,7 +782,7 @@ def spotify_get_friends_json(access_token):
         if error_str:
             raise ValueError(error_str)
         return friends_json
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -696,7 +886,11 @@ def spotify_get_friend_info(friend_activity, uri):
 def spotify_get_track_info(access_token, track_uri):
     track_id = track_uri.split(':', 2)[2]
     url = "https://api.spotify.com/v1/tracks/" + track_id
-    headers = {"Authorization": "Bearer " + access_token}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": SP_CACHED_CLIENT_ID,
+        "User-Agent": SP_CACHED_USER_AGENT,
+    }
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
 
@@ -712,7 +906,7 @@ def spotify_get_track_info(access_token, track_uri):
         sp_album_url = json_response["album"]["external_urls"].get("spotify") + si
         sp_album_name = json_response["album"].get("name")
         return {"sp_track_duration": sp_track_duration, "sp_track_url": sp_track_url, "sp_artist_url": sp_artist_url, "sp_album_url": sp_album_url, "sp_track_name": sp_track_name, "sp_artist_name": sp_artist_name, "sp_album_name": sp_album_name}
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -720,7 +914,11 @@ def spotify_get_track_info(access_token, track_uri):
 def spotify_get_playlist_info(access_token, playlist_uri):
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
-    headers = {"Authorization": "Bearer " + access_token}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": SP_CACHED_CLIENT_ID,
+        "User-Agent": SP_CACHED_USER_AGENT,
+    }
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
 
@@ -734,7 +932,7 @@ def spotify_get_playlist_info(access_token, playlist_uri):
         sp_playlist_followers = int(json_response["followers"].get("total"))
         sp_playlist_url = json_response["external_urls"].get("spotify") + si
         return {"sp_playlist_name": sp_playlist_name, "sp_playlist_owner": sp_playlist_owner, "sp_playlist_owner_url": sp_playlist_owner_url, "sp_playlist_followers": sp_playlist_followers, "sp_playlist_url": sp_playlist_url}
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -852,11 +1050,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 signal.alarm(0)
             print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
             if ('access token' in str(e)) or ('Unauthorized' in str(e)):
-                print("* sp_dc might have expired!")
+                print(f"* Error: sp_dc might have expired!\n{str(e)}")
                 if error_notification and not email_sent:
                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                    m_body = f"sp_dc might have expired: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
@@ -1072,11 +1270,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         elif not error_500_start_ts and not error_network_issue_start_ts:
                             print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - '{e}'")
                             if ('access token' in str(e)) or ('Unauthorized' in str(e)):
-                                print("* sp_dc might have expired!")
+                                print(f"* Error: sp_dc might have expired!\n{str(e)}")
                                 if error_notification and not email_sent:
                                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                                    m_body = f"sp_dc might have expired: {e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>sp_dc might have expired: {escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
@@ -1192,10 +1390,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         listened_percentage = (played_for_time) / (sp_track_duration - 1)
                         played_for = display_time(played_for_time)
                         if listened_percentage <= SKIPPED_SONG_THRESHOLD:
-                            played_for += f" - SKIPPED ({int(listened_percentage*100)}%)"
+                            played_for += f" - SKIPPED ({int(listened_percentage * 100)}%)"
                             skipped_songs += 1
                         else:
-                            played_for += f" ({int(listened_percentage*100)}%)"
+                            played_for += f" ({int(listened_percentage * 100)}%)"
                         print(f"Played for:\t\t\t{played_for}")
                         played_for_m_body = f"\nPlayed for: {played_for}"
                         played_for_m_body_html = f"<br>Played for: {played_for}"
@@ -1323,10 +1521,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         listened_songs_mbody_html = f"<br><br>User played <b>{listened_songs}</b> songs"
 
                         if skipped_songs > 0:
-                            skipped_songs_text = f", skipped {skipped_songs} songs ({int((skipped_songs/listened_songs)*100)}%)"
+                            skipped_songs_text = f", skipped {skipped_songs} songs ({int((skipped_songs / listened_songs) * 100)}%)"
                             listened_songs_text += skipped_songs_text
                             listened_songs_mbody += skipped_songs_text
-                            listened_songs_mbody_html += f", skipped <b>{skipped_songs}</b> songs <b>({int((skipped_songs/listened_songs)*100)}%)</b>"
+                            listened_songs_mbody_html += f", skipped <b>{skipped_songs}</b> songs <b>({int((skipped_songs / listened_songs) * 100)}%)</b>"
 
                         if looped_songs > 0:
                             looped_songs_text = f"\n*** User played {looped_songs} songs on loop"
@@ -1408,7 +1606,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 user_not_found = True
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
             continue
-    return 0
+
 
 if __name__ == "__main__":
 
@@ -1422,7 +1620,7 @@ if __name__ == "__main__":
             os.system('cls')
         else:
             os.system('clear')
-    except:
+    except Exception:
         print("* Cannot clear the screen contents")
 
     print(f"Spotify Monitoring Tool v{VERSION}\n")
@@ -1460,17 +1658,10 @@ if __name__ == "__main__":
     if args.send_test_email_notification:
         print("* Sending test email notification ...\n")
         if send_email("spotify_monitor: test email", "This is test email - your SMTP settings seems to be correct !", "", SMTP_SSL, smtp_timeout=5) == 0:
-                print("* Email sent successfully !")
+            print("* Email sent successfully !")
         else:
             sys.exit(1)
         sys.exit(0)
-
-    if args.spotify_dc_cookie:
-        SP_DC_COOKIE = args.spotify_dc_cookie
-
-    if not SP_DC_COOKIE or SP_DC_COOKIE == "your_sp_dc_cookie_value":
-        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
-        sys.exit(1)
 
     if args.check_interval:
         SPOTIFY_CHECK_INTERVAL = args.check_interval
@@ -1481,6 +1672,13 @@ if __name__ == "__main__":
 
     if args.disappeared_timer:
         SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
+
+    if args.spotify_dc_cookie:
+        SP_DC_COOKIE = args.spotify_dc_cookie
+
+    if not SP_DC_COOKIE or SP_DC_COOKIE == "your_sp_dc_cookie_value":
+        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
+        sys.exit(1)
 
     if args.list_friends:
         print("* Listing Spotify friends ...\n")
@@ -1538,9 +1736,18 @@ if __name__ == "__main__":
     track_notification = args.track_notification
     song_on_loop_notification = args.song_on_loop_notification
     track_songs = args.track_songs
+    error_notification = args.error_notification
+
+    if SMTP_HOST == "your_smtp_server_ssl" or SMTP_HOST == "your_smtp_server_plaintext":
+        active_notification = False
+        inactive_notification = False
+        song_notification = False
+        track_notification = False
+        song_on_loop_notification = False
+        error_notification = False
 
     print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]")
-    print(f"* Email notifications:\t\t[active = {active_notification}] [inactive = {inactive_notification}] [tracked = {track_notification}]\n*\t\t\t\t[songs on loop = {song_on_loop_notification}] [every song = {song_notification}] [errors = {args.error_notification}]")
+    print(f"* Email notifications:\t\t[active = {active_notification}] [inactive = {inactive_notification}] [tracked = {track_notification}]\n*\t\t\t\t[songs on loop = {song_on_loop_notification}] [every song = {song_notification}] [errors = {error_notification}]")
     print(f"* Track listened songs:\t\t{track_songs}")
     if not args.disable_logging:
         print(f"* Output logging enabled:\t{not args.disable_logging} ({SP_LOGFILE})")
@@ -1564,7 +1771,7 @@ if __name__ == "__main__":
     print(out)
     print("-" * len(out))
 
-    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID, sp_tracks, args.error_notification, args.csv_file, csv_exists)
+    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID, sp_tracks, error_notification, args.csv_file, csv_exists)
 
     sys.stdout = stdout_bck
     sys.exit(0)
