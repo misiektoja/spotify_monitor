@@ -4,11 +4,12 @@ from random import randrange
 import time
 
 import pyotp
-from aiohttp import ClientSession, ClientError
+from aiohttp import ClientSession, ClientError, TCPConnector
 
 _LOGGER = logging.getLogger(__name__)
 
 TOKEN_URL = "https://open.spotify.com/get_access_token"
+SERVER_TIME_URL = "https://open.spotify.com/server-time"
 
 
 def get_random_user_agent():
@@ -56,6 +57,7 @@ async def generate_totp(session: ClientSession) -> tuple[pyotp.TOTP, int, str]:
         "User-Agent": get_random_user_agent(),
         "Accept": "*/*",
     }
+
     async with session.get("https://open.spotify.com/server-time", headers=headers) as resp:
         resp.raise_for_status()
         json_data = await resp.json()
@@ -66,7 +68,7 @@ async def generate_totp(session: ClientSession) -> tuple[pyotp.TOTP, int, str]:
 
 
 async def async_refresh_token(cookies: dict):
-    async with ClientSession(cookies=cookies) as session:
+    async with ClientSession(cookies=cookies, connector=TCPConnector(ssl=False)) as session:
         totp_obj, server_time, _ = await generate_totp(session)
         _LOGGER.debug("Got TOTP object: %s", totp_obj)
         timestamp = int(time.time())
@@ -101,8 +103,8 @@ async def async_refresh_token(cookies: dict):
 
         token = data.get("accessToken", "")
 
-        if len(token) != 374:
-            _LOGGER.debug("Transport mode token length (%d) != 374, retrying with mode 'init'", len(token))
+        if len(token) != 378:
+            _LOGGER.debug("Transport mode token length (%d) != 378, retrying with mode 'init'", len(token))
             params["reason"] = "init"
             async with session.get(
                 TOKEN_URL,
@@ -125,13 +127,13 @@ async def async_refresh_token(cookies: dict):
 
 
 async def check_token_validity(token: str, client_id: str) -> bool:
-    url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
+    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
     headers = {
         "Authorization": f"Bearer {token}",
         "Client-Id": client_id,
         "User-Agent": get_random_user_agent(),
     }
-    async with ClientSession() as session:
+    async with ClientSession(connector=TCPConnector(ssl=False)) as session:
         async with session.get(url, headers=headers) as response:
             text = await response.text()
             _LOGGER.debug("Token validity response: status %s, text: %s", response.status, text)
