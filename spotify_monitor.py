@@ -130,8 +130,7 @@ re_replace_str = r'( - (\d*)( )*remaster$)|( - (\d*)( )*remastered( version)*( \
 FUNCTION_TIMEOUT = 15
 
 # Variables for caching functionality of the Spotify access token to avoid unnecessary refreshing
-from typing import Optional
-SP_CACHED_ACCESS_TOKEN: Optional[str] = None
+SP_CACHED_ACCESS_TOKEN = None
 SP_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
 SP_CACHED_USER_AGENT = ""
@@ -643,8 +642,19 @@ def generate_totp():
         "Accept": "*/*",
     }
 
-    resp = req.get(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT)
+    try:
+        if platform.system() != 'Windows':
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(FUNCTION_TIMEOUT + 2)
+        resp = req.get(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT)
+    except (req.RequestException, TimeoutException) as e:
+        raise Exception(f"generate_totp() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
+
     resp.raise_for_status()
+
     json_data = resp.json()
     server_time = json_data.get("serverTime")
 
@@ -672,30 +682,55 @@ def refresh_token(sp_dc: str) -> dict:
         "totpVer": 5,
         "ts": timestamp,
     }
+
     ua = get_random_user_agent()
+
     headers = {
         "User-Agent": ua,
         "Accept": "application/json",
         "Cookie": f"sp_dc={sp_dc}",
     }
-    response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
+
+    try:
+        if platform.system() != 'Windows':
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(FUNCTION_TIMEOUT + 2)
+        response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
+    except (req.RequestException, TimeoutException) as e:
+        raise Exception(f"refresh_token() network request (transport) timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
+
     response.raise_for_status()
+
     try:
         data = response.json()
     except Exception as ex:
-        raise Exception("Failed to decode JSON: " + response.text) from ex
+        raise Exception("refresh_token(): Failed to decode JSON: " + response.text) from ex
 
     token = data.get("accessToken", "")
 
-    if len(token) != 374:
+    if len(token) != 378:
         params["reason"] = "init"
-        response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
+        try:
+            if platform.system() != 'Windows':
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(FUNCTION_TIMEOUT + 2)
+            response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT)
+        except (req.RequestException, TimeoutException) as e:
+            raise Exception(f"refresh_token() network request (init) timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+        finally:
+            if platform.system() != 'Windows':
+                signal.alarm(0)
+
         response.raise_for_status()
+
         data = response.json()
         token = data.get("accessToken", "")
 
     if not data or "accessToken" not in data:
-        raise Exception("Unsuccessful token request")
+        raise Exception("refresh_token(): Unsuccessful token request")
 
     return {
         "access_token": token,
@@ -709,18 +744,30 @@ def refresh_token(sp_dc: str) -> dict:
 # Function sending a lightweight request to check token validity
 def check_token_validity(token: str, client_id: str, user_agent: str) -> bool:
     # url = "https://spclient.wg.spotify.com/get_status"
-    url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
+    # url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
+    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
     headers = {
         "Authorization": f"Bearer {token}",
         "Client-Id": client_id,
         "User-Agent": user_agent,
     }
-    response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
-    return response.status_code == 200
+
+    if platform.system() != 'Windows':
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(FUNCTION_TIMEOUT + 2)
+    try:
+        response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
+        valid = response.status_code == 200
+    except Exception:
+        valid = False
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
+    return valid
 
 
 # Function getting Spotify access token based on provided SP_DC value
-def spotify_get_access_token(sp_dc: str) -> str:
+def spotify_get_access_token(sp_dc: str):
     global SP_CACHED_ACCESS_TOKEN, SP_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT
 
     now = time.time()
@@ -751,22 +798,23 @@ def spotify_get_access_token(sp_dc: str) -> str:
         SP_CACHED_CLIENT_ID = client_id
         SP_CACHED_USER_AGENT = user_agent
 
-        assert SP_CACHED_ACCESS_TOKEN is not None, "SP_CACHED_ACCESS_TOKEN is None"
-        if check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
-            print("* Token is valid\n")
-            break
-        else:
-            # print(f"Token is invalid, retrying in {TOKEN_RETRY_TIMEOUT} seconds... (attempt {retry + 1} of {max_retries})")
+        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
             retry += 1
             time.sleep(TOKEN_RETRY_TIMEOUT)
-
-    if retry == max_retries:
-        print(f"* Token appears to be still invalid after {max_retries} attempts. Returning token anyway\n")
+        else:
+            print("* Token is valid\n")
+            break
 
     # print("Spotify Access Token:", SP_CACHED_ACCESS_TOKEN)
     # print("Token expires at:", time.ctime(SP_TOKEN_EXPIRES_AT))
 
-    assert SP_CACHED_ACCESS_TOKEN is not None, "SP_CACHED_ACCESS_TOKEN is None"
+    if retry == max_retries:
+        if SP_CACHED_ACCESS_TOKEN is not None:
+            print(f"* Token appears to be still invalid after {max_retries} attempts. Returning token anyway\n")
+            return SP_CACHED_ACCESS_TOKEN
+        else:
+            raise RuntimeError(f"* Failed to obtain a valid Spotify access token after {max_retries} attempts")
+
     return SP_CACHED_ACCESS_TOKEN
 
 
@@ -778,16 +826,17 @@ def spotify_get_friends_json(access_token):
         "Client-Id": SP_CACHED_CLIENT_ID,
         "User-Agent": SP_CACHED_USER_AGENT,
     }
-    try:
-        response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
-        response.raise_for_status()
-        friends_json = response.json()
-        error_str = friends_json.get("error")
-        if error_str:
-            raise ValueError(error_str)
-        return friends_json
-    except Exception:
-        raise
+
+    response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT)
+    if response.status_code == 401:
+        raise Exception("401 Unauthorized for url: " + url)
+    response.raise_for_status()
+    friends_json = response.json()
+    error_str = friends_json.get("error")
+    if error_str:
+        raise ValueError(error_str)
+
+    return friends_json
 
 
 # Function converting Spotify URI (e.g. spotify:user:username) to URL (e.g. https://open.spotify.com/user/username)
@@ -1027,7 +1076,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
     email_sent = False
 
-    # Main loop
+    # Start loop
     while True:
 
         # Sometimes Spotify network functions halt even though we specified the timeout
@@ -1052,7 +1101,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
         except Exception as e:
             if platform.system() != 'Windows':
                 signal.alarm(0)
+
             print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
+
+            if "401" in str(e):
+                SP_CACHED_ACCESS_TOKEN = None
+
             if ('access token' in str(e)) or ('Unauthorized' in str(e)):
                 print(f"* Error: sp_dc might have expired!\n{str(e)}")
                 if error_notification and not email_sent:
