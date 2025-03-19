@@ -112,7 +112,7 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 TOKEN_MAX_RETRIES = 20
 
 # Time interval between consecutive attempts to obtain the access token
-TOKEN_RETRY_TIMEOUT = 1.5  # 1.5 seconds
+TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
 # Shall we enable or disable SSL certificate verification while sending https requests
 VERIFY_SSL = True
@@ -195,6 +195,7 @@ import ipaddress
 from html import escape
 import pyotp
 import base64
+import random
 from random import randrange
 import urllib3
 if not VERIFY_SSL:
@@ -603,39 +604,89 @@ def get_apple_genius_search_urls(artist, track):
 
 # Function returning random user agent string
 def get_random_user_agent():
-    return (
-        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{randrange(11, 15)}_{randrange(4, 9)}) "
-        f"AppleWebKit/{randrange(530, 537)}.{randrange(30, 37)} (KHTML, like Gecko) "
-        f"Chrome/{randrange(80, 105)}.0.{randrange(3000, 4500)}.{randrange(60, 125)} "
-        f"Safari/{randrange(530, 537)}.{randrange(30, 36)}"
-    )
+    browser = random.choice(['chrome', 'firefox', 'edge', 'safari'])
 
+    if browser == 'chrome':
+        os_choice = random.choice(['mac', 'windows'])
+        if os_choice == 'mac':
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(4, 9)}) "
+                f"AppleWebKit/{random.randrange(530, 537)}.{random.randrange(30, 37)} (KHTML, like Gecko) "
+                f"Chrome/{random.randrange(80, 105)}.0.{random.randrange(3000, 4500)}.{random.randrange(60, 125)} "
+                f"Safari/{random.randrange(530, 537)}.{random.randrange(30, 36)}"
+            )
+        else:
+            chrome_version = random.randint(80, 105)
+            build = random.randint(3000, 4500)
+            patch = random.randint(60, 125)
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                f"Chrome/{chrome_version}.0.{build}.{patch} Safari/537.36"
+            )
 
-# Function converting a bytes object into a Base32‑encoded string using a custom alphabet
-def base32_from_bytes(e: bytes, secret_sauce: str) -> str:
-    t = 0
-    n = 0
-    r = ""
-    for byte in e:
-        n = (n << 8) | byte
-        t += 8
-        while t >= 5:
-            index = (n >> (t - 5)) & 31
-            r += secret_sauce[index]
-            t -= 5
-    if t > 0:
-        r += secret_sauce[(n << (5 - t)) & 31]
-    return r
+    elif browser == 'firefox':
+        os_choice = random.choice(['windows', 'mac', 'linux', 'android'])
+        version = random.randint(90, 110)
+        if os_choice == 'windows':
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+        elif os_choice == 'mac':
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(0, 10)}; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+        elif os_choice == 'linux':
+            return (
+                f"Mozilla/5.0 (X11; Linux x86_64; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+
+    elif browser == 'edge':
+        os_choice = random.choice(['windows', 'mac'])
+        chrome_version = random.randint(80, 105)
+        build = random.randint(3000, 4500)
+        patch = random.randint(60, 125)
+        version_str = f"{chrome_version}.0.{build}.{patch}"
+        if os_choice == 'windows':
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                f"Chrome/{version_str} Safari/537.36 Edg/{version_str}"
+            )
+        else:
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(0, 10)}) "
+                f"AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                f"Version/{random.randint(13, 16)}.0 Safari/605.1.15 Edg/{version_str}"
+            )
+
+    elif browser == 'safari':
+        os_choice = random.choice(['mac', 'ios'])
+        if os_choice == 'mac':
+            mac_major = random.randrange(11, 16)
+            mac_minor = random.randrange(0, 10)
+            webkit_major = random.randint(600, 610)
+            webkit_minor = random.randint(1, 20)
+            webkit_patch = random.randint(1, 20)
+            safari_version = random.randint(13, 16)
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{mac_major}_{mac_minor}) "
+                f"AppleWebKit/{webkit_major}.{webkit_minor}.{webkit_patch} (KHTML, like Gecko) "
+                f"Version/{safari_version}.0 Safari/{webkit_major}.{webkit_minor}.{webkit_patch}"
+            )
 
 
 # Function removing spaces from a hex string and converting it into a corresponding bytes object
-def clean_buffer(e: str) -> bytes:
-    e = e.replace(" ", "")
-    return bytes(int(e[i:i + 2], 16) for i in range(0, len(e), 2))
+def hex_to_bytes(data: str) -> bytes:
+    data = data.replace(" ", "")
+    return bytes.fromhex(data)
 
 
 # Function creating a TOTP object using a secret derived from transformed cipher bytes
-def generate_totp():
+def generate_totp(ua: str):
     secret_cipher_bytes = [
         12, 56, 76, 33, 88, 44, 88, 33,
         78, 78, 11, 66, 22, 22, 55, 69, 54,
@@ -645,13 +696,12 @@ def generate_totp():
     joined = "".join(str(num) for num in transformed)
     utf8_bytes = joined.encode("utf-8")
     hex_str = "".join(format(b, 'x') for b in utf8_bytes)
-    secret_bytes = clean_buffer(hex_str)
-    secret_sauce = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-    secret = base32_from_bytes(secret_bytes, secret_sauce)
+    secret_bytes = hex_to_bytes(hex_str)
+    secret = base64.b32encode(secret_bytes).decode().rstrip('=')
 
     headers = {
         "Host": "open.spotify.com",
-        "User-Agent": get_random_user_agent(),
+        "User-Agent": ua,
         "Accept": "*/*",
     }
 
@@ -681,9 +731,7 @@ def generate_totp():
 
 # Function sending a lightweight request to check token validity
 def check_token_validity(token: str, client_id: str, user_agent: str) -> bool:
-    # url = "https://spclient.wg.spotify.com/get_status"
-    # url = "https://api.spotify.com/v1/recommendations/available-genre-seeds"
-    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
+    url = "https://api.spotify.com/v1/me"
     headers = {
         "Authorization": f"Bearer {token}",
         "Client-Id": client_id,
@@ -711,7 +759,8 @@ def refresh_token(sp_dc: str) -> dict:
     session = req.Session()
     session.cookies.set("sp_dc", sp_dc)
 
-    totp_obj, server_time = generate_totp()
+    ua = get_random_user_agent()
+    totp_obj, server_time = generate_totp(ua)
     client_time = int(time_ns() / 1000 / 1000)
     timestamp = int(time.time())
     otp_value = totp_obj.at(server_time)
@@ -725,8 +774,6 @@ def refresh_token(sp_dc: str) -> dict:
         "sTime": server_time,
         "cTime": client_time,
     }
-
-    ua = get_random_user_agent()
 
     headers = {
         "User-Agent": ua,
