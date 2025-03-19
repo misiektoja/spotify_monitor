@@ -170,6 +170,7 @@ nl_ch = "\n"
 
 import sys
 import time
+from time import time_ns
 import string
 import json
 import os
@@ -711,15 +712,18 @@ def refresh_token(sp_dc: str) -> dict:
     session.cookies.set("sp_dc", sp_dc)
 
     totp_obj, server_time = generate_totp()
+    client_time = int(time_ns() / 1000 / 1000)
     timestamp = int(time.time())
     otp_value = totp_obj.at(server_time)
 
     params = {
         "reason": "transport",
-        "productType": "web_player",
+        "productType": "web-player",
         "totp": otp_value,
+        "totpServer": otp_value,
         "totpVer": 5,
-        "ts": timestamp,
+        "sTime": server_time,
+        "cTime": client_time,
     }
 
     ua = get_random_user_agent()
