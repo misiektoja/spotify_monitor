@@ -1,40 +1,102 @@
 import asyncio
 import logging
+import random
 from random import randrange
 import time
-
+from time import time_ns
+import base64
+import random
 import pyotp
 from aiohttp import ClientSession, ClientError, TCPConnector
 
 _LOGGER = logging.getLogger(__name__)
 
+SP_DC = "sp_dc_value"
+
 TOKEN_URL = "https://open.spotify.com/get_access_token"
 SERVER_TIME_URL = "https://open.spotify.com/server-time"
+USER_AGENT = ""
 
 
 def get_random_user_agent():
-    return f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{randrange(11, 15)}_{randrange(4, 9)}) AppleWebKit/{randrange(530, 537)}.{randrange(30, 37)} (KHTML, like Gecko) Chrome/{randrange(80, 105)}.0.{randrange(3000, 4500)}.{randrange(60, 125)} Safari/{randrange(530, 537)}.{randrange(30, 36)}"
+    browser = random.choice(['chrome', 'firefox', 'edge', 'safari'])
+
+    if browser == 'chrome':
+        os_choice = random.choice(['mac', 'windows'])
+        if os_choice == 'mac':
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(4, 9)}) "
+                f"AppleWebKit/{random.randrange(530, 537)}.{random.randrange(30, 37)} (KHTML, like Gecko) "
+                f"Chrome/{random.randrange(80, 105)}.0.{random.randrange(3000, 4500)}.{random.randrange(60, 125)} "
+                f"Safari/{random.randrange(530, 537)}.{random.randrange(30, 36)}"
+            )
+        else:
+            chrome_version = random.randint(80, 105)
+            build = random.randint(3000, 4500)
+            patch = random.randint(60, 125)
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                f"Chrome/{chrome_version}.0.{build}.{patch} Safari/537.36"
+            )
+
+    elif browser == 'firefox':
+        os_choice = random.choice(['windows', 'mac', 'linux', 'android'])
+        version = random.randint(90, 110)
+        if os_choice == 'windows':
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+        elif os_choice == 'mac':
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(0, 10)}; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+        elif os_choice == 'linux':
+            return (
+                f"Mozilla/5.0 (X11; Linux x86_64; rv:{version}.0) "
+                f"Gecko/20100101 Firefox/{version}.0"
+            )
+
+    elif browser == 'edge':
+        os_choice = random.choice(['windows', 'mac'])
+        chrome_version = random.randint(80, 105)
+        build = random.randint(3000, 4500)
+        patch = random.randint(60, 125)
+        version_str = f"{chrome_version}.0.{build}.{patch}"
+        if os_choice == 'windows':
+            return (
+                f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                f"Chrome/{version_str} Safari/537.36 Edg/{version_str}"
+            )
+        else:
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(0, 10)}) "
+                f"AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                f"Version/{random.randint(13, 16)}.0 Safari/605.1.15 Edg/{version_str}"
+            )
+
+    elif browser == 'safari':
+        os_choice = random.choice(['mac', 'ios'])
+        if os_choice == 'mac':
+            mac_major = random.randrange(11, 16)
+            mac_minor = random.randrange(0, 10)
+            webkit_major = random.randint(600, 610)
+            webkit_minor = random.randint(1, 20)
+            webkit_patch = random.randint(1, 20)
+            safari_version = random.randint(13, 16)
+            return (
+                f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{mac_major}_{mac_minor}) "
+                f"AppleWebKit/{webkit_major}.{webkit_minor}.{webkit_patch} (KHTML, like Gecko) "
+                f"Version/{safari_version}.0 Safari/{webkit_major}.{webkit_minor}.{webkit_patch}"
+            )
 
 
-def base32_from_bytes(e: bytes, secret_sauce: str) -> str:
-    t = 0
-    n = 0
-    r = ""
-    for byte in e:
-        n = (n << 8) | byte
-        t += 8
-        while t >= 5:
-            index = (n >> (t - 5)) & 31
-            r += secret_sauce[index]
-            t -= 5
-    if t > 0:
-        r += secret_sauce[(n << (5 - t)) & 31]
-    return r
-
-
-def clean_buffer(e: str) -> bytes:
-    e = e.replace(" ", "")
-    return bytes(int(e[i:i+2], 16) for i in range(0, len(e), 2))
+def hex_to_bytes(data: str) -> bytes:
+    data = data.replace(" ", "")
+    return bytes.fromhex(data)
 
 
 async def generate_totp(session: ClientSession) -> tuple[pyotp.TOTP, int, str]:
@@ -47,14 +109,13 @@ async def generate_totp(session: ClientSession) -> tuple[pyotp.TOTP, int, str]:
     joined = "".join(str(num) for num in transformed)
     utf8_bytes = joined.encode("utf-8")
     hex_str = "".join(format(b, 'x') for b in utf8_bytes)
-    secret_bytes = clean_buffer(hex_str)
-    secret_sauce = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-    secret = base32_from_bytes(secret_bytes, secret_sauce)
+    secret_bytes = hex_to_bytes(hex_str)
+    secret = base64.b32encode(secret_bytes).decode().rstrip('=')
     _LOGGER.debug("Computed secret: %s", secret)
 
     headers = {
         "Host": "open.spotify.com",
-        "User-Agent": get_random_user_agent(),
+        "User-Agent": USER_AGENT,
         "Accept": "*/*",
     }
 
@@ -71,19 +132,24 @@ async def async_refresh_token(cookies: dict):
     async with ClientSession(cookies=cookies, connector=TCPConnector(ssl=False)) as session:
         totp_obj, server_time, _ = await generate_totp(session)
         _LOGGER.debug("Got TOTP object: %s", totp_obj)
+        client_time = int(time_ns() / 1000 / 1000)
         timestamp = int(time.time())
         otp_value = totp_obj.at(server_time)
         _LOGGER.debug("Using OTP value: %s", otp_value)
         sp_dc = cookies.get("sp_dc", "")
+
         params = {
             "reason": "transport",
-            "productType": "web_player",
+            "productType": "web-player",
             "totp": otp_value,
+            "totpServer": otp_value,
             "totpVer": 5,
-            "ts": timestamp,
+            "sTime": server_time,
+            "cTime": client_time,
         }
+
         headers = {
-            "User-Agent": get_random_user_agent(),
+            "User-Agent": USER_AGENT,
             "Accept": "*/*",
             "Cookie": f"sp_dc={sp_dc}" if sp_dc else "",
         }
@@ -127,11 +193,11 @@ async def async_refresh_token(cookies: dict):
 
 
 async def check_token_validity(token: str, client_id: str) -> bool:
-    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
+    url = "https://api.spotify.com/v1/me"
     headers = {
         "Authorization": f"Bearer {token}",
         "Client-Id": client_id,
-        "User-Agent": get_random_user_agent(),
+        "User-Agent": USER_AGENT,
     }
     async with ClientSession(connector=TCPConnector(ssl=False)) as session:
         async with session.get(url, headers=headers) as response:
@@ -142,10 +208,13 @@ async def check_token_validity(token: str, client_id: str) -> bool:
 
 async def main():
     cookies = {
-        "sp_dc": "sp_dc_value",
+        "sp_dc": SP_DC
     }
 
     try:
+        USER_AGENT = get_random_user_agent()
+        # USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0"
+        # USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.3833.78 Safari/537.36 Edg/100.0.3833.78"
         token_data = await async_refresh_token(cookies)
         _LOGGER.debug("Got token data: %s", token_data)
         access_token = token_data["access_token"]
@@ -154,6 +223,7 @@ async def main():
         print("Access Token:", access_token)
         print("Token Length:", len(access_token))
         print("Expires At (decoded):", time.ctime(expires_at // 1000))
+        print("User agent:", USER_AGENT)
         valid = await check_token_validity(access_token, client_id)
         if valid:
             print("Token is valid.")
