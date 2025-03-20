@@ -43,6 +43,9 @@ RECEIVER_EMAIL = "your_receiver_email"
 # How often do we perform checks for user activity, you can also use -c parameter; in seconds
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
+# How often do we retry in case of errors; in seconds
+SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
+
 # After which time do we consider user as inactive (after last activity), you can also use -o parameter; in seconds
 # Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
@@ -83,7 +86,7 @@ SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <=55% 
 #   - Spotify user was inactive for more than a week
 # In such case we will continuously check for the user to reappear using the time interval below; in seconds
 # You can also use -m parameter
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 120  # 2 mins
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
 
 # Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality;
 # leave empty to simply pause
@@ -109,7 +112,7 @@ SP_LOGFILE = "spotify_monitor"
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 
 # How many times should we attempt to obtain a valid access token in a single run of the spotify_get_access_token() function
-TOKEN_MAX_RETRIES = 20
+TOKEN_MAX_RETRIES = 10
 
 # Time interval between consecutive attempts to obtain the access token
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
@@ -848,8 +851,8 @@ def spotify_get_access_token(sp_dc: str):
     if SP_CACHED_ACCESS_TOKEN and now < SP_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
 
-    print("---------------------------------------------------------------------------------------------------------")
-    print("* Fetching a new Spotify access token, it might take a while ...")
+    # print("---------------------------------------------------------------------------------------------------------")
+    # print("* Fetching a new Spotify access token, it might take a while ...")
 
     max_retries = TOKEN_MAX_RETRIES
     retry = 0
@@ -870,7 +873,7 @@ def spotify_get_access_token(sp_dc: str):
             retry += 1
             time.sleep(TOKEN_RETRY_TIMEOUT)
         else:
-            print("* Token is valid")
+            # print("* Token is valid")
             break
 
     # print("Spotify Access Token:", SP_CACHED_ACCESS_TOKEN)
@@ -883,8 +886,8 @@ def spotify_get_access_token(sp_dc: str):
             return SP_CACHED_ACCESS_TOKEN
         else:
             raise RuntimeError(f"Failed to obtain a valid Spotify access token after {max_retries} attempts")
-    else:
-        print_cur_ts("Timestamp:\t\t\t")
+#    else:
+#        print_cur_ts("Timestamp:\t\t\t")
 
     return SP_CACHED_ACCESS_TOKEN
 
@@ -950,8 +953,9 @@ def spotify_list_friends(friend_activity):
         sp_playlist_uri = friend["track"]["context"].get("uri")
         sp_track_uri = friend["track"].get("uri")
 
-        if index > 0:
-            print("---------------------------------------------------------------------------------------------------------")
+        # if index > 0:
+        #    print("---------------------------------------------------------------------------------------------------------")
+        print("---------------------------------------------------------------------------------------------------------")
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
         print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}\n")
@@ -1148,7 +1152,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
     email_sent = False
 
-    print(f"Monitoring user {user_uri_id}")
+    out = f"Monitoring user {user_uri_id}"
+    print(out)
+    print("-" * len(out))
 
     # Start loop
     while True:
@@ -1176,13 +1182,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
             if platform.system() != 'Windows':
                 signal.alarm(0)
 
-            print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
+            print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
 
             if "401" in str(e):
                 SP_CACHED_ACCESS_TOKEN = None
 
-            if ('access token' in str(e)):
-                print(f"* Error: sp_dc might have expired!\n{str(e)}")
+            if ('access token' in str(e)) or ('Unsuccessful token request' in str(e)):
+                print(f"* Error: sp_dc might have expired!")
                 if error_notification and not email_sent:
                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                     m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -1191,7 +1197,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
             print_cur_ts("Timestamp:\t\t\t")
-            time.sleep(SPOTIFY_CHECK_INTERVAL)
+            time.sleep(SPOTIFY_ERROR_INTERVAL)
             continue
 
         playlist_m_body = ""
@@ -1220,9 +1226,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 else:
                     is_playlist = False
             except Exception as e:
-                print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
+                print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
                 print_cur_ts("Timestamp:\t\t\t")
-                time.sleep(SPOTIFY_CHECK_INTERVAL)
+                time.sleep(SPOTIFY_ERROR_INTERVAL)
                 continue
 
             sp_username = sp_data["sp_username"]
@@ -1403,9 +1409,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                             error_network_issue_counter = 0
 
                         elif not error_500_start_ts and not error_network_issue_start_ts:
-                            print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - '{e}'")
-                            if ('access token' in str(e)):
-                                print(f"* Error: sp_dc might have expired!\n{str(e)}")
+                            print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - '{e}'")
+                            if ('access token' in str(e)) or ('Unsuccessful token request' in str(e)):
+                                print(f"* Error: sp_dc might have expired!")
                                 if error_notification and not email_sent:
                                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                                     m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -1414,7 +1420,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
                             print_cur_ts("Timestamp:\t\t\t")
-                        time.sleep(SPOTIFY_CHECK_INTERVAL)
+                        time.sleep(SPOTIFY_ERROR_INTERVAL)
 
                 if sp_found is False:
                     # User disappeared from the Spotify's friend list
@@ -1465,9 +1471,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         else:
                             is_playlist = False
                     except Exception as e:
-                        print(f"Error, retrying in {display_time(SPOTIFY_CHECK_INTERVAL)} - {e}")
+                        print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
                         print_cur_ts("Timestamp:\t\t\t")
-                        time.sleep(SPOTIFY_CHECK_INTERVAL)
+                        time.sleep(SPOTIFY_ERROR_INTERVAL)
                         continue
 
                     sp_username = sp_data["sp_username"]
@@ -1881,7 +1887,7 @@ if __name__ == "__main__":
         song_on_loop_notification = False
         error_notification = False
 
-    print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]")
+    print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]\n\t\t\t\t[error interval: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
     print(f"* Email notifications:\t\t[active = {active_notification}] [inactive = {inactive_notification}] [tracked = {track_notification}]\n*\t\t\t\t[songs on loop = {song_on_loop_notification}] [every song = {song_notification}] [errors = {error_notification}]")
     print(f"* Track listened songs:\t\t{track_songs}")
     if not args.disable_logging:
