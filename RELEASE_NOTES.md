@@ -2,6 +2,18 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.8 (20 Mar 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Added support for TOTP parameters in Spotify Web Player token endpoint, the tool now requires the pyotp pip module (fixes [#1](https://github.com/misiektoja/spotify_monitor/issues/1), [#2](https://github.com/misiektoja/spotify_monitor/issues/2))
+- **NEW:** Caching mechanism to avoid unnecessary token refreshes
+- **NEW:** Added the possibility to disable SSL certificate verification (VERIFY_SSL global variable)
+- **IMPROVE:** Email notification flags are now automatically disabled if the SMTP configuration is invalid
+- **IMPROVE:** Better exception handling in network-related functions
+- **IMPROVE:** Better overall error handling
+- **IMPROVE:** Code cleanup & linting fixes
+
 # Changes in 1.7 (03 Nov 2024)
 
 **Features and Improvements**:
