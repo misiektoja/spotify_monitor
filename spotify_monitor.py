@@ -629,7 +629,7 @@ def get_random_user_agent():
             )
 
     elif browser == 'firefox':
-        os_choice = random.choice(['windows', 'mac', 'linux', 'android'])
+        os_choice = random.choice(['windows', 'mac', 'linux'])
         version = random.randint(90, 110)
         if os_choice == 'windows':
             return (
@@ -641,7 +641,7 @@ def get_random_user_agent():
                 f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_{random.randrange(11, 15)}_{random.randrange(0, 10)}; rv:{version}.0) "
                 f"Gecko/20100101 Firefox/{version}.0"
             )
-        elif os_choice == 'linux':
+        else:
             return (
                 f"Mozilla/5.0 (X11; Linux x86_64; rv:{version}.0) "
                 f"Gecko/20100101 Firefox/{version}.0"
@@ -667,7 +667,7 @@ def get_random_user_agent():
             )
 
     elif browser == 'safari':
-        os_choice = random.choice(['mac', 'ios'])
+        os_choice = 'mac'
         if os_choice == 'mac':
             mac_major = random.randrange(11, 16)
             mac_minor = random.randrange(0, 10)
