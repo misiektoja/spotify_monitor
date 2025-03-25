@@ -26,7 +26,7 @@ Release notes can be found [here](RELEASE_NOTES.md)
 
 ## Requirements
 
-The script requires Python 3.x.
+The tool requires Python 3.x.
 
 It uses requests, python-dateutil, urllib3 and pyotp.
 
@@ -69,7 +69,7 @@ Edit the *[spotify_monitor.py](spotify_monitor.py)* file and change any desired 
 
 ### Spotify sp_dc cookie
 
-Log in to the Spotify web client [https://open.spotify.com/](https://open.spotify.com/) in your web browser and copy the value of the sp_dc cookie to the **SP_DC_COOKIE** variable (or use the **-u** parameter).
+Log in to the Spotify web client [https://open.spotify.com/](https://open.spotify.com/) in your web browser and copy the value of the sp_dc cookie to the `SP_DC_COOKIE` variable (or use the **-u** parameter).
 
 You can use Cookie-Editor by cgagnier to obtain it easily (available for all major web browsers): [https://cookie-editor.com/](https://cookie-editor.com/)
 
@@ -129,7 +129,7 @@ To monitor specific user activity, just type Spotify user URI ID as parameter (*
 ./spotify_monitor.py spotify_user_uri_id
 ```
 
-If you have not changed **SP_DC_COOKIE** variable in the *[spotify_monitor.py](spotify_monitor.py)* file, you can use **-u** parameter:
+If you have not changed `SP_DC_COOKIE` variable in the *[spotify_monitor.py](spotify_monitor.py)* file, you can use **-u** parameter:
 
 ```sh
 ./spotify_monitor.py spotify_user_uri_id -u "your_sp_dc_cookie_value"
@@ -227,22 +227,22 @@ If you want the tool to automatically play the tracks listened to by the user in
 
 Your Spotify client needs to be installed and started for this feature to work.
 
-The script has full support for playing songs listened to by the tracked user under **Linux** and **macOS**. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the **SP_USER_GOT_OFFLINE_TRACK_ID** variable).
+The script has full support for playing songs listened to by the tracked user under **Linux** and **macOS**. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the `SP_USER_GOT_OFFLINE_TRACK_ID` variable).
 
 For **Windows**, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first song will be played automatically. However, for other tracks, it will only search and indicate the changed track in the Spotify client, but you need to press the play button manually. I have not found a better way to handle this locally on Windows yet without using the remote Spotify Web API.
 
 You can change the method used for playing the songs under Linux, macOS and Windows by changing the respective variables in the *[spotify_monitor.py](spotify_monitor.py)* file.
 
-For **macOS** change **SPOTIFY_MACOS_PLAYING_METHOD** variable to one of the following values:
+For **macOS** change `SPOTIFY_MACOS_PLAYING_METHOD` variable to one of the following values:
 -  "**apple-script**" (recommended, **default**)
 -  "trigger-url"
 
-For **Linux** change **SPOTIFY_LINUX_PLAYING_METHOD** variable to one of the following values:
+For **Linux** change `SPOTIFY_LINUX_PLAYING_METHOD` variable to one of the following values:
 - "**dbus-send**" (most common one, **default**)
 - "qdbus"
 - "trigger-url"
 
-For **Windows** change **SPOTIFY_WINDOWS_PLAYING_METHOD** variable to one of the following values:
+For **Windows** change `SPOTIFY_WINDOWS_PLAYING_METHOD` variable to one of the following values:
 - "**start-uri**" (recommended, **default**)
 - "spotify-cmd"
 - "trigger-url"
