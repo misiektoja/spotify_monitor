@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.8.1 (25 Mar 2025)
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixes occasional None return from get_random_user_agent(), avoiding downstream NoneType error (fixes [#4](https://github.com/misiektoja/spotify_monitor/issues/4))
+
 # Changes in 1.8 (20 Mar 2025)
 
 **Features and Improvements**:
