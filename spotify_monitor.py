@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.8.1
+v1.8.2
 
 Tool implementing real-time tracking of Spotify friends' music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -14,7 +14,7 @@ urllib3
 pyotp
 """
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -156,6 +156,9 @@ SERVER_TIME_URL = "https://open.spotify.com/server-time"
 # Default value for alarm signal handler timeout; in seconds
 ALARM_TIMEOUT = int((TOKEN_MAX_RETRIES * TOKEN_RETRY_TIMEOUT) + 5)
 ALARM_RETRY = 10
+
+# Width of horizontal line (─)
+HORIZONTAL_LINE = 105
 
 TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / SPOTIFY_CHECK_INTERVAL
 
@@ -429,7 +432,7 @@ def get_cur_ts(ts_str=""):
 # Function to print the current timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
     print(get_cur_ts(str(ts_str)))
-    print("---------------------------------------------------------------------------------------------------------")
+    print("─" * HORIZONTAL_LINE)
 
 
 # Function to return the timestamp/datetime object in human readable format (long version); eg. Sun 21 Apr 2024, 15:08:45
@@ -851,7 +854,7 @@ def spotify_get_access_token(sp_dc: str):
     if SP_CACHED_ACCESS_TOKEN and now < SP_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
 
-    # print("---------------------------------------------------------------------------------------------------------")
+    # print("─" * HORIZONTAL_LINE)
     # print("* Fetching a new Spotify access token, it might take a while ...")
 
     max_retries = TOKEN_MAX_RETRIES
@@ -954,8 +957,8 @@ def spotify_list_friends(friend_activity):
         sp_track_uri = friend["track"].get("uri")
 
         # if index > 0:
-        #    print("---------------------------------------------------------------------------------------------------------")
-        print("---------------------------------------------------------------------------------------------------------")
+        #    print("─" * HORIZONTAL_LINE)
+        print("─" * HORIZONTAL_LINE)
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
         print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}\n")
@@ -1156,6 +1159,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
     print(out)
     print("-" * len(out))
 
+    tracks_upper = {t.upper() for t in tracks}
+
     # Start loop
     while True:
 
@@ -1313,7 +1318,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 song_on_loop = 1
                 print("\n*** Friend is currently ACTIVE !")
 
-                if sp_track.upper() in map(str.upper, tracks) or sp_playlist.upper() in map(str.upper, tracks) or sp_album.upper() in map(str.upper, tracks):
+                if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                     print("*** Track/playlist/album matched with the list!")
 
                 try:
@@ -1583,9 +1588,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         sp_playlist = ""
 
                     if song_on_loop == SONG_ON_LOOP_VALUE:
-                        print("---------------------------------------------------------------------------------------------------------")
+                        print("─" * HORIZONTAL_LINE)
                         print(f"User plays song on LOOP ({song_on_loop} times)")
-                        print("---------------------------------------------------------------------------------------------------------")
+                        print("─" * HORIZONTAL_LINE)
 
                     # Friend got active after being offline
                     if (cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0:
@@ -1620,7 +1625,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                             email_sent = True
 
                     on_the_list = False
-                    if sp_track.upper() in map(str.upper, tracks) or sp_playlist.upper() in map(str.upper, tracks) or sp_album.upper() in map(str.upper, tracks):
+                    if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                         print("\n*** Track/playlist/album matched with the list!")
                         on_the_list = True
 
@@ -1827,7 +1832,7 @@ if __name__ == "__main__":
             accessToken = spotify_get_access_token(SP_DC_COOKIE)
             sp_friends = spotify_get_friends_json(accessToken)
             spotify_list_friends(sp_friends)
-            print("---------------------------------------------------------------------------------------------------------")
+            print("─" * HORIZONTAL_LINE)
         except Exception as e:
             print(f"* Error - {e}")
             sys.exit(1)
@@ -1839,9 +1844,18 @@ if __name__ == "__main__":
 
     if args.spotify_tracks:
         try:
-            with open(args.spotify_tracks, encoding="utf-8") as file:
-                sp_tracks = file.read().splitlines()
-            file.close()
+            try:
+                with open(args.spotify_tracks, encoding="utf-8") as file:
+                    lines = file.read().splitlines()
+            except UnicodeDecodeError:
+                with open(args.spotify_tracks, encoding="cp1252") as file:
+                    lines = file.read().splitlines()
+
+            sp_tracks = [
+                line.strip()
+                for line in lines
+                if line.strip() and not line.strip().startswith("#")
+            ]
         except Exception as e:
             print(f"* Error: file with Spotify tracks cannot be opened - {e}")
             sys.exit(1)
