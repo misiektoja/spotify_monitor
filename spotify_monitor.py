@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.8.2
+v1.9
 
 Tool implementing real-time tracking of Spotify friends' music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -14,7 +14,7 @@ urllib3
 pyotp
 """
 
-VERSION = "1.8.2"
+VERSION = "1.9"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -207,6 +207,25 @@ import urllib3
 if not VERIFY_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+SESSION = req.Session()
+
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+retry = Retry(
+    total=5,
+    connect=3,
+    read=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET", "HEAD", "OPTIONS"],
+    raise_on_status=False
+)
+
+adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
+SESSION.mount("https://", adapter)
+SESSION.mount("http://", adapter)
+
 
 # Logger class to output messages to stdout and log file
 class Logger(object):
@@ -241,7 +260,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-# Function to check internet connectivity
+# Checks internet connectivity
 def check_internet():
     url = CHECK_INTERNET_URL
     try:
@@ -253,7 +272,7 @@ def check_internet():
         sys.exit(1)
 
 
-# Function to convert absolute value of seconds to human readable format
+# Converts absolute value of seconds to human readable format
 def display_time(seconds, granularity=2):
     intervals = (
         ('years', 31556952),  # approximation
@@ -279,7 +298,7 @@ def display_time(seconds, granularity=2):
         return '0 seconds'
 
 
-# Function to calculate time span between two timestamps in seconds
+# Calculates time span between two timestamps, accepts timestamp integers, floats and datetime objects
 def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True, show_minutes=True, show_seconds=True, granularity=3):
     result = []
     intervals = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds']
@@ -346,7 +365,7 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
         return '0 seconds'
 
 
-# Function to send email notification
+# Sends email notification
 def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
     email_re = re.compile(r'[^@]+@[^@]+\.[^@]+')
@@ -413,7 +432,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     return 0
 
 
-# Function to write CSV entry
+# Writes CSV entry
 def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, last_activity_ts):
     try:
         csv_file = open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
@@ -424,18 +443,18 @@ def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, la
         raise
 
 
-# Function to return the timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
+# Returns the current date/time in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def get_cur_ts(ts_str=""):
     return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
-# Function to print the current timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
+# Prints the current timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
     print(get_cur_ts(str(ts_str)))
     print("─" * HORIZONTAL_LINE)
 
 
-# Function to return the timestamp/datetime object in human readable format (long version); eg. Sun 21 Apr 2024, 15:08:45
+# Returns the timestamp/datetime object in human readable format (long version); eg. Sun 21 Apr 2024, 15:08:45
 def get_date_from_ts(ts):
     if type(ts) is datetime:
         ts_new = int(round(ts.timestamp()))
@@ -449,7 +468,7 @@ def get_date_from_ts(ts):
     return (f'{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %Y, %H:%M:%S")}')
 
 
-# Function to return the timestamp/datetime object in human readable format (short version); eg.
+# Returns the timestamp/datetime object in human readable format (short version); eg.
 # Sun 21 Apr 15:08
 # Sun 21 Apr 24, 15:08 (if show_year == True and current year is different)
 # Sun 21 Apr (if show_hour == False)
@@ -478,7 +497,7 @@ def get_short_date_from_ts(ts, show_year=False, show_hour=True):
         return (f'{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime(f"%d %b{hour_strftime}")}')
 
 
-# Function to return the timestamp/datetime object in human readable format (only hour, minutes and optionally seconds): eg. 15:08:12
+# Returns the timestamp/datetime object in human readable format (only hour, minutes and optionally seconds): eg. 15:08:12
 def get_hour_min_from_ts(ts, show_seconds=False):
     if type(ts) is datetime:
         ts_new = int(round(ts.timestamp()))
@@ -496,7 +515,7 @@ def get_hour_min_from_ts(ts, show_seconds=False):
     return (str(datetime.fromtimestamp(ts_new).strftime(out_strf)))
 
 
-# Function to return the range between two timestamps/datetime objects; eg. Sun 21 Apr 14:09 - 14:15
+# Returns the range between two timestamps/datetime objects; eg. Sun 21 Apr 14:09 - 14:15
 def get_range_of_dates_from_tss(ts1, ts2, between_sep=" - ", short=False):
     if type(ts1) is datetime:
         ts1_new = int(round(ts1.timestamp()))
@@ -595,7 +614,7 @@ def decrease_inactivity_check_signal_handler(sig, frame):
     print_cur_ts("Timestamp:\t\t\t")
 
 
-# Function preparing Apple & Genius search URLs for specified track
+# Prepares Apple & Genius search URLs for specified track
 def get_apple_genius_search_urls(artist, track):
     genius_search_string = f"{artist} {track}"
     youtube_music_search_string = quote_plus(f"{artist} {track}")
@@ -608,7 +627,7 @@ def get_apple_genius_search_urls(artist, track):
     return apple_search_url, genius_search_url, youtube_music_search_url
 
 
-# Function returning random user agent string
+# Returns random user agent string
 def get_random_user_agent():
     browser = random.choice(['chrome', 'firefox', 'edge', 'safari'])
 
@@ -685,13 +704,13 @@ def get_random_user_agent():
             )
 
 
-# Function removing spaces from a hex string and converting it into a corresponding bytes object
+# Removes spaces from a hex string and converts it into a corresponding bytes object
 def hex_to_bytes(data: str) -> bytes:
     data = data.replace(" ", "")
     return bytes.fromhex(data)
 
 
-# Function creating a TOTP object using a secret derived from transformed cipher bytes
+# Creates a TOTP object using a secret derived from transformed cipher bytes
 def generate_totp(ua: str):
     secret_cipher_bytes = [
         12, 56, 76, 33, 88, 44, 88, 33,
@@ -735,7 +754,7 @@ def generate_totp(ua: str):
     return totp_obj, server_time
 
 
-# Function sending a lightweight request to check token validity
+# Sends a lightweight request to check Spotify token validity
 def check_token_validity(token: str, client_id: str, user_agent: str) -> bool:
     url = "https://api.spotify.com/v1/me"
     headers = {
@@ -758,7 +777,7 @@ def check_token_validity(token: str, client_id: str, user_agent: str) -> bool:
     return valid
 
 
-# Function retrieving a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
+# Retrieves a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
 def refresh_token(sp_dc: str) -> dict:
     transport = True
     init = True
@@ -845,7 +864,7 @@ def refresh_token(sp_dc: str) -> dict:
     }
 
 
-# Function getting Spotify access token based on provided SP_DC value
+# Fetches Spotify access token based on provided SP_DC value
 def spotify_get_access_token(sp_dc: str):
     global SP_CACHED_ACCESS_TOKEN, SP_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT
 
@@ -853,9 +872,6 @@ def spotify_get_access_token(sp_dc: str):
 
     if SP_CACHED_ACCESS_TOKEN and now < SP_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
-
-    # print("─" * HORIZONTAL_LINE)
-    # print("* Fetching a new Spotify access token, it might take a while ...")
 
     max_retries = TOKEN_MAX_RETRIES
     retry = 0
@@ -889,13 +905,11 @@ def spotify_get_access_token(sp_dc: str):
             return SP_CACHED_ACCESS_TOKEN
         else:
             raise RuntimeError(f"Failed to obtain a valid Spotify access token after {max_retries} attempts")
-#    else:
-#        print_cur_ts("Timestamp:\t\t\t")
 
     return SP_CACHED_ACCESS_TOKEN
 
 
-# Function getting list of Spotify friends
+# Fetches list of Spotify friends
 def spotify_get_friends_json(access_token):
     url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
     headers = {
@@ -904,7 +918,7 @@ def spotify_get_friends_json(access_token):
         "User-Agent": SP_CACHED_USER_AGENT,
     }
 
-    response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
     if response.status_code == 401:
         raise Exception("401 Unauthorized for url: " + url)
     response.raise_for_status()
@@ -916,7 +930,7 @@ def spotify_get_friends_json(access_token):
     return friends_json
 
 
-# Function converting Spotify URI (e.g. spotify:user:username) to URL (e.g. https://open.spotify.com/user/username)
+# Converts Spotify URI (e.g. spotify:user:username) to URL (e.g. https://open.spotify.com/user/username)
 def spotify_convert_uri_to_url(uri):
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
@@ -942,7 +956,7 @@ def spotify_convert_uri_to_url(uri):
     return url
 
 
-# Function printing the list of Spotify friends with the last listened track
+# Prints the list of Spotify friends with the last listened track (-l parameter)
 def spotify_list_friends(friend_activity):
     for index, friend in enumerate(friend_activity["friends"]):
         sp_uri = friend["user"].get("uri").split("spotify:user:", 1)[1]
@@ -992,7 +1006,7 @@ def spotify_list_friends(friend_activity):
         print(f"\nLast activity:\t\t\t{get_date_from_ts(float(str(sp_ts)[0:-3]))} ({calculate_timespan(int(time.time()), datetime.fromtimestamp(float(str(sp_ts)[0:-3])))} ago)")
 
 
-# Function returning information for specific Spotify friend's user URI id
+# Returns information for specific Spotify friend's user URI id
 def spotify_get_friend_info(friend_activity, uri):
     for friend in friend_activity["friends"]:
         sp_uri = friend["user"]["uri"].split("spotify:user:", 1)[1]
@@ -1014,7 +1028,7 @@ def spotify_get_friend_info(friend_activity, uri):
     return False, {}
 
 
-# Function returning information for specific Spotify track URI
+# Returns information for specific Spotify track URI
 def spotify_get_track_info(access_token, track_uri):
     track_id = track_uri.split(':', 2)[2]
     url = "https://api.spotify.com/v1/tracks/" + track_id
@@ -1027,7 +1041,7 @@ def spotify_get_track_info(access_token, track_uri):
     si = "?si=1"
 
     try:
-        response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
         json_response = response.json()
         sp_track_duration = int(json_response.get("duration_ms") / 1000)
@@ -1042,7 +1056,7 @@ def spotify_get_track_info(access_token, track_uri):
         raise
 
 
-# Function returning information for specific Spotify playlist URI
+# Returns information for specific Spotify playlist URI
 def spotify_get_playlist_info(access_token, playlist_uri):
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
@@ -1055,7 +1069,7 @@ def spotify_get_playlist_info(access_token, playlist_uri):
     si = "?si=1"
 
     try:
-        response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
         json_response = response.json()
         sp_playlist_name = json_response.get("name")
@@ -1122,7 +1136,7 @@ def spotify_win_play_song(sp_track_uri_id, method=SPOTIFY_WINDOWS_PLAYING_METHOD
         os.startfile(spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}"))
 
 
-# Main function monitoring activity of the specified Spotify friend's user URI ID
+# Main function that monitors activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file_name, csv_exists):
     global SP_CACHED_ACCESS_TOKEN
     sp_active_ts_start = 0
