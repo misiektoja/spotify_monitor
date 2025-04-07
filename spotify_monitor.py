@@ -958,6 +958,9 @@ def spotify_convert_uri_to_url(uri):
 
 # Prints the list of Spotify friends with the last listened track (-l parameter)
 def spotify_list_friends(friend_activity):
+
+    print(f"Number of friends:\t\t{len(friend_activity['friends'])}\n")
+
     for index, friend in enumerate(friend_activity["friends"]):
         sp_uri = friend["user"].get("uri").split("spotify:user:", 1)[1]
         sp_username = friend["user"].get("name")
