@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.9
+v1.9.1
 
 Tool implementing real-time tracking of Spotify friends' music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -14,50 +14,48 @@ urllib3
 pyotp
 """
 
-VERSION = "1.9"
+VERSION = "1.9.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
 # ---------------------------
 
-# Log in to Spotify web client (https://open.spotify.com/) and put the value of sp_dc cookie below (or use -u parameter)
-# Newly generated Spotify's sp_dc cookie should be valid for 1 year
-# You can use Cookie-Editor by cgagnier to get it easily (available for all major web browsers): https://cookie-editor.com/
+# Log in to Spotify web client (https://open.spotify.com/) and put the value of sp_dc cookie below
+# Alternatively, you can use the -u parameter to provide it at runtime
+# The sp_dc cookie is typically valid for up to 1 year
+# Tip: use the web browser dev console or "Cookie-Editor" by cgagnier (available for all major browsers) to extract it easily: https://cookie-editor.com/
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
-# SMTP settings for sending email notifications, you can leave it as it is below and no notifications will be sent
+# SMTP settings for sending email notifications
+# If left as-is, no notifications will be sent
 SMTP_HOST = "your_smtp_server_ssl"
 SMTP_PORT = 587
 SMTP_USER = "your_smtp_user"
 SMTP_PASSWORD = "your_smtp_password"
 SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
-# SMTP_HOST = "your_smtp_server_plaintext"
-# SMTP_PORT = 25
-# SMTP_USER = "your_smtp_user"
-# SMTP_PASSWORD = "your_smtp_password"
-# SMTP_SSL = False
-# SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
-# How often do we perform checks for user activity, you can also use -c parameter; in seconds
+# How often to check for user activity; in seconds
+# Can also be set using the -c parameter
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
-# How often do we retry in case of errors; in seconds
+# Time to wait before retrying after an error; in seconds
 SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
 
-# After which time do we consider user as inactive (after last activity), you can also use -o parameter; in seconds
-# Keep in mind if the user listens to songs longer than below timer then the tool will mark the user as inactive
+# Time after which a user is considered inactive (based on last activity); in seconds
+# Can also be set using the -o parameter
+# Note: If the user listens to songs longer than this value, they may be marked as inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 
-# What method should we use to play the song listened by the tracked user in local Spotify client under macOS
+# Method used to play the song listened by the tracked user in local Spotify client under macOS
 # (i.e. when -g / --track_songs functionality is enabled)
 # Methods:
 #       "apple-script" (recommended)
 #       "trigger-url"
 SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 
-# What method should we use to play the song listened by the tracked user in local Spotify client under Linux OS
+# Method used to play the song listened by the tracked user in local Spotify client under Linux OS
 # (i.e. when -g / --track_songs functionality is enabled)
 # Methods:
 #       "dbus-send" (most common one)
@@ -65,7 +63,7 @@ SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 #       "trigger-url"
 SPOTIFY_LINUX_PLAYING_METHOD = "dbus-send"
 
-# What method should we use to play the song listened by the tracked user in local Spotify client under Windows OS
+# Method used to play the song listened by the tracked user in local Spotify client under Windows OS
 # (if -g / --track_songs functionality is enabled)
 # Methods:
 #       "start-uri" (recommended)
@@ -73,62 +71,69 @@ SPOTIFY_LINUX_PLAYING_METHOD = "dbus-send"
 #       "trigger-url"
 SPOTIFY_WINDOWS_PLAYING_METHOD = "start-uri"
 
-# How many consecutive plays of the same song is considered as being on loop
+# Number of consecutive plays of the same song considered to be on loop
 SONG_ON_LOOP_VALUE = 3
 
-# When do we consider the song as being skipped; fraction
-SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <=55% of track duration
+# Threshold for considering a song as skipped (fraction of duration)
+SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55% of its total length
 
-# Sometimes the monitored Spotify user disappears from the list of recently active friends/buddies; it happens on few occasions:
-#   - you unfollowed the monitored user
-#   - issue with Spotify services
-#   - Spotify user listens on private mode and sometimes the Spotify client messes some things up
-#   - Spotify user was inactive for more than a week
-# In such case we will continuously check for the user to reappear using the time interval below; in seconds
-# You can also use -m parameter
+# Interval for checking if a user who disappeared from the list of recently active friends/buddies has reappeared; in seconds
+# Can happen due to:
+#   - unfollowing the user
+#   - Spotify service issues
+#   - private session bugs
+#   - user inactivity for over a week
+# In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
+# Can also be set using the -m parameter
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
 
-# Type Spotify ID of the "finishing" track to play when user gets offline, only needed for track_songs functionality;
-# leave empty to simply pause
+# Spotify track ID to play when the user goes offline (used with track_songs feature)
+# Leave empty to simply pause
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
-# Delay after which the above track gets paused, type 0 to play infinitely until user pauses manually; in seconds
+# Delay before pausing the above track after the user goes offline; in seconds
+# Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
-# How often do we perform alive check by printing "alive check" message in the output; in seconds
+# How often to print an "alive check" message to the output; in seconds
 TOOL_ALIVE_INTERVAL = 21600  # 6 hours
 
-# URL we check in the beginning to make sure we have internet connectivity
-CHECK_INTERNET_URL = 'http://www.google.com/'
+# URL used to verify internet connectivity at startup
+CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
 
-# Default value for initial checking of internet connectivity; in seconds
+# Timeout used when checking initial internet connectivity; in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# The name of the .log file; the tool by default will output its messages to spotify_monitor_userid.log file
+# Base name of the log file. The tool will save its output to spotify_monitor_<userid>.log file
 SP_LOGFILE = "spotify_monitor"
 
-# Value used by signal handlers increasing/decreasing the inactivity check (SPOTIFY_INACTIVITY_CHECK); in seconds
+# Value added/subtracted via signal handlers to adjust inactivity timeout (SPOTIFY_INACTIVITY_CHECK); in seconds
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 
-# How many times should we attempt to obtain a valid access token in a single run of the spotify_get_access_token() function
+# Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token() function
 TOKEN_MAX_RETRIES = 10
 
-# Time interval between consecutive attempts to obtain the access token
+# Interval between access token retry attempts; in seconds
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
-# Shall we enable or disable SSL certificate verification while sending https requests
+# Whether to enable / disable SSL certificate verification while sending https requests
 VERIFY_SSL = True
 
-# How many 50x errors need to show up in the defined time to display error message in the console - it is to suppress sporadic issues with Spotify API endpoint; adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 Spotify API related issues in 4 mins - we will show the error message
+# Threshold for displaying Spotify 50x errors - it is to suppress sporadic issues with Spotify API endpoint
+# Adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# If more than 6 Spotify API related errors in 4 minutes, show an alert
 ERROR_500_NUMBER_LIMIT = 6
 ERROR_500_TIME_LIMIT = 240  # 4 min
 
-# How many network related errors need to show up in the defined time to display error message in the console - it is to suppress sporadic issues with internet connectivity; adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 network related issues in 4 mins - we will show the error message
+# Threshold for displaying network errors - it is to suppress sporadic issues with internet connectivity
+# Adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# If more than 6 network related errors in 4 minutes, show an alert
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
 ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
+
+# Whether to clear the terminal screen after starting the tool
+CLEAR_SCREEN = True
 
 # -------------------------
 # CONFIGURATION SECTION END
@@ -261,15 +266,25 @@ def signal_handler(sig, frame):
 
 
 # Checks internet connectivity
-def check_internet():
-    url = CHECK_INTERNET_URL
+def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL):
     try:
-        _ = req.get(url, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL)
-        print("OK")
+        _ = req.get(url, timeout=timeout, verify=verify)
         return True
-    except Exception as e:
-        print(f"No connectivity, please check your network - {e}")
-        sys.exit(1)
+    except req.RequestException as e:
+        print(f"No connectivity, please check your network: {e}")
+        return False
+
+
+def clear_screen(enabled=True):
+    if not enabled:
+        return
+    try:
+        if platform.system() == 'Windows':
+            os.system('cls')
+        else:
+            os.system('clear')
+    except Exception:
+        print("* Cannot clear the screen contents")
 
 
 # Converts absolute value of seconds to human readable format
@@ -432,15 +447,26 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     return 0
 
 
+def init_csv_file(csv_file_name):
+    try:
+        if not os.path.isfile(csv_file_name) or os.path.getsize(csv_file_name) == 0:
+            with open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
+                writer.writeheader()
+    except Exception as e:
+        raise RuntimeError(f"Could not initialize CSV file '{csv_file_name}' - {e}")
+
+
 # Writes CSV entry
 def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, last_activity_ts):
     try:
-        csv_file = open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
-        csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
-        csvwriter.writerow({'Date': timestamp, 'Artist': artist, 'Track': track, 'Playlist': playlist, 'Album': album, 'Last activity': last_activity_ts})
-        csv_file.close()
+
+        with open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8") as csv_file:
+            csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
+            csvwriter.writerow({'Date': timestamp, 'Artist': artist, 'Track': track, 'Playlist': playlist, 'Album': album, 'Last activity': last_activity_ts})
+
     except Exception:
-        raise
+        raise RuntimeError(f"Failed to write to CSV file '{csv_file_name}': {e}")
 
 
 # Returns the current date/time in human readable format; eg. Sun 21 Apr 2024, 15:08:45
@@ -978,6 +1004,7 @@ def spotify_list_friends(friend_activity):
         print("─" * HORIZONTAL_LINE)
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
+        print(f"User URL:\t\t\t{spotify_convert_uri_to_url('spotify:user:' + sp_uri)}")
         print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}\n")
         if 'spotify:playlist:' in sp_playlist_uri:
             print(f"Playlist:\t\t\t{sp_playlist}")
@@ -1085,6 +1112,41 @@ def spotify_get_playlist_info(access_token, playlist_uri):
         raise
 
 
+# Gets basic information about access token owner
+def spotify_get_current_user(access_token) -> dict | None:
+    url = "https://api.spotify.com/v1/me"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": SP_CACHED_CLIENT_ID,
+        "User-Agent": SP_CACHED_USER_AGENT,
+    }
+
+    if platform.system() != 'Windows':
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(FUNCTION_TIMEOUT + 2)
+    try:
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+        data = response.json()
+
+        user_info = {
+            "display_name": data.get("display_name"),
+            "uri": data.get("uri"),
+            "is_premium": data.get("product") == "premium",
+            "country": data.get("country"),
+            "email": data.get("email"),
+            "spotify_url": data.get("external_urls", {}).get("spotify") + "?si=1" if data.get("external_urls", {}).get("spotify") else None
+        }
+
+        return user_info
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
+
+
 def spotify_macos_play_song(sp_track_uri_id, method=SPOTIFY_MACOS_PLAYING_METHOD):
     if method == "apple-script":   # apple-script
         script = f'tell app "Spotify" to play track "spotify:track:{sp_track_uri_id}"'
@@ -1140,7 +1202,7 @@ def spotify_win_play_song(sp_track_uri_id, method=SPOTIFY_WINDOWS_PLAYING_METHOD
 
 
 # Main function that monitors activity of the specified Spotify friend's user URI ID
-def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file_name, csv_exists):
+def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
     sp_active_ts_start = 0
     sp_active_ts_stop = 0
@@ -1162,11 +1224,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
     try:
         if csv_file_name:
-            csv_file = open(csv_file_name, 'a', newline='', buffering=1, encoding="utf-8")
-            csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
-            if not csv_exists:
-                csvwriter.writeheader()
-            csv_file.close()
+            init_csv_file(csv_file_name)
     except Exception as e:
         print(f"* Error - {e}")
 
@@ -1227,10 +1285,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
         played_for_m_body = ""
         played_for_m_body_html = ""
         is_playlist = False
+
         # User is found in the Spotify's friend list just after starting the tool
         if sp_found:
             user_not_found = False
-            print("* User found, starting monitoring ....")
+
+            user_info = spotify_get_current_user(sp_accessToken)
+            if user_info:
+                print(f"Token belongs to:\t\t{user_info.get('display_name', '')}\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
 
             sp_track_uri = sp_data["sp_track_uri"]
             sp_track_uri_id = sp_data["sp_track_uri_id"]
@@ -1342,7 +1404,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     if csv_file_name:
                         write_csv_entry(csv_file_name, datetime.fromtimestamp(int(cur_ts)), sp_artist, sp_track, sp_playlist, sp_album, datetime.fromtimestamp(int(sp_ts)))
                 except Exception as e:
-                    print(f"* Cannot write CSV entry - {e}")
+                    print(f"* Error - {e}")
 
                 if active_notification:
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
@@ -1666,7 +1728,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         if csv_file_name:
                             write_csv_entry(csv_file_name, datetime.fromtimestamp(int(cur_ts)), sp_artist, sp_track, sp_playlist, sp_album, datetime.fromtimestamp(int(sp_ts)))
                     except Exception as e:
-                        print(f"* Cannot write CSV entry - {e}")
+                        print(f"* Error - {e}")
 
                     print_cur_ts("\nTimestamp:\t\t\t")
                     sp_ts_old = sp_ts
@@ -1764,7 +1826,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
         # User is not found in the Spotify's friend list just after starting the tool
         else:
             if user_not_found is False:
-                print(f"Spotify user {user_uri_id} not found, retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                print(f"User {user_uri_id} not found — make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}.")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -1778,13 +1840,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    try:
-        if platform.system() == 'Windows':
-            os.system('cls')
-        else:
-            os.system('clear')
-    except Exception:
-        print("* Cannot clear the screen contents")
+    clear_screen(CLEAR_SCREEN)
 
     print(f"Spotify Monitoring Tool v{VERSION}\n")
 
@@ -1803,7 +1859,8 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--track_songs", help="Automatically track listened songs by playing it in Spotify client", action='store_true')
     parser.add_argument("-b", "--csv_file", help="Write every listened track to CSV file", type=str, metavar="CSV_FILENAME")
     parser.add_argument("-s", "--spotify_tracks", help="Filename with Spotify tracks/playlists/albums to monitor.", type=str, metavar="TRACKS_FILENAME")
-    parser.add_argument("-l", "--list_friends", help="List Spotify friends", action='store_true')
+    parser.add_argument("-l", "--list_friends", help="List Spotify friends with the last listened track", action='store_true')
+    parser.add_argument("-v", "--current_user", help="Get basic information about access token owner", action='store_true')
     parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'spotify_monitor_UserURIID.log' file", action='store_true')
     parser.add_argument("-y", "--log_file_suffix", help="Log file suffix to be used instead of Spotify user URI ID, so output will be logged to 'spotify_monitor_suffix.log' file", type=str, metavar="LOG_SUFFIX")
     parser.add_argument("-z", "--send_test_email_notification", help="Send test email notification to verify SMTP settings defined in the script", action='store_true')
@@ -1813,10 +1870,8 @@ if __name__ == "__main__":
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    sys.stdout.write("* Checking internet connectivity ... ")
-    sys.stdout.flush()
-    check_internet()
-    print("")
+    if not check_internet():
+        sys.exit(1)
 
     if args.send_test_email_notification:
         print("* Sending test email notification ...\n")
@@ -1843,10 +1898,37 @@ if __name__ == "__main__":
         print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
         sys.exit(1)
 
+    if args.current_user:
+        print("* Getting basic information about access token owner ...\n")
+        try:
+            accessToken = spotify_get_access_token(SP_DC_COOKIE)
+            user_info = spotify_get_current_user(accessToken)
+
+            if user_info:
+                print(f"Token belongs to:\n")
+
+                print(f"Username:\t\t{user_info.get('display_name', '')}")
+                print(f"User URI ID:\t\t{user_info.get('uri', '').split('spotify:user:', 1)[1]}")
+                print(f"User URL:\t\t{user_info.get('spotify_url', '')}")
+                print(f"User e-mail:\t\t{user_info.get('email', '')}")
+                print(f"User country:\t\t{user_info.get('country', '')}")
+                print(f"Is Premium?:\t\t{user_info.get('is_premium', '')}")
+            else:
+                print("Failed to retrieve user info.")
+
+            print("─" * HORIZONTAL_LINE)
+        except Exception as e:
+            print(f"* Error - {e}")
+            sys.exit(1)
+        sys.exit(0)
+
     if args.list_friends:
         print("* Listing Spotify friends ...\n")
         try:
             accessToken = spotify_get_access_token(SP_DC_COOKIE)
+            user_info = spotify_get_current_user(accessToken)
+            if user_info:
+                print(f"Token belongs to:\t\t{user_info.get('display_name', '')}\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
             sp_friends = spotify_get_friends_json(accessToken)
             spotify_list_friends(sp_friends)
             print("─" * HORIZONTAL_LINE)
@@ -1880,18 +1962,12 @@ if __name__ == "__main__":
         sp_tracks = []
 
     if args.csv_file:
-        csv_enabled = True
-        csv_exists = os.path.isfile(args.csv_file)
         try:
-            csv_file = open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8")
+            with open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8") as _:
+                pass
         except Exception as e:
             print(f"* Error: CSV file cannot be opened for writing - {e}")
             sys.exit(1)
-        csv_file.close()
-    else:
-        csv_enabled = False
-        csv_file = None
-        csv_exists = False
 
     if args.log_file_suffix:
         log_suffix = args.log_file_suffix
@@ -1921,14 +1997,8 @@ if __name__ == "__main__":
     print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]\n\t\t\t\t[error interval: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
     print(f"* Email notifications:\t\t[active = {active_notification}] [inactive = {inactive_notification}] [tracked = {track_notification}]\n*\t\t\t\t[songs on loop = {song_on_loop_notification}] [every song = {song_notification}] [errors = {error_notification}]")
     print(f"* Track listened songs:\t\t{track_songs}")
-    if not args.disable_logging:
-        print(f"* Output logging enabled:\t{not args.disable_logging} ({SP_LOGFILE})")
-    else:
-        print(f"* Output logging enabled:\t{not args.disable_logging}")
-    if csv_enabled:
-        print(f"* CSV logging enabled:\t\t{csv_enabled} ({args.csv_file})\n")
-    else:
-        print(f"* CSV logging enabled:\t\t{csv_enabled}\n")
+    print(f"* Output logging enabled:\t{not args.disable_logging}" + (f" ({SP_LOGFILE})" if not args.disable_logging else ""))
+    print(f"* CSV logging enabled:\t\t{bool(args.csv_file)}" + (f" ({args.csv_file})\n" if args.csv_file else "\n"))
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
@@ -1939,7 +2009,7 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
 
-    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID, sp_tracks, error_notification, args.csv_file, csv_exists)
+    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID, sp_tracks, error_notification, args.csv_file)
 
     sys.stdout = stdout_bck
     sys.exit(0)
