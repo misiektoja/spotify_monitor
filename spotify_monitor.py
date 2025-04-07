@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.9.1
+v2.0
 
 Tool implementing real-time tracking of Spotify friends' music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -14,7 +14,7 @@ urllib3
 pyotp
 """
 
-VERSION = "1.9.1"
+VERSION = "2.0"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -197,8 +197,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import argparse
 import csv
-import urllib
-from urllib.parse import quote_plus, quote, urlparse
+from urllib.parse import quote_plus, quote
 import subprocess
 import platform
 import re
@@ -207,7 +206,6 @@ from html import escape
 import pyotp
 import base64
 import random
-from random import randrange
 import urllib3
 if not VERIFY_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -271,10 +269,11 @@ def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verif
         _ = req.get(url, timeout=timeout, verify=verify)
         return True
     except req.RequestException as e:
-        print(f"No connectivity, please check your network: {e}")
+        print(f"* No connectivity, please check your network:\n\n{e}")
         return False
 
 
+# Clears the terminal screen
 def clear_screen(enabled=True):
     if not enabled:
         return
@@ -442,11 +441,12 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         smtpObj.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
         smtpObj.quit()
     except Exception as e:
-        print(f"Error sending email - {e}")
+        print(f"Error sending email: {e}")
         return 1
     return 0
 
 
+# Initializes the CSV file
 def init_csv_file(csv_file_name):
     try:
         if not os.path.isfile(csv_file_name) or os.path.getsize(csv_file_name) == 0:
@@ -454,7 +454,7 @@ def init_csv_file(csv_file_name):
                 writer = csv.DictWriter(f, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
                 writer.writeheader()
     except Exception as e:
-        raise RuntimeError(f"Could not initialize CSV file '{csv_file_name}' - {e}")
+        raise RuntimeError(f"Could not initialize CSV file '{csv_file_name}': {e}")
 
 
 # Writes CSV entry
@@ -474,7 +474,7 @@ def get_cur_ts(ts_str=""):
     return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
-# Prints the current timestamp in human readable format; eg. Sun 21 Apr 2024, 15:08:45
+# Prints the current date/time in human readable format with separator; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
     print(get_cur_ts(str(ts_str)))
     print("─" * HORIZONTAL_LINE)
@@ -654,7 +654,7 @@ def get_apple_genius_search_urls(artist, track):
 
 
 # Returns random user agent string
-def get_random_user_agent():
+def get_random_user_agent() -> str:
     browser = random.choice(['chrome', 'firefox', 'edge', 'safari'])
 
     if browser == 'chrome':
@@ -728,6 +728,10 @@ def get_random_user_agent():
                 f"AppleWebKit/{webkit_major}.{webkit_minor}.{webkit_patch} (KHTML, like Gecko) "
                 f"Version/{safari_version}.0 Safari/{webkit_major}.{webkit_minor}.{webkit_patch}"
             )
+        else:
+            return ""
+    else:
+        return ""
 
 
 # Removes spaces from a hex string and converts it into a corresponding bytes object
@@ -809,11 +813,12 @@ def refresh_token(sp_dc: str) -> dict:
     init = True
     session = req.Session()
     session.cookies.set("sp_dc", sp_dc)
+    data: dict = {}
+    token = ""
 
     ua = get_random_user_agent()
     totp_obj, server_time = generate_totp(ua)
     client_time = int(time_ns() / 1000 / 1000)
-    timestamp = int(time.time())
     otp_value = totp_obj.at(server_time)
 
     params = {
@@ -833,50 +838,39 @@ def refresh_token(sp_dc: str) -> dict:
     }
 
     try:
-        if platform.system() != 'Windows':
+        if platform.system() != "Windows":
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
+
         response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    except (req.RequestException, TimeoutException):
-        transport = False
-    finally:
-        if platform.system() != 'Windows':
-            signal.alarm(0)
-
-    try:
         response.raise_for_status()
-    except req.HTTPError:
-        transport = False
-
-    try:
         data = response.json()
         token = data.get("accessToken", "")
-    except Exception:
-        transport = False
 
-    if not transport or (transport and not check_token_validity(data.get("accessToken", ""), data.get("clientId", ""), ua)):
+    except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
+        transport = False
+    finally:
+        if platform.system() != "Windows":
+            signal.alarm(0)
+
+    if not transport or (transport and not check_token_validity(token, data.get("clientId", ""), ua)):
         params["reason"] = "init"
+
         try:
-            if platform.system() != 'Windows':
+            if platform.system() != "Windows":
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(FUNCTION_TIMEOUT + 2)
+
             response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-        except (req.RequestException, TimeoutException):
-            init = False
-        finally:
-            if platform.system() != 'Windows':
-                signal.alarm(0)
-
-        try:
             response.raise_for_status()
-        except req.HTTPError:
-            init = False
-
-        try:
             data = response.json()
             token = data.get("accessToken", "")
-        except Exception:
+
+        except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
             init = False
+        finally:
+            if platform.system() != "Windows":
+                signal.alarm(0)
 
     if not init or not data or "accessToken" not in data:
         raise Exception("refresh_token(): Unsuccessful token request")
@@ -1123,7 +1117,7 @@ def spotify_get_current_user(access_token) -> dict | None:
 
     if platform.system() != 'Windows':
         signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(FUNCTION_TIMEOUT + 2)
+        signal.alarm(ALARM_TIMEOUT + 2)
     try:
         response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
@@ -1140,7 +1134,7 @@ def spotify_get_current_user(access_token) -> dict | None:
 
         return user_info
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"* Error: {e}")
         return None
     finally:
         if platform.system() != 'Windows':
@@ -1226,7 +1220,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
         if csv_file_name:
             init_csv_file(csv_file_name)
     except Exception as e:
-        print(f"* Error - {e}")
+        print(f"* Error: {e}")
 
     email_sent = False
 
@@ -1262,7 +1256,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
             if platform.system() != 'Windows':
                 signal.alarm(0)
 
-            print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
+            print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
 
             if "401" in str(e):
                 SP_CACHED_ACCESS_TOKEN = None
@@ -1310,7 +1304,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 else:
                     is_playlist = False
             except Exception as e:
-                print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
+                print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                 print_cur_ts("Timestamp:\t\t\t")
                 time.sleep(SPOTIFY_ERROR_INTERVAL)
                 continue
@@ -1404,7 +1398,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     if csv_file_name:
                         write_csv_entry(csv_file_name, datetime.fromtimestamp(int(cur_ts)), sp_artist, sp_track, sp_playlist, sp_album, datetime.fromtimestamp(int(sp_ts)))
                 except Exception as e:
-                    print(f"* Error - {e}")
+                    print(f"* Error: {e}")
 
                 if active_notification:
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
@@ -1481,19 +1475,19 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                                 error_network_issue_counter += 1
 
                         if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
-                            print(f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}) - '{e}'")
+                            print(f"* Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}): '{e}'")
                             print_cur_ts("Timestamp:\t\t\t")
                             error_500_start_ts = 0
                             error_500_counter = 0
 
                         elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
-                            print(f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}) - '{e}'")
+                            print(f"* Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}): '{e}'")
                             print_cur_ts("Timestamp:\t\t\t")
                             error_network_issue_start_ts = 0
                             error_network_issue_counter = 0
 
                         elif not error_500_start_ts and not error_network_issue_start_ts:
-                            print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - '{e}'")
+                            print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: '{e}'")
                             if ('access token' in str(e)) or ('Unsuccessful token request' in str(e)):
                                 print(f"* Error: sp_dc might have expired!")
                                 if error_notification and not email_sent:
@@ -1509,11 +1503,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 if sp_found is False:
                     # User disappeared from the Spotify's friend list
                     if user_not_found is False:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) disappeared, retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                        print(f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                         if error_notification:
                             m_subject = f"Spotify user {user_uri_id} ({sp_username}) disappeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) disappeared, retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) disappeared, retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            m_body = f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
@@ -1555,7 +1549,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         else:
                             is_playlist = False
                     except Exception as e:
-                        print(f"Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)} - {e}")
+                        print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
                         continue
@@ -1728,7 +1722,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         if csv_file_name:
                             write_csv_entry(csv_file_name, datetime.fromtimestamp(int(cur_ts)), sp_artist, sp_track, sp_playlist, sp_album, datetime.fromtimestamp(int(sp_ts)))
                     except Exception as e:
-                        print(f"* Error - {e}")
+                        print(f"* Error: {e}")
 
                     print_cur_ts("\nTimestamp:\t\t\t")
                     sp_ts_old = sp_ts
@@ -1844,26 +1838,145 @@ if __name__ == "__main__":
 
     print(f"Spotify Monitoring Tool v{VERSION}\n")
 
-    parser = argparse.ArgumentParser("spotify_monitor")
-    parser.add_argument("SPOTIFY_USER_URI_ID", nargs="?", help="Spotify user URI ID", type=str)
-    parser.add_argument("-u", "--spotify_dc_cookie", help="Spotify sp_dc cookie to override the value defined within the script (SP_DC_COOKIE)", type=str)
-    parser.add_argument("-a", "--active_notification", help="Send email notification once user gets active", action='store_true')
-    parser.add_argument("-i", "--inactive_notification", help="Send email notification once user gets inactive", action='store_true')
-    parser.add_argument("-t", "--track_notification", help="Send email notification once monitored track/playlist/album is found", action='store_true')
-    parser.add_argument("-j", "--song_notification", help="Send email notification for every changed song", action='store_true')
-    parser.add_argument("-x", "--song_on_loop_notification", help="Send email notification if user plays a song on loop (>= SONG_ON_LOOP_VALUE times)", action='store_true')
-    parser.add_argument("-e", "--error_notification", help="Disable sending email notifications in case of errors like expired sp_dc", action='store_false')
-    parser.add_argument("-c", "--check_interval", help="Time between monitoring checks, in seconds", type=int)
-    parser.add_argument("-o", "--offline_timer", help="Time required to mark inactive user as offline, in seconds", type=int)
-    parser.add_argument("-m", "--disappeared_timer", help="Wait time between checks once the user disappears from friends list, in seconds", type=int)
-    parser.add_argument("-g", "--track_songs", help="Automatically track listened songs by playing it in Spotify client", action='store_true')
-    parser.add_argument("-b", "--csv_file", help="Write every listened track to CSV file", type=str, metavar="CSV_FILENAME")
-    parser.add_argument("-s", "--spotify_tracks", help="Filename with Spotify tracks/playlists/albums to monitor.", type=str, metavar="TRACKS_FILENAME")
-    parser.add_argument("-l", "--list_friends", help="List Spotify friends with the last listened track", action='store_true')
-    parser.add_argument("-v", "--current_user", help="Get basic information about access token owner", action='store_true')
-    parser.add_argument("-d", "--disable_logging", help="Disable logging to file 'spotify_monitor_UserURIID.log' file", action='store_true')
-    parser.add_argument("-y", "--log_file_suffix", help="Log file suffix to be used instead of Spotify user URI ID, so output will be logged to 'spotify_monitor_suffix.log' file", type=str, metavar="LOG_SUFFIX")
-    parser.add_argument("-z", "--send_test_email_notification", help="Send test email notification to verify SMTP settings defined in the script", action='store_true')
+    parser = argparse.ArgumentParser(
+        prog="spotify_monitor",
+        description="Monitor a Spotify friend’s activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"
+    )
+
+    # Positional
+    parser.add_argument(
+        "user_id",
+        nargs="?",
+        metavar="SPOTIFY_USER_URI_ID",
+        help="Spotify user URI ID"
+    )
+
+    # API credentials
+    creds = parser.add_argument_group("API credentials")
+    creds.add_argument(
+        "-u", "--spotify-dc-cookie",
+        dest="spotify_dc_cookie",
+        metavar="SP_DC_COOKIE",
+        help="Spotify sp_dc cookie"
+    )
+
+    # Notifications
+    notify = parser.add_argument_group("Notifications")
+    notify.add_argument(
+        "-a", "--notify-active",
+        dest="notify_active",
+        action="store_true",
+        help="Email when user becomes active"
+    )
+    notify.add_argument(
+        "-i", "--notify-inactive",
+        dest="notify_inactive",
+        action="store_true",
+        help="Email when user goes inactive"
+    )
+    notify.add_argument(
+        "-t", "--notify-track",
+        dest="notify_track",
+        action="store_true",
+        help="Email when a monitored track/playlist/album is found"
+    )
+    notify.add_argument(
+        "-j", "--notify-song-changes",
+        dest="notify_song_changes",
+        action="store_true",
+        help="Email on every song change"
+    )
+    notify.add_argument(
+        "-x", "--notify-loop",
+        dest="notify_loop",
+        action="store_true",
+        help="Email if user plays a song on loop (>= SONG_ON_LOOP_VALUE times)"
+    )
+    notify.add_argument(
+        "-e", "--no-error-notify",
+        dest="notify_errors",
+        action="store_false",
+        help="Disable email on errors (e.g. expired sp_dc)"
+    )
+    notify.add_argument(
+        "-z", "--send-test-email",
+        dest="send_test_email",
+        action="store_true",
+        help="Send test email to verify SMTP settings"
+    )
+
+    # Intervals & timers
+    times = parser.add_argument_group("Intervals & timers")
+    times.add_argument(
+        "-c", "--check-interval",
+        dest="check_interval",
+        metavar="SECONDS",
+        type=int,
+        help="Time between monitoring checks, in seconds"
+    )
+    times.add_argument(
+        "-o", "--offline-timer",
+        dest="offline_timer",
+        metavar="SECONDS",
+        type=int,
+        help="Time required to mark inactive user as offline, in seconds"
+    )
+    times.add_argument(
+        "-m", "--disappeared-timer",
+        dest="disappeared_timer",
+        metavar="SECONDS",
+        type=int,
+        help="Wait time between checks once the user disappears from friends list, in seconds"
+    )
+
+    # Listing
+    listing = parser.add_argument_group("Listing")
+    listing.add_argument(
+        "-l", "--list-friends",
+        dest="list_friends",
+        action="store_true",
+        help="List Spotify friends with their last listened track"
+    )
+    listing.add_argument(
+        "-v", "--show-user-info",
+        dest="show_user_info",
+        action="store_true",
+        help="Get basic information about access token owner"
+    )
+
+    # Features & output
+    opts = parser.add_argument_group("Features & output")
+    opts.add_argument(
+        "-g", "--track-in-spotify",
+        dest="track_in_spotify",
+        action="store_true",
+        help="Automatically play each listened song in your Spotify client"
+    )
+    opts.add_argument(
+        "-b", "--csv-file",
+        dest="csv_file",
+        metavar="CSV_FILE",
+        help="Write every listened track to CSV file"
+    )
+    opts.add_argument(
+        "-s", "--monitor-list",
+        dest="monitor_list",
+        metavar="TRACKS_FILE",
+        help="Filename with Spotify tracks/playlists/albums to monitor"
+    )
+    opts.add_argument(
+        "-y", "--log-suffix",
+        dest="log_suffix",
+        metavar="SUFFIX",
+        help="Log file suffix to use instead of Spotify user URI ID"
+    )
+    opts.add_argument(
+        "-d", "--disable-logging",
+        dest="disable_logging",
+        action="store_true",
+        help="Disable logging to file spotify_monitor_<suffix>.log"
+    )
+
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -1873,7 +1986,7 @@ if __name__ == "__main__":
     if not check_internet():
         sys.exit(1)
 
-    if args.send_test_email_notification:
+    if args.send_test_email:
         print("* Sending test email notification ...\n")
         if send_email("spotify_monitor: test email", "This is test email - your SMTP settings seems to be correct !", "", SMTP_SSL, smtp_timeout=5) == 0:
             print("* Email sent successfully !")
@@ -1895,10 +2008,10 @@ if __name__ == "__main__":
         SP_DC_COOKIE = args.spotify_dc_cookie
 
     if not SP_DC_COOKIE or SP_DC_COOKIE == "your_sp_dc_cookie_value":
-        print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
+        print("* Error: SP_DC_COOKIE (-u / --spotify-dc-cookie) value is empty or incorrect")
         sys.exit(1)
 
-    if args.current_user:
+    if args.show_user_info:
         print("* Getting basic information about access token owner ...\n")
         try:
             accessToken = spotify_get_access_token(SP_DC_COOKIE)
@@ -1918,7 +2031,7 @@ if __name__ == "__main__":
 
             print("─" * HORIZONTAL_LINE)
         except Exception as e:
-            print(f"* Error - {e}")
+            print(f"* Error: {e}")
             sys.exit(1)
         sys.exit(0)
 
@@ -1933,21 +2046,21 @@ if __name__ == "__main__":
             spotify_list_friends(sp_friends)
             print("─" * HORIZONTAL_LINE)
         except Exception as e:
-            print(f"* Error - {e}")
+            print(f"* Error: {e}")
             sys.exit(1)
         sys.exit(0)
 
-    if not args.SPOTIFY_USER_URI_ID:
+    if not args.user_id:
         print("* Error: SPOTIFY_USER_URI_ID argument is required !")
         sys.exit(1)
 
-    if args.spotify_tracks:
+    if args.monitor_list:
         try:
             try:
-                with open(args.spotify_tracks, encoding="utf-8") as file:
+                with open(args.monitor_list, encoding="utf-8") as file:
                     lines = file.read().splitlines()
             except UnicodeDecodeError:
-                with open(args.spotify_tracks, encoding="cp1252") as file:
+                with open(args.monitor_list, encoding="cp1252") as file:
                     lines = file.read().splitlines()
 
             sp_tracks = [
@@ -1956,7 +2069,7 @@ if __name__ == "__main__":
                 if line.strip() and not line.strip().startswith("#")
             ]
         except Exception as e:
-            print(f"* Error: file with Spotify tracks cannot be opened - {e}")
+            print(f"* Error, file with Spotify tracks cannot be opened: {e}")
             sys.exit(1)
     else:
         sp_tracks = []
@@ -1966,25 +2079,25 @@ if __name__ == "__main__":
             with open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8") as _:
                 pass
         except Exception as e:
-            print(f"* Error: CSV file cannot be opened for writing - {e}")
+            print(f"* Error, CSV file cannot be opened for writing: {e}")
             sys.exit(1)
 
-    if args.log_file_suffix:
-        log_suffix = args.log_file_suffix
+    if args.log_suffix:
+        log_suffix = args.log_suffix
     else:
-        log_suffix = str(args.SPOTIFY_USER_URI_ID)
+        log_suffix = str(args.user_id)
 
     if not args.disable_logging:
         SP_LOGFILE = f"{SP_LOGFILE}_{log_suffix}.log"
         sys.stdout = Logger(SP_LOGFILE)
 
-    active_notification = args.active_notification
-    inactive_notification = args.inactive_notification
-    song_notification = args.song_notification
-    track_notification = args.track_notification
-    song_on_loop_notification = args.song_on_loop_notification
-    track_songs = args.track_songs
-    error_notification = args.error_notification
+    active_notification = args.notify_active
+    inactive_notification = args.notify_inactive
+    song_notification = args.notify_song_changes
+    track_notification = args.notify_track
+    song_on_loop_notification = args.notify_loop
+    track_songs = args.track_in_spotify
+    error_notification = args.notify_errors
 
     if SMTP_HOST == "your_smtp_server_ssl" or SMTP_HOST == "your_smtp_server_plaintext":
         active_notification = False
@@ -2009,7 +2122,7 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
 
-    spotify_monitor_friend_uri(args.SPOTIFY_USER_URI_ID, sp_tracks, error_notification, args.csv_file)
+    spotify_monitor_friend_uri(args.user_id, sp_tracks, error_notification, args.csv_file)
 
     sys.stdout = stdout_bck
     sys.exit(0)
