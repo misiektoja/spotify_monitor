@@ -2,6 +2,21 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 1.9 (07 Apr 2025)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Improved 'track songs' file parsing: now supports comments (lines starting with #) and ignores empty lines
+- **IMPROVE:** Refactored comparison logic for file-listed vs. user-played song tracks
+- **IMPROVE:** Replaced repeated requests.get calls with a shared SESSION to reuse HTTP connections and improve performance
+- **IMPROVE:** Add retry-enabled HTTPAdapter to global SESSION
+- **IMPROVE:** Display number of friends sharing listening activity (when using -l parameter)
+- **IMPROVE:** Updated horizontal line for improved output aesthetics
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed issue handling 'track songs' files encoded in Windows-1252/CP1252 (fixes [#5](https://github.com/misiektoja/spotify_monitor/issues/5))
+
 # Changes in 1.8.1 (25 Mar 2025)
 
 **Bug fixes**:
