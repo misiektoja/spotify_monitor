@@ -3,13 +3,13 @@
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
 v2.0
 
-Tool implementing real-time tracking of Spotify friends' music activity:
+Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
 
 Python pip3 requirements:
 
-python-dateutil
 requests
+python-dateutil
 urllib3
 pyotp
 python-dotenv (optional)
@@ -27,7 +27,7 @@ CONFIG_BLOCK = """
 # The sp_dc cookie is typically valid for up to 2 weeks
 #
 # Provide the SP_DC_COOKIE secret using one of the following methods:
-#   - Pass it at runtime with -u / --spotify-dc-cookie parameter
+#   - Pass it at runtime with -u / --spotify-dc-cookie
 #   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
 #   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
 # Fallback:
@@ -51,54 +51,54 @@ SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
 # Whether to send an email when user becomes active
-# Can also be enabled via the -a parameter
+# Can also be enabled via the -a flag
 ACTIVE_NOTIFICATION = False
 
 # Whether to send an email when user goes inactive
-# Can also be enabled via the -i parameter
+# Can also be enabled via the -i flag
 INACTIVE_NOTIFICATION = False
 
 # Whether to send an email when a monitored track/playlist/album plays
-# Can also be enabled via the -t parameter
+# Can also be enabled via the -t flag
 TRACK_NOTIFICATION = False
 
 # Whether to send an email on every song change
-# Can also be enabled via the -j parameter
+# Can also be enabled via the -j flag
 SONG_NOTIFICATION = False
 
 # Whether to send an email when user plays a song on loop
 # Triggered if the same song is played more than SONG_ON_LOOP_VALUE times
-# Can also be enabled via the -x parameter
+# Can also be enabled via the -x flag
 SONG_ON_LOOP_NOTIFICATION = False
 
 # Whether to send an email on errors
-# Can also be disabled via the -e parameter
+# Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
 # How often to check for user activity; in seconds
-# Can also be set using the -c parameter
+# Can also be set using the -c flag
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
 # Time to wait before retrying after an error; in seconds
 SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
 
 # Time after which a user is considered inactive (based on last activity); in seconds
-# Can also be set using the -o parameter
+# Can also be set using the -o flag
 # Note: If the user listens to songs longer than this value, they may be marked as inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 
-# Interval for checking if a user who disappeared from the list of recently active friends/buddies has reappeared; in seconds
+# Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
 # Can happen due to:
 #   - unfollowing the user
 #   - Spotify service issues
 #   - private session bugs
 #   - user inactivity for over a week
 # In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
-# Can also be set using the -m parameter
+# Can also be set using the -m flag
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
 
 # Whether to auto‑play each listened song in your Spotify client
-# Can also be set using the -g parameter
+# Can also be set using the -g flag
 TRACK_SONGS = False
 
 # Method used to play the song listened by the tracked user in local Spotify client under macOS
@@ -139,8 +139,9 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
-# How often to print an "alive check" message to the output; in seconds
-TOOL_ALIVE_INTERVAL = 21600  # 6 hours
+# How often to print a "liveness check" message to the output; in seconds
+# Set to 0 to disable
+LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
@@ -152,42 +153,43 @@ CHECK_INTERNET_TIMEOUT = 5
 VERIFY_SSL = True
 
 # Threshold for displaying Spotify 50x errors - it is to suppress sporadic issues with Spotify API endpoint
-# Adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
 # If more than 6 Spotify API related errors in 4 minutes, show an alert
 ERROR_500_NUMBER_LIMIT = 6
 ERROR_500_TIME_LIMIT = 240  # 4 min
 
 # Threshold for displaying network errors - it is to suppress sporadic issues with internet connectivity
-# Adjust the parameters according to the SPOTIFY_CHECK_INTERVAL timer
+# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
 # If more than 6 network related errors in 4 minutes, show an alert
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
 ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
 
 # CSV file to write every listened track
-# Can also be set using the -b parameter
+# Can also be set using the -b flag
 CSV_FILE = ""
 
 # Filename with Spotify tracks/playlists/albums to alert on
-# Can also be set using the -s parameter
+# Can also be set using the -s flag
 MONITOR_LIST_FILE = ""
 
 # Location of the optional dotenv file which can keep secrets
 # If not specified it will try to auto-search for .env files
 # To disable auto-search, set this to the literal string "none"
-# Can also be set using the --env-file parameter
+# Can also be set using the --env-file flag
 DOTENV_FILE = ""
 
 # Suffix to append to the output filenames instead of default user URI ID
-# Can also be set using the -y parameter
+# Can also be set using the -y flag
 FILE_SUFFIX = ""
 
 # Path or base name of the log file
-# If a directory or base name is provided, the final log file will be named 'spotify_monitor_<user_uri_id/file_suffix>.log'
+# If a directory or base name is provided, the final log file will be named:
+# spotify_monitor_<user_uri_id/file_suffix>.log
 # Absolute paths and custom filenames are supported. Use '~' for home directory if needed
 SP_LOGFILE = "spotify_monitor"
 
 # Whether to disable logging to spotify_monitor_<user_uri_id/file_suffix>.log
-# Can also be disabled via the -d parameter
+# Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
 # Width of horizontal line (─)
@@ -211,7 +213,7 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 # -------------------------
 
 # Default dummy values so linters shut up
-# Do not change values below — modify them in the configuration section or config file instead
+# Do not change values below - modify them in the configuration section or config file instead
 SP_DC_COOKIE = ""
 SMTP_HOST = ""
 SMTP_PORT = 0
@@ -238,7 +240,7 @@ SONG_ON_LOOP_VALUE = 0
 SKIPPED_SONG_THRESHOLD = 0
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
-TOOL_ALIVE_INTERVAL = 0
+LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
 VERIFY_SSL = False
@@ -289,7 +291,7 @@ SERVER_TIME_URL = "https://open.spotify.com/server-time"
 ALARM_TIMEOUT = int((TOKEN_MAX_RETRIES * TOKEN_RETRY_TIMEOUT) + 5)
 ALARM_RETRY = 10
 
-TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / SPOTIFY_CHECK_INTERVAL
+LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL
 
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
@@ -332,7 +334,7 @@ from html import escape
 try:
     import pyotp
 except ModuleNotFoundError:
-    raise SystemExit("Error: Couldn’t find the pyotp library !\n\nTo install it, run:\n    pip3 install pyotp\n\nOnce installed, re-run this tool")
+    raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip3 install pyotp\n\nOnce installed, re-run this tool")
 import base64
 import random
 import shutil
@@ -1143,7 +1145,7 @@ def spotify_convert_uri_to_url(uri):
     return url
 
 
-# Prints the list of Spotify friends with the last listened track (-l parameter)
+# Prints the list of Spotify friends with the last listened track (-l flag)
 def spotify_list_friends(friend_activity):
 
     print(f"Number of friends:\t\t{len(friend_activity['friends'])}\n")
@@ -2000,8 +2002,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         skipped_songs = 0
                         print_cur_ts("\nTimestamp:\t\t\t")
 
-                    if alive_counter >= TOOL_ALIVE_COUNTER:
-                        print_cur_ts("Alive check, timestamp: ")
+                    if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
+                        print_cur_ts("Liveness check, timestamp:\t")
                         alive_counter = 0
 
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
@@ -2025,7 +2027,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         # User is not found in the Spotify's friend list just after starting the tool
         else:
             if user_not_found is False:
-                print(f"User {user_uri_id} not found — make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}.")
+                print(f"User {user_uri_id} not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}.")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -2033,7 +2035,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, TOOL_ALIVE_COUNTER, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -2054,7 +2056,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
-        description=("Monitor a Spotify friend’s activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
+        description=("Monitor a Spotify friend's activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
     )
 
     # Positional
@@ -2211,6 +2213,7 @@ def main():
         "-s", "--monitor-list",
         dest="monitor_list",
         metavar="TRACKS_FILE",
+        type=str,
         help="Filename with Spotify tracks/playlists/albums to alert on"
     )
     opts.add_argument(
@@ -2297,7 +2300,7 @@ def main():
 
     if args.check_interval:
         SPOTIFY_CHECK_INTERVAL = args.check_interval
-        TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / SPOTIFY_CHECK_INTERVAL
+        LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL
 
     if args.offline_timer:
         SPOTIFY_INACTIVITY_CHECK = args.offline_timer
@@ -2445,9 +2448,10 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = False
         ERROR_NOTIFICATION = False
 
-    print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]\n\t\t\t\t[error interval: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
+    print(f"* Spotify polling intervals:\t[check: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]\n\t\t\t\t[disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}] [error: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
     print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
     print(f"* Track listened songs:\t\t{TRACK_SONGS}")
+    print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
