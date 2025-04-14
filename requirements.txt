@@ -2,3 +2,4 @@ python_dateutil
 urllib3
 Requests
 pyotp
+python-dotenv
