@@ -12,6 +12,7 @@ python-dateutil
 requests
 urllib3
 pyotp
+python-dotenv (optional)
 """
 
 VERSION = "2.0"
@@ -20,14 +21,27 @@ VERSION = "2.0"
 # CONFIGURATION SECTION START
 # ---------------------------
 
-# Log in to Spotify web client (https://open.spotify.com/) and put the value of sp_dc cookie below
-# Alternatively, you can use the -u parameter to provide it at runtime
-# The sp_dc cookie is typically valid for up to 1 year
-# Tip: use the web browser dev console or "Cookie-Editor" by cgagnier (available for all major browsers) to extract it easily: https://cookie-editor.com/
+CONFIG_BLOCK = """
+# Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
+# Use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/
+# The sp_dc cookie is typically valid for up to 2 weeks
+#
+# Provide the SP_DC_COOKIE secret using one of the following methods:
+#   - Pass it at runtime with -u / --spotify-dc-cookie parameter
+#   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
+#   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
+# Fallback:
+#   - Hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
 # SMTP settings for sending email notifications
 # If left as-is, no notifications will be sent
+#
+# Provide the SMTP_PASSWORD secret using one of the following methods:
+#   - Set it as an environment variable (e.g. export SMTP_PASSWORD=...)
+#   - Add it to ".env" file (SMTP_PASSWORD=...) for persistent use
+# Fallback:
+#   - Hard-code it in the code or config file
 SMTP_HOST = "your_smtp_server_ssl"
 SMTP_PORT = 587
 SMTP_USER = "your_smtp_user"
@@ -35,6 +49,31 @@ SMTP_PASSWORD = "your_smtp_password"
 SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
+
+# Whether to send an email when user becomes active
+# Can also be enabled via the -a parameter
+ACTIVE_NOTIFICATION = False
+
+# Whether to send an email when user goes inactive
+# Can also be enabled via the -i parameter
+INACTIVE_NOTIFICATION = False
+
+# Whether to send an email when a monitored track/playlist/album plays
+# Can also be enabled via the -t parameter
+TRACK_NOTIFICATION = False
+
+# Whether to send an email on every song change
+# Can also be enabled via the -j parameter
+SONG_NOTIFICATION = False
+
+# Whether to send an email when user plays a song on loop
+# Triggered if the same song is played more than SONG_ON_LOOP_VALUE times
+# Can also be enabled via the -x parameter
+SONG_ON_LOOP_NOTIFICATION = False
+
+# Whether to send an email on errors
+# Can also be disabled via the -e parameter
+ERROR_NOTIFICATION = True
 
 # How often to check for user activity; in seconds
 # Can also be set using the -c parameter
@@ -48,15 +87,29 @@ SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
 # Note: If the user listens to songs longer than this value, they may be marked as inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 
+# Interval for checking if a user who disappeared from the list of recently active friends/buddies has reappeared; in seconds
+# Can happen due to:
+#   - unfollowing the user
+#   - Spotify service issues
+#   - private session bugs
+#   - user inactivity for over a week
+# In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
+# Can also be set using the -m parameter
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
+
+# Whether to auto‑play each listened song in your Spotify client
+# Can also be set using the -g parameter
+TRACK_SONGS = False
+
 # Method used to play the song listened by the tracked user in local Spotify client under macOS
-# (i.e. when -g / --track_songs functionality is enabled)
+# (i.e. when TRACK_SONGS / -g functionality is enabled)
 # Methods:
 #       "apple-script" (recommended)
 #       "trigger-url"
 SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 
 # Method used to play the song listened by the tracked user in local Spotify client under Linux OS
-# (i.e. when -g / --track_songs functionality is enabled)
+# (i.e. when TRACK_SONGS / -g functionality is enabled)
 # Methods:
 #       "dbus-send" (most common one)
 #       "qdbus"
@@ -64,7 +117,7 @@ SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 SPOTIFY_LINUX_PLAYING_METHOD = "dbus-send"
 
 # Method used to play the song listened by the tracked user in local Spotify client under Windows OS
-# (if -g / --track_songs functionality is enabled)
+# (if TRACK_SONGS / -g functionality is enabled)
 # Methods:
 #       "start-uri" (recommended)
 #       "spotify-cmd"
@@ -77,17 +130,7 @@ SONG_ON_LOOP_VALUE = 3
 # Threshold for considering a song as skipped (fraction of duration)
 SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55% of its total length
 
-# Interval for checking if a user who disappeared from the list of recently active friends/buddies has reappeared; in seconds
-# Can happen due to:
-#   - unfollowing the user
-#   - Spotify service issues
-#   - private session bugs
-#   - user inactivity for over a week
-# In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
-# Can also be set using the -m parameter
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
-
-# Spotify track ID to play when the user goes offline (used with track_songs feature)
+# Spotify track ID to play when the user goes offline (used when TRACK_SONGS / -g functionality is enabled)
 # Leave empty to simply pause
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
@@ -105,18 +148,6 @@ CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
 # Timeout used when checking initial internet connectivity; in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# Base name of the log file. The tool will save its output to spotify_monitor_<userid>.log file
-SP_LOGFILE = "spotify_monitor"
-
-# Value added/subtracted via signal handlers to adjust inactivity timeout (SPOTIFY_INACTIVITY_CHECK); in seconds
-SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
-
-# Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token() function
-TOKEN_MAX_RETRIES = 10
-
-# Interval between access token retry attempts; in seconds
-TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
-
 # Whether to enable / disable SSL certificate verification while sending https requests
 VERIFY_SSL = True
 
@@ -132,12 +163,108 @@ ERROR_500_TIME_LIMIT = 240  # 4 min
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
 ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
 
+# CSV file to write every listened track
+# Can also be set using the -b parameter
+CSV_FILE = ""
+
+# Filename with Spotify tracks/playlists/albums to alert on
+# Can also be set using the -s parameter
+MONITOR_LIST_FILE = ""
+
+# Location of the optional dotenv file which can keep secrets
+# If not specified it will try to auto-search for .env files
+# To disable auto-search, set this to the literal string "none"
+# Can also be set using the --env-file parameter
+DOTENV_FILE = ""
+
+# Suffix to append to the output filenames instead of default user URI ID
+# Can also be set using the -y parameter
+FILE_SUFFIX = ""
+
+# Path or base name of the log file
+# If a directory or base name is provided, the final log file will be named 'spotify_monitor_<user_uri_id/file_suffix>.log'
+# Absolute paths and custom filenames are supported. Use '~' for home directory if needed
+SP_LOGFILE = "spotify_monitor"
+
+# Whether to disable logging to spotify_monitor_<user_uri_id/file_suffix>.log
+# Can also be disabled via the -d parameter
+DISABLE_LOGGING = False
+
+# Width of horizontal line (─)
+HORIZONTAL_LINE = 113
+
 # Whether to clear the terminal screen after starting the tool
 CLEAR_SCREEN = True
+
+# Value added/subtracted via signal handlers to adjust inactivity timeout (SPOTIFY_INACTIVITY_CHECK); in seconds
+SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
+
+# Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token() function
+TOKEN_MAX_RETRIES = 10
+
+# Interval between access token retry attempts; in seconds
+TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
+"""
 
 # -------------------------
 # CONFIGURATION SECTION END
 # -------------------------
+
+# Default dummy values so linters shut up
+# Do not change values below — modify them in the configuration section or config file instead
+SP_DC_COOKIE = ""
+SMTP_HOST = ""
+SMTP_PORT = 0
+SMTP_USER = ""
+SMTP_PASSWORD = ""
+SMTP_SSL = False
+SENDER_EMAIL = ""
+RECEIVER_EMAIL = ""
+ACTIVE_NOTIFICATION = False
+INACTIVE_NOTIFICATION = False
+TRACK_NOTIFICATION = False
+SONG_NOTIFICATION = False
+SONG_ON_LOOP_NOTIFICATION = False
+ERROR_NOTIFICATION = False
+SPOTIFY_CHECK_INTERVAL = 0
+SPOTIFY_ERROR_INTERVAL = 0
+SPOTIFY_INACTIVITY_CHECK = 0
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
+TRACK_SONGS = False
+SPOTIFY_MACOS_PLAYING_METHOD = ""
+SPOTIFY_LINUX_PLAYING_METHOD = ""
+SPOTIFY_WINDOWS_PLAYING_METHOD = ""
+SONG_ON_LOOP_VALUE = 0
+SKIPPED_SONG_THRESHOLD = 0
+SP_USER_GOT_OFFLINE_TRACK_ID = ""
+SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
+TOOL_ALIVE_INTERVAL = 0
+CHECK_INTERNET_URL = ""
+CHECK_INTERNET_TIMEOUT = 0
+VERIFY_SSL = False
+ERROR_500_NUMBER_LIMIT = 0
+ERROR_500_TIME_LIMIT = 0
+ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 0
+ERROR_NETWORK_ISSUES_TIME_LIMIT = 0
+CSV_FILE = ""
+MONITOR_LIST_FILE = ""
+DOTENV_FILE = ""
+FILE_SUFFIX = ""
+SP_LOGFILE = ""
+DISABLE_LOGGING = False
+HORIZONTAL_LINE = 0
+CLEAR_SCREEN = False
+SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
+TOKEN_MAX_RETRIES = 0
+TOKEN_RETRY_TIMEOUT = 0.0
+
+exec(CONFIG_BLOCK, globals())
+
+# Default name for the optional config file
+DEFAULT_CONFIG_FILENAME = "spotify_monitor.conf"
+
+# List of secret keys to load from env/config
+SECRET_KEYS = ("SP_DC_COOKIE", "SMTP_PASSWORD")
 
 # Strings removed from track names for generating proper Genius search URLs
 re_search_str = r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
@@ -162,24 +289,23 @@ SERVER_TIME_URL = "https://open.spotify.com/server-time"
 ALARM_TIMEOUT = int((TOKEN_MAX_RETRIES * TOKEN_RETRY_TIMEOUT) + 5)
 ALARM_RETRY = 10
 
-# Width of horizontal line (─)
-HORIZONTAL_LINE = 105
-
 TOOL_ALIVE_COUNTER = TOOL_ALIVE_INTERVAL / SPOTIFY_CHECK_INTERVAL
 
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
-active_notification = False
-inactive_notification = False
-song_notification = False
-track_notification = False
-song_on_loop_notification = False
+
+CLI_CONFIG_PATH = None
 
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
 
 
 import sys
+
+if sys.version_info < (3, 6):
+    print("* Error: Python version 3.6 or higher required !")
+    sys.exit(1)
+
 import time
 from time import time_ns
 import string
@@ -203,9 +329,15 @@ import platform
 import re
 import ipaddress
 from html import escape
-import pyotp
+try:
+    import pyotp
+except ModuleNotFoundError:
+    raise SystemExit("Error: Couldn’t find the pyotp library !\n\nTo install it, run:\n    pip3 install pyotp\n\nOnce installed, re-run this tool")
 import base64
 import random
+import shutil
+from pathlib import Path
+
 import urllib3
 if not VERIFY_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -465,7 +597,7 @@ def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, la
             csvwriter = csv.DictWriter(csv_file, fieldnames=csvfieldnames, quoting=csv.QUOTE_NONNUMERIC)
             csvwriter.writerow({'Date': timestamp, 'Artist': artist, 'Track': track, 'Playlist': playlist, 'Album': album, 'Last activity': last_activity_ts})
 
-    except Exception:
+    except Exception as e:
         raise RuntimeError(f"Failed to write to CSV file '{csv_file_name}': {e}")
 
 
@@ -579,43 +711,43 @@ def get_range_of_dates_from_tss(ts1, ts2, between_sep=" - ", short=False):
 
 # Signal handler for SIGUSR1 allowing to switch active/inactive email notifications
 def toggle_active_inactive_notifications_signal_handler(sig, frame):
-    global active_notification
-    global inactive_notification
-    active_notification = not active_notification
-    inactive_notification = not inactive_notification
+    global ACTIVE_NOTIFICATION
+    global INACTIVE_NOTIFICATION
+    ACTIVE_NOTIFICATION = not ACTIVE_NOTIFICATION
+    INACTIVE_NOTIFICATION = not INACTIVE_NOTIFICATION
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Email notifications: [active = {active_notification}] [inactive = {inactive_notification}]")
+    print(f"* Email notifications: [active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
 # Signal handler for SIGUSR2 allowing to switch every song email notifications
 def toggle_song_notifications_signal_handler(sig, frame):
-    global song_notification
-    song_notification = not song_notification
+    global SONG_NOTIFICATION
+    SONG_NOTIFICATION = not SONG_NOTIFICATION
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Email notifications: [every song = {song_notification}]")
+    print(f"* Email notifications: [every song = {SONG_NOTIFICATION}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
 # Signal handler for SIGCONT allowing to switch tracked songs email notifications
 def toggle_track_notifications_signal_handler(sig, frame):
-    global track_notification
-    track_notification = not track_notification
+    global TRACK_NOTIFICATION
+    TRACK_NOTIFICATION = not TRACK_NOTIFICATION
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Email notifications: [tracked = {track_notification}]")
+    print(f"* Email notifications: [tracked = {TRACK_NOTIFICATION}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
 # Signal handler for SIGPIPE allowing to switch songs on loop email notifications
 def toggle_songs_on_loop_notifications_signal_handler(sig, frame):
-    global song_on_loop_notification
-    song_on_loop_notification = not song_on_loop_notification
+    global SONG_ON_LOOP_NOTIFICATION
+    SONG_ON_LOOP_NOTIFICATION = not SONG_ON_LOOP_NOTIFICATION
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Email notifications: [songs on loop = {song_on_loop_notification}]")
+    print(f"* Email notifications: [songs on loop = {SONG_ON_LOOP_NOTIFICATION}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -637,6 +769,41 @@ def decrease_inactivity_check_signal_handler(sig, frame):
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
     print(f"* Spotify timers: [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]")
+    print_cur_ts("Timestamp:\t\t\t")
+
+
+# Signal handler for SIGHUP allowing to reload secrets from .env
+def reload_secrets_signal_handler(sig, frame):
+    sig_name = signal.Signals(sig).name
+    print(f"* Signal {sig_name} received")
+
+    # disable autoscan if DOTENV_FILE set to none
+    if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
+        env_path = None
+    else:
+        # reload .env if python-dotenv is installed
+        try:
+            from dotenv import load_dotenv, find_dotenv
+            if DOTENV_FILE:
+                env_path = DOTENV_FILE
+            else:
+                env_path = find_dotenv()
+            if env_path:
+                load_dotenv(env_path, override=True)
+            else:
+                print("* No .env file found, skipping env-var reload")
+        except ImportError:
+            env_path = None
+            print("* python-dotenv not installed, skipping env-var reload")
+
+    if env_path:
+        for secret in SECRET_KEYS:
+            old_val = globals().get(secret)
+            val = os.getenv(secret)
+            if val is not None and val != old_val:
+                globals()[secret] = val
+                print(f"* Reloaded {secret} from {env_path}")
+
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -1195,8 +1362,46 @@ def spotify_win_play_song(sp_track_uri_id, method=SPOTIFY_WINDOWS_PLAYING_METHOD
         os.startfile(spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}"))
 
 
+# Finds an optional config file
+def find_config_file(cli_path=None):
+    """
+    Search for an optional config file in:
+      1) CLI-provided path (must exist if given)
+      2) ./{DEFAULT_CONFIG_FILENAME}
+      3) ~/.{DEFAULT_CONFIG_FILENAME}
+      4) script-directory/{DEFAULT_CONFIG_FILENAME}
+    """
+
+    if cli_path:
+        p = Path(os.path.expanduser(cli_path))
+        return str(p) if p.is_file() else None
+
+    candidates = [
+        Path.cwd() / DEFAULT_CONFIG_FILENAME,
+        Path.home() / f".{DEFAULT_CONFIG_FILENAME}",
+        Path(__file__).parent / DEFAULT_CONFIG_FILENAME,
+    ]
+
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    return None
+
+
+# Resolves an executable path by checking if it's a valid file or searching in $PATH
+def resolve_executable(path):
+    if os.path.isfile(path) and os.access(path, os.X_OK):
+        return path
+
+    found = shutil.which(path)
+    if found:
+        return found
+
+    raise FileNotFoundError(f"Could not find executable '{path}'")
+
+
 # Main function that monitors activity of the specified Spotify friend's user URI ID
-def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file_name):
+def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
     sp_active_ts_start = 0
     sp_active_ts_stop = 0
@@ -1263,7 +1468,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
             if ('access token' in str(e)) or ('Unsuccessful token request' in str(e)):
                 print(f"* Error: sp_dc might have expired!")
-                if error_notification and not email_sent:
+                if ERROR_NOTIFICATION and not email_sent:
                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                     m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
@@ -1400,14 +1605,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                 except Exception as e:
                     print(f"* Error: {e}")
 
-                if active_notification:
+                if ACTIVE_NOTIFICATION:
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
-                if track_songs and sp_track_uri_id:
+                if TRACK_SONGS and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
                         spotify_macos_play_song(sp_track_uri_id)
                     elif platform.system() == 'Windows':    # Windows
@@ -1490,7 +1695,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                             print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: '{e}'")
                             if ('access token' in str(e)) or ('Unsuccessful token request' in str(e)):
                                 print(f"* Error: sp_dc might have expired!")
-                                if error_notification and not email_sent:
+                                if ERROR_NOTIFICATION and not email_sent:
                                     m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
                                     m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                                     m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
@@ -1504,7 +1709,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     # User disappeared from the Spotify's friend list
                     if user_not_found is False:
                         print(f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                        if error_notification:
+                        if ERROR_NOTIFICATION:
                             m_subject = f"Spotify user {user_uri_id} ({sp_username}) disappeared!"
                             m_body = f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
@@ -1518,7 +1723,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                     # User reappeared in the Spotify's friend list
                     if user_not_found is True:
                         print(f"Spotify user {user_uri_id} ({sp_username}) appeared again!")
-                        if error_notification:
+                        if ERROR_NOTIFICATION:
                             m_subject = f"Spotify user {user_uri_id} ({sp_username}) appeared!"
                             m_body = f"Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
@@ -1575,7 +1780,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
                     # If tracking functionality is enabled then play the current song via Spotify client
 
-                    if track_songs and sp_track_uri_id:
+                    if TRACK_SONGS and sp_track_uri_id:
                         if platform.system() == 'Darwin':       # macOS
                             spotify_macos_play_song(sp_track_uri_id)
                         elif platform.system() == 'Windows':    # Windows
@@ -1692,7 +1897,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}{friend_active_m_body}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a>{friend_active_m_body_html}<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
-                        if active_notification:
+                        if ACTIVE_NOTIFICATION:
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                             email_sent = True
@@ -1702,7 +1907,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         print("\n*** Track/playlist/album matched with the list!")
                         on_the_list = True
 
-                    if (track_notification and on_the_list and not email_sent) or (song_notification and not email_sent):
+                    if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -1710,7 +1915,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                         send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         email_sent = True
 
-                    if song_on_loop == SONG_ON_LOOP_VALUE and song_on_loop_notification:
+                    if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -1757,7 +1962,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
 
                         print(f"*** Last activity:\t\t{get_date_from_ts(sp_active_ts_stop)} (inactive timer: {display_time(SPOTIFY_INACTIVITY_CHECK)})")
                         # If tracking functionality is enabled then either pause the current song via Spotify client or play the indicated SP_USER_GOT_OFFLINE_TRACK_ID "finishing" song
-                        if track_songs:
+                        if TRACK_SONGS:
                             if SP_USER_GOT_OFFLINE_TRACK_ID:
                                 if platform.system() == 'Darwin':       # macOS
                                     spotify_macos_play_song(SP_USER_GOT_OFFLINE_TRACK_ID)
@@ -1778,7 +1983,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
                                     pass
                                 else:                                   # Linux variants
                                     spotify_linux_play_pause("pause")
-                        if inactive_notification:
+                        if INACTIVE_NOTIFICATION:
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -1827,7 +2032,16 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, error_notification, csv_file
             continue
 
 
-if __name__ == "__main__":
+def main():
+    global CLI_CONFIG_PATH, DOTENV_FILE, TOOL_ALIVE_COUNTER, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck
+
+    if "--generate-config" in sys.argv:
+        print(CONFIG_BLOCK.strip("\n"))
+        sys.exit(0)
+
+    if "--version" in sys.argv:
+        print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
+        sys.exit(0)
 
     stdout_bck = sys.stdout
 
@@ -1840,7 +2054,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
-        description="Monitor a Spotify friend’s activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"
+        description=("Monitor a Spotify friend’s activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
     )
 
     # Positional
@@ -1849,6 +2063,33 @@ if __name__ == "__main__":
         nargs="?",
         metavar="SPOTIFY_USER_URI_ID",
         help="Spotify user URI ID"
+    )
+
+    # Version, just to list in help, it is handled earlier
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s v{VERSION}"
+    )
+
+    # Configuration & dotenv files
+    conf = parser.add_argument_group("Configuration & dotenv files")
+    conf.add_argument(
+        "--config-file",
+        dest="config_file",
+        metavar="PATH",
+        help="Location of the optional config file",
+    )
+    conf.add_argument(
+        "--generate-config",
+        action="store_true",
+        help="Print default config template and exit",
+    )
+    conf.add_argument(
+        "--env-file",
+        dest="env_file",
+        metavar="PATH",
+        help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
     )
 
     # API credentials
@@ -1866,40 +2107,46 @@ if __name__ == "__main__":
         "-a", "--notify-active",
         dest="notify_active",
         action="store_true",
+        default=None,
         help="Email when user becomes active"
     )
     notify.add_argument(
         "-i", "--notify-inactive",
         dest="notify_inactive",
         action="store_true",
+        default=None,
         help="Email when user goes inactive"
     )
     notify.add_argument(
         "-t", "--notify-track",
         dest="notify_track",
         action="store_true",
-        help="Email when a monitored track/playlist/album is found"
+        default=None,
+        help="Email when a monitored track/playlist/album plays"
     )
     notify.add_argument(
         "-j", "--notify-song-changes",
         dest="notify_song_changes",
         action="store_true",
+        default=None,
         help="Email on every song change"
     )
     notify.add_argument(
         "-x", "--notify-loop",
         dest="notify_loop",
         action="store_true",
-        help="Email if user plays a song on loop (>= SONG_ON_LOOP_VALUE times)"
+        default=None,
+        help="Email when user plays a song on loop"
     )
     notify.add_argument(
         "-e", "--no-error-notify",
         dest="notify_errors",
         action="store_false",
+        default=None,
         help="Disable email on errors (e.g. expired sp_dc)"
     )
     notify.add_argument(
-        "-z", "--send-test-email",
+        "--send-test-email",
         dest="send_test_email",
         action="store_true",
         help="Send test email to verify SMTP settings"
@@ -1950,31 +2197,35 @@ if __name__ == "__main__":
         "-g", "--track-in-spotify",
         dest="track_in_spotify",
         action="store_true",
-        help="Automatically play each listened song in your Spotify client"
+        default=None,
+        help="Auto‑play each listened song in your Spotify client"
     )
     opts.add_argument(
         "-b", "--csv-file",
         dest="csv_file",
         metavar="CSV_FILE",
+        type=str,
         help="Write every listened track to CSV file"
     )
     opts.add_argument(
         "-s", "--monitor-list",
         dest="monitor_list",
         metavar="TRACKS_FILE",
-        help="Filename with Spotify tracks/playlists/albums to monitor"
+        help="Filename with Spotify tracks/playlists/albums to alert on"
     )
     opts.add_argument(
-        "-y", "--log-suffix",
-        dest="log_suffix",
+        "-y", "--file-suffix",
+        dest="file_suffix",
         metavar="SUFFIX",
-        help="Log file suffix to use instead of Spotify user URI ID"
+        type=str,
+        help="File suffix to append to output filenames instead of Spotify user URI ID"
     )
     opts.add_argument(
         "-d", "--disable-logging",
         dest="disable_logging",
         action="store_true",
-        help="Disable logging to file spotify_monitor_<suffix>.log"
+        default=None,
+        help="Disable logging to file spotify_monitor_<user_uri_id/file_suffix>.log"
     )
 
     args = parser.parse_args()
@@ -1982,6 +2233,56 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
+
+    if args.config_file:
+        CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
+
+    cfg_path = find_config_file(CLI_CONFIG_PATH)
+
+    if not cfg_path and CLI_CONFIG_PATH:
+        print(f"* Error: Config file '{CLI_CONFIG_PATH}' does not exist")
+        sys.exit(1)
+
+    if cfg_path:
+        try:
+            with open(cfg_path, "r") as cf:
+                exec(cf.read(), globals())
+        except Exception as e:
+            print(f"* Error loading config file '{cfg_path}': {e}")
+            sys.exit(1)
+
+    if args.env_file:
+        DOTENV_FILE = os.path.expanduser(args.env_file)
+    else:
+        if DOTENV_FILE:
+            DOTENV_FILE = os.path.expanduser(DOTENV_FILE)
+
+    if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
+        env_path = None
+    else:
+        try:
+            from dotenv import load_dotenv, find_dotenv
+
+            if DOTENV_FILE:
+                env_path = DOTENV_FILE
+                if not os.path.isfile(env_path):
+                    print(f"* Warning: dotenv file '{env_path}' does not exist\n")
+                else:
+                    load_dotenv(env_path, override=True)
+            else:
+                env_path = find_dotenv() or None
+                if env_path:
+                    load_dotenv(env_path, override=True)
+        except ImportError:
+            env_path = DOTENV_FILE if DOTENV_FILE else None
+            if env_path:
+                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\nOnce installed, re-run this tool\n")
+
+    if env_path:
+        for secret in SECRET_KEYS:
+            val = os.getenv(secret)
+            if val is not None:
+                globals()[secret] = val
 
     if not check_internet():
         sys.exit(1)
@@ -2055,12 +2356,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.monitor_list:
+        MONITOR_LIST_FILE = os.path.expanduser(args.monitor_list)
+    else:
+        if MONITOR_LIST_FILE:
+            MONITOR_LIST_FILE = os.path.expanduser(MONITOR_LIST_FILE)
+
+    if MONITOR_LIST_FILE:
         try:
             try:
-                with open(args.monitor_list, encoding="utf-8") as file:
+                with open(MONITOR_LIST_FILE, encoding="utf-8") as file:
                     lines = file.read().splitlines()
             except UnicodeDecodeError:
-                with open(args.monitor_list, encoding="cp1252") as file:
+                with open(MONITOR_LIST_FILE, encoding="cp1252") as file:
                     lines = file.read().splitlines()
 
             sp_tracks = [
@@ -2069,49 +2376,83 @@ if __name__ == "__main__":
                 if line.strip() and not line.strip().startswith("#")
             ]
         except Exception as e:
-            print(f"* Error, file with Spotify tracks cannot be opened: {e}")
+            print(f"* Error: File with monitored Spotify tracks cannot be opened: {e}")
             sys.exit(1)
     else:
         sp_tracks = []
 
     if args.csv_file:
+        CSV_FILE = os.path.expanduser(args.csv_file)
+    else:
+        if CSV_FILE:
+            CSV_FILE = os.path.expanduser(CSV_FILE)
+
+    if CSV_FILE:
         try:
-            with open(args.csv_file, 'a', newline='', buffering=1, encoding="utf-8") as _:
+            with open(CSV_FILE, 'a', newline='', buffering=1, encoding="utf-8") as _:
                 pass
         except Exception as e:
-            print(f"* Error, CSV file cannot be opened for writing: {e}")
+            print(f"* Error: CSV file cannot be opened for writing: {e}")
             sys.exit(1)
 
-    if args.log_suffix:
-        log_suffix = args.log_suffix
+    if args.file_suffix:
+        FILE_SUFFIX = str(args.file_suffix)
     else:
-        log_suffix = str(args.user_id)
+        if not FILE_SUFFIX:
+            FILE_SUFFIX = str(args.user_id)
 
-    if not args.disable_logging:
-        SP_LOGFILE = f"{SP_LOGFILE}_{log_suffix}.log"
-        sys.stdout = Logger(SP_LOGFILE)
+    if args.disable_logging is True:
+        DISABLE_LOGGING = True
 
-    active_notification = args.notify_active
-    inactive_notification = args.notify_inactive
-    song_notification = args.notify_song_changes
-    track_notification = args.notify_track
-    song_on_loop_notification = args.notify_loop
-    track_songs = args.track_in_spotify
-    error_notification = args.notify_errors
+    if not DISABLE_LOGGING:
+        log_path = Path(os.path.expanduser(SP_LOGFILE))
+        if log_path.is_dir():
+            raise SystemExit(f"* Error: SP_LOGFILE '{log_path}' is a directory, expected a filename")
+        if log_path.suffix == "":
+            log_path = log_path.with_name(f"{log_path.name}_{FILE_SUFFIX}.log")
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        FINAL_LOG_PATH = str(log_path)
+        sys.stdout = Logger(FINAL_LOG_PATH)
+    else:
+        FINAL_LOG_PATH = None
 
-    if SMTP_HOST == "your_smtp_server_ssl" or SMTP_HOST == "your_smtp_server_plaintext":
-        active_notification = False
-        inactive_notification = False
-        song_notification = False
-        track_notification = False
-        song_on_loop_notification = False
-        error_notification = False
+    if args.notify_active is True:
+        ACTIVE_NOTIFICATION = True
+
+    if args.notify_inactive is True:
+        INACTIVE_NOTIFICATION = True
+
+    if args.notify_track is True:
+        TRACK_NOTIFICATION = True
+
+    if args.notify_song_changes is True:
+        SONG_NOTIFICATION = True
+
+    if args.notify_loop is True:
+        SONG_ON_LOOP_NOTIFICATION = True
+
+    if args.notify_errors is False:
+        ERROR_NOTIFICATION = False
+
+    if args.track_in_spotify is True:
+        TRACK_SONGS = True
+
+    if SMTP_HOST.startswith("your_smtp_server_"):
+        ACTIVE_NOTIFICATION = False
+        INACTIVE_NOTIFICATION = False
+        TRACK_NOTIFICATION = False
+        SONG_NOTIFICATION = False
+        SONG_ON_LOOP_NOTIFICATION = False
+        ERROR_NOTIFICATION = False
 
     print(f"* Spotify timers:\t\t[check interval: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}] [disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}]\n\t\t\t\t[error interval: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
-    print(f"* Email notifications:\t\t[active = {active_notification}] [inactive = {inactive_notification}] [tracked = {track_notification}]\n*\t\t\t\t[songs on loop = {song_on_loop_notification}] [every song = {song_notification}] [errors = {error_notification}]")
-    print(f"* Track listened songs:\t\t{track_songs}")
-    print(f"* Output logging enabled:\t{not args.disable_logging}" + (f" ({SP_LOGFILE})" if not args.disable_logging else ""))
-    print(f"* CSV logging enabled:\t\t{bool(args.csv_file)}" + (f" ({args.csv_file})\n" if args.csv_file else "\n"))
+    print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
+    print(f"* Track listened songs:\t\t{TRACK_SONGS}")
+    print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
+    print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
+    print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
+    print(f"* Configuration file:\t\t{cfg_path}")
+    print(f"* Dotenv file:\t\t\t{env_path or 'None'}\n")
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
@@ -2121,8 +2462,13 @@ if __name__ == "__main__":
         signal.signal(signal.SIGPIPE, toggle_songs_on_loop_notifications_signal_handler)
         signal.signal(signal.SIGTRAP, increase_inactivity_check_signal_handler)
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
+        signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
-    spotify_monitor_friend_uri(args.user_id, sp_tracks, error_notification, args.csv_file)
+    spotify_monitor_friend_uri(args.user_id, sp_tracks, CSV_FILE)
 
     sys.stdout = stdout_bck
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
