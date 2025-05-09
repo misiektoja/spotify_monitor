@@ -182,10 +182,8 @@ DOTENV_FILE = ""
 # Can also be set using the -y flag
 FILE_SUFFIX = ""
 
-# Path or base name of the log file
-# If a directory or base name is provided, the final log file will be named:
-# spotify_monitor_<user_uri_id/file_suffix>.log
-# Absolute paths and custom filenames are supported. Use '~' for home directory if needed
+# Base name for the log file. Output will be saved to spotify_monitor_<user_uri_id/file_suffix>.log
+# Can include a directory path to specify the location, e.g. ~/some_dir/spotify_monitor
 SP_LOGFILE = "spotify_monitor"
 
 # Whether to disable logging to spotify_monitor_<user_uri_id/file_suffix>.log
@@ -2409,10 +2407,12 @@ def main():
 
     if not DISABLE_LOGGING:
         log_path = Path(os.path.expanduser(SP_LOGFILE))
-        if log_path.is_dir():
-            raise SystemExit(f"* Error: SP_LOGFILE '{log_path}' is a directory, expected a filename")
-        if log_path.suffix == "":
-            log_path = log_path.with_name(f"{log_path.name}_{FILE_SUFFIX}.log")
+        if log_path.parent != Path('.'):
+            if log_path.suffix == "":
+                log_path = log_path.parent / f"{log_path.name}_{FILE_SUFFIX}.log"
+        else:
+            if log_path.suffix == "":
+                log_path = Path(f"{log_path.name}_{FILE_SUFFIX}.log")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         FINAL_LOG_PATH = str(log_path)
         sys.stdout = Logger(FINAL_LOG_PATH)
