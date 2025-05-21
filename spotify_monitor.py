@@ -1123,7 +1123,10 @@ def spotify_convert_uri_to_url(uri):
     si = "?si=1"
     # si=""
 
+    uri = uri or ''
     url = ""
+    if not isinstance(uri, str):
+        return url
     if "spotify:user:" in uri:
         s_id = uri.split(':', 2)[2]
         url = f"https://open.spotify.com/user/{s_id}{si}"
