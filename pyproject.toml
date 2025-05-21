@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spotify_monitor"
+version = "2.0"
+description = "Tool implementing real-time tracking of Spotify friends music activity"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
+authors = [{ name = "Michal Szymanski", email = "misiektoja-pypi@rm-rf.ninja" }]
+requires-python = ">=3.6"
+dependencies = [
+  "requests>=2.0",
+  "python-dateutil>=2.8",
+  "urllib3>=2.0.7",
+  "pyotp>=2.9.0",
+  "python-dotenv>=0.19",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS :: MacOS X",
+]
+keywords = ["spotify", "monitoring", "tracking", "real-time", "friend-activity",  "osint"]
+
+[project.urls]
+Homepage = "https://github.com/misiektoja/spotify_monitor"
+Source   = "https://github.com/misiektoja/spotify_monitor"
+Changelog= "https://github.com/misiektoja/spotify_monitor/blob/main/RELEASE_NOTES.md"
+
+[project.scripts]
+spotify_monitor = "spotify_monitor:main"
+
+[tool.setuptools]
+py-modules = ["spotify_monitor"]
+include-package-data = true
