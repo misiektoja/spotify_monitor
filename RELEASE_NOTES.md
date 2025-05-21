@@ -2,6 +2,31 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.0 (21 May 2025)
+
+**Features and Improvements**:
+
+- **NEW:** The tool can now be installed via pip: `pip install spotify_monitor`
+- **NEW:** Added support for external config files, environment-based secrets and dotenv integration with auto-discovery
+- **NEW:** Display access token owner information and Spotify friend profile URLs
+- **IMPROVE:** Enhanced startup summary to show loaded config, dotenv and monitored tracks file paths
+- **IMPROVE:** Simplified and renamed command-line arguments for improved usability
+- **NEW:** Implemented SIGHUP handler for dynamic reload of secrets from dotenv files
+- **NEW:** Added configuration option to control clearing the terminal screen at startup
+- **IMPROVE:** Changed connectivity check to use Spotify API endpoint for reliability
+- **IMPROVE:** Added check for missing pip dependencies with install guidance
+- **IMPROVE:** Allow disabling liveness check by setting interval to 0 (default changed to 12h)
+- **IMPROVE:** Improved handling of log file creation
+- **IMPROVE:** Refactored CSV file initialization and processing
+- **NEW:** Added support for `~` path expansion across all file paths
+- **IMPROVE:** Refactored code structure to support packaging for PyPI
+- **IMPROVE:** Enforced configuration option precedence: code defaults < config file < env vars < CLI flags
+- **IMPROVE:** Removed short option for `--send-test-email` to avoid ambiguity
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed edge cases while converting Spotify URIs to URLs
+
 # Changes in 1.9 (07 Apr 2025)
 
 **Features and Improvements**:
