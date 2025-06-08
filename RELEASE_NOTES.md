@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.1 (09 Jun 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Added support for a new method to obtain the Spotify access token. This method uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It is intended for advanced users who want an indefinitely valid token with the widest scope. Check the [Spotify Desktop Client](https://github.com/misiektoja/spotify_monitor/blob/main/README.md#spotify-desktop-client) for more info.
+
 # Changes in 2.0 (21 May 2025)
 
 **Features and Improvements**:
