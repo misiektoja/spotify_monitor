@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1
+v2.1.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -15,7 +15,7 @@ pyotp (needed when the token source is set to cookie)
 python-dotenv (optional)
 """
 
-VERSION = "2.1"
+VERSION = "2.1.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -109,7 +109,7 @@ SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 # Can also be set using the -m flag
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
 
-# Whether to auto‑play each listened song in your Spotify client
+# Whether to auto-play each listened song in your Spotify client
 # Can also be set using the -g flag
 TRACK_SONGS = False
 
@@ -202,7 +202,7 @@ SP_LOGFILE = "spotify_monitor"
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
-# Width of horizontal line (─)
+# Width of horizontal line
 HORIZONTAL_LINE = 113
 
 # Whether to clear the terminal screen after starting the tool
@@ -512,7 +512,7 @@ def signal_handler(sig, frame):
 # Checks internet connectivity
 def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL):
     try:
-        _ = req.get(url, timeout=timeout, verify=verify)
+        _ = req.get(url, headers={'User-Agent': get_random_user_agent() if TOKEN_SOURCE == 'cookie' else get_random_spotify_user_agent()}, timeout=timeout, verify=verify)
         return True
     except req.RequestException as e:
         print(f"* No connectivity, please check your network:\n\n{e}")
@@ -982,10 +982,14 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
     url = "https://api.spotify.com/v1/me"
     headers = {"Authorization": f"Bearer {access_token}"}
 
-    if TOKEN_SOURCE == "cookie" and client_id is not None and user_agent is not None:
+    if user_agent is not None:
         headers.update({
-            "Client-Id": client_id,
-            "User-Agent": user_agent,
+            "User-Agent": user_agent
+        })
+
+    if TOKEN_SOURCE == "cookie" and client_id is not None:
+        headers.update({
+            "Client-Id": client_id
         })
 
     if platform.system() != 'Windows':
@@ -1358,12 +1362,6 @@ def read_varint(data, index):
 
 # Parses Spotify Protobuf login response
 def parse_protobuf_message(data):
-    """
-    Recursively parses a Protobuf message, returns a dictionary mapping tags to values
-
-    If a length-delimited field's first byte is a control character (i.e. < 0x20), we assume it is a nested message
-    and parse it recursively, otherwise we decode it as UTF-8
-    """
     index = 0
     result = {}
     while index < len(data):
@@ -1401,7 +1399,6 @@ def parse_protobuf_message(data):
 # (device_id, system_id, user_uri_id, refresh_token)
 def parse_request_body_file(file_path):
     """
-    Expected structure:
     {
       1: {
            1: "device_id",
@@ -1566,7 +1563,7 @@ def build_clienttoken_request_protobuf(app_version, device_id, system_id, cpu_ar
 def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refresh_token, client_token):
     global SP_CACHED_ACCESS_TOKEN, SP_CACHED_REFRESH_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT
 
-    if SP_CACHED_ACCESS_TOKEN and time.time() < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN):
+    if SP_CACHED_ACCESS_TOKEN and time.time() < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, user_agent=USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
 
     if not client_token:
@@ -1578,8 +1575,8 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
     protobuf_body = build_spotify_auth_protobuf(device_id, system_id, user_uri_id, refresh_token)
 
     parsed_url = urlparse(LOGIN_URL)
-    host = parsed_url.netloc  # e.g., "login5.spotify.com"
-    origin = f"{parsed_url.scheme}://{parsed_url.netloc}"  # e.g., "https://login5.spotify.com"
+    host = parsed_url.netloc
+    origin = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
     headers = {
         "Host": host,
@@ -1685,7 +1682,7 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
     parsed = parse_protobuf_message(response.content)
     inner = parsed.get(2, {})
     client_token = deep_flatten(inner.get(1)) if inner.get(1) else None
-    ttl = int(inner.get(3, 0)) or 1209600   # ≈ 2 weeks fallback
+    ttl = int(inner.get(3, 0)) or 1209600
 
     if not client_token:
         raise Exception("clienttoken response did not contain a token")
@@ -1748,6 +1745,10 @@ def spotify_get_friends_json(access_token):
             "Client-Id": SP_CACHED_CLIENT_ID,
             "User-Agent": SP_CACHED_USER_AGENT,
         })
+    elif TOKEN_SOURCE == "client":
+        headers.update({
+            "User-Agent": USER_AGENT
+        })
 
     response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
     if response.status_code == 401:
@@ -1807,8 +1808,6 @@ def spotify_list_friends(friend_activity):
         sp_playlist_uri = friend["track"]["context"].get("uri")
         sp_track_uri = friend["track"].get("uri")
 
-        # if index > 0:
-        #    print("─" * HORIZONTAL_LINE)
         print("─" * HORIZONTAL_LINE)
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
@@ -1877,6 +1876,10 @@ def spotify_get_track_info(access_token, track_uri):
             "Client-Id": SP_CACHED_CLIENT_ID,
             "User-Agent": SP_CACHED_USER_AGENT,
         })
+    elif TOKEN_SOURCE == "client":
+        headers.update({
+            "User-Agent": USER_AGENT
+        })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
 
@@ -1907,6 +1910,10 @@ def spotify_get_playlist_info(access_token, playlist_uri):
             "Client-Id": SP_CACHED_CLIENT_ID,
             "User-Agent": SP_CACHED_USER_AGENT,
         })
+    elif TOKEN_SOURCE == "client":
+        headers.update({
+            "User-Agent": USER_AGENT
+        })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
 
@@ -1933,6 +1940,10 @@ def spotify_get_current_user(access_token) -> dict | None:
         headers.update({
             "Client-Id": SP_CACHED_CLIENT_ID,
             "User-Agent": SP_CACHED_USER_AGENT,
+        })
+    elif TOKEN_SOURCE == "client":
+        headers.update({
+            "User-Agent": USER_AGENT
         })
 
     if platform.system() != 'Windows':
@@ -2916,7 +2927,7 @@ def main():
         dest="track_in_spotify",
         action="store_true",
         default=None,
-        help="Auto‑play each listened song in your Spotify client"
+        help="Auto-play each listened song in your Spotify client"
     )
     opts.add_argument(
         "-b", "--csv-file",
