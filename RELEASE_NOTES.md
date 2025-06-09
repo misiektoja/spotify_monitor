@@ -2,6 +2,13 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.1.1 (10 Jun 2025)
+
+**Bug fixes**:
+
+- **BUGFIX:** Ensured all Spotify requests include the custom User-Agent header
+- **BUGFIX:** Fixed config file generation to work reliably on Windows systems
+
 # Changes in 2.1 (09 Jun 2025)
 
 **Features and Improvements**:
