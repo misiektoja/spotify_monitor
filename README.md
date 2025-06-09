@@ -4,6 +4,10 @@ spotify_monitor is a tool for real-time monitoring of Spotify friends' music act
 
 NOTE: If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
+> Spotify made multiple changes to the web endpoint on June 10th 2025, which broke the **[sp_dc cookie](#spotify-sp_dc-cookie)** method.  
+> 📦 The issue is under investigation to determine if it can be restored.  
+> 👉 In the meantime, use **[desktop client](#spotify-desktop-client)** method instead.  
+
 <a id="features"></a>
 ## Features
 
@@ -175,9 +179,9 @@ To use credentials captured from the Spotify desktop client to obtain an access 
 
 Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com)).
 
-Launch the Spotify desktop client and look for requests to `https://login{n}.spotify.com/v3/login`
+Launch the Spotify desktop client and look for POST requests to `https://login{n}.spotify.com/v3/login`
 
-Note: The `login` part is suffixed with one or more digits (e.g. `login5.spotify.com`).
+Note: The `login` part is suffixed with one or more digits (e.g. `login5`).
 
 If you don't see this request, log out from the client and log back in.
 
