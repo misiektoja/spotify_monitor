@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.1.2 (10 Jun 2025)
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed web-player access token retrieval via sp_dc cookie (fixes [#8](https://github.com/misiektoja/spotify_monitor/issues/8))
+
 # Changes in 2.1.1 (10 Jun 2025)
 
 **Bug fixes**:
