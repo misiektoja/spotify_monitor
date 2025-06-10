@@ -4,10 +4,6 @@ spotify_monitor is a tool for real-time monitoring of Spotify friends' music act
 
 NOTE: If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
-> Spotify made multiple changes to the web endpoint on June 10th 2025, which broke the **[sp_dc cookie](#spotify-sp_dc-cookie)** method.  
-> 📦 The issue is under investigation to determine if it can be restored.  
-> 👉 In the meantime, use **[desktop client](#spotify-desktop-client)** method instead.  
-
 <a id="features"></a>
 ## Features
 
