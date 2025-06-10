@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1.1
+v2.1.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -15,7 +15,7 @@ pyotp (needed when the token source is set to cookie)
 python-dotenv (optional)
 """
 
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -396,10 +396,7 @@ SP_CACHED_CLIENT_ID = ""
 SP_CACHED_USER_AGENT = ""
 
 # URL of the Spotify Web Player endpoint to get access token
-TOKEN_URL = "https://open.spotify.com/get_access_token"
-
-# URL of the endpoint to get server time needed to create TOTP object
-SERVER_TIME_URL = "https://open.spotify.com/server-time"
+TOKEN_URL = "https://open.spotify.com/api/token"
 
 # Variables for caching functionality of the Spotify client token to avoid unnecessary refreshing
 SP_CACHED_CLIENT_TOKEN = None
@@ -451,6 +448,7 @@ import shutil
 from pathlib import Path
 import secrets
 from typing import Optional
+from email.utils import parsedate_to_datetime
 
 import urllib3
 if not VERIFY_SSL:
@@ -1091,14 +1089,33 @@ def get_random_user_agent() -> str:
         return ""
 
 
-# Removes spaces from a hex string and converts it into a corresponding bytes object
-def hex_to_bytes(data: str) -> bytes:
-    data = data.replace(" ", "")
-    return bytes.fromhex(data)
+# Returns Spotify edge-server Unix time
+def fetch_server_time(session: req.Session, ua: str) -> int:
+
+    headers = {
+        "User-Agent": ua,
+        "Accept": "*/*",
+    }
+
+    try:
+        if platform.system() != 'Windows':
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(FUNCTION_TIMEOUT + 2)
+        response = session.head("https://open.spotify.com/", headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+    except TimeoutException as e:
+        raise Exception(f"fetch_server_time() head network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+    except Exception as e:
+        raise Exception(f"fetch_server_time() head network request error: {e}")
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
+
+    return int(parsedate_to_datetime(response.headers["Date"]).timestamp())
 
 
 # Creates a TOTP object using a secret derived from transformed cipher bytes
-def generate_totp(ua: str):
+def generate_totp():
     import pyotp
 
     secret_cipher_bytes = [
@@ -1108,39 +1125,10 @@ def generate_totp(ua: str):
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
-    utf8_bytes = joined.encode("utf-8")
-    hex_str = "".join(format(b, 'x') for b in utf8_bytes)
-    secret_bytes = hex_to_bytes(hex_str)
-    secret = base64.b32encode(secret_bytes).decode().rstrip('=')
+    hex_str = joined.encode().hex()
+    secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
 
-    headers = {
-        "Host": "open.spotify.com",
-        "User-Agent": ua,
-        "Accept": "*/*",
-    }
-
-    try:
-        if platform.system() != 'Windows':
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(FUNCTION_TIMEOUT + 2)
-        resp = req.get(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    except (req.RequestException, TimeoutException) as e:
-        raise Exception(f"generate_totp() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
-    finally:
-        if platform.system() != 'Windows':
-            signal.alarm(0)
-
-    resp.raise_for_status()
-
-    json_data = resp.json()
-    server_time = json_data.get("serverTime")
-
-    if server_time is None:
-        raise Exception("Failed to get server time")
-
-    totp_obj = pyotp.TOTP(secret, digits=6, interval=30)
-
-    return totp_obj, server_time
+    return pyotp.TOTP(secret, digits=6, interval=30)
 
 
 # Retrieves a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
@@ -1153,7 +1141,8 @@ def refresh_token(sp_dc: str) -> dict:
     token = ""
 
     ua = get_random_user_agent()
-    totp_obj, server_time = generate_totp(ua)
+    server_time = fetch_server_time(session, ua)
+    totp_obj = generate_totp()
     client_time = int(time_ns() / 1000 / 1000)
     otp_value = totp_obj.at(server_time)
 
@@ -1165,11 +1154,15 @@ def refresh_token(sp_dc: str) -> dict:
         "totpVer": 5,
         "sTime": server_time,
         "cTime": client_time,
+        "buildDate": time.strftime("%Y-%m-%d", time.gmtime(server_time)),
+        "buildVer": f"web-player_{time.strftime('%Y-%m-%d', time.gmtime(server_time))}_{server_time * 1000}_{secrets.token_hex(4)}",
     }
 
     headers = {
         "User-Agent": ua,
         "Accept": "application/json",
+        "Referer": "https://open.spotify.com/",
+        "App-Platform": "WebPlayer",
         "Cookie": f"sp_dc={sp_dc}",
     }
 
@@ -1598,8 +1591,10 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
         response = req.post(LOGIN_URL, headers=headers, data=protobuf_body, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    except (req.RequestException, TimeoutException) as e:
+    except TimeoutException as e:
         raise Exception(f"spotify_get_access_token_from_client() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+    except Exception as e:
+        raise Exception(f"spotify_get_access_token_from_client() network request error: {e}")
     finally:
         if platform.system() != 'Windows':
             signal.alarm(0)
@@ -1670,8 +1665,10 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
         response = req.post(CLIENTTOKEN_URL, headers=headers, data=body, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    except (req.RequestException, TimeoutException) as e:
+    except TimeoutException as e:
         raise Exception(f"spotify_get_client_token() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
+    except Exception as e:
+        raise Exception(f"spotify_get_client_token() network request error: {e}")
     finally:
         if platform.system() != 'Windows':
             signal.alarm(0)
