@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1.2
+v2.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -15,7 +15,7 @@ pyotp (needed when the token source is set to cookie)
 python-dotenv (optional)
 """
 
-VERSION = "2.1.2"
+VERSION = "2.2"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -1166,6 +1166,8 @@ def refresh_token(sp_dc: str) -> dict:
         "Cookie": f"sp_dc={sp_dc}",
     }
 
+    last_err = ""
+
     try:
         if platform.system() != "Windows":
             signal.signal(signal.SIGALRM, timeout_handler)
@@ -1176,8 +1178,9 @@ def refresh_token(sp_dc: str) -> dict:
         data = response.json()
         token = data.get("accessToken", "")
 
-    except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
+    except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
         transport = False
+        last_err = str(e)
     finally:
         if platform.system() != "Windows":
             signal.alarm(0)
@@ -1195,14 +1198,15 @@ def refresh_token(sp_dc: str) -> dict:
             data = response.json()
             token = data.get("accessToken", "")
 
-        except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
+        except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
             init = False
+            last_err = str(e)
         finally:
             if platform.system() != "Windows":
                 signal.alarm(0)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception("refresh_token(): Unsuccessful token request")
+        raise Exception(f"refresh_token(): Unsuccessful token request{': ' + last_err if last_err else ''}")
 
     return {
         "access_token": token,
@@ -1605,6 +1609,22 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
         elif response.headers.get("client-token-error") == "EXPIRED_CLIENTTOKEN":
             raise Exception(f"Request failed with status {response.status_code}: expired client token")
 
+        try:
+            error_json = response.json()
+        except ValueError:
+            error_json = {}
+
+        if error_json.get("error") == "invalid_grant":
+            desc = error_json.get("error_description", "")
+            if "refresh token" in desc.lower() and "revoked" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token has been revoked")
+            elif "refresh token" in desc.lower() and "expired" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token has expired")
+            elif "invalid refresh token" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token is invalid")
+            else:
+                raise Exception(f"Request failed with status {response.status_code}: invalid grant during refresh ({desc})")
+
         raise Exception(f"Request failed with status code {response.status_code}\nResponse Headers: {response.headers}\nResponse Content (raw): {response.content}\nResponse text: {response.text}")
 
     parsed = parse_protobuf_message(response.content)
@@ -1969,6 +1989,31 @@ def spotify_get_current_user(access_token) -> dict | None:
             signal.alarm(0)
 
 
+# Checks if a Spotify user URI ID has been deleted
+def is_user_removed(access_token, user_uri_id):
+    url = f"https://api.spotify.com/v1/users/{user_uri_id}"
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    if TOKEN_SOURCE == "cookie":
+        headers.update({
+            "Client-Id": SP_CACHED_CLIENT_ID,
+            "User-Agent": SP_CACHED_USER_AGENT,
+        })
+    elif TOKEN_SOURCE == "client":
+        headers.update({
+            "User-Agent": USER_AGENT
+        })
+
+    try:
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        if response.status_code == 404:
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def spotify_macos_play_song(sp_track_uri_id, method=SPOTIFY_MACOS_PLAYING_METHOD):
     if method == "apple-script":   # apple-script
         script = f'tell app "Spotify" to play track "spotify:track:{sp_track_uri_id}"'
@@ -2081,6 +2126,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     error_500_start_ts = 0
     error_network_issue_counter = 0
     error_network_issue_start_ts = 0
+    sp_accessToken = ""
 
     try:
         if csv_file_name:
@@ -2132,25 +2178,25 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if TOKEN_SOURCE == 'cookie' and '401' in err:
                 SP_CACHED_ACCESS_TOKEN = None
 
-            client_errs = ['access token', 'invalid client token', 'expired client token']
-            cookie_errs = ['access token', 'unsuccessful token request']
+            client_errs = ['access token', 'invalid client token', 'expired client token', 'refresh token has been revoked', 'refresh token has expired', 'refresh token is invalid', 'invalid grant during refresh']
+            cookie_errs = ['access token', 'unauthorized']
 
             if TOKEN_SOURCE == 'client' and any(k in err for k in client_errs):
-                print(f"* Error: client token or refresh token might have expired!")
+                print(f"* Error: client or refresh token may be invalid or expired!")
                 if ERROR_NOTIFICATION and not email_sent:
-                    m_subject = f"spotify_monitor: client token or refresh token might have expired! (uri: {user_uri_id})"
-                    m_body = f"Client token or refresh token might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>Client token or refresh token might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                    m_body = f"Client or refresh token may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
 
             elif TOKEN_SOURCE == 'cookie' and any(k in err for k in cookie_errs):
-                print(f"* Error: sp_dc might have expired!")
+                print(f"* Error: sp_dc may be invalid or expired!")
                 if ERROR_NOTIFICATION and not email_sent:
-                    m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                    m_subject = f"spotify_monitor: sp_dc may be invalid or expired! (uri: {user_uri_id})"
+                    m_body = f"sp_dc may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>sp_dc may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
@@ -2379,25 +2425,25 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         elif not error_500_start_ts and not error_network_issue_start_ts:
                             print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: '{e}'")
 
-                            client_errs = ['access token', 'invalid client token', 'expired client token']
-                            cookie_errs = ['access token', 'unsuccessful token request']
+                            client_errs = ['access token', 'invalid client token', 'expired client token', 'refresh token has been revoked', 'refresh token has expired', 'refresh token is invalid', 'invalid grant during refresh']
+                            cookie_errs = ['access token', 'unauthorized']
 
                             if TOKEN_SOURCE == 'client' and any(k in err for k in client_errs):
-                                print(f"* Error: client token or refresh token might have expired!")
+                                print(f"* Error: client or refresh token may be invalid or expired!")
                                 if ERROR_NOTIFICATION and not email_sent:
-                                    m_subject = f"spotify_monitor: client token or refresh token might have expired! (uri: {user_uri_id})"
-                                    m_body = f"Client token or refresh token might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>Client token or refresh token might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                                    m_body = f"Client or refresh token may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
 
                             elif TOKEN_SOURCE == 'cookie' and any(k in err for k in cookie_errs):
-                                print(f"* Error: sp_dc might have expired!")
+                                print(f"* Error: sp_dc may be invalid or expired!")
                                 if ERROR_NOTIFICATION and not email_sent:
-                                    m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                    m_subject = f"spotify_monitor: sp_dc may be invalid or expired! (uri: {user_uri_id})"
+                                    m_body = f"sp_dc may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                    m_body_html = f"<html><head></head><body>sp_dc may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
@@ -2406,15 +2452,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
 
                 if sp_found is False:
-                    # User disappeared from the Spotify's friend list
+                    # User has disappeared from the Spotify's friend list or account has been removed
                     if user_not_found is False:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                        if ERROR_NOTIFICATION:
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) disappeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                        if is_user_removed(sp_accessToken, user_uri_id):
+                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            if ERROR_NOTIFICATION:
+                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) was probably removed<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                print(f"Sending email notification to {RECEIVER_EMAIL}")
+                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                        else:
+                            print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            if ERROR_NOTIFICATION:
+                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                print(f"Sending email notification to {RECEIVER_EMAIL}")
+                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
                     time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -2422,11 +2477,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 else:
                     # User reappeared in the Spotify's friend list
                     if user_not_found is True:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) appeared again!")
+                        print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
                         if ERROR_NOTIFICATION:
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) appeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
+                            m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
@@ -2725,7 +2780,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         # User is not found in the Spotify's friend list just after starting the tool
         else:
             if user_not_found is False:
-                print(f"User {user_uri_id} not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}.")
+                if is_user_removed(sp_accessToken, user_uri_id):
+                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                else:
+                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
