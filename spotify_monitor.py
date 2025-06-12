@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1.2
+v2.1.2 jmk
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -15,7 +15,63 @@ pyotp (needed when the token source is set to cookie)
 python-dotenv (optional)
 """
 
-VERSION = "2.1.2"
+VERSION = "2.1.2 jmk"
+
+# API 401 error means sp_dc cookie has expired. Lasts one year. 03/15/2025
+
+# spotify-friend-stalker: https://github.com/moritzlauper/spotify-friend-stalker
+# spotify-buddylist API:  https://github.com/valeriangalliat/spotify-buddylist
+# spotify-api:            https://developer.spotify.com/documentation/web-api (official API)
+# spotify-monitor:        https://github.com/misiektoja/spotify_monitor/
+# spot-fy-api-python:     https://github.com/thlucas1/SpotifyWebApiPython (reference only)
+
+# revision history
+# 2025/03/28: Finished porting "spotify logger" features of JMK into this app (python, and maintained)
+# 2025/03/29: Changed timeout for user playing stopped from 11 mins to 'song length + SPOTIFY_INACTIVITY_CHECK_MARGIN' to match "spotify logger"
+# 2025/03/29: Reload any monitored playlists from file every hour
+# 2025/03/29: Restored original timeout mechanism (can't use song + margin because song is the last-song-played not the current song)
+# 2025/03/29: Added exponentional backoff on retries (**)
+# 2025/03/29: Errors are put into log file and not on screen (ex: searchPlaylist error)
+# 2025/03/30: Lots of little bug and operational fixes for Discovery Zone
+# 2025/03/30: Updated to 1.8.2 from spotify_monitor source
+# 2025/03/31: Fixed duplicative DZ logic causing 2 hearts.
+# 2025/03/31: Moved remnant calls to _upper logic instead of map() logic
+# 2025/03/31: Use songstring() in all instances of send_email
+# 2025/03/31: Use upper() on compares in search_playlist
+# 2025/03/31: Only check if 'Liked Songs' if NOT 'Discovery Zone'fs
+# 2025/04/01: Lots of DZ bug fixes
+# 2025/04/01: Periodic load file was loading the same playlist twice instead of different ones
+# 2025/04/01: Added notice of duplicate songs removed during periodic load
+# 2025/04/01: Combined two periodic load functions into one via ChatGPT
+# 2025/04/01: Put midstream Discover Zone detected/cleared messages after song name printed on screen
+# 2025/04/04: Added SMS message text to the SMS events in log
+# 2025/04/04: Send discovery zone detected SMS after the START SMS
+# 2025/04/04: Fix incorrect log info where 'not found in playlist' message was after overriding to 'unknown'
+# 2025/04/04: Don't send duplicate emails for song changes (original spotify_monitor emails & JMK_MODE emails)
+# 2025/04/04: Updated spotify_profile_monitor to avoid this due to spotify fetch error: *** Load Tracks: Fri Apr  4 06:20:35 2025, 1 songs [was: 302] in dz_songs.txt [0 duplicates removed]
+# 2025/04/06: Don't overwrite valid existing playlist name to [liked songs]
+# 2025/04/11: Remove 2nd space between timestamp and song names in JMK_MODE emails
+# 2025/04/14: Added configcat support
+# 2025/04/15: Setup configcat internal error logging to go to log file and not screen
+# 2025/04/16: Add a \n in DZ message before "DZ Count & DZ Playlist" to put those on another line
+# 2025/04/16: Strip \n from text messages in send_sms
+# 2025/04/16: Change formatting of the SUCCESS and ERROR logged events in send_sms
+# 2025/04/16: Don't put 2nd DZ MSG after a user goes inactive
+# 2025/04/22: WIP: Allow a 1 song exception before exiting Discovery Zone
+# 2025/04/28: Added option to truncate output to avoid line wrapping
+# 2025/06/10: Migrated to latest code base
+# 2025/06/10: Modified look & feel of configuration flags logging at startup
+# 2025/06/10: Show stats on monitored playlists (discovery zone & liked songs) on screen during initial startup
+
+# bugs and to-dos:
+# *** check for Twilio errors and report them (lost text example)
+# *** give discovery zone a +1 song grace after DZ identified [but how to message this, etc] -> started the work, see DZexceptions
+# ***      detect smart shuffle songs, for JMK at least??
+# *** why not write straight to the gdrive spreadsheet instead of indirectly via email?
+
+# command line examples
+# python spotify_monitor_jmk.py "kara.elaine.long" -b kara.csv  --monitor-dz dz_songs.txt                                     --jmk -n 138
+# python spotify_monitor_jmk.py "jeoff-us"         -b jeoff.csv --monitor-dz dz_songs.txt --monitor-liked liked_songs_jmk.txt --jmk -n 136 --alt-cookie 
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -369,6 +425,36 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
 
+JMK_MODE = False
+DISCOVERY_ZONE_FOUND_COUNT = 3
+DISCOVERY_ZONE_EXCEPTIONS_ALLOWED = 1
+TRUNCATE_CHARS = 0                      # of chars to truncate output to [0 means none]
+DZ_PLAYLIST_NAME = "Discovery Zone"
+LIKED_PLAYLIST_NAME = "Liked Songs"
+LOAD_TRACKS_FREQUENCY = 60*60*1         # every 1 hours reload discover zone and liked songs lists
+INITIAL_STARTUP = True
+sp_tracks  = []
+sp_tracks2 = []
+tracks_upper  = [] # Discovery Zone
+tracks2_upper = [] # Liked Songs
+USER_ID       = ""
+GMAIL_TAG     = ""
+ERR_CODE      = ""
+SEND_TEXTS    = False
+DZ_ALERTS     = False
+ORIG_EMAILS   = False
+SHOW_CONFIGCAT_FLAGS = True
+
+from datetime import timezone
+from twilio.rest import Client
+import threading
+
+from configcatclient.configcatclient import ConfigCatClient
+from configcatclient.configcatoptions import ConfigCatOptions, Hooks
+from configcatclient.pollingmode import PollingMode
+import logging
+from io import StringIO
+
 exec(CONFIG_BLOCK, globals())
 
 # Default name for the optional config file
@@ -473,21 +559,242 @@ adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://", adapter)
 SESSION.mount("http://", adapter)
 
-
 # Logger class to output messages to stdout and log file
 class Logger(object):
-    def __init__(self, filename):
+    def __init__(self, filename, mode="both"):
         self.terminal = sys.stdout
         self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
+        self.mode = mode  # Controls where to print
 
     def write(self, message):
-        self.terminal.write(message)
-        self.logfile.write(message)
-        self.terminal.flush()
-        self.logfile.flush()
+        """Write message based on the selected mode."""
+        if (TRUNCATE_CHARS):
+            message = message [:TRUNCATE_CHARS]
+        if self.mode in ["both", "screen"]:
+            self.terminal.write(message)
+            self.terminal.flush()
+        if self.mode in ["both", "log"]:
+            self.logfile.write(message)
+            self.logfile.flush()
 
     def flush(self):
+        pass  # Needed for compatibility with sys.stdout
+
+# Helper functions using persistent loggers
+def print_to_log(message):
+    """Prints only to the log file."""
+    if (TRUNCATE_CHARS):
+        message = message [:TRUNCATE_CHARS]
+    log_logger.write(str(message) + "\n")
+
+def print_to_both(message):
+    """Prints to both the log file and screen, bypassing sys.stdout redirection."""
+    if (TRUNCATE_CHARS):
+        message = message [:TRUNCATE_CHARS]
+    log_logger.write(str(message) + "\n")
+    sys.__stdout__.write(str(message) + "\n")  # Force writing to actual console
+    sys.__stdout__.flush()
+
+def print_to_screen(message):
+    """Prints only to the screen, bypassing sys.stdout redirection."""
+    if (TRUNCATE_CHARS):
+        message = message [:TRUNCATE_CHARS]
+    sys.__stdout__.write(str(message) + "\n")  # Force writing to actual console
+    sys.__stdout__.flush()
+
+def print_jmk(message):
+    """Prints only to the screen, bypassing sys.stdout redirection."""
+    if (TRUNCATE_CHARS):
+        message = message [:TRUNCATE_CHARS]
+    sys.__stdout__.write(str(message) + "\n")
+    sys.__stdout__.flush()
+    
+def timestring():
+    now = datetime.now()
+    return now.strftime("%m/%d, %H:%M:%S")
+
+def send_sms(smssubject):
+    """Sends an SMS using the Twilio API."""
+
+    smssubject = smssubject.replace("\n", "")
+    for retry in range(SMS_RETRIES):
+        try:
+            begin_time = int(time.time() * 1000)  # Get time in milliseconds
+
+            client = Client(ACCOUNT_SID, AUTH_TOKEN)
+
+            message = client.messages.create(
+                body=f'{ERR_CODE}, {timestring()}: {smssubject}',
+                from_=SMS_FROM,
+                to=SMS_TO
+            )
+            end_time = int(time.time() * 1000)  # Get time in milliseconds
+            print(f'*** SUCCESS: SMS Time-to-Send [{end_time - begin_time}ms], "{smssubject}"')
+            break
+        except Exception as err:
+            end_time = int(time.time() * 1000)  # Get time in milliseconds
+            print(f'*** ERROR: SMS Time-to-Send [{end_time - begin_time}ms], "{smssubject}"')
+            print(f"{err}")
+            time.sleep(SMS_TIMEOUT * (2 ** retry))
+            continue
+    else:
+        print(f"ERROR: SMS Attempts Reached Maximum")
+
+            
+def configcat_on_ready():
+#    print("✅ Client is ready.")
+    pass
+
+def configcat_on_error(error):
+    print_to_log(f"❌ Error: {error}\n")
+    pass
+
+def configcat_on_config_changed(config_data):
+    global SEND_TEXTS, DZ_ALERTS, ORIG_EMAILS, USER_ID, SHOW_CONFIGCAT_FLAGS # Needed to modify global variables
+
+    TEXTS_FLAG = "sendtexts" + USER_ID
+    DZ_ALERTS_FLAG = "senddzalerts" + USER_ID
+    ORIG_EMAILS_FLAG = "sendorigemails" + USER_ID
+
+    if SHOW_CONFIGCAT_FLAGS:
+#    print(f"🔄 Configuration has changed: {config_data}")
         pass
+
+    try:
+        # --- Extract new values from the config_data dictionary ---
+        # Use .get() for safe access in case keys or nested structures are missing
+        # The final '.get('b', None)' fetches the boolean value, defaulting to None if not found
+        raw_new_send_texts  = config_data.get(TEXTS_FLAG, {}).get('v', {}).get('b', None)
+        raw_new_dz_alerts   = config_data.get(DZ_ALERTS_FLAG, {}).get('v', {}).get('b', None)
+        raw_new_orig_emails = config_data.get(ORIG_EMAILS_FLAG, {}).get('v', {}).get('b', None)
+
+        # --- Apply Fallback Logic ---
+        # If a value wasn't found in config_data (raw_* is None), keep the existing global value.
+        # Otherwise, use the value extracted from config_data.
+        new_send_texts  = SEND_TEXTS if raw_new_send_texts is None else raw_new_send_texts
+        new_dz_alerts   = DZ_ALERTS if raw_new_dz_alerts is None else raw_new_dz_alerts
+        new_orig_emails = ORIG_EMAILS if raw_new_orig_emails is None else raw_new_orig_emails
+
+        # --- Log toggled flags (if not suppressed) ---
+        if SHOW_CONFIGCAT_FLAGS:
+            if SEND_TEXTS != new_send_texts:
+                print(f"\nsendtexts flag toggled to: {new_send_texts}\n") # Or use logit               
+            if DZ_ALERTS != new_dz_alerts:
+                print(f"\ndz_alerts flag toggled to: {new_dz_alerts}\n") # Or use logit
+            if ORIG_EMAILS != new_orig_emails:
+                print(f"\norig_emails flag toggled to: {new_orig_emails}\n") # Or use logit
+
+        # --- Update Global Variables ---
+        SEND_TEXTS = new_send_texts
+        DZ_ALERTS = new_dz_alerts
+        ORIG_EMAILS = new_orig_emails
+
+        if SHOW_CONFIGCAT_FLAGS:
+            print(f"*** Configuration Flags Loaded")
+            print(f"      Discovery Zone alerts : {DZ_ALERTS}")
+            print(f"      Send SMS for updates  : {SEND_TEXTS}")
+            print(f"      Send standard emails  : {ORIG_EMAILS}")
+            print("")
+
+    except Exception as err: # Catch potential errors during dictionary access
+        logit("Config Data Access Error", readconfigID, logging.ERROR) # Use ERROR level
+        logit(f"Error details: {err}", readconfigID, logging.ERROR)
+        # Optionally re-raise or handle specific errors like KeyError, TypeError
+
+
+# Function returning tracks for specific Spotify playlist URI
+def spotify_get_playlist_items(access_token, playlist_uri, fields, limit, offset):
+    playlist_id = playlist_uri.split(':', 2)[2]
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?fields={fields}&limit={limit}&offset={offset}"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Client-Id": SP_CACHED_CLIENT_ID,
+        "User-Agent": SP_CACHED_USER_AGENT,
+    }
+    # add si parameter so link opens in native Spotify app after clicking
+    si = "?si=1"
+
+    try:
+        response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        raise
+
+
+def search_playlist(access_token, search_playlist_name, search_playlist_uri, search_song_id, search_track_name, search_artist_name, show_size):
+    playlist_size = 9999
+    playlist_offset = 0
+    playlist_limit = 100
+    found_track = False
+
+    try:
+        if search_playlist_name.upper() in {LIKED_PLAYLIST_NAME.upper(), DZ_PLAYLIST_NAME.upper()}:
+            return True
+        
+        while playlist_offset < playlist_size and not found_track:
+            context_json = spotify_get_playlist_items(access_token, search_playlist_uri, "total,items(track(id,name,artists))", playlist_limit, playlist_offset)
+
+            if not context_json or 'items' not in context_json:
+                print("searchPlaylist error: No items in playlist response")
+                break
+
+            if show_size and playlist_offset == 0:
+                print(f"playlist size: {playlist_size}")
+
+            # Updated search logic per 3/28/2025 ChatGPT change to check all artists not just [0]
+            found_track = any(
+                item["track"]["id"] == search_song_id or 
+                (item["track"]["name"] == search_track_name and any(artist["name"] == search_artist_name for artist in item["track"]["artists"]))
+                for item in context_json["items"]
+            )
+
+            playlist_offset += playlist_limit
+
+    except Exception as err:
+        print(f"searchPlaylist error: {err}")
+
+    return found_track
+
+    
+def periodic_load_tracks(spotify_tracks, sp_tracks_var, tracks_upper_var):
+    def task():
+        global_vars = globals()
+        old_len = len(global_vars[tracks_upper_var])
+        global_vars[sp_tracks_var] = load_spotify_tracks_from_file(spotify_tracks)
+        global_vars[tracks_upper_var] = {t.upper() for t in global_vars[sp_tracks_var]}
+        
+        if len(global_vars[tracks_upper_var]) != old_len:
+            len_str = f" [was: {old_len}] " if old_len else " "
+            if INITIAL_STARTUP:
+                print_to_both(f"*** Load Monitoring Tracks: {time.ctime()}, {len(global_vars[tracks_upper_var])} songs{len_str}in {spotify_tracks} [{len(global_vars[sp_tracks_var]) - len(global_vars[tracks_upper_var])} duplicates removed]")
+            else:
+                print_to_log(f"*** Load Monitoring Tracks: {time.ctime()}, {len(global_vars[tracks_upper_var])} songs{len_str}in {spotify_tracks} [{len(global_vars[sp_tracks_var]) - len(global_vars[tracks_upper_var])} duplicates removed]")
+        timer = threading.Timer(LOAD_TRACKS_FREQUENCY, task)
+        timer.daemon = True
+        timer.start()
+    task()
+    
+
+def load_spotify_tracks_from_file(spotify_tracksF):
+    sp_tracksF = []
+    try:
+        try:
+            with open(spotify_tracksF, encoding="utf-8") as file:
+                lines = file.read().splitlines()
+        except UnicodeDecodeError:
+            with open(spotify_tracksF, encoding="cp1252") as file:
+                lines = file.read().splitlines()
+
+        sp_tracksF = [
+            line.strip()
+            for line in lines
+            if line.strip() and not line.strip().startswith("#")
+        ]
+    except Exception as e:
+        print(f"* Error: file with Spotify tracks cannot be opened - {e}")
+        sys.exit(1)
+    return(sp_tracksF)
 
 
 # Class used to generate timeout exceptions
@@ -1814,7 +2121,8 @@ def spotify_list_friends(friend_activity):
             print(f"Playlist:\t\t\t{sp_playlist}")
         print(f"Album:\t\t\t\t{sp_album}")
 
-        if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+#jmk    if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+        if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
             print(f"\nContext (Album):\t\t{sp_playlist}")
 
         if 'spotify:artist:' in sp_playlist_uri:
@@ -1825,7 +2133,8 @@ def spotify_list_friends(friend_activity):
             print(f"Playlist URL:\t\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
         print(f"Album URL:\t\t\t{spotify_convert_uri_to_url(sp_album_uri)}")
 
-        if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+#jmk    if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+        if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
             print(f"Context (Album) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
         if 'spotify:artist:' in sp_playlist_uri:
@@ -2062,8 +2371,12 @@ def resolve_executable(path):
 
 
 # Main function that monitors activity of the specified Spotify friend's user URI ID
-def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
+def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
+    global sp_tracks
+    global sp_tracks2
+    global tracks_upper
+    global tracks2_upper
     sp_active_ts_start = 0
     sp_active_ts_stop = 0
     sp_active_ts_start_old = 0
@@ -2081,6 +2394,27 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     error_500_start_ts = 0
     error_network_issue_counter = 0
     error_network_issue_start_ts = 0
+    jmk_send = False
+    DZcount = 0
+    DZexceptions = 0
+    DZplaylist = 0
+    song_count = 1
+    body_dz = ""
+    body_dz_html = ""
+    dz_message = ""
+    dz_msg_screen = ""
+    
+    def songstring():
+        if sp_playlist and is_playlist:
+            return f"{sp_track} - {sp_artist} ({sp_album}) [{sp_playlist}]"
+        else:
+            return f"{sp_track} - {sp_artist} ({sp_album})"
+
+    def songstringtext():
+        return f"{sp_track} - {sp_artist} ({sp_album})"
+
+    def time_diff_str():
+        return str(round((sp_ts - sp_active_ts_start) / 60)).zfill(2)
 
     try:
         if csv_file_name:
@@ -2094,7 +2428,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     print(out)
     print("-" * len(out))
 
-    tracks_upper = {t.upper() for t in tracks}
+# handled in periodic loading routines
+#    tracks_upper = {t.upper() for t in tracks}
+#    tracks2_upper = {t.upper() for t in tracks2}
 
     # Start loop
     while True:
@@ -2223,6 +2559,52 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_playlist_url = sp_playlist_data.get("sp_playlist_url")
                 playlist_m_body = f"\nPlaylist: {sp_playlist}"
                 playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
+                sp_playlist_owner = sp_playlist_data.get("sp_playlist_owner")
+
+                if sp_playlist_owner == "Spotify":
+                    sp_playlist = sp_playlist + " (custom)"
+
+                hasTrack = search_playlist(sp_accessToken, sp_playlist, sp_playlist_uri, sp_track_uri_id, sp_track, sp_artist, False)
+
+                # if hasTrack:
+                    # print_to_log(f"*** Track [{sp_track}] was found in playlist [{sp_playlist}]")
+                # else:
+                if not hasTrack:
+                    if (sp_playlist_owner == "Spotify"):
+                        sp_playlist = sp_playlist + "(unique)"
+#                        print_to_log(f"*** Track [{sp_track}] IS ASSUMED in spotify 'made for' playlist [{sp_playlist}]")
+                    else:
+                        print_to_log(f"*** ERROR: track [{sp_track}] NOT FOUND in playlist [{sp_playlist}] with owner [{sp_playlist_owner}] and uri [{sp_playlist_uri}]")
+                        sp_playlist = "unknown - error"
+                        is_playlist = False
+
+# this is executed during first boot up only
+            if JMK_MODE:
+                dz_str = f"{sp_artist} - {sp_track}"
+                if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper() or dz_str.upper() in tracks_upper:
+                    sp_track = sp_track + " \u2665"
+                    DZcount += 1
+                    DZexceptions = 0
+                    if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper():
+                        DZplaylist += 1
+                    else:
+                        DZplaylist = 0
+                    if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT or DZplaylist > 0):
+                        sp_playlist = DZ_PLAYLIST_NAME
+                        is_playlist = True
+                    dz_message = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                    body_dz = dz_message + "\n"
+                    body_dz_html = dz_message + "<br>"
+                else:
+                    DZcount = 0
+                    DZexceptions = 0
+                    DZplaylist = 0
+                    body_dz = ""
+                    body_dz_html = ""
+                    dz_message = ""
+                    if not is_playlist and (dz_str.upper() in tracks2_upper):
+                        is_playlist = True
+                        sp_playlist = LIKED_PLAYLIST_NAME
 
             print(f"\nUsername:\t\t\t{sp_username}")
             print(f"User URI ID:\t\t\t{sp_data['sp_uri']}")
@@ -2235,8 +2617,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             context_m_body = ""
             context_m_body_html = ""
+            apple_search_url, genius_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-            if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+
+#jmk        if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+            if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
                 print(f"\nContext (Album):\t\t{sp_playlist}")
                 context_m_body += f"\nContext (Album): {sp_playlist}"
                 context_m_body_html += f"<br>Context (Album): <a href=\"{spotify_convert_uri_to_url(sp_playlist_uri)}\">{escape(sp_playlist)}</a>"
@@ -2251,13 +2636,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 print(f"Playlist URL:\t\t\t{sp_playlist_url}")
             print(f"Album URL:\t\t\t{sp_album_url}")
 
-            if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+#jmk        if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+            if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
                 print(f"Context (Album) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
             if 'spotify:artist:' in sp_playlist_uri:
                 print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
-
-            apple_search_url, genius_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
             print(f"Apple search URL:\t\t{apple_search_url}")
             print(f"YouTube Music search URL:\t{youtube_music_search_url}")
@@ -2270,7 +2654,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             # Friend is currently active (listens to music)
             if (cur_ts - sp_ts) <= SPOTIFY_INACTIVITY_CHECK:
-                sp_active_ts_start = sp_ts - sp_track_duration
+                if JMK_MODE:
+                    sp_active_ts_start = sp_ts # reset start time to [00] instead starting at length of the first song (ex:[04])
+                else:
+                    sp_active_ts_start = sp_ts - sp_track_duration
                 sp_active_ts_stop = 0
                 listened_songs = 1
                 song_on_loop = 1
@@ -2278,19 +2665,26 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                 if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                     print("*** Track/playlist/album matched with the list!")
-
+                if sp_track.upper() in tracks2_upper or sp_playlist.upper() in tracks2_upper or sp_album.upper() in tracks2_upper:
+                    print("*** Track/playlist/album matched with the list!")
+                 
                 try:
                     if csv_file_name:
                         write_csv_entry(csv_file_name, datetime.fromtimestamp(int(cur_ts)), sp_artist, sp_track, sp_playlist, sp_album, datetime.fromtimestamp(int(sp_ts)))
                 except Exception as e:
                     print(f"* Error: {e}")
+                jmk_send = True
 
                 if ACTIVE_NOTIFICATION:
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                    if JMK_MODE:
+                        send_email(f"{GMAIL_TAG}---------------------------------", "  ", "  ", SMTP_SSL)
+                        send_email(f"{GMAIL_TAG}[{time_diff_str()}] {timestring()} {songstring()}", m_body, m_body_html, SMTP_SSL)
+                    else:
+                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
                 if TRACK_SONGS and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
@@ -2304,8 +2698,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             else:
                 sp_active_ts_stop = sp_ts
                 print(f"\n*** Friend is OFFLINE for: {calculate_timespan(int(cur_ts), int(sp_ts))}")
+                song_count = 0
 
-            print(f"\nTracks/playlists/albums to monitor: {tracks}")
+            if not JMK_MODE:
+                print(f"\nTracks/playlists/albums to monitor: {tracks}")
+                print(f"\nTracks/playlists/albums to monitor: {tracks2}")
+            if JMK_MODE:
+                print(f"")
+                if tracks:
+                    print(f"Tracks/playlists/albums to monitor: Discovery Zone ({len(tracks_upper)} songs)")
+                if tracks2:
+                    print(f"Tracks/playlists/albums to monitor: Liked Songs ({len(tracks2_upper)} songs)")
+                          
+            if dz_message or song_count:
+                print("")
+            if dz_message:
+                print(dz_message)
+            if song_count:
+                print(f"Songs Played: {song_count}")
             print_cur_ts("\nTimestamp:\t\t\t")
 
             sp_ts_old = sp_ts
@@ -2313,6 +2723,68 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             email_sent = False
 
+            # Change print's beyond this point to only go to log
+            # Then, print_jmk will only go to screen (both a possibility for debugging)
+            if JMK_MODE:
+                sys.stdout = Logger(FINAL_LOG_PATH, mode="log")
+
+            # Print after timestamp
+            if JMK_MODE and jmk_send:
+                song_count = 1
+                print_jmk(f" ")
+                print_jmk(f"----------------------")               
+                print_to_both(f"{timestring()}: {ERR_CODE}, *** Start text sent. Track: {songstring()}")
+                #---
+                if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper() or dz_str.upper() in tracks_upper:
+# this is executed during first boot up only
+# this is caught above
+#                    sp_track = sp_track + " \u2665"
+#                    DZcount += 1
+#                    DZexceptions = 0
+#                    if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT or DZplaylist > 0):
+#                        sp_playlist = DZ_PLAYLIST_NAME
+#                        is_playlist = True
+#                    if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper():
+#                        DZplaylist += 1
+#                    else:
+#                        DZplaylist = 0
+                    # after a restart, always flag DZ
+                    # if (DZcount == DISCOVERY_ZONE_FOUND_COUNT and DZplaylist == 0) or (DZplaylist == 1):
+                    if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT) or DZplaylist:
+#                        print_to_log(f"*** Discovery Zone Detected: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                        dz_message = f"*** Discovery Zone Detected: {songstring()}\nDZ Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                        print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Detected")
+                        if DZ_ALERTS:
+                            send_email(f"{GMAIL_TAG}----------------- Discovery Zone Detected -----", "  ", "  ", SMTP_SSL)
+                            # if SEND_TEXTS:
+                                # send_sms(dz_message)
+                    else:
+#                        print_to_log(f"*** Discovery Zone: DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                        dz_message = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}"
+# this is caught above
+#                    body_dz = f"Discovery Zone Count: {DZcount}\n"
+#                    body_dz_html = f"Discovery Zone Count: {DZcount}<br>"
+# cannot possibly happen at first boot up
+                # else:
+                    # if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT):
+                        # print_to_log(f"*** Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                        # print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Cleared, DZ Count: {DZcount}")
+                        # send_email(f"{GMAIL_TAG}----------------- Discovery Zone Cleared: {DZcount}, DZ Playlist: {DZplaylist}", "  ", "  ", SMTP_SSL)
+                        # if SEND_TEXTS:
+                            # send_sms(f"Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+# this is caught above
+#                    DZcount = 0
+#                    DZexceptions = 0
+#                    DZplaylist = 0
+#                    body_dz = ""
+#                    body_dz_html = ""
+                #---
+                print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] {songstring()}")
+                if SEND_TEXTS:
+                    send_sms(f"START: {songstring()}")
+                    if dz_message:
+                        send_sms(dz_message)
+                
             # Main loop
             while True:
 
@@ -2439,6 +2911,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_artist_old = sp_artist
                     sp_track_old = sp_track
                     alive_counter = 0
+                    song_count += 1
                     sp_playlist = sp_data["sp_playlist"]
                     sp_track_uri = sp_data["sp_track_uri"]
                     sp_track_uri_id = sp_data["sp_track_uri_id"]
@@ -2489,6 +2962,26 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             spotify_linux_play_song(sp_track_uri_id)
 
                     if is_playlist:
+                        sp_playlist_owner = sp_playlist_data.get("sp_playlist_owner")
+
+                        if sp_playlist_owner == "Spotify":
+                            sp_playlist = sp_playlist + " (custom)"
+
+                        hasTrack = search_playlist(sp_accessToken, sp_playlist, sp_playlist_uri, sp_track_uri_id, sp_track, sp_artist, False)
+
+                        # if hasTrack:
+                            # print_to_log(f"track: {sp_track}, was found in playlist: {sp_playlist} ({sp_track})")
+                        # else:
+                        if not hasTrack:
+                            if (sp_playlist_owner == "Spotify"):
+                                sp_playlist = sp_playlist + "(unique)"
+                                # print_to_log(f"track: {sp_track}, IS ASSUMED in 'made for' playlist: {sp_playlist} ({sp_track})")
+                            else:
+                                print_to_log(f"ERROR: track: {sp_track}, NOT FOUND in playlist: {sp_playlist} ({sp_track})")
+                                sp_playlist = "unknown"
+                                is_playlist = False
+
+                    if is_playlist:
                         sp_playlist_url = sp_playlist_data.get("sp_playlist_url")
                         playlist_m_body = f"\nPlaylist: {sp_playlist}"
                         playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
@@ -2502,6 +2995,70 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             looped_songs += 1
                     else:
                         song_on_loop = 1
+
+                    if JMK_MODE:
+                        dz_msg_screen = ""
+                        if sp_active_ts_start == 0:
+                            sp_active_ts_start = sp_ts     
+                        dz_str = f"{sp_artist} - {sp_track}"
+# this is executed for every song change
+                        #---
+                        if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper() or dz_str.upper() in tracks_upper:
+                            sp_track = sp_track + " \u2665"
+                            DZcount += 1
+                            DZexceptions = 0
+                            if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper():
+                                DZplaylist += 1
+                            else:
+                                DZplaylist = 0
+                            if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT or DZplaylist > 0):
+                                sp_playlist = DZ_PLAYLIST_NAME
+                                is_playlist = True
+# handled in section further below if someone just became active
+# this check handles if NOT just becoming active
+                            if not ((cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0):
+                                if (DZcount == DISCOVERY_ZONE_FOUND_COUNT and DZplaylist == 0) or (DZplaylist == 1):
+#                                    print_to_log(f"*** Discovery Zone Detected: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"*** Discovery Zone Detected: {songstring()}\nDZ Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                                    dz_msg_screen = f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Detected"
+#                                    print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Detected")
+                                    if DZ_ALERTS:
+                                        send_email(f"{GMAIL_TAG}----------------- Discovery Zone Detected -----", "  ", "  ", SMTP_SSL)
+                                        if SEND_TEXTS:
+                                            send_sms(dz_message)
+                                else:
+#                                    print_to_log(f"*** Discovery Zone: DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                            body_dz = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}\n"
+                            body_dz_html = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}<br>"
+                        else:
+# handled in section further below if someone just became active
+# this check handles if NOT just becoming active
+                            dz_message = ""
+                            if not ((cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0):
+                                if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT):
+#                                    print_to_log(f"*** Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"*** Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                                    dz_msg_screen = f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Cleared, DZ Count: {DZcount}"
+#                                    print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Cleared, DZ Count: {DZcount}")
+                                    send_email(f"{GMAIL_TAG}----------------- Discovery Zone Cleared: {DZcount}, DZ Playlist: {DZplaylist}", "  ", "  ", SMTP_SSL)
+                                    if SEND_TEXTS:
+                                        send_sms(dz_message)
+                            DZcount = 0
+                            DZexceptions = 0
+                            DZplaylist = 0
+                            body_dz = ""
+                            body_dz_html = ""
+                            if not is_playlist and (dz_str.upper() in tracks2_upper):
+                                is_playlist = True
+                                sp_playlist = LIKED_PLAYLIST_NAME
+                        #---
+# print song line if NOT just becoming active
+                        if not ((cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0):
+# main song line printer is here
+                            print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] {songstring()}")
+                            if dz_msg_screen:
+                                print_jmk(dz_msg_screen)
 
                     print(f"Spotify user:\t\t\t{sp_username}")
                     print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}")
@@ -2533,7 +3090,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     context_m_body = ""
                     context_m_body_html = ""
 
-                    if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+#jmk                if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+                    if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
                         print(f"\nContext (Album):\t\t{sp_playlist}")
                         context_m_body += f"\nContext (Album): {sp_playlist}"
                         context_m_body_html += f"<br>Context (Album): <a href=\"{spotify_convert_uri_to_url(sp_playlist_uri)}\">{escape(sp_playlist)}</a>"
@@ -2550,7 +3108,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"Playlist URL:\t\t\t{sp_playlist_url}")
                     print(f"Album URL:\t\t\t{sp_album_url}")
 
-                    if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+#jmk                if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
+                    if 'spotify:album:' in sp_playlist_uri and sp_playlist == sp_album:
                         print(f"Context (Album) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
                     if 'spotify:artist:' in sp_playlist_uri:
@@ -2573,7 +3132,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     # Friend got active after being offline
                     if (cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0:
 
-                        sp_active_ts_start = sp_ts - sp_track_duration
+                        if JMK_MODE:
+                            sp_active_ts_start = sp_ts # reset start time to [00] instead starting at length of the first song (ex:[04])
+                        else:
+                            sp_active_ts_start = sp_ts - sp_track_duration
 
                         listened_songs = 1
                         skipped_songs = 0
@@ -2594,31 +3156,93 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 sp_active_ts_start = sp_active_ts_start_old
                         sp_active_ts_stop = 0
 
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}{friend_active_m_body}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a>{friend_active_m_body_html}<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        if JMK_MODE:
+                            song_count = 1
+                            print_jmk(f" ")
+                            print_jmk(f"----------------------")
+                            print_to_both(f"{timestring()}: {ERR_CODE}, *** Start text sent. Track: {songstring()}")
+# this is executed when friend becomes active
+# already handled above for every song
+                            #---
+                            if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper() or dz_str.upper() in tracks_upper:
+                                # sp_track = sp_track + " \u2665"
+                                # DZcount += 1
+                                # DZexceptions = 0
+                                # if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT or DZplaylist > 0):
+                                    # sp_playlist = DZ_PLAYLIST_NAME
+                                    # is_playlist = True
+                                # if sp_playlist.upper() == DZ_PLAYLIST_NAME.upper():
+                                    # DZplaylist += 1
+                                # else:
+                                    # DZplaylist = 0
+
+                                # after a restart, always flag DZ
+                                # if (DZcount == DISCOVERY_ZONE_FOUND_COUNT and DZplaylist == 0) or (DZplaylist == 1):
+                                if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT) or DZplaylist:
+                                    #print_to_log(f"*** Discovery Zone Detected: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"*** Discovery Zone Detected: {songstring()}\nDZ Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                                    print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Detected")
+                                    if DZ_ALERTS:
+                                        send_email(f"{GMAIL_TAG}----------------- Discovery Zone Detected -----", "  ", "  ", SMTP_SSL)
+                                        if SEND_TEXTS:
+                                            send_sms(dz_message)
+                                else:
+#                                    print_to_log(f"*** Discovery Zone: DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                                # body_dz = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}\n"
+                                # body_dz_html = f"Discovery Zone Count: {DZcount}, DZ Playlist: {DZplaylist}<br>"
+                            else:
+#                                dz_message = ""
+                                if (DZcount >= DISCOVERY_ZONE_FOUND_COUNT):
+#                                    print_to_log(f"*** Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}")
+                                    dz_message = f"*** Discovery Zone Cleared: {songstring()}, DZ Count: {DZcount}, DZ Playlist: {DZplaylist}"
+                                    print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] *** Discovery Zone Cleared, DZ Count: {DZcount}")
+                                    send_email(f"{GMAIL_TAG}----------------- Discovery Zone Cleared: {DZcount}, DZ Playlist: {DZplaylist}", "  ", "  ", SMTP_SSL)
+                                    if SEND_TEXTS:
+                                        send_sms(dz_message)
+                                # DZcount = 0
+                                # DZexceptions = 0
+                                # DZplaylist = 0
+                                # body_dz = ""
+                                # body_dz_html = ""
+                            #---
+                            print_jmk(f"{timestring()}: {ERR_CODE}, [{time_diff_str()}] {songstring()}")
+                            if SEND_TEXTS:
+                                send_sms(f"START: {songstring()}")                
+                             
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}{friend_active_m_body}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a>{friend_active_m_body_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
                         if ACTIVE_NOTIFICATION:
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                             email_sent = True
+                            if JMK_MODE:
+                                send_email(f"{GMAIL_TAG}---------------------------------", "  ", "  ", SMTP_SSL)
 
                     on_the_list = False
                     if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                         print("\n*** Track/playlist/album matched with the list!")
                         on_the_list = True
+                    if sp_track.upper() in tracks2_upper or sp_playlist.upper() in tracks2_upper or sp_album.upper() in tracks2_upper:
+                        print("\n*** Track/playlist/album matched with the list!")
+                        on_the_list = True
 
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         email_sent = True
+                        if JMK_MODE:
+                            send_email(f"{GMAIL_TAG}[{time_diff_str()}] {timestring()} {songstring()}", m_body, m_body_html, SMTP_SSL)
+                        if not JMK_MODE or ORIG_EMAILS:
+                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
                     if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         if not email_sent:
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, m_body_html, SMTP_SSL)
@@ -2629,6 +3253,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     except Exception as e:
                         print(f"* Error: {e}")
 
+                    if dz_message or song_count:
+                        print("")
+                    if dz_message:
+                        print(dz_message)
+                    if song_count:
+                        print(f"Songs Played: {song_count}")
                     print_cur_ts("\nTimestamp:\t\t\t")
                     sp_ts_old = sp_ts
                 # Track has not changed
@@ -2658,6 +3288,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             listened_songs_mbody += looped_songs_mbody
                             listened_songs_mbody_html += looped_songs_mbody_html
 
+                        if JMK_MODE:
+                            print_to_both(f"{timestring()}: {ERR_CODE}, *** End text sent. [{time_diff_str()}]: {songstring()}")
+                            if SEND_TEXTS:
+                                send_sms(f"END: [{time_diff_str()}]: {songstring()}")
+
                         print(listened_songs_text)
 
                         print(f"*** Last activity:\t\t{get_date_from_ts(sp_active_ts_stop)} (inactive timer: {display_time(SPOTIFY_INACTIVITY_CHECK)})")
@@ -2685,8 +3320,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_linux_play_pause("pause")
                         if INACTIVE_NOTIFICATION:
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
-                            m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                             email_sent = True
@@ -2734,6 +3369,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp
+    global JMK_MODE, INITIAL_STARTUP, TRUNCATE_CHARS, GMAIL_TAG, ERR_CODE, SEND_TEXTS, DZ_ALERTS, ORIG_EMAILS, USER_ID
+    global log_logger, screen_logger, both_logger, FINAL_LOG_PATH
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -2809,6 +3446,12 @@ def main():
         metavar="SP_DC_COOKIE",
         type=str,
         help="Spotify sp_dc cookie"
+    )
+    api_creds.add_argument(
+        "-f", "--alt-cookie",
+        dest="alt_cookie",
+        action="store_true",
+        help="Use secondary sp_dc cookie (SP_DC_COOKIE2)"
     )
 
     # Client token source credentials (used when token source is set to client)
@@ -2954,6 +3597,33 @@ def main():
         default=None,
         help="Disable logging to spotify_monitor_<user_uri_id/file_suffix>.log"
     )
+    opts.add_argument(
+        "--monitor-dz",
+        dest="monitor_dz",
+        metavar="TRACKS_FILENAME",
+        type=str,
+        help="Filename with Spotify tracks/playlists/albums to monitor"
+    )
+    opts.add_argument(
+        "--monitor-liked",
+        dest="monitor_liked",
+        metavar="TRACKS_FILENAME2",
+        type=str,
+        help="Filename with Spotify tracks/playlists/albums to monitor"
+    )
+    opts.add_argument(
+        "-n", "--truncate",
+        dest="truncate",
+        type=int,
+        help="Truncate output to this # of characters"
+    )
+    opts.add_argument(
+        "-k", "--jmk",
+        dest="jmk",
+        action="store_true",
+        default=None,
+        help="Enable Jeoff's view and turn on texting"
+    )
 
     args = parser.parse_args()
 
@@ -3026,6 +3696,21 @@ def main():
 
     if not check_internet():
         sys.exit(1)
+
+    if args.alt_cookie:
+        SP_DC_COOKIE = SP_DC_COOKIE2
+        GMAIL_TAG    = GMAIL_TAG2
+        ERR_CODE     = ERR_CODE2
+        SEND_TEXTS   = SEND_TEXTS2
+        DZ_ALERTS    = DZ_ALERTS2
+        ORIG_EMAILS  = ORIG_EMAILS2
+        USER_ID      = USER_ID2
+
+    if args.jmk:
+        JMK_MODE = True
+
+    if args.truncate:
+        TRUNCATE_CHARS = args.truncate
 
     if args.send_test_email:
         print("* Sending test email notification ...\n")
@@ -3248,9 +3933,41 @@ def main():
                 log_path = Path(f"{log_path.name}_{FILE_SUFFIX}.log")
         log_path.parent.mkdir(parents=True, exist_ok=True)
         FINAL_LOG_PATH = str(log_path)
-        sys.stdout = Logger(FINAL_LOG_PATH)
+        sys.stdout = Logger(FINAL_LOG_PATH, mode="both")
     else:
         FINAL_LOG_PATH = None
+
+    # Create persistent Logger instances
+    log_logger = Logger(FINAL_LOG_PATH, mode="log")
+    screen_logger = Logger(FINAL_LOG_PATH, mode="screen")
+    both_logger = Logger(FINAL_LOG_PATH, mode="both")
+
+    ## BEGIN SETUP CONFIGCAT - must be after custom log is set up because the error logging routine uses print_to_log
+    if JMK_MODE:
+        SDK_KEY = "kcnbCHqgDUmLiqvIhMqs-g/pDdz-kiByUqhJJvBr70pUg"
+        hooks = Hooks()
+        #hooks.add_on_client_ready(configcat_on_ready)
+        hooks.add_on_config_changed(configcat_on_config_changed)
+        hooks.add_on_error(configcat_on_error)
+        client = ConfigCatClient.get(SDK_KEY,
+            ConfigCatOptions(
+                polling_mode=PollingMode.auto_poll(poll_interval_seconds=60), hooks=hooks
+            )
+        )
+        client.force_refresh()
+        logger = logging.getLogger('configcat')
+        logger.setLevel(logging.CRITICAL) # all errors are still handled by the error handler routine (configcat_on_error) and sent to log
+    ## END SETUP CONFIGCAT
+
+    if args.monitor_dz:
+        periodic_load_tracks(args.monitor_dz, "sp_tracks", "tracks_upper")
+
+    if args.monitor_liked:
+        periodic_load_tracks(args.monitor_liked, "sp_tracks2", "tracks2_upper")
+
+    if INITIAL_STARTUP:
+        INITIAL_STARTUP = False
+        print("")
 
     if args.notify_active is True:
         ACTIVE_NOTIFICATION = True
@@ -3302,7 +4019,7 @@ def main():
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
         signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
-    spotify_monitor_friend_uri(args.user_id, sp_tracks, CSV_FILE)
+    spotify_monitor_friend_uri(args.user_id, sp_tracks, sp_tracks2, CSV_FILE)
 
     sys.stdout = stdout_bck
     sys.exit(0)
