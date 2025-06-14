@@ -23,7 +23,7 @@ VERSION = "2.1.2 jmk"
 # spotify-buddylist API:  https://github.com/valeriangalliat/spotify-buddylist
 # spotify-api:            https://developer.spotify.com/documentation/web-api (official API)
 # spotify-monitor:        https://github.com/misiektoja/spotify_monitor/
-# spot-fy-api-python:     https://github.com/thlucas1/SpotifyWebApiPython (reference only)
+# spotify-api-python:     https://github.com/thlucas1/SpotifyWebApiPython (reference only)
 
 # revision history
 # 2025/03/28: Finished porting "spotify logger" features of JMK into this app (python, and maintained)
