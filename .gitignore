@@ -1,3 +1,11 @@
+# Jeoff's Items
+*.bak
+*.csv
+*.log
+*.txt
+*.json
+archive/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
