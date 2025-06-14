@@ -70,8 +70,7 @@ VERSION = "2.1.2 jmk"
 # *** why not write straight to the gdrive spreadsheet instead of indirectly via email?
 
 # command line examples
-# python spotify_monitor_jmk.py "kara.elaine.long" -b kara.csv  --monitor-dz dz_songs.txt                                     --jmk -n 138
-# python spotify_monitor_jmk.py "jeoff-us"         -b jeoff.csv --monitor-dz dz_songs.txt --monitor-liked liked_songs_jmk.txt --jmk -n 136 --alt-cookie 
+# *** see .conf file
 
 # ---------------------------
 # CONFIGURATION SECTION START
