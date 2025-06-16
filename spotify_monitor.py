@@ -151,6 +151,19 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
+# Optional: specify user agent manually
+#
+# When the token source is 'cookie' - set it to web browser user agent, some examples:
+# Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0
+# Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:139.0) Gecko/20100101 Firefox/139.0
+#
+# When the token source is 'client' - set it to Spotify desktop client user agent, some examples:
+# Spotify/126200580 Win32_x86_64/0 (PC desktop)
+# Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
+#
+# Leave empty to auto-generate it randomly for specific token source
+USER_AGENT = ""
+
 # How often to print a "liveness check" message to the output; in seconds
 # Set to 0 to disable
 LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
@@ -264,14 +277,6 @@ LOGIN_URL = "https://login5.spotify.com/v3/login"
 # Spotify client token URL
 CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 
-# Optional: specify user agent manually, some examples:
-#
-# Spotify/126200580 Win32_x86_64/0 (PC desktop)
-# Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
-#
-# Leave empty to auto-generate it randomly
-USER_AGENT = ""
-
 # Optional: specify app version manually (e.g. '1.2.62.580.g7e3d9a4f')
 # Leave empty to auto-generate from USER_AGENT
 APP_VERSION = ""
@@ -311,7 +316,6 @@ SP_DC_COOKIE = ""
 LOGIN_REQUEST_BODY_FILE = ""
 CLIENTTOKEN_REQUEST_BODY_FILE = ""
 LOGIN_URL = ""
-USER_AGENT = ""
 DEVICE_ID = ""
 SYSTEM_ID = ""
 USER_URI_ID = ""
@@ -349,6 +353,7 @@ SONG_ON_LOOP_VALUE = 0
 SKIPPED_SONG_THRESHOLD = 0
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
+USER_AGENT = ""
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
@@ -393,7 +398,6 @@ SP_CACHED_ACCESS_TOKEN = None
 SP_CACHED_REFRESH_TOKEN = None
 SP_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
-SP_CACHED_USER_AGENT = ""
 
 # URL of the Spotify Web Player endpoint to get access token
 TOKEN_URL = "https://open.spotify.com/api/token"
@@ -510,7 +514,7 @@ def signal_handler(sig, frame):
 # Checks internet connectivity
 def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL):
     try:
-        _ = req.get(url, headers={'User-Agent': get_random_user_agent() if TOKEN_SOURCE == 'cookie' else get_random_spotify_user_agent()}, timeout=timeout, verify=verify)
+        _ = req.get(url, headers={'User-Agent': USER_AGENT}, timeout=timeout, verify=verify)
         return True
     except req.RequestException as e:
         print(f"* No connectivity, please check your network:\n\n{e}")
@@ -1132,7 +1136,7 @@ def generate_totp():
 
 
 # Retrieves a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
-def refresh_token(sp_dc: str) -> dict:
+def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     transport = True
     init = True
     session = req.Session()
@@ -1140,8 +1144,7 @@ def refresh_token(sp_dc: str) -> dict:
     data: dict = {}
     token = ""
 
-    ua = get_random_user_agent()
-    server_time = fetch_server_time(session, ua)
+    server_time = fetch_server_time(session, USER_AGENT)
     totp_obj = generate_totp()
     client_time = int(time_ns() / 1000 / 1000)
     otp_value = totp_obj.at(server_time)
@@ -1159,7 +1162,7 @@ def refresh_token(sp_dc: str) -> dict:
     }
 
     headers = {
-        "User-Agent": ua,
+        "User-Agent": USER_AGENT,
         "Accept": "application/json",
         "Referer": "https://open.spotify.com/",
         "App-Platform": "WebPlayer",
@@ -1185,7 +1188,7 @@ def refresh_token(sp_dc: str) -> dict:
         if platform.system() != "Windows":
             signal.alarm(0)
 
-    if not transport or (transport and not check_token_validity(token, data.get("clientId", ""), ua)):
+    if not transport or (transport and not check_token_validity(token, data.get("clientId", ""), USER_AGENT)):
         params["reason"] = "init"
 
         try:
@@ -1206,42 +1209,39 @@ def refresh_token(sp_dc: str) -> dict:
                 signal.alarm(0)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception(f"refresh_token(): Unsuccessful token request{': ' + last_err if last_err else ''}")
+        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
 
     return {
         "access_token": token,
         "expires_at": data["accessTokenExpirationTimestampMs"] // 1000,
         "client_id": data.get("clientId", ""),
-        "user_agent": ua,
         "length": len(token)
     }
 
 
 # Fetches Spotify access token based on provided SP_DC value
 def spotify_get_access_token_from_sp_dc(sp_dc: str):
-    global SP_CACHED_ACCESS_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT
+    global SP_CACHED_ACCESS_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID
 
     now = time.time()
 
-    if SP_CACHED_ACCESS_TOKEN and now < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+    if SP_CACHED_ACCESS_TOKEN and now < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
 
     max_retries = TOKEN_MAX_RETRIES
     retry = 0
 
     while retry < max_retries:
-        token_data = refresh_token(sp_dc)
+        token_data = refresh_access_token_from_sp_dc(sp_dc)
         token = token_data["access_token"]
         client_id = token_data.get("client_id", "")
-        user_agent = token_data.get("user_agent", get_random_user_agent())
         length = token_data["length"]
 
         SP_CACHED_ACCESS_TOKEN = token
         SP_ACCESS_TOKEN_EXPIRES_AT = token_data["expires_at"]
         SP_CACHED_CLIENT_ID = client_id
-        SP_CACHED_USER_AGENT = user_agent
 
-        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
             retry += 1
             time.sleep(TOKEN_RETRY_TIMEOUT)
         else:
@@ -1755,16 +1755,14 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 # Fetches list of Spotify friends
 def spotify_get_friends_json(access_token):
     url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
 
     response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
@@ -1886,16 +1884,14 @@ def spotify_get_friend_info(friend_activity, uri):
 def spotify_get_track_info(access_token, track_uri):
     track_id = track_uri.split(':', 2)[2]
     url = "https://api.spotify.com/v1/tracks/" + track_id
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
@@ -1920,16 +1916,14 @@ def spotify_get_track_info(access_token, track_uri):
 def spotify_get_playlist_info(access_token, playlist_uri):
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
@@ -1951,16 +1945,14 @@ def spotify_get_playlist_info(access_token, playlist_uri):
 # Gets basic information about access token owner
 def spotify_get_current_user(access_token) -> dict | None:
     url = "https://api.spotify.com/v1/me"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
 
     if platform.system() != 'Windows':
@@ -1993,16 +1985,14 @@ def spotify_get_current_user(access_token) -> dict | None:
 def is_user_removed(access_token, user_uri_id):
     url = f"https://api.spotify.com/v1/users/{user_uri_id}"
 
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
 
     try:
@@ -2106,7 +2096,7 @@ def resolve_executable(path):
     raise FileNotFoundError(f"Could not find executable '{path}'")
 
 
-# Main function that monitors activity of the specified Spotify friend's user URI ID
+# Monitors music activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
     sp_active_ts_start = 0
@@ -2359,7 +2349,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             email_sent = False
 
-            # Main loop
+            # Primary loop
             while True:
 
                 while True:
@@ -2791,7 +2781,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -2999,6 +2989,13 @@ def main():
         help="Filename with Spotify tracks/playlists/albums to alert on"
     )
     opts.add_argument(
+        "--user-agent",
+        dest="user_agent",
+        metavar="USER_AGENT",
+        type=str,
+        help="Specify a custom user agent for Spotify API requests; leave empty to auto-generate it"
+    )
+    opts.add_argument(
         "-y", "--file-suffix",
         dest="file_suffix",
         metavar="SUFFIX",
@@ -3082,6 +3079,15 @@ def main():
         except ModuleNotFoundError:
             raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip3 install pyotp\n\nOnce installed, re-run this tool")
 
+    if args.user_agent:
+        USER_AGENT = args.user_agent
+
+    if not USER_AGENT:
+        if TOKEN_SOURCE == "client":
+            USER_AGENT = get_random_spotify_user_agent()
+        else:
+            USER_AGENT = get_random_user_agent()
+
     if not check_internet():
         sys.exit(1)
 
@@ -3130,9 +3136,6 @@ def main():
             else:
                 print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) does not exist")
                 sys.exit(1)
-
-        if not USER_AGENT:
-            USER_AGENT = get_random_spotify_user_agent()
 
         if any([
             not LOGIN_URL,
@@ -3185,7 +3188,7 @@ def main():
             try:
                 APP_VERSION = ua_to_app_version(USER_AGENT)
             except Exception as e:
-                print(f"Warning: wrong USER_AGENT defined, reverting to the default one: {e}")
+                print(f"Warning: wrong USER_AGENT defined, reverting to the default one for APP_VERSION: {e}")
                 APP_VERSION = app_version_default
         else:
             APP_VERSION = app_version_default
@@ -3343,6 +3346,7 @@ def main():
     print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
     print(f"* Token source:\t\t\t{TOKEN_SOURCE}")
     print(f"* Track listened songs:\t\t{TRACK_SONGS}")
+    # print(f"* User agent:\t\t\t{USER_AGENT}")
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
