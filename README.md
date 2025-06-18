@@ -15,6 +15,7 @@ NOTE: If you're interested in tracking changes to Spotify users' profiles includ
 - Saving all listened songs with timestamps to the CSV file
 - Clickable Spotify, Apple Music, YouTube Music and Genius Lyrics search URLs printed in the console & included in email notifications
 - Displaying basic statistics for the user's playing session (duration, time span, number of listened and skipped songs, songs on loop)
+- Support for two different methods to get a Spotify access token (`sp_dc cookie`, `desktop client`)
 - Possibility to control the running copy of the script via signals
 
 <p align="center">
@@ -131,65 +132,64 @@ spotify_monitor --generate-config > spotify_monitor.conf
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
 <a id="spotify-access-token-source"></a>
-#### Spotify access token source
+### Spotify access token source
 
 The tool supports two methods for obtaining a Spotify access token.
 
 It can be configured via the `TOKEN_SOURCE` configuration option or the `--token-source` flag. 
 
-The **recommended method** is `cookie` which uses the sp_dc cookie to retrieve a token from the Spotify web endpoint.
+**Recommended: `cookie`** 
 
-The **alternative method** is `client` which uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. This approach is intended for advanced users who want an indefinitely valid token with the widest scope.
+Uses the `sp_dc` cookie to retrieve a token from the Spotify web endpoint. This method is easy to set up and recommended for most users.
+
+**Alternative: `client`** 
+
+Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.
 
 If no method is specified, the tool defaults to the `cookie` method.
+
+**Important**: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API. That said, while I've never encountered any issues on my own accounts, I can't guarantee that Spotify won't impose restrictions in the future - you've been warned.
 
 <a id="spotify-sp_dc-cookie"></a>
 #### Spotify sp_dc Cookie
 
-It is default method used to obtain a Spotify access token.
+This is the default method used to obtain a Spotify access token.
 
-Log in to [https://open.spotify.com/](https://open.spotify.com/) in your web browser.
+- Log in to [https://open.spotify.com/](https://open.spotify.com/) in your web browser.
 
-Locate and copy the value of the `sp_dc` cookie.
+- Locate and copy the value of the `sp_dc` cookie.
+   - Use your web browser's dev console or **Cookie-Editor** by cgagnier to extract it easily: [https://cookie-editor.com/](https://cookie-editor.com/)
 
-Use your web browser's dev console or **Cookie-Editor** by cgagnier to extract it easily: [https://cookie-editor.com/](https://cookie-editor.com/)
+- Provide the `SP_DC_COOKIE` secret using one of the following methods:
+   - Pass it at runtime with `-u` / `--spotify-dc-cookie`
+   - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_DC_COOKIE=...`)
+   - Add it to [.env file](#storing-secrets) (`SP_DC_COOKIE=...`) for persistent use
+   - Fallback: hard-code it in the code or config file
 
-Provide the `SP_DC_COOKIE` secret using one of the following methods:
- - Pass it at runtime with `-u` / `--spotify-dc-cookie`
- - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_DC_COOKIE=...`)
- - Add it to [.env file](#storing-secrets) (`SP_DC_COOKIE=...`) for persistent use
+If your `sp_dc` cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new `sp_dc` cookie value.
 
-Fallback:
- - Hard-code it in the code or config file
-
-You will be informed by the tool once the `sp_dc` cookie expires (proper message on the console and in email).
-
-If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to the process to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
-
-**Important**: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API.
+If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
 
-To use credentials captured from the Spotify desktop client to obtain an access token, set the `TOKEN_SOURCE` configuration option to `client` or use the `--token-source client` flag.
+This is the alternative method used to obtain a Spotify access token which simulates a login from the real Spotify desktop app using credentials intercepted from a real session.
 
-Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com)).
+- Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com)).
 
-Launch the Spotify desktop client and look for POST requests to `https://login{n}.spotify.com/v3/login`
+- Launch the Spotify desktop client and look for POST requests to `https://login{n}.spotify.com/v3/login`
+   - Note: The `login` part is suffixed with one or more digits (e.g. `login5`).
 
-Note: The `login` part is suffixed with one or more digits (e.g. `login5`).
+- If you don't see this request, log out from the Spotify desktop client and log back in.
 
-If you don't see this request, log out from the client and log back in.
-
-Export the login request body (a binary Protobuf payload) to a file.
-
-In Proxyman: ***right click the request → Export → Request Body → Save File***.
+- Export the login request body (a binary Protobuf payload) to a file (e.g. ***login-request-body-file***)
+   - In Proxyman: **right click the request → Export → Request Body → Save File**.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/proxyman_export_protobuf.png" alt="proxyman_export_protobuf" width="80%"/>
 </p>
 
-Then run the tool with `-w <path-to-login-request-body-file>`:
+- Run the tool with `--token-source client -w <path-to-login-request-body-file>`:
 
 ```sh
 spotify_monitor --token-source client -w <path-to-login-request-body-file> <spotify_user_uri_id>
@@ -197,15 +197,17 @@ spotify_monitor --token-source client -w <path-to-login-request-body-file> <spot
 
 If successful, the tool will automatically extract the necessary fields and begin monitoring.
 
-You can also persist the Protobuf request file path using the `LOGIN_REQUEST_BODY_FILE` configuration option.
+Instead of using the `-w` flag each time, you can persist the Protobuf login request file path by setting the `LOGIN_REQUEST_BODY_FILE` configuration option.
+
+The same applies to `--token-source client` flag - you can persist it via `TOKEN_SOURCE` configuration option set to `client`.
 
 The tool will automatically refresh both the access token and client token using the intercepted refresh token.
 
-Advanced options are available for further customization - refer to the configuration file comments. However, default settings should work for most cases.
+If your refresh token expires, the tool will notify you via the console and email. In that case, you'll need to re-export the login request body. 
 
-You will be informed by the tool once the refresh token expires (proper message on the console and in email).
+If you re-export the login request body to the same file name, you can send a `SIGHUP` signal to reload the file with the new refresh token without restarting the tool. More info in [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-**Important**: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API.
+Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.
 
 <a id="following-the-monitored-user"></a>
 ### Following the Monitored User
@@ -244,12 +246,13 @@ spotify_monitor --send-test-email
 <a id="storing-secrets"></a>
 ### Storing Secrets
 
-It is recommended to store secrets like `SP_DC_COOKIE` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
+It is recommended to store secrets like `SP_DC_COOKIE`, `REFRESH_TOKEN` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
 
-Set environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
+Set the needed environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
 
 ```sh
 export SP_DC_COOKIE="your_sp_dc_cookie_value"
+export REFRESH_TOKEN="your_spotify_app_refresh_token"
 export SMTP_PASSWORD="your_smtp_password"
 ```
 
@@ -259,6 +262,7 @@ Alternatively store them persistently in a dotenv file (recommended):
 
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
+REFRESH_TOKEN="your_spotify_app_refresh_token"
 SMTP_PASSWORD="your_smtp_password"
 ```
 
