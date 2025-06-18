@@ -2,6 +2,23 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.2 (18 Jun 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Added new config option (`USER_AGENT`) and flag (`--user-agent`) to set Spotify user agent string
+- **NEW:** Ensured all Spotify requests now include the appropriate user agent, if not specified - it is randomly generated per session for specific type of token source
+- **IMPROVE:** Improved detection when a Spotify user has been removed
+- **IMPROVE:** HTTPAdapter now honors the Retry-After header on 429 responses for better Spotify API rate limit handling
+- **IMPROVE:** Updated captions shown for Apple and YouTube Music links
+- **IMPROVE:** Added more descriptive error messages and covered additional corner cases
+- **IMPROVE:** Suppressed -z / --clienttoken-request-body-file from help output to reduce confusion (flag remains functional, but hidden)
+- **IMPROVE:** Clarifications in inline comments explaining how to configure Spotify Desktop client method
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed issue with incorrectly reported songs played on loop
+
 # Changes in 2.1.2 (10 Jun 2025)
 
 **Bug fixes**:
