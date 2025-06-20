@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1.2 jmk
+v2.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -11,11 +11,11 @@ Python pip3 requirements:
 requests
 python-dateutil
 urllib3
-pyotp (needed when the token source is set to cookie)
+pyotp (optional, needed when the token source is set to cookie)
 python-dotenv (optional)
 """
 
-VERSION = "2.1.2 jmk"
+VERSION = "2.2"
 
 # API 401 error means sp_dc cookie has expired. Lasts one year. 03/15/2025
 
@@ -79,27 +79,25 @@ VERSION = "2.1.2 jmk"
 CONFIG_BLOCK = """
 # Select the method used to obtain the Spotify access token
 # Available options:
-#   cookie  - uses the sp_dc cookie to retrieve a token via the Spotify web endpoint (recommended)
-#   client  - uses captured credentials from the Spotify desktop client and a Protobuf-based login flow (for advanced users)
+#   cookie - uses the sp_dc cookie to retrieve a token via the Spotify web endpoint (recommended)
+#   client - uses captured credentials from the Spotify desktop client and a Protobuf-based login flow (for advanced users)
 TOKEN_SOURCE = "cookie"
 
-# ------------------------------------------------
+# ---------------------------------------------------------------------
 
 # The section below is used when the token source is set to 'cookie'
 # (to configure the alternative 'client' method, see the section at the end of this config block)
 #
-# Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
-# Use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/
-#
-# Provide the SP_DC_COOKIE secret using one of the following methods:
+# - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
+#   (use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/)
+# - Provide the SP_DC_COOKIE secret using one of the following methods:
 #   - Pass it at runtime with -u / --spotify-dc-cookie
 #   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
 #   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
-# Fallback:
-#   - Hard-code it in the code or config file
+#   - Fallback: hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
-# ------------------------------------------------
+# ---------------------------------------------------------------------
 
 # SMTP settings for sending email notifications
 # If left as-is, no notifications will be sent
@@ -206,6 +204,19 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
+# Optional: specify user agent manually
+#
+# When the token source is 'cookie' - set it to web browser user agent, some examples:
+# Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0
+# Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:139.0) Gecko/20100101 Firefox/139.0
+#
+# When the token source is 'client' - set it to Spotify desktop client user agent, some examples:
+# Spotify/126200580 Win32_x86_64/0 (PC desktop)
+# Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
+#
+# Leave empty to auto-generate it randomly for specific token source
+USER_AGENT = ""
+
 # How often to print a "liveness check" message to the output; in seconds
 # Set to 0 to disable
 LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
@@ -274,44 +285,64 @@ TOKEN_MAX_RETRIES = 10
 # Used only when the token source is set to 'cookie'
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
-# ------------------------------------------------
+# ---------------------------------------------------------------------
+
 # The section below is used when the token source is set to 'client'
 #
-# To extract device_id, system_id, user_uri_id and refresh_token from binary login request Protobuf file:
-#
-# - run an intercepting proxy of your choice (like Proxyman)
-# - launch the Spotify desktop client and look for requests to: https://login{n}.spotify.com/v3/login
-#   note: the 'login' part is suffixed with one or more digits
-# - export the login request body (a binary Protobuf payload) to a file
+# - Run an intercepting proxy of your choice (like Proxyman)
+# - Launch the Spotify desktop client and look for requests to: https://login{n}.spotify.com/v3/login
+#   (the 'login' part is suffixed with one or more digits)
+# - Export the login request body (a binary Protobuf payload) to a file
 #   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <login-request-body-file>)
 #
-# Can also be set using the -w flag
+# To automatically extract DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN from the exported binary login
+# request Protobuf file:
+#
+# - Run the tool with the -w flag to indicate an exported file or specify its file name below
 LOGIN_REQUEST_BODY_FILE = ""
 
-# Alternatively, set the configuration options below manually
+# Alternatively, you can manually set the DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN options
+# (however, using the automated method described above is recommended)
 #
-# For the binary login request Protobuf body, if your proxy supports Protobuf decoding, extract:
-#   - DEVICE_ID
-#   - SYSTEM_ID
-#   - USER_URI_ID
-#   - REFRESH_TOKEN
-# and assign them to respective configuration options
+# These values can be extracted using one of the following methods:
 #
-# Alternatively, you can use protoc tool (part of Protobuf pip package) to decode the binary:
-#   protoc --decode_raw < <path-to-login-request-body-file>
+# - Run spotify_profile_monitor with the -w flag without specifying SPOTIFY_USER_URI_ID - it will decode the file and
+#   print the values to stdout, example:
+#       spotify_profile_monitor --token-source client -w <path-to-login-request-body-file>
 #
-# If you decided to set the configuration options manually, it is recommended to provide the REFRESH_TOKEN
-# secret using one of the following methods:
+# - Use the protoc tool (part of protobuf pip package):
+#       pip install protobuf
+#       protoc --decode_raw < <path-to-login-request-body-file>
+#
+# - Use the built-in Protobuf decoder in your intercepting proxy (if supported)
+#
+# The Protobuf structure is as follows:
+#
+#    {
+#      1: {
+#           1: "DEVICE_ID",
+#           2: "SYSTEM_ID"
+#         },
+#      100: {
+#           1: "USER_URI_ID",
+#           2: "REFRESH_TOKEN"
+#         }
+#    }
+#
+# Provide the extracted values below (DEVICE_ID, SYSTEM_ID, USER_URI_ID). The REFRESH_TOKEN secret can be
+# supplied using one of the following methods:
 #   - Set it as an environment variable (e.g. export REFRESH_TOKEN=...)
 #   - Add it to ".env" file (REFRESH_TOKEN=...) for persistent use
-# Fallback:
-#   - Hard-code it in the code or config file
+#   - Fallback: hard-code it in the code or config file
 DEVICE_ID = "your_spotify_app_device_id"
 SYSTEM_ID = "your_spotify_app_system_id"
 USER_URI_ID = "your_spotify_user_uri_id"
 REFRESH_TOKEN = "your_spotify_app_refresh_token"
 
-# Default values below are typically fine - only modify if necessary
+# ----------------------------------------------
+# Advanced options for 'client' token source
+# Modifying the values below is NOT recommended!
+# ----------------------------------------------
 
 # Spotify login URL
 LOGIN_URL = "https://login5.spotify.com/v3/login"
@@ -319,20 +350,58 @@ LOGIN_URL = "https://login5.spotify.com/v3/login"
 # Spotify client token URL
 CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 
-# Optional: specify user agent manually, some examples:
+# Platform-specific values for token generation so the Spotify client token requests match your exact Spotify desktop
+# client build (arch, OS build, app version etc.)
 #
-# Spotify/126200580 Win32_x86_64/0 (PC desktop)
-# Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
+# - Run an intercepting proxy of your choice (like Proxyman)
+# - Launch the Spotify desktop client and look for requests to: https://clienttoken.spotify.com/v1/clienttoken
+#   (these requests are sent every time client token expires, usually every 2 weeks)
+# - Export the client token request body (a binary Protobuf payload) to a file
+#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
 #
-# Leave empty to auto-generate it randomly
-USER_AGENT = ""
+# To automatically extract APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and CLIENT_MODEL from the
+# exported binary client token request Protobuf file:
+#
+# - Run the tool with the hidden -z flag to indicate an exported file or specify its file name below
+CLIENTTOKEN_REQUEST_BODY_FILE = ""
 
-# Optional: specify app version manually (e.g. '1.2.62.580.g7e3d9a4f')
-# Leave empty to auto-generate from USER_AGENT
-APP_VERSION = ""
-
-# Platform-specific values for token generation, typically leave unchanged
-# You can also extract these from a captured client token request Protobuf file (see below)
+# Alternatively, you can manually set the APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and
+# CLIENT_MODEL options
+#
+# These values can be extracted using one of the following methods:
+#
+# - run spotify_profile_monitor with the hidden -z flag without specifying SPOTIFY_USER_URI_ID - it will decode the file
+#   and print the values to stdout, example:
+#       spotify_profile_monitor --token-source client -z <path-to-clienttoken-request-body-file>
+#
+# - use the protoc tool (part of protobuf pip package):
+#       pip install protobuf
+#       protoc --decode_raw < <path-to-clienttoken-request-body-file>
+#
+# - use the built-in Protobuf decoder in your intercepting proxy (if supported)
+#
+# The Protobuf structure is as follows:
+#
+# 1: 1
+# 2 {
+#   1: "APP_VERSION"
+#   2: "DEVICE_ID"
+#   3 {
+#     1 {
+#       4 {
+#         1: "CPU_ARCH"
+#         3: "OS_BUILD"
+#         4: "PLATFORM"
+#         5: "OS_MAJOR"
+#         6: "OS_MINOR"
+#         8: "CLIENT_MODEL"
+#       }
+#     }
+#     2: "SYSTEM_ID"
+#   }
+# }
+#
+# Provide the extracted values below (except for DEVICE_ID and SYSTEM_ID as it was already provided via -w)
 CPU_ARCH = 10
 OS_BUILD = 19045
 PLATFORM = 2
@@ -340,19 +409,11 @@ OS_MAJOR = 9
 OS_MINOR = 9
 CLIENT_MODEL = 34404
 
-# Optional: to extract app_version, cpu_arch, os_build, platform, os_major, os_minor and client_model from
-# binary client token request Protobuf file:
-#
-# - run an intercepting proxy of your choice (like Proxyman)
-# - launch the Spotify desktop client and look for requests to: https://clienttoken.spotify.com/v1/clienttoken
-#   (these requests are sent every time client token expires, usually every 2 weeks)
-# - export the client token request body (a binary Protobuf payload) to a file
-#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
-#
-# Can also be set via the -z flag
-CLIENTTOKEN_REQUEST_BODY_FILE = ""
+# App version (e.g. '1.2.62.580.g7e3d9a4f')
+# Leave empty to auto-generate from USER_AGENT
+APP_VERSION = ""
 
-# ------------------------------------------------
+# ---------------------------------------------------------------------
 """
 
 # -------------------------
@@ -366,7 +427,6 @@ SP_DC_COOKIE = ""
 LOGIN_REQUEST_BODY_FILE = ""
 CLIENTTOKEN_REQUEST_BODY_FILE = ""
 LOGIN_URL = ""
-USER_AGENT = ""
 DEVICE_ID = ""
 SYSTEM_ID = ""
 USER_URI_ID = ""
@@ -404,6 +464,7 @@ SONG_ON_LOOP_VALUE = 0
 SKIPPED_SONG_THRESHOLD = 0
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
+USER_AGENT = ""
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
@@ -478,7 +539,6 @@ SP_CACHED_ACCESS_TOKEN = None
 SP_CACHED_REFRESH_TOKEN = None
 SP_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
-SP_CACHED_USER_AGENT = ""
 
 # URL of the Spotify Web Player endpoint to get access token
 TOKEN_URL = "https://open.spotify.com/api/token"
@@ -551,7 +611,8 @@ retry = Retry(
     backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["GET", "HEAD", "OPTIONS"],
-    raise_on_status=False
+    raise_on_status=False,
+    respect_retry_after_header=True
 )
 
 adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
@@ -816,7 +877,7 @@ def signal_handler(sig, frame):
 # Checks internet connectivity
 def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL):
     try:
-        _ = req.get(url, headers={'User-Agent': get_random_user_agent() if TOKEN_SOURCE == 'cookie' else get_random_spotify_user_agent()}, timeout=timeout, verify=verify)
+        _ = req.get(url, headers={'User-Agent': USER_AGENT}, timeout=timeout, verify=verify)
         return True
     except req.RequestException as e:
         print(f"* No connectivity, please check your network:\n\n{e}")
@@ -1234,7 +1295,7 @@ def reload_secrets_signal_handler(sig, frame):
         if LOGIN_REQUEST_BODY_FILE:
             if os.path.isfile(LOGIN_REQUEST_BODY_FILE):
                 try:
-                    DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN = parse_request_body_file(LOGIN_REQUEST_BODY_FILE)
+                    DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN = parse_login_request_body_file(LOGIN_REQUEST_BODY_FILE)
                 except Exception as e:
                     print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                 else:
@@ -1437,8 +1498,8 @@ def generate_totp():
     return pyotp.TOTP(secret, digits=6, interval=30)
 
 
-# Retrieves a new Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
-def refresh_token(sp_dc: str) -> dict:
+# Refreshes the Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
+def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     transport = True
     init = True
     session = req.Session()
@@ -1446,8 +1507,7 @@ def refresh_token(sp_dc: str) -> dict:
     data: dict = {}
     token = ""
 
-    ua = get_random_user_agent()
-    server_time = fetch_server_time(session, ua)
+    server_time = fetch_server_time(session, USER_AGENT)
     totp_obj = generate_totp()
     client_time = int(time_ns() / 1000 / 1000)
     otp_value = totp_obj.at(server_time)
@@ -1465,12 +1525,14 @@ def refresh_token(sp_dc: str) -> dict:
     }
 
     headers = {
-        "User-Agent": ua,
+        "User-Agent": USER_AGENT,
         "Accept": "application/json",
         "Referer": "https://open.spotify.com/",
         "App-Platform": "WebPlayer",
         "Cookie": f"sp_dc={sp_dc}",
     }
+
+    last_err = ""
 
     try:
         if platform.system() != "Windows":
@@ -1482,13 +1544,14 @@ def refresh_token(sp_dc: str) -> dict:
         data = response.json()
         token = data.get("accessToken", "")
 
-    except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
+    except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
         transport = False
+        last_err = str(e)
     finally:
         if platform.system() != "Windows":
             signal.alarm(0)
 
-    if not transport or (transport and not check_token_validity(token, data.get("clientId", ""), ua)):
+    if not transport or (transport and not check_token_validity(token, data.get("clientId", ""), USER_AGENT)):
         params["reason"] = "init"
 
         try:
@@ -1501,57 +1564,51 @@ def refresh_token(sp_dc: str) -> dict:
             data = response.json()
             token = data.get("accessToken", "")
 
-        except (req.RequestException, TimeoutException, req.HTTPError, ValueError):
+        except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
             init = False
+            last_err = str(e)
         finally:
             if platform.system() != "Windows":
                 signal.alarm(0)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception("refresh_token(): Unsuccessful token request")
+        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
 
     return {
         "access_token": token,
         "expires_at": data["accessTokenExpirationTimestampMs"] // 1000,
         "client_id": data.get("clientId", ""),
-        "user_agent": ua,
         "length": len(token)
     }
 
 
 # Fetches Spotify access token based on provided SP_DC value
 def spotify_get_access_token_from_sp_dc(sp_dc: str):
-    global SP_CACHED_ACCESS_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT
+    global SP_CACHED_ACCESS_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID
 
     now = time.time()
 
-    if SP_CACHED_ACCESS_TOKEN and now < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+    if SP_CACHED_ACCESS_TOKEN and now < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
         return SP_CACHED_ACCESS_TOKEN
 
     max_retries = TOKEN_MAX_RETRIES
     retry = 0
 
     while retry < max_retries:
-        token_data = refresh_token(sp_dc)
+        token_data = refresh_access_token_from_sp_dc(sp_dc)
         token = token_data["access_token"]
         client_id = token_data.get("client_id", "")
-        user_agent = token_data.get("user_agent", get_random_user_agent())
         length = token_data["length"]
 
         SP_CACHED_ACCESS_TOKEN = token
         SP_ACCESS_TOKEN_EXPIRES_AT = token_data["expires_at"]
         SP_CACHED_CLIENT_ID = client_id
-        SP_CACHED_USER_AGENT = user_agent
 
-        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, SP_CACHED_USER_AGENT):
+        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
             retry += 1
             time.sleep(TOKEN_RETRY_TIMEOUT)
         else:
-            # print("* Token is valid")
             break
-
-    # print("Spotify Access Token:", SP_CACHED_ACCESS_TOKEN)
-    # print("Token expires at:", time.ctime(SP_TOKEN_EXPIRES_AT))
 
     if retry == max_retries:
         if SP_CACHED_ACCESS_TOKEN is not None:
@@ -1625,13 +1682,15 @@ def encode_nested_field(tag, nested_bytes):
 # Builds the Spotify Protobuf login request body
 def build_spotify_auth_protobuf(device_id, system_id, user_uri_id, refresh_token):
     """
-    1 {
-      1: "device_id"
-      2: "system_id"
-    }
-    100 {
-      1: "user_uri_id"
-      2: "refresh_token"
+    {
+      1: {
+           1: "device_id",
+           2: "system_id"
+         },
+      100: {
+           1: "user_uri_id",
+           2: "refresh_token"
+         }
     }
     """
     device_info_msg = encode_string_field(1, device_id) + encode_string_field(2, system_id)
@@ -1696,7 +1755,7 @@ def parse_protobuf_message(data):
 
 # Parses the Protobuf-encoded login request body file (as dumped for example by Proxyman) and returns a tuple:
 # (device_id, system_id, user_uri_id, refresh_token)
-def parse_request_body_file(file_path):
+def parse_login_request_body_file(file_path):
     """
     {
       1: {
@@ -1773,6 +1832,26 @@ def ensure_dict(value):
 # Parses the Protobuf-encoded client token request body file (as dumped for example by Proxyman) and returns a tuple:
 # (app_version, device_id, system_id, cpu_arch, os_build, platform, os_major, os_minor, client_model)
 def parse_clienttoken_request_body_file(file_path):
+    """
+        1: 1 (const)
+        2: {
+          1: "app_version"
+          2: "device_id"
+          3: {
+            1: {
+              4: {
+                1: "cpu_arch"
+                3: "os_build"
+                4: "platform"
+                5: "os_major"
+                6: "os_minor"
+                8: "client_model"
+              }
+            }
+            2: "system_id"
+          }
+        }
+    """
 
     with open(file_path, "rb") as f:
         data = f.read()
@@ -1833,13 +1912,20 @@ def build_clienttoken_request_protobuf(app_version, device_id, system_id, cpu_ar
     """
         1: 1 (const)
         2: {
-          1: app_version
-          2: device_id
+          1: "app_version"
+          2: "device_id"
           3: {
             1: {
-              4: device_details
+              4: {
+                1: "cpu_arch"
+                3: "os_build"
+                4: "platform"
+                5: "os_major"
+                6: "os_minor"
+                8: "client_model"
+              }
             }
-            2: system_id
+            2: "system_id"
           }
         }
     """
@@ -1910,6 +1996,22 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
             raise Exception(f"Request failed with status {response.status_code}: invalid client token")
         elif response.headers.get("client-token-error") == "EXPIRED_CLIENTTOKEN":
             raise Exception(f"Request failed with status {response.status_code}: expired client token")
+
+        try:
+            error_json = response.json()
+        except ValueError:
+            error_json = {}
+
+        if error_json.get("error") == "invalid_grant":
+            desc = error_json.get("error_description", "")
+            if "refresh token" in desc.lower() and "revoked" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token has been revoked")
+            elif "refresh token" in desc.lower() and "expired" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token has expired")
+            elif "invalid refresh token" in desc.lower():
+                raise Exception(f"Request failed with status {response.status_code}: refresh token is invalid")
+            else:
+                raise Exception(f"Request failed with status {response.status_code}: invalid grant during refresh ({desc})")
 
         raise Exception(f"Request failed with status code {response.status_code}\nResponse Headers: {response.headers}\nResponse Content (raw): {response.content}\nResponse text: {response.text}")
 
@@ -2041,16 +2143,14 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 # Fetches list of Spotify friends
 def spotify_get_friends_json(access_token):
     url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
 
     response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
@@ -2141,8 +2241,8 @@ def spotify_list_friends(friend_activity):
 
         apple_search_url, genius_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-        print(f"Apple search URL:\t\t{apple_search_url}")
-        print(f"YouTube Music search URL:\t{youtube_music_search_url}")
+        print(f"Apple Music URL:\t\t{apple_search_url}")
+        print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
         print(f"Genius lyrics URL:\t\t{genius_search_url}")
 
         print(f"\nLast activity:\t\t\t{get_date_from_ts(float(str(sp_ts)[0:-3]))} ({calculate_timespan(int(time.time()), datetime.fromtimestamp(float(str(sp_ts)[0:-3])))} ago)")
@@ -2174,16 +2274,14 @@ def spotify_get_friend_info(friend_activity, uri):
 def spotify_get_track_info(access_token, track_uri):
     track_id = track_uri.split(':', 2)[2]
     url = "https://api.spotify.com/v1/tracks/" + track_id
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
@@ -2208,16 +2306,14 @@ def spotify_get_track_info(access_token, track_uri):
 def spotify_get_playlist_info(access_token, playlist_uri):
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
     # add si parameter so link opens in native Spotify app after clicking
     si = "?si=1"
@@ -2239,16 +2335,14 @@ def spotify_get_playlist_info(access_token, playlist_uri):
 # Gets basic information about access token owner
 def spotify_get_current_user(access_token) -> dict | None:
     url = "https://api.spotify.com/v1/me"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
 
     if TOKEN_SOURCE == "cookie":
         headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID,
-            "User-Agent": SP_CACHED_USER_AGENT,
-        })
-    elif TOKEN_SOURCE == "client":
-        headers.update({
-            "User-Agent": USER_AGENT
+            "Client-Id": SP_CACHED_CLIENT_ID
         })
 
     if platform.system() != 'Windows':
@@ -2275,6 +2369,29 @@ def spotify_get_current_user(access_token) -> dict | None:
     finally:
         if platform.system() != 'Windows':
             signal.alarm(0)
+
+
+# Checks if a Spotify user URI ID has been deleted
+def is_user_removed(access_token, user_uri_id):
+    url = f"https://api.spotify.com/v1/users/{user_uri_id}"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
+
+    if TOKEN_SOURCE == "cookie":
+        headers.update({
+            "Client-Id": SP_CACHED_CLIENT_ID
+        })
+
+    try:
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        if response.status_code == 404:
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def spotify_macos_play_song(sp_track_uri_id, method=SPOTIFY_MACOS_PLAYING_METHOD):
@@ -2369,7 +2486,7 @@ def resolve_executable(path):
     raise FileNotFoundError(f"Could not find executable '{path}'")
 
 
-# Main function that monitors activity of the specified Spotify friend's user URI ID
+# Monitors music activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
     global sp_tracks
@@ -2393,6 +2510,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
     error_500_start_ts = 0
     error_network_issue_counter = 0
     error_network_issue_start_ts = 0
+    sp_accessToken = ""
+
     jmk_send = False
     DZcount = 0
     DZexceptions = 0
@@ -2467,25 +2586,25 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
             if TOKEN_SOURCE == 'cookie' and '401' in err:
                 SP_CACHED_ACCESS_TOKEN = None
 
-            client_errs = ['access token', 'invalid client token', 'expired client token']
-            cookie_errs = ['access token', 'unsuccessful token request']
+            client_errs = ['access token', 'invalid client token', 'expired client token', 'refresh token has been revoked', 'refresh token has expired', 'refresh token is invalid', 'invalid grant during refresh']
+            cookie_errs = ['access token', 'unauthorized']
 
             if TOKEN_SOURCE == 'client' and any(k in err for k in client_errs):
-                print(f"* Error: client token or refresh token might have expired!")
+                print(f"* Error: client or refresh token may be invalid or expired!")
                 if ERROR_NOTIFICATION and not email_sent:
-                    m_subject = f"spotify_monitor: client token or refresh token might have expired! (uri: {user_uri_id})"
-                    m_body = f"Client token or refresh token might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>Client token or refresh token might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                    m_body = f"Client or refresh token may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
 
             elif TOKEN_SOURCE == 'cookie' and any(k in err for k in cookie_errs):
-                print(f"* Error: sp_dc might have expired!")
+                print(f"* Error: sp_dc may be invalid or expired!")
                 if ERROR_NOTIFICATION and not email_sent:
-                    m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                    m_subject = f"spotify_monitor: sp_dc may be invalid or expired! (uri: {user_uri_id})"
+                    m_body = f"sp_dc may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>sp_dc may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                     email_sent = True
@@ -2642,8 +2761,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
             if 'spotify:artist:' in sp_playlist_uri:
                 print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-            print(f"Apple search URL:\t\t{apple_search_url}")
-            print(f"YouTube Music search URL:\t{youtube_music_search_url}")
+            apple_search_url, genius_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+
+            print(f"Apple Music URL:\t\t{apple_search_url}")
+            print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
             print(f"Genius lyrics URL:\t\t{genius_search_url}")
 
             if not is_playlist:
@@ -2676,8 +2797,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
 
                 if ACTIVE_NOTIFICATION:
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
-                    m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                    m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple Music URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                     if JMK_MODE:
                         send_email(f"{GMAIL_TAG}---------------------------------", "  ", "  ", SMTP_SSL)
@@ -2784,7 +2905,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                     if dz_message:
                         send_sms(dz_message)
                 
-            # Main loop
+            # Primary loop
             while True:
 
                 while True:
@@ -2850,25 +2971,25 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                         elif not error_500_start_ts and not error_network_issue_start_ts:
                             print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: '{e}'")
 
-                            client_errs = ['access token', 'invalid client token', 'expired client token']
-                            cookie_errs = ['access token', 'unsuccessful token request']
+                            client_errs = ['access token', 'invalid client token', 'expired client token', 'refresh token has been revoked', 'refresh token has expired', 'refresh token is invalid', 'invalid grant during refresh']
+                            cookie_errs = ['access token', 'unauthorized']
 
                             if TOKEN_SOURCE == 'client' and any(k in err for k in client_errs):
-                                print(f"* Error: client token or refresh token might have expired!")
+                                print(f"* Error: client or refresh token may be invalid or expired!")
                                 if ERROR_NOTIFICATION and not email_sent:
-                                    m_subject = f"spotify_monitor: client token or refresh token might have expired! (uri: {user_uri_id})"
-                                    m_body = f"Client token or refresh token might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>Client token or refresh token might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                                    m_body = f"Client or refresh token may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
 
                             elif TOKEN_SOURCE == 'cookie' and any(k in err for k in cookie_errs):
-                                print(f"* Error: sp_dc might have expired!")
+                                print(f"* Error: sp_dc may be invalid or expired!")
                                 if ERROR_NOTIFICATION and not email_sent:
-                                    m_subject = f"spotify_monitor: sp_dc might have expired! (uri: {user_uri_id})"
-                                    m_body = f"sp_dc might have expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>sp_dc might have expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                    m_subject = f"spotify_monitor: sp_dc may be invalid or expired! (uri: {user_uri_id})"
+                                    m_body = f"sp_dc may be invalid or expired!\n{e}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                    m_body_html = f"<html><head></head><body>sp_dc may be invalid or expired!<br>{escape(str(e))}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                     print(f"Sending email notification to {RECEIVER_EMAIL}")
                                     send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                                     email_sent = True
@@ -2877,15 +2998,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
 
                 if sp_found is False:
-                    # User disappeared from the Spotify's friend list
+                    # User has disappeared from the Spotify's friend list or account has been removed
                     if user_not_found is False:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                        if ERROR_NOTIFICATION:
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) disappeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                        if is_user_removed(sp_accessToken, user_uri_id):
+                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            if ERROR_NOTIFICATION:
+                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) was probably removed<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                print(f"Sending email notification to {RECEIVER_EMAIL}")
+                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                        else:
+                            print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            if ERROR_NOTIFICATION:
+                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                print(f"Sending email notification to {RECEIVER_EMAIL}")
+                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
                     time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -2893,11 +3023,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                 else:
                     # User reappeared in the Spotify's friend list
                     if user_not_found is True:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) appeared again!")
+                        print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
                         if ERROR_NOTIFICATION:
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) appeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) appeared again!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
+                            m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
@@ -3116,8 +3246,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
 
                     apple_search_url, genius_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-                    print(f"Apple search URL:\t\t{apple_search_url}")
-                    print(f"YouTube Music search URL:\t{youtube_music_search_url}")
+                    print(f"Apple Music URL:\t\t{apple_search_url}")
+                    print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
                     print(f"Genius lyrics URL:\t\t{genius_search_url}")
 
                     if not is_playlist:
@@ -3139,6 +3269,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                         listened_songs = 1
                         skipped_songs = 0
                         looped_songs = 0
+                        song_on_loop = 1
 
                         print(f"\n*** Friend got ACTIVE after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))} ({get_date_from_ts(sp_active_ts_stop)})")
                         m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False)} - {get_short_date_from_ts(sp_active_ts_stop)})"
@@ -3209,8 +3340,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                             if SEND_TEXTS:
                                 send_sms(f"START: {songstring()}")                
                              
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}{friend_active_m_body}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a>{friend_active_m_body_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}{friend_active_m_body}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple Music URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a>{friend_active_m_body_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
                         if ACTIVE_NOTIFICATION:
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
@@ -3229,8 +3360,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
 
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple Music URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
                         email_sent = True
                         if JMK_MODE:
@@ -3240,8 +3371,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
 
                     if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple Music URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         if not email_sent:
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, m_body_html, SMTP_SSL)
@@ -3319,8 +3450,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                                     spotify_linux_play_pause("pause")
                         if INACTIVE_NOTIFICATION:
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
-                            m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple search URL: {apple_search_url}\nYouTube Music search URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple search URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music search URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}\nGenius lyrics URL: {genius_search_url}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}\n\nSongs Played: {song_count}\n{body_dz}Last activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}<br><br>Apple Music URL: <a href=\"{apple_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>YouTube Music URL: <a href=\"{youtube_music_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br>Genius lyrics URL: <a href=\"{genius_search_url}\">{escape(sp_artist)} - {escape(sp_track)}</a><br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}<br><br>Songs Played: {song_count}<br>{body_dz_html}Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                             email_sent = True
@@ -3332,6 +3463,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
                         listened_songs = 0
                         looped_songs = 0
                         skipped_songs = 0
+                        song_on_loop = 0
                         print_cur_ts("\nTimestamp:\t\t\t")
 
                     if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
@@ -3359,7 +3491,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
         # User is not found in the Spotify's friend list just after starting the tool
         else:
             if user_not_found is False:
-                print(f"User {user_uri_id} not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}.")
+                if is_user_removed(sp_accessToken, user_uri_id):
+                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                else:
+                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -3367,7 +3502,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, tracks2, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT
     global JMK_MODE, INITIAL_STARTUP, TRUNCATE_CHARS, GMAIL_TAG, ERR_CODE, SEND_TEXTS, DZ_ALERTS, ORIG_EMAILS, USER_ID
     global log_logger, screen_logger, both_logger, FINAL_LOG_PATH
 
@@ -3437,9 +3572,9 @@ def main():
         help="Method to obtain Spotify access token: 'cookie' (via sp_dc cookie) or 'client' (via desktop client login protobuf)"
     )
 
-    # Cookie token source credentials (used when token source is set to cookie)
-    api_creds = parser.add_argument_group("Cookie token source credentials")
-    api_creds.add_argument(
+    # Auth details used when token source is set to cookie
+    cookie_auth = parser.add_argument_group("Auth details for 'cookie' token source")
+    cookie_auth.add_argument(
         "-u", "--spotify-dc-cookie",
         dest="spotify_dc_cookie",
         metavar="SP_DC_COOKIE",
@@ -3453,20 +3588,21 @@ def main():
         help="Use secondary sp_dc cookie (SP_DC_COOKIE2)"
     )
 
-    # Client token source credentials (used when token source is set to client)
-    client_creds = parser.add_argument_group("Client token source credentials")
-    client_creds.add_argument(
+    # Auth details used when token source is set to client
+    client_auth = parser.add_argument_group("Auth details for 'client' token source")
+    client_auth.add_argument(
         "-w", "--login-request-body-file",
         dest="login_request_body_file",
         metavar="PROTOBUF_FILENAME",
         help="Read device_id, system_id, user_uri_id and refresh_token from binary Protobuf login file"
     )
 
-    client_creds.add_argument(
+    client_auth.add_argument(
         "-z", "--clienttoken-request-body-file",
         dest="clienttoken_request_body_file",
         metavar="PROTOBUF_FILENAME",
-        help="Read app_version, cpu_arch, os_build, platform, os_major, os_minor and client_model from binary Protobuf client token file"
+        # help="Read app_version, cpu_arch, os_build, platform, os_major, os_minor and client_model from binary Protobuf client token file"
+        help=argparse.SUPPRESS
     )
 
     # Notifications
@@ -3583,6 +3719,13 @@ def main():
         help="Filename with Spotify tracks/playlists/albums to alert on"
     )
     opts.add_argument(
+        "--user-agent",
+        dest="user_agent",
+        metavar="USER_AGENT",
+        type=str,
+        help="Specify a custom user agent for Spotify API requests; leave empty to auto-generate it"
+    )
+    opts.add_argument(
         "-y", "--file-suffix",
         dest="file_suffix",
         metavar="SUFFIX",
@@ -3672,7 +3815,7 @@ def main():
         except ImportError:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
-                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip3 install python-dotenv\n\nOnce installed, re-run this tool\n")
+                print(f"* Warning: Cannot load dotenv file '{env_path}' because 'python-dotenv' is not installed\n\nTo install it, run:\n    pip install python-dotenv\n\nOnce installed, re-run this tool\n")
 
     if env_path:
         for secret in SECRET_KEYS:
@@ -3691,7 +3834,16 @@ def main():
         try:
             import pyotp
         except ModuleNotFoundError:
-            raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip3 install pyotp\n\nOnce installed, re-run this tool")
+            raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip install pyotp\n\nOnce installed, re-run this tool")
+
+    if args.user_agent:
+        USER_AGENT = args.user_agent
+
+    if not USER_AGENT:
+        if TOKEN_SOURCE == "client":
+            USER_AGENT = get_random_spotify_user_agent()
+        else:
+            USER_AGENT = get_random_user_agent()
 
     if not check_internet():
         sys.exit(1)
@@ -3741,7 +3893,7 @@ def main():
         if LOGIN_REQUEST_BODY_FILE:
             if os.path.isfile(LOGIN_REQUEST_BODY_FILE):
                 try:
-                    DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN = parse_request_body_file(LOGIN_REQUEST_BODY_FILE)
+                    DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN = parse_login_request_body_file(LOGIN_REQUEST_BODY_FILE)
                 except Exception as e:
                     print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
@@ -3757,22 +3909,28 @@ def main():
                 print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) does not exist")
                 sys.exit(1)
 
-        if not USER_AGENT:
-            USER_AGENT = get_random_spotify_user_agent()
+        vals = {
+            "LOGIN_URL": LOGIN_URL,
+            "USER_AGENT": USER_AGENT,
+            "DEVICE_ID": DEVICE_ID,
+            "SYSTEM_ID": SYSTEM_ID,
+            "USER_URI_ID": USER_URI_ID,
+            "REFRESH_TOKEN": REFRESH_TOKEN,
+        }
+        placeholders = {
+            "DEVICE_ID": "your_spotify_app_device_id",
+            "SYSTEM_ID": "your_spotify_app_system_id",
+            "USER_URI_ID": "your_spotify_user_uri_id",
+            "REFRESH_TOKEN": "your_spotify_app_refresh_token",
+        }
 
-        if any([
-            not LOGIN_URL,
-            not USER_AGENT,
-            not DEVICE_ID,
-            DEVICE_ID == "your_spotify_app_device_id",
-            not SYSTEM_ID,
-            SYSTEM_ID == "your_spotify_app_system_id",
-            not USER_URI_ID,
-            USER_URI_ID == "your_spotify_user_uri_id",
-            not REFRESH_TOKEN,
-            REFRESH_TOKEN == "your_spotify_app_refresh_token",
-        ]):
-            print("* Error: Some login values are empty or incorrect")
+        bad = [
+            f"{k} {'missing' if not v else 'is placeholder'}"
+            for k, v in vals.items()
+            if not v or placeholders.get(k) == v
+        ]
+        if bad:
+            print("* Error:", "; ".join(bad))
             sys.exit(1)
 
         clienttoken_request_body_file_param = False
@@ -3811,7 +3969,7 @@ def main():
             try:
                 APP_VERSION = ua_to_app_version(USER_AGENT)
             except Exception as e:
-                print(f"Warning: wrong USER_AGENT defined, reverting to the default one: {e}")
+                print(f"Warning: wrong USER_AGENT defined, reverting to the default one for APP_VERSION: {e}")
                 APP_VERSION = app_version_default
         else:
             APP_VERSION = app_version_default
@@ -4001,6 +4159,7 @@ def main():
     print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
     print(f"* Token source:\t\t\t{TOKEN_SOURCE}")
     print(f"* Track listened songs:\t\t{TRACK_SONGS}")
+    # print(f"* User agent:\t\t\t{USER_AGENT}")
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
