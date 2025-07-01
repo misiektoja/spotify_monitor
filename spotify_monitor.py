@@ -1179,10 +1179,13 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
 def generate_totp():
     import pyotp
 
-    secret_cipher_bytes = [
-        12, 56, 76, 33, 88, 44, 88, 33,
-        78, 78, 11, 66, 22, 22, 55, 69, 54,
-    ]
+    secret_cipher_dict = {
+        "8" : [37, 84, 32, 76, 87, 90, 87, 47, 13, 75, 48, 54, 44, 28, 19, 21, 22],
+        "7" : [59, 91, 66, 74, 30, 66, 74, 38, 46, 50, 72, 61, 44, 71, 86, 39, 89],
+        "6" : [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
+        "5" : [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54]
+    }
+    secret_cipher_bytes = secret_cipher_dict["8"]
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
@@ -1211,7 +1214,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
         "productType": "web-player",
         "totp": otp_value,
         "totpServer": otp_value,
-        "totpVer": 5,
+        "totpVer": 8,
         "sTime": server_time,
         "cTime": client_time,
         "buildDate": time.strftime("%Y-%m-%d", time.gmtime(server_time)),
