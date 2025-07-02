@@ -6,7 +6,7 @@ This is a high-level summary of the most important changes.
 
 **Bug fixes**:
 
-- **BUGFIX:** Fixed web-player access token retrieval via sp_dc cookie by updating secret cipher bytes (thanks [@WurdahMekanik](https://github.com/WurdahMekanik), fixes [#11](https://github.com/misiektoja/spotify_monitor/issues/11))
+- **BUGFIX:** Fixed web-player access token retrieval via sp_dc cookie by updating secret cipher bytes (thanks [@WurdahMekanik](https://github.com/WurdahMekanik) and [@matthewcamilizer](https://github.com/matthewcamilizer), fixes [#11](https://github.com/misiektoja/spotify_monitor/issues/11))
 - **BUGFIX:** Delayed removal/reappearance alerts; see new REMOVED_DISAPPEARED_COUNTER config option (fixes [#10](https://github.com/misiektoja/spotify_monitor/issues/10))
 - **BUGFIX:** Fixed missing email alerts for failed token requests when using sp_dc cookie method
 
