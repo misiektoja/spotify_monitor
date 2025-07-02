@@ -149,6 +149,10 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
+# Occasionally, the Spotify API glitches and reports that the user has disappeared from the list of friends
+# To avoid false alarms, we delay alerts until this happens REMOVED_DISAPPEARED_COUNTER times in a row
+REMOVED_DISAPPEARED_COUNTER = 4
+
 # Optional: specify user agent manually
 #
 # When the token source is 'cookie' - set it to web browser user agent, some examples:
@@ -409,6 +413,7 @@ SONG_ON_LOOP_VALUE = 0
 SKIPPED_SONG_THRESHOLD = 0
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
+REMOVED_DISAPPEARED_COUNTER = 0
 USER_AGENT = ""
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
@@ -2434,6 +2439,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             email_sent = False
 
+            disappeared_counter = 0
+
             # Primary loop
             while True:
 
@@ -2528,6 +2535,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                 if sp_found is False:
                     # User has disappeared from the Spotify's friend list or account has been removed
+                    disappeared_counter += 1
+                    if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
+                        time.sleep(SPOTIFY_CHECK_INTERVAL)
+                        continue
                     if user_not_found is False:
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
@@ -2551,6 +2562,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     continue
                 else:
                     # User reappeared in the Spotify's friend list
+                    disappeared_counter = 0
                     if user_not_found is True:
                         print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
                         if ERROR_NOTIFICATION:
