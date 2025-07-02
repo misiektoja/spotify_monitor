@@ -1,6 +1,6 @@
 # spotify_monitor
 
-spotify_monitor is a tool for real-time monitoring of Spotify friends' music activity.
+Tool for real-time monitoring of Spotify friends' music activity feed.
 
 NOTE: If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
@@ -174,6 +174,8 @@ If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and se
 #### Spotify Desktop Client
 
 This is the alternative method used to obtain a Spotify access token which simulates a login from the real Spotify desktop app using credentials intercepted from a real session.
+
+**NOTE**: Spotify appears to have changed something in client versions released after June 2025 (likely a switch to HTTP/3 and/or certificate pinning). You may need to use an older version of the Spotify desktop client for this method to work.
 
 - Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com)).
 
