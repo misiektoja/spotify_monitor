@@ -434,6 +434,7 @@ CLEAR_SCREEN = False
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
+TRUNCATE_CHARS = 0
 
 exec(CONFIG_BLOCK, globals())
 
@@ -540,6 +541,18 @@ SESSION.mount("https://", adapter)
 SESSION.mount("http://", adapter)
 
 
+# Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
+def truncate_string_per_line(message, truncate_chars, tabsize=8):
+    lines = message.split('\n')
+    truncated_lines = []
+
+    for line in lines:
+        expanded_line = line.expandtabs(tabsize=tabsize)
+        truncated_line = expanded_line[:truncate_chars]
+        truncated_lines.append(truncated_line)
+
+    return '\n'.join(truncated_lines)
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
@@ -547,8 +560,10 @@ class Logger(object):
         self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
-        self.terminal.write(message)
         self.logfile.write(message)
+        if (TRUNCATE_CHARS):
+            message = truncate_string_per_line(message, TRUNCATE_CHARS)
+        self.terminal.write(message)
         self.terminal.flush()
         self.logfile.flush()
 
@@ -2880,7 +2895,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, TRUNCATE_CHARS
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -3108,6 +3123,12 @@ def main():
         action="store_true",
         default=None,
         help="Disable logging to spotify_monitor_<user_uri_id/file_suffix>.log"
+    )
+    opts.add_argument(
+        "-n", "--truncate",
+        dest="truncate",
+        type=int,
+        help="Truncate screen output (not log) to this # of characters. '999' will autodetect and use the screen width"
     )
 
     args = parser.parse_args()
@@ -3422,6 +3443,20 @@ def main():
     else:
         FINAL_LOG_PATH = None
 
+    if args.truncate:
+        if args.truncate != 999:
+            TRUNCATE_CHARS = args.truncate
+        else:
+            try:
+                terminal_size = shutil.get_terminal_size()
+                print_to_log(f"The terminal screen width is: {terminal_size.columns} characters")
+                print_to_log(f"")
+                TRUNCATE_CHARS = terminal_size.columns
+                
+            except Exception as e:
+                print("Cannot determine terminal screen width.")
+                sys.exit(1)
+    
     if args.notify_active is True:
         ACTIVE_NOTIFICATION = True
 
