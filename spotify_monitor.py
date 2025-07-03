@@ -234,6 +234,11 @@ TOKEN_MAX_RETRIES = 10
 # Used only when the token source is set to 'cookie'
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
+# Limit the number of characters on each line printed to the screen to eliminate line-wrapping
+# This does not impact what is written to the log file.
+# A value of 999 will autodetect the screen width and use that width for the truncation
+TRUNCATE_CHARS = 0
+
 # ---------------------------------------------------------------------
 
 # The section below is used when the token source is set to 'client'
