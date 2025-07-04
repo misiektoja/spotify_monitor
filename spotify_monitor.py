@@ -3459,7 +3459,7 @@ def main():
                 TRUNCATE_CHARS = terminal_size.columns
                 
             except Exception as e:
-                print("Cannot determine terminal screen width.")
+                print(f"Cannot determine terminal screen width: {e}")
                 sys.exit(1)
     
     if args.notify_active is True:
