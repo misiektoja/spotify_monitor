@@ -3130,7 +3130,7 @@ def main():
         help="Disable logging to spotify_monitor_<user_uri_id/file_suffix>.log"
     )
     opts.add_argument(
-        "-n", "--truncate",
+        "-tr", "--truncate",
         dest="truncate",
         type=int,
         help="Truncate screen output (not log) to this # of characters. '999' will autodetect and use the screen width"
