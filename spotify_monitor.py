@@ -3454,8 +3454,8 @@ def main():
         else:
             try:
                 terminal_size = shutil.get_terminal_size()
-                print_to_log(f"The terminal screen width is: {terminal_size.columns} characters")
-                print_to_log(f"")
+                print(f"The detected terminal screen width is: {terminal_size.columns} characters")
+                print(f"")
                 TRUNCATE_CHARS = terminal_size.columns
                 
             except Exception as e:
