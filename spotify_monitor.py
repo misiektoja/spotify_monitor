@@ -586,6 +586,8 @@ def timeout_handler(sig, frame):
 def signal_handler(sig, frame):
     sys.stdout = stdout_bck
     print('\n* You pressed Ctrl+C, tool is terminated.')
+    if FLAG_FILE_PATH:
+        flag_file_delete()
     sys.exit(0)
 
 
