@@ -234,6 +234,11 @@ TOKEN_MAX_RETRIES = 10
 # Used only when the token source is set to 'cookie'
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
+# File path to create when user is active. It will be deleted when the user is inactive.
+# This will allow other tools to know the streaming status.
+# Can also be enabled via the -ff flag
+FLAG_FILE_PATH = ""
+
 # Limit the number of characters on each line printed to the screen to eliminate line-wrapping
 # This does not impact what is written to the log file.
 # A value of 999 will autodetect the screen width and use that width for the truncation
@@ -439,6 +444,7 @@ CLEAR_SCREEN = False
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
+FLAG_FILE_PATH = ""
 TRUNCATE_CHARS = 0
 
 exec(CONFIG_BLOCK, globals())
@@ -576,6 +582,16 @@ class Logger(object):
         pass
 
 
+def flag_file_create():
+    with open(FLAG_FILE_PATH, "w") as f:
+        f.write("This indicates active streaming by monitored user")
+
+
+def flag_file_delete():
+    if os.path.exists(FLAG_FILE_PATH):
+        os.remove(FLAG_FILE_PATH)
+
+
 # Class used to generate timeout exceptions
 class TimeoutException(Exception):
     pass
@@ -590,6 +606,8 @@ def timeout_handler(sig, frame):
 def signal_handler(sig, frame):
     sys.stdout = stdout_bck
     print('\n* You pressed Ctrl+C, tool is terminated.')
+    if FLAG_FILE_PATH:
+        flag_file_delete()
     sys.exit(0)
 
 
@@ -2422,6 +2440,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 song_on_loop = 1
                 print("\n*** Friend is currently ACTIVE !")
 
+                if FLAG_FILE_PATH:
+                    flag_file_create()
+
                 if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                     print("*** Track/playlist/album matched with the list!")
 
@@ -2742,6 +2763,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         looped_songs = 0
                         song_on_loop = 1
 
+                        if FLAG_FILE_PATH:
+                            flag_file_create()
+
                         print(f"\n*** Friend got ACTIVE after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))} ({get_date_from_ts(sp_active_ts_stop)})")
                         m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False)} - {get_short_date_from_ts(sp_active_ts_stop)})"
                         friend_active_m_body = f"\n\nFriend got active after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))}\nLast activity (before getting offline): {get_date_from_ts(sp_active_ts_stop)}"
@@ -2805,6 +2829,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_active_ts_stop = sp_ts
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
+
+                        if FLAG_FILE_PATH:
+                            flag_file_delete()
 
                         listened_songs_text = f"*** User played {listened_songs} songs"
                         listened_songs_mbody = f"\n\nUser played {listened_songs} songs"
@@ -2903,7 +2930,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, TRUNCATE_CHARS
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE_PATH, TRUNCATE_CHARS
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -2961,6 +2988,12 @@ def main():
         dest="env_file",
         metavar="PATH",
         help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
+    )
+    conf.add_argument(
+        "--ff", "--flag-file-path",
+        dest="flagfilepath",
+        metavar="PATH",
+        help="Path of flag file to indicate current streaming status of user",
     )
 
     # Token source
@@ -3219,6 +3252,10 @@ def main():
 
     if not check_internet():
         sys.exit(1)
+
+    if args.flagfilepath:
+        FLAG_FILE_PATH = args.flagfilepath
+        flag_file_delete()
 
     if args.send_test_email:
         print("* Sending test email notification ...\n")
