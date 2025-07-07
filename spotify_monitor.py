@@ -477,6 +477,12 @@ SP_CACHED_CLIENT_ID = ""
 # URL of the Spotify Web Player endpoint to get access token
 TOKEN_URL = "https://open.spotify.com/api/token"
 
+# URL of the endpoint to get server time needed to create TOTP object
+SERVER_TIME_URL = "https://open.spotify.com/"
+
+# Identifier used to select the appropriate encrypted secret from secret_cipher_dict when generating a TOTP token
+TOTP_VER = 10
+
 # Variables for caching functionality of the Spotify client token to avoid unnecessary refreshing
 SP_CACHED_CLIENT_TOKEN = None
 SP_CLIENT_TOKEN_EXPIRES_AT = 0
@@ -1214,7 +1220,7 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
         if platform.system() != 'Windows':
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
-        response = session.head("https://open.spotify.com/", headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response = session.head(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
     except TimeoutException as e:
         raise Exception(f"fetch_server_time() head network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
@@ -1224,7 +1230,11 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
         if platform.system() != 'Windows':
             signal.alarm(0)
 
-    return int(parsedate_to_datetime(response.headers["Date"]).timestamp())
+    date_hdr = response.headers.get("Date")
+    if not date_hdr:
+        raise Exception("fetch_server_time() missing 'Date' header")
+
+    return int(parsedate_to_datetime(date_hdr).timestamp())
 
 
 # Creates a TOTP object using a secret derived from transformed cipher bytes
@@ -1232,12 +1242,14 @@ def generate_totp():
     import pyotp
 
     secret_cipher_dict = {
+        "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
+        "9": [109, 101, 90, 99, 66, 92, 116, 108, 85, 70, 86, 49, 68, 54, 87, 50, 72, 121, 52, 64, 57, 43, 36, 81, 97, 72, 53, 41, 78, 56],
         "8": [37, 84, 32, 76, 87, 90, 87, 47, 13, 75, 48, 54, 44, 28, 19, 21, 22],
         "7": [59, 91, 66, 74, 30, 66, 74, 38, 46, 50, 72, 61, 44, 71, 86, 39, 89],
         "6": [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
-        "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54]
+        "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
     }
-    secret_cipher_bytes = secret_cipher_dict["8"]
+    secret_cipher_bytes = secret_cipher_dict[str(TOTP_VER)]
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
@@ -1252,7 +1264,6 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     transport = True
     init = True
     session = req.Session()
-    session.cookies.set("sp_dc", sp_dc)
     data: dict = {}
     token = ""
 
@@ -1266,12 +1277,16 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
         "productType": "web-player",
         "totp": otp_value,
         "totpServer": otp_value,
-        "totpVer": 8,
-        "sTime": server_time,
-        "cTime": client_time,
-        "buildDate": time.strftime("%Y-%m-%d", time.gmtime(server_time)),
-        "buildVer": f"web-player_{time.strftime('%Y-%m-%d', time.gmtime(server_time))}_{server_time * 1000}_{secrets.token_hex(4)}",
+        "totpVer": TOTP_VER,
     }
+
+    if TOTP_VER < 10:
+        params.update({
+            "sTime": server_time,
+            "cTime": client_time,
+            "buildDate": time.strftime("%Y-%m-%d", time.gmtime(server_time)),
+            "buildVer": f"web-player_{time.strftime('%Y-%m-%d', time.gmtime(server_time))}_{server_time * 1000}_{secrets.token_hex(4)}",
+        })
 
     headers = {
         "User-Agent": USER_AGENT,
