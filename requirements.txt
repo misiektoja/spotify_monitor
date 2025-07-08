@@ -3,3 +3,4 @@ python-dateutil
 urllib3
 pyotp
 python-dotenv
+wcwidth

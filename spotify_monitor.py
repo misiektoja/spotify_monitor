@@ -534,6 +534,7 @@ from pathlib import Path
 import secrets
 from typing import Optional
 from email.utils import parsedate_to_datetime
+from wcwidth import wcwidth
 
 import urllib3
 if not VERIFY_SSL:
