@@ -2496,9 +2496,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_active_ts_stop = sp_ts
                 print(f"\n*** Friend is OFFLINE for: {calculate_timespan(int(cur_ts), int(sp_ts))}")
 
-            if listened_songs:
-                print(f"\nSongs played:\t\t\t{listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})")
-
             print(f"\nTracks/playlists/albums to monitor: {tracks}")
             print_cur_ts("\nTimestamp:\t\t\t")
 
