@@ -534,6 +534,7 @@ from pathlib import Path
 import secrets
 from typing import Optional
 from email.utils import parsedate_to_datetime
+from wcwidth import wcwidth
 
 import urllib3
 if not VERIFY_SSL:
@@ -561,14 +562,25 @@ SESSION.mount("http://", adapter)
 
 
 # Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
-def truncate_string_per_line(message, truncate_chars, tabsize=8):
+def truncate_string_per_line(message, truncate_width, tabsize=8):
     lines = message.split('\n')
     truncated_lines = []
 
     for line in lines:
-        expanded_line = line.expandtabs(tabsize=tabsize)
-        truncated_line = expanded_line[:truncate_chars]
-        truncated_lines.append(truncated_line)
+        expanded_line = line.expandtabs(tabsize)
+        current_width = 0
+        truncated = ''
+
+        for char in expanded_line:
+            char_width = wcwidth(char)
+            if char_width < 0:
+                char_width = 0  # Non-printable or unknown width
+            if current_width + char_width > truncate_width:
+                break
+            truncated += char
+            current_width += char_width
+
+        truncated_lines.append(truncated)
 
     return '\n'.join(truncated_lines)
 
