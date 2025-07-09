@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.4
+v1.5
 
 Debug code to test the fetching of Spotify access token based on provided sp_dc cookie value
 https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py
@@ -15,6 +15,9 @@ pyotp
 ---------------
 
 Change log:
+
+v1.5 (09 Jul 25):
+- updated list of secret cipher bytes and switched to use version 12
 
 v1.4 (09 Jul 25):
 - updated list of secret cipher bytes and switched to use version 11
@@ -54,9 +57,10 @@ SP_DC_COOKIE = ""
 TOKEN_URL = "https://open.spotify.com/api/token"
 SERVER_TIME_URL = "https://open.spotify.com/"
 
-TOTP_VER = 11
+TOTP_VER = 12
 
 SECRET_CIPHER_DICT = {
+    "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
     "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
     "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
     "9": [109, 101, 90, 99, 66, 92, 116, 108, 85, 70, 86, 49, 68, 54, 87, 50, 72, 121, 52, 64, 57, 43, 36, 81, 97, 72, 53, 41, 78, 56],
