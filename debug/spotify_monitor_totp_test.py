@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.3
+v1.4
 
-Debug code to test the fetching of Spotify access token based on provided SP_DC_COOKIE value
-https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_totp_test.py
+Debug code to test the fetching of Spotify access token based on provided sp_dc cookie value
+https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py
 
 Python pip3 requirements:
 
@@ -15,6 +15,9 @@ pyotp
 ---------------
 
 Change log:
+
+v1.4 (09 Jul 25):
+- updated list of secret cipher bytes and switched to use version 11
 
 v1.3 (06 Jul 25):
 - updated list of secret cipher bytes for v9 and v10 and switched to use version 10
@@ -50,8 +53,21 @@ SP_DC_COOKIE = ""
 
 TOKEN_URL = "https://open.spotify.com/api/token"
 SERVER_TIME_URL = "https://open.spotify.com/"
+
+TOTP_VER = 11
+
+SECRET_CIPHER_DICT = {
+    "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
+    "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
+    "9": [109, 101, 90, 99, 66, 92, 116, 108, 85, 70, 86, 49, 68, 54, 87, 50, 72, 121, 52, 64, 57, 43, 36, 81, 97, 72, 53, 41, 78, 56],
+    "8": [37, 84, 32, 76, 87, 90, 87, 47, 13, 75, 48, 54, 44, 28, 19, 21, 22],
+    "7": [59, 91, 66, 74, 30, 66, 74, 38, 46, 50, 72, 61, 44, 71, 86, 39, 89],
+    "6": [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
+    "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
+}
+
+# leave empty to auto generate randomly
 USER_AGENT = ""
-TOTP_VER = 10
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -153,21 +169,13 @@ def fetch_server_time(ua: str) -> int:
     return int(parsedate_to_datetime(date_hdr).timestamp())
 
 
-# TOTP_VER = 10
-
-
 def generate_totp():
     _LOGGER.debug("Generating TOTP")
+    _LOGGER.debug("TOTP ver: %s", TOTP_VER)
 
-    secret_cipher_dict = {
-        "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
-        "9": [109, 101, 90, 99, 66, 92, 116, 108, 85, 70, 86, 49, 68, 54, 87, 50, 72, 121, 52, 64, 57, 43, 36, 81, 97, 72, 53, 41, 78, 56],
-        "8": [37, 84, 32, 76, 87, 90, 87, 47, 13, 75, 48, 54, 44, 28, 19, 21, 22],
-        "7": [59, 91, 66, 74, 30, 66, 74, 38, 46, 50, 72, 61, 44, 71, 86, 39, 89],
-        "6": [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
-        "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
-    }
-    secret_cipher_bytes = secret_cipher_dict[str(TOTP_VER)]
+    secret_cipher_bytes = SECRET_CIPHER_DICT[str(TOTP_VER)]
+
+    _LOGGER.debug("TOTP cipher: %s", secret_cipher_bytes)
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
@@ -191,7 +199,6 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     client_time = int(time_ns() / 1000 / 1000)
     otp_value = totp_obj.at(server_time)
     _LOGGER.debug("Using OTP: %s", otp_value)
-    _LOGGER.debug("TOTP ver: %s", TOTP_VER)
 
     params = {
         "reason": "transport",
@@ -284,7 +291,7 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
 def main():
     global USER_AGENT
 
-    parser = argparse.ArgumentParser(description="Fetch Spotify access token based on provided SP_DC value")
+    parser = argparse.ArgumentParser(description="Fetch Spotify access token based on provided sp_dc cookie value")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
     args = parser.parse_args()
 
