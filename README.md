@@ -4,6 +4,8 @@ Tool for real-time monitoring of Spotify friends' music activity feed.
 
 NOTE: If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
+🛠️ If you're looking for debug tools to get Spotify Web Player access tokens and extract TOTP secrets: [Debugging Tools](#debugging-tools)
+
 <a id="features"></a>
 ## Features
 
@@ -48,14 +50,15 @@ NOTE: If you're interested in tracking changes to Spotify users' profiles includ
    * [Check Intervals](#check-intervals)
    * [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix)
    * [Coloring Log Output with GRC](#coloring-log-output-with-grc)
-6. [Change Log](#change-log)
-7. [License](#license)
+6. [Debugging Tools](#debugging-tools)
+7. [Change Log](#change-log)
+8. [License](#license)
 
 <a id="requirements"></a>
 ## Requirements
 
 * Python 3.6 or higher
-* Libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`
+* Libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
 
 Tested on:
 
@@ -537,6 +540,27 @@ Example:
 ```sh
 grc tail -F -n 100 spotify_monitor_<user_uri_id/file_suffix>.log
 ```
+
+<a id="debugging-tools"></a>
+## Debugging Tools
+
+To help with troubleshooting and development, two debug utilities are available in the `dev/debug` directory:
+
+- [spotify_monitor_totp_test.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py): fetching of Spotify access token based on a Spotify Web Player `sp_dc` cookie value:
+
+```sh
+python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value"
+```
+
+- [spotify_monitor_secret_grabber.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py): automatic extractor for Spotify Web Player TOTP secrets from JavaScript bundles:
+
+```sh
+python3 spotify_monitor_secret_grabber.py
+```
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_secret_grabber.png" alt="spotify_monitor_secret_grabber" width="80%"/>
+</p>
 
 <a id="change-log"></a>
 ## Change Log
