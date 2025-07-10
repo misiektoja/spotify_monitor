@@ -3,8 +3,8 @@
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
 v1.0
 
-Automatic extractor for Spotify Web Player TOTP secrets from JS bundles
-https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py
+Automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles
+https://github.com/misiektoja/spotify_monitor#debugging-tools
 
 Python pip3 requirements:
 
