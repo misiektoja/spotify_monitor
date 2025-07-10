@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.5
+v1.6
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -12,9 +12,15 @@ requests
 python-dateutil
 pyotp
 
+For --fetch-secrets functionality (back-ported from spotify_monitor_secret_grabber.py):
+playwright
+
 ---------------
 
 Change log:
+
+v1.6 (10 Jul 25):
+- added automatic extractor for Spotify Web Player TOTP secrets from JS bundles (when --fetch-secrets is used)
 
 v1.5 (09 Jul 25):
 - updated list of secret cipher bytes and switched to use version 12
@@ -40,6 +46,7 @@ v1.0 (19 Mar 25):
 import argparse
 import base64
 import logging
+import re
 import secrets
 import time
 from time import time_ns
@@ -49,7 +56,9 @@ from email.utils import parsedate_to_datetime
 import pyotp
 import requests
 import json
+import sys
 from dateutil import tz
+
 
 # Define below or via --sp-dc flag
 SP_DC_COOKIE = ""
@@ -57,7 +66,8 @@ SP_DC_COOKIE = ""
 TOKEN_URL = "https://open.spotify.com/api/token"
 SERVER_TIME_URL = "https://open.spotify.com/"
 
-TOTP_VER = 12
+# Set to 0 to auto-select the highest available version
+TOTP_VER = 0
 
 SECRET_CIPHER_DICT = {
     "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
@@ -73,7 +83,107 @@ SECRET_CIPHER_DICT = {
 # leave empty to auto generate randomly
 USER_AGENT = ""
 
+BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player)\.[0-9a-f]{4,}\.(?:js|mjs)""")
+PLAYWRIGHT_TIMEOUT = 45000  # 45s
+
 _LOGGER = logging.getLogger(__name__)
+
+
+def fetch_secrets_from_web():
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise ImportError(
+            "\nPlaywright module is required for fetching secrets, please install it using:\n"
+            "  pip install playwright\n"
+            "  playwright install"
+        )
+
+    hook = """(()=>{if(globalThis.__secretHookInstalled)return;globalThis.__secretHookInstalled=true;globalThis.__captures=[];
+Object.defineProperty(Object.prototype,'secret',{configurable:true,set:function(v){try{__captures.push({secret:v,version:this.version,obj:this});}catch(e){}
+Object.defineProperty(this,'secret',{value:v,writable:true,configurable:true,enumerable:true});}});})();"""
+
+    captures = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        context.add_init_script(hook)
+        page = context.new_page()
+
+        def handle_response(response):
+            filename = response.url.split('/')[-1]
+            if BUNDLE_RE.fullmatch(filename):
+                _LOGGER.debug(f"↓ {filename} ({response.status})")
+
+        page.on('response', handle_response)
+
+        _LOGGER.debug('→ opening open.spotify.com ...')
+        page.goto('https://open.spotify.com', timeout=PLAYWRIGHT_TIMEOUT)
+        page.wait_for_load_state('networkidle', timeout=PLAYWRIGHT_TIMEOUT)
+        page.wait_for_timeout(3000)
+
+        captures = page.evaluate('__captures')
+
+        if captures:
+            for c in captures:
+                if isinstance(c.get('secret'), str) and c.get('version') is not None:
+                    _LOGGER.debug(f"✔ secret({c.get('version')}) → {c.get('secret')}")
+
+        browser.close()
+
+    return captures or []
+
+
+def update_secret_cipher_dict(captures):
+    global SECRET_CIPHER_DICT, TOTP_VER
+
+    real_secrets = {}
+
+    for cap in captures:
+        sec = cap.get('secret')
+        if not isinstance(sec, str):
+            continue
+        ver = cap.get('version') or (isinstance(cap.get('obj'), dict) and cap['obj'].get('version'))
+        if ver is None:
+            continue
+        real_secrets[str(ver)] = sec
+
+    if not real_secrets:
+        _LOGGER.debug('No real secrets with version.')
+        return False
+
+    _LOGGER.debug('List of leaked secrets:\n')
+    for v, s in sorted(real_secrets.items(), key=lambda kv: int(kv[0])):
+        # _LOGGER.debug(f"v{v}: {s}")
+        print(f"v{v}: {s}")
+    print()
+
+    updated = False
+    for ver, secret in real_secrets.items():
+        byte_array = [ord(c) for c in secret]
+
+        if ver not in SECRET_CIPHER_DICT or SECRET_CIPHER_DICT[ver] != byte_array:
+            SECRET_CIPHER_DICT[ver] = byte_array
+            updated = True
+            _LOGGER.debug(f"Updated secret for version {ver}")
+        else:
+            _LOGGER.debug(f"Secret for version {ver} is unchanged")
+
+    _LOGGER.debug('Updated dictionary with secret keys (SECRET_CIPHER_DICT):')
+    print('{')
+    items = sorted(SECRET_CIPHER_DICT.items(), key=lambda kv: int(kv[0]))
+    for idx, (v, arr) in enumerate(reversed(items)):
+        comma = ',' if idx < len(items) - 1 else ''
+        print(f'  "{v}": {arr}{comma}')
+    print('}')
+
+    highest_ver = max(int(v) for v in SECRET_CIPHER_DICT.keys())
+    if highest_ver != TOTP_VER:
+        _LOGGER.debug(f"Updating TOTP_VER from {TOTP_VER} to {highest_ver}")
+        TOTP_VER = highest_ver
+
+    return updated
 
 
 def get_random_user_agent() -> str:
@@ -175,10 +285,10 @@ def fetch_server_time(ua: str) -> int:
 
 def generate_totp():
     _LOGGER.debug("Generating TOTP")
-    _LOGGER.debug("TOTP ver: %s", TOTP_VER)
 
-    secret_cipher_bytes = SECRET_CIPHER_DICT[str(TOTP_VER)]
+    secret_cipher_bytes = SECRET_CIPHER_DICT[str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT))))]
 
+    _LOGGER.debug("TOTP ver: %s", ver)
     _LOGGER.debug("TOTP cipher: %s", secret_cipher_bytes)
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
@@ -295,12 +405,30 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
 def main():
     global USER_AGENT
 
-    parser = argparse.ArgumentParser(description="Fetch Spotify access token based on provided sp_dc cookie value")
+    parser = argparse.ArgumentParser(description="Fetch Spotify access token using a Web Player sp_dc cookie and TOTP parameters")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
+    parser.add_argument("--fetch-secrets", action="store_true", help="Additionally fetch and update secret keys used for TOTP generation")
     args = parser.parse_args()
+
+    if args.fetch_secrets:
+        try:
+            _LOGGER.debug("Fetching secret keys used for TOTP generation ...")
+            captures = fetch_secrets_from_web()
+            if captures:
+                update_secret_cipher_dict(captures)
+            else:
+                _LOGGER.debug("No secrets captured, using existing SECRET_CIPHER_DICT")
+        except ImportError as e:
+            _LOGGER.error("Error: %s", e)
+            return
+        except Exception as e:
+            _LOGGER.error("Failed to fetch secrets: %s", e)
+            _LOGGER.debug("Reverting to existing SECRET_CIPHER_DICT")
 
     sp_dc = args.sp_dc or SP_DC_COOKIE
     if not sp_dc:
+        parser.print_help(sys.stderr)
+        print()
         _LOGGER.error("sp_dc must be provided via --sp-dc or set in the script")
         return
 
