@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spotify_monitor"
-version = "2.3"
+version = "2.3.1"
 description = "Tool implementing real-time tracking of Spotify friends music activity"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -17,6 +17,7 @@ dependencies = [
   "urllib3>=2.0.7",
   "pyotp>=2.9.0",
   "python-dotenv>=0.19",
+  "wcwidth>=0.2.7",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
