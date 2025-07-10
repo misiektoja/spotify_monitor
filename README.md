@@ -589,7 +589,7 @@ The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monit
 Download from [here](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) or:
 
 ```sh
-wget https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
+wget https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/dev/debug/spotify_monitor_secret_grabber.py
 ```
 
 Install requirements:
