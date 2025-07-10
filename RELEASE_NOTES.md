@@ -2,6 +2,19 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.3.1 (10 Jul 2025)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Updated secret cipher bytes used by web-player access token endpoint (`cookie` mode) to v11 & v12
+- **IMPROVE:** Moved secret cipher bytes for web-player endpoint to configuration section
+- **IMPROVE:** Implemented auto-selection of highest cipher version when `TOTP_VER` is set to 0
+- **NEW:** Added tool to extract secret keys used for TOTP generation in Spotify Web Player JavaScript bundles (see [Debugging Tools](https://github.com/misiektoja/spotify_monitor#debugging-tools) for more info)
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed truncation code to handle emojis with an actual width greater than one character (thanks [@tomballgithub](https://github.com/tomballgithub))
+
 # Changes in 2.3 (07 Jul 2025)
 
 **Features and Improvements**:
