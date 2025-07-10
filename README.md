@@ -2,9 +2,9 @@
 
 Tool for real-time monitoring of Spotify friends' music activity feed.
 
-NOTE: If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
+✨ If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
-🛠️ If you're looking for debug tools to get Spotify Web Player access tokens and extract TOTP secrets: [Debugging Tools](#debugging-tools)
+🛠️ If you're looking for debug tools to get Spotify Web Player access tokens and extract secret keys: [click here](#debugging-tools)
 
 <a id="features"></a>
 ## Features
@@ -172,6 +172,8 @@ This is the default method used to obtain a Spotify access token.
 If your `sp_dc` cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new `sp_dc` cookie value.
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
+
+`Note`: encrypted byte sequences used for TOTP secret generation tend to expire every now and then; you can either check the [issues](https://github.com/misiektoja/spotify_monitor/issues) section of the project to see if there are any new secrets published or you can run the [spotify_monitor_secret_grabber.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Debugging Tools](https://github.com/misiektoja/spotify_monitor#debugging-tools) for more info).
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -544,22 +546,25 @@ grc tail -F -n 100 spotify_monitor_<user_uri_id/file_suffix>.log
 <a id="debugging-tools"></a>
 ## Debugging Tools
 
-To help with troubleshooting and development, two debug utilities are available in the `dev/debug` directory:
+To help with troubleshooting and development, two debug utilities are available in the `debug` directory:
 
 - [spotify_monitor_totp_test.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py): fetching of Spotify access token based on a Spotify Web Player `sp_dc` cookie value:
 
 ```sh
+pip install requests python-dateutil pyotp
 python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value"
 ```
 
-- [spotify_monitor_secret_grabber.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py): automatic extractor for Spotify Web Player TOTP secrets from JavaScript bundles:
+- [spotify_monitor_secret_grabber.py](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py): automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles:
 
 ```sh
+pip install playwright
+playwright install
 python3 spotify_monitor_secret_grabber.py
 ```
 
 <p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_secret_grabber.png" alt="spotify_monitor_secret_grabber" width="80%"/>
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_secret_grabber.png" alt="spotify_monitor_secret_grabber" width="100%"/>
 </p>
 
 <a id="change-log"></a>
