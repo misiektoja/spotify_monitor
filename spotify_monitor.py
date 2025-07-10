@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.3
+v2.3.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -13,9 +13,10 @@ python-dateutil
 urllib3
 pyotp (optional, needed when the token source is set to cookie)
 python-dotenv (optional)
+wcwidth (optional, needed by TRUNCATE_CHARS feature)
 """
 
-VERSION = "2.3"
+VERSION = "2.3.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -534,7 +535,6 @@ from pathlib import Path
 import secrets
 from typing import Optional
 from email.utils import parsedate_to_datetime
-from wcwidth import wcwidth
 
 import urllib3
 if not VERIFY_SSL:
@@ -563,6 +563,11 @@ SESSION.mount("http://", adapter)
 
 # Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
 def truncate_string_per_line(message, truncate_width, tabsize=8):
+    try:
+        from wcwidth import wcwidth
+    except ImportError:
+        return message
+
     lines = message.split('\n')
     truncated_lines = []
 
