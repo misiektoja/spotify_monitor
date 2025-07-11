@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.0
+v1.1
 
 Automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -19,6 +19,9 @@ playwright install
 
 Change log:
 
+v1.1 (12 Jul 25):
+- Added JSON array output for plain secrets and secret bytes
+
 v1.0 (09 Jul 25):
 - Initial proof-of-concept, confirmed to extract v10, v11 and v12 secrets
 """
@@ -27,6 +30,7 @@ v1.0 (09 Jul 25):
 import asyncio
 import re
 from datetime import datetime
+import json
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright
 
@@ -57,8 +61,28 @@ def summarise(caps: List[Dict[str, Any]]):
         log('No real secrets with version.')
         return
 
-    for v, s in sorted(real.items(), key=lambda kv: int(kv[0])): print(f"v{v}: {s}")
+    print("\n--- List of extracted secrets ---\n")
+    for v, s in sorted(real.items(), key=lambda kv: int(kv[0])): print(f"v{v}: '{s}'")
 
+    sorted_items = sorted(real.items(), key=lambda kv: int(kv[0]))
+    formatted_data = [{"version": int(v), "secret": s} for v, s in sorted_items]
+    secret_bytes = [{"version": int(v), "secret": [ord(c) for c in s]} for v, s in sorted_items]
+
+    print("\n--- Plain secrets (JSON array) ---\n")
+    print(json.dumps(formatted_data, indent=2))
+
+    print("\n--- Secret bytes (JSON array) ---\n")
+    print('[')
+    for idx, itm in enumerate(secret_bytes):
+        comma = ',' if idx < len(secret_bytes) - 1 else ''
+        bytes_line = ', '.join(str(b) for b in itm["secret"])
+        print('  {')
+        print(f'    "version": {itm["version"]},')
+        print(f'    "secret": [ {bytes_line} ]')
+        print(f'  }}{comma}')
+    print(']')
+
+    print("\n--- Secret bytes (JSON object/dict): version -> byte list mapping ---\n")
     print('{')
     last = len(real) - 1
 
