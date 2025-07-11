@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.6
+v1.7
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -18,6 +18,10 @@ playwright
 ---------------
 
 Change log:
+
+v1.7 (11 Jul 25):
+- updated list of secret cipher bytes and switched to use version 13
+- added possibility to specify TOTP_VER from cmd line (when --totp-ver is used)
 
 v1.6 (10 Jul 25):
 - added automatic extractor for Spotify Web Player TOTP secrets from JS bundles (when --fetch-secrets is used)
@@ -70,6 +74,7 @@ SERVER_TIME_URL = "https://open.spotify.com/"
 TOTP_VER = 0
 
 SECRET_CIPHER_DICT = {
+    "13": [59, 92, 64, 70, 99, 78, 117, 75, 99, 103, 116, 67, 103, 51, 87, 63, 93, 59, 70, 45, 32],
     "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
     "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
     "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
@@ -403,10 +408,11 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
 
 
 def main():
-    global USER_AGENT
+    global USER_AGENT, TOTP_VER
 
     parser = argparse.ArgumentParser(description="Fetch Spotify access token using a Web Player sp_dc cookie and TOTP parameters")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
+    parser.add_argument("--totp-ver", help="Identifier of the secret key when generating a TOTP token (TOTP_VER)", default=None)
     parser.add_argument("--fetch-secrets", action="store_true", help="Additionally fetch and update secret keys used for TOTP generation")
     args = parser.parse_args()
 
@@ -424,6 +430,14 @@ def main():
         except Exception as e:
             _LOGGER.error("Failed to fetch secrets: %s", e)
             _LOGGER.debug("Reverting to existing SECRET_CIPHER_DICT")
+
+    if args.totp_ver:
+        try:
+            _LOGGER.debug(f"Setting TOTP_VER to {args.totp_ver}")
+            TOTP_VER = int(args.totp_ver)
+        except Exception as e:
+            _LOGGER.error("Failed to set TOTP_VER from parameter: %s", e)
+            _LOGGER.debug("Reverting to existing TOTP_VER")
 
     sp_dc = args.sp_dc or SP_DC_COOKIE
     if not sp_dc:
