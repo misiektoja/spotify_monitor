@@ -2,6 +2,16 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.4 (14 Jul 2025)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Added automatic fetching of secrets used by web-player access token endpoint (`cookie` mode) while generating TOTP; it avoids manual updates since Spotify started rotating them every two days
+
+**Bug fixes**:
+
+- **BUGFIX:** Fixed bugs in retry logic and error handling in spotify_get_access_token_from_sp_dc()
+
 # Changes in 2.3.1 (10 Jul 2025)
 
 **Features and Improvements**:
