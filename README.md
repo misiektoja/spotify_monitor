@@ -175,7 +175,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-> **NOTE:** encrypted byte sequences (`SECRET_CIPHER_DICT`) used for TOTP secret generation tend to expire every now and then; you can either check the [issues](https://github.com/misiektoja/spotify_monitor/issues) section of the project to see if there are any new secrets published or you can run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
+> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every two days, that's why since v2.4 the tool fetches it from remote URL (see `SECRET_CIPHER_DICT_URL`); you can also run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -579,7 +579,7 @@ You should get a valid Spotify access token, example output:
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_totp_test.png" alt="spotify_monitor_totp_test" width="100%"/>
 </p>
 
-> **NOTE:** encrypted byte sequences (`SECRET_CIPHER_DICT`) used for TOTP secret generation tend to expire every now and then; you can either check the [issues](https://github.com/misiektoja/spotify_monitor/issues) section of the project to see if there are any new secrets published or you can run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [here](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
+> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every two days; you can either run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [here](#secret-key-extraction-from-spotify-web-player-bundles) for more info) or you can pass `--fetch-secrets` flag in [spotify_monitor_totp_test](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py) (available since v1.6). There is also a [Thereallo1026/spotify-secrets](https://github.com/Thereallo1026/spotify-secrets) repo which offers JSON files that are automatically updated with current secrets.
 
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ### Secret Key Extraction from Spotify Web Player Bundles
@@ -611,7 +611,9 @@ You should get output similar to below:
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_secret_grabber.png" alt="spotify_monitor_secret_grabber" width="100%"/>
 </p>
 
-You can now update the encrypted byte sequences used for TOTP secret generation (for example `SECRET_CIPHER_DICT` in spotify_monitor and spotify_profile_monitor).
+You can now update the secrets used for TOTP generation (for example `SECRET_CIPHER_DICT` in `spotify_monitor_totp_test`, `spotify_monitor` and `spotify_profile_monitor`).
+
+> **NOTE:** you can also use [Thereallo1026/spotify-secrets](https://github.com/Thereallo1026/spotify-secrets) repo which offers JSON files that are automatically updated with current secrets (its secret extraction code is based on `spotify_monitor_secret_grabber`).
 
 <a id="change-log"></a>
 ## Change Log
