@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.7
+v1.8
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -17,7 +17,20 @@ playwright
 
 ---------------
 
+options:
+  -h, --help           show this help message and exit
+  --sp-dc SP_DC        Value of sp_dc cookie
+  --totp-ver TOTP_VER  Identifier of the secret key when generating a TOTP token (TOTP_VER)
+  --fetch-secrets      Additionally fetch and update secret keys used for TOTP generation (extraction via headless web browser, requires playwright)
+  --download-secrets   Additionally download and update secret keys used for TOTP generation (from remote URL)
+
+---------------
+
 Change log:
+
+v1.8 (14 Jul 25):
+- added automatic download of Spotify Web Player TOTP secrets from remote URL (when --download-secrets is used)
+- updated list of secret cipher bytes and switched to use version 14
 
 v1.7 (11 Jul 25):
 - updated list of secret cipher bytes and switched to use version 13
@@ -74,6 +87,7 @@ SERVER_TIME_URL = "https://open.spotify.com/"
 TOTP_VER = 0
 
 SECRET_CIPHER_DICT = {
+    "14": [62, 54, 109, 83, 107, 77, 41, 103, 45, 93, 114, 38, 41, 97, 64, 51, 95, 94, 95, 94],
     "13": [59, 92, 64, 70, 99, 78, 117, 75, 99, 103, 116, 67, 103, 51, 87, 63, 93, 59, 70, 45, 32],
     "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
     "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
@@ -84,6 +98,8 @@ SECRET_CIPHER_DICT = {
     "6": [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
     "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
 }
+
+SECRET_CIPHER_DICT_URL = "https://github.com/Thereallo1026/spotify-secrets/blob/main/secrets/secretDict.json?raw=true"
 
 # leave empty to auto generate randomly
 USER_AGENT = ""
@@ -160,8 +176,7 @@ def update_secret_cipher_dict(captures):
 
     _LOGGER.debug('List of leaked secrets:\n')
     for v, s in sorted(real_secrets.items(), key=lambda kv: int(kv[0])):
-        # _LOGGER.debug(f"v{v}: {s}")
-        print(f"v{v}: {s}")
+        print(f"v{v}: '{s}'")
     print()
 
     updated = False
@@ -189,6 +204,63 @@ def update_secret_cipher_dict(captures):
         TOTP_VER = highest_ver
 
     return updated
+
+
+def fetch_and_update_secrets():
+    global SECRET_CIPHER_DICT, TOTP_VER
+
+    if not SECRET_CIPHER_DICT_URL:
+        return False
+
+    try:
+        response = requests.get(SECRET_CIPHER_DICT_URL, timeout=10)
+        response.raise_for_status()
+        secrets = response.json()
+
+        if not isinstance(secrets, dict) or not secrets:
+            raise ValueError("Fetched payload not a non‑empty dict")
+
+        for key, value in secrets.items():
+            if not isinstance(key, str) or not key.isdigit():
+                raise ValueError(f"Invalid key format: {key}")
+            if not isinstance(value, list) or not all(isinstance(x, int) for x in value):
+                raise ValueError(f"Invalid value format for key {key}")
+
+        _LOGGER.debug('List of downloaded secrets:\n')
+        for v, s in sorted(secrets.items(), key=lambda kv: int(kv[0])):
+            decoded = ''.join(chr(x) for x in s)
+            print(f"v{v}: '{decoded}'")
+        print()
+
+        updated = False
+        for ver, secret in secrets.items():
+            byte_array = list(secret)
+
+            if ver not in SECRET_CIPHER_DICT or SECRET_CIPHER_DICT[ver] != byte_array:
+                SECRET_CIPHER_DICT[ver] = byte_array
+                updated = True
+                _LOGGER.debug(f"Updated secret for version {ver}")
+            else:
+                _LOGGER.debug(f"Secret for version {ver} is unchanged")
+
+        _LOGGER.debug('Updated dictionary with secret keys (SECRET_CIPHER_DICT):')
+        print('{')
+        items = sorted(SECRET_CIPHER_DICT.items(), key=lambda kv: int(kv[0]))
+        for idx, (v, arr) in enumerate(reversed(items)):
+            comma = ',' if idx < len(items) - 1 else ''
+            print(f'  "{v}": {arr}{comma}')
+        print('}')
+
+        highest_ver = max(int(v) for v in SECRET_CIPHER_DICT.keys())
+        if highest_ver != TOTP_VER:
+            _LOGGER.debug(f"Updating TOTP_VER from {TOTP_VER} to {highest_ver}")
+            TOTP_VER = highest_ver
+
+        return True
+
+    except Exception as e:
+        print(f"Failed to get new secrets: {e}")
+        return False
 
 
 def get_random_user_agent() -> str:
@@ -291,7 +363,10 @@ def fetch_server_time(ua: str) -> int:
 def generate_totp():
     _LOGGER.debug("Generating TOTP")
 
-    secret_cipher_bytes = SECRET_CIPHER_DICT[str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT))))]
+    if str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT)))) not in SECRET_CIPHER_DICT:
+        raise Exception(f"Defined TOTP_VER ({ver}) is missing in SECRET_CIPHER_DICT")
+
+    secret_cipher_bytes = SECRET_CIPHER_DICT[str(ver)]
 
     _LOGGER.debug("TOTP ver: %s", ver)
     _LOGGER.debug("TOTP cipher: %s", secret_cipher_bytes)
@@ -373,7 +448,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
             last_err = str(e)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
+        raise Exception(f"Unsuccessful token request{': ' + last_err if last_err else ''}")
 
     return {
         "access_token": token,
@@ -413,7 +488,8 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch Spotify access token using a Web Player sp_dc cookie and TOTP parameters")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
     parser.add_argument("--totp-ver", help="Identifier of the secret key when generating a TOTP token (TOTP_VER)", default=None)
-    parser.add_argument("--fetch-secrets", action="store_true", help="Additionally fetch and update secret keys used for TOTP generation")
+    parser.add_argument("--fetch-secrets", action="store_true", help="Additionally fetch and update secret keys used for TOTP generation (extraction via headless web browser, requires playwright)")
+    parser.add_argument("--download-secrets", action="store_true", help="Additionally download and update secret keys used for TOTP generation (from remote URL)")
     args = parser.parse_args()
 
     if args.fetch_secrets:
@@ -430,6 +506,12 @@ def main():
         except Exception as e:
             _LOGGER.error("Failed to fetch secrets: %s", e)
             _LOGGER.debug("Reverting to existing SECRET_CIPHER_DICT")
+
+    if args.download_secrets:
+        _LOGGER.debug("Downloading secret keys used for TOTP generation ...")
+        _LOGGER.debug("Remote URL: %s", SECRET_CIPHER_DICT_URL)
+        if not fetch_and_update_secrets():
+            _LOGGER.error("Failed to download secrets")
 
     if args.totp_ver:
         try:
