@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.3.1
+v2.4
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -16,7 +16,7 @@ python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
 """
 
-VERSION = "2.3.1"
+VERSION = "2.4"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -244,13 +244,14 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 # The section below is used when the token source is set to 'cookie'
 
 # Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token_from_sp_dc() function
-TOKEN_MAX_RETRIES = 10
+TOKEN_MAX_RETRIES = 3
 
 # Interval between access token retry attempts; in seconds
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
-# Mapping of TOTP version identifiers to the encrypted byte sequence for TOTP secret generation
-# Newest TOTP secrets can be fetched via spotify_monitor_secret_grabber.py (see debug dir)
+# Mapping of TOTP version identifiers to the secrets needed for TOTP generation
+# Newest secrets are downloaded automatically from SECRET_CIPHER_DICT_URL (see below)
+# Can also be fetched via spotify_monitor_secret_grabber.py utility - see debug dir
 SECRET_CIPHER_DICT = {
     "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
     "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
@@ -262,7 +263,11 @@ SECRET_CIPHER_DICT = {
     "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
 }
 
-# Identifier used to select the appropriate encrypted secret from SECRET_CIPHER_DICT when generating a TOTP token
+# Remote URL used to fetch updated secrets needed for TOTP generation
+# Set to empty string to disable
+SECRET_CIPHER_DICT_URL = "https://github.com/Thereallo1026/spotify-secrets/blob/main/secrets/secretDict.json?raw=true"
+
+# Identifier used to select the appropriate secret from SECRET_CIPHER_DICT when generating a TOTP token
 # Set to 0 to auto-select the highest available version
 TOTP_VER = 0
 
@@ -467,6 +472,7 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
 SECRET_CIPHER_DICT = {}
+SECRET_CIPHER_DICT_URL = ""
 TOTP_VER = 0
 FLAG_FILE = ""
 TRUNCATE_CHARS = 0
@@ -1276,7 +1282,10 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
 def generate_totp():
     import pyotp
 
-    secret_cipher_bytes = SECRET_CIPHER_DICT[str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT))))]
+    if str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT)))) not in SECRET_CIPHER_DICT:
+        raise Exception(f"generate_totp(): Defined TOTP_VER ({ver}) is missing in SECRET_CIPHER_DICT")
+
+    secret_cipher_bytes = SECRET_CIPHER_DICT[str(ver)]
 
     transformed = [e ^ ((t % 33) + 9) for t, e in enumerate(secret_cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
@@ -1284,6 +1293,34 @@ def generate_totp():
     secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
 
     return pyotp.TOTP(secret, digits=6, interval=30)
+
+
+def fetch_and_update_secrets():
+    global SECRET_CIPHER_DICT
+
+    if not SECRET_CIPHER_DICT_URL:
+        return False
+
+    try:
+        response = req.get(SECRET_CIPHER_DICT_URL, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+        secrets = response.json()
+
+        if not isinstance(secrets, dict) or not secrets:
+            raise ValueError("fetch_and_update_secrets(): Fetched payload not a non‑empty dict")
+
+        for key, value in secrets.items():
+            if not isinstance(key, str) or not key.isdigit():
+                raise ValueError(f"fetch_and_update_secrets(): Invalid key format: {key}")
+            if not isinstance(value, list) or not all(isinstance(x, int) for x in value):
+                raise ValueError(f"fetch_and_update_secrets(): Invalid value format for key {key}")
+
+        SECRET_CIPHER_DICT = secrets
+        return True
+
+    except Exception as e:
+        print(f"fetch_and_update_secrets(): Failed to get new secrets: {e}")
+        return False
 
 
 # Refreshes the Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
@@ -1385,29 +1422,52 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
     max_retries = TOKEN_MAX_RETRIES
     retry = 0
 
+    last_error = ""
+
     while retry < max_retries:
-        token_data = refresh_access_token_from_sp_dc(sp_dc)
-        token = token_data["access_token"]
-        client_id = token_data.get("client_id", "")
-        length = token_data["length"]
+        try:
+            token_data = refresh_access_token_from_sp_dc(sp_dc)
+            token = token_data["access_token"]
+            client_id = token_data.get("client_id", "")
+            length = token_data["length"]
 
-        SP_CACHED_ACCESS_TOKEN = token
-        SP_ACCESS_TOKEN_EXPIRES_AT = token_data["expires_at"]
-        SP_CACHED_CLIENT_ID = client_id
+            SP_CACHED_ACCESS_TOKEN = token
+            SP_ACCESS_TOKEN_EXPIRES_AT = token_data["expires_at"]
+            SP_CACHED_CLIENT_ID = client_id
 
-        if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+            if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+                retry += 1
+                time.sleep(TOKEN_RETRY_TIMEOUT)
+            else:
+                break
+        except Exception as e:
+            last_error = str(e)
             retry += 1
-            time.sleep(TOKEN_RETRY_TIMEOUT)
-        else:
-            break
+            if retry < max_retries:
+                time.sleep(TOKEN_RETRY_TIMEOUT)
 
     if retry == max_retries:
-        if SP_CACHED_ACCESS_TOKEN is not None:
-            print(f"* Token appears to be still invalid after {max_retries} attempts, returning token anyway")
-            print_cur_ts("Timestamp:\t\t\t")
-            return SP_CACHED_ACCESS_TOKEN
-        else:
-            raise RuntimeError(f"Failed to obtain a valid Spotify access token after {max_retries} attempts")
+
+        if fetch_and_update_secrets():
+            try:
+                token_data = refresh_access_token_from_sp_dc(sp_dc)
+                token = token_data["access_token"]
+                client_id = token_data.get("client_id", "")
+                length = token_data["length"]
+
+                SP_CACHED_ACCESS_TOKEN = token
+                SP_ACCESS_TOKEN_EXPIRES_AT = token_data["expires_at"]
+                SP_CACHED_CLIENT_ID = client_id
+
+                if SP_CACHED_ACCESS_TOKEN and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+                    return SP_CACHED_ACCESS_TOKEN
+            except Exception as e:
+                last_error = str(e)
+
+        error_msg = f"Failed to obtain a valid Spotify access token after {max_retries} attempts"
+        if last_error:
+            error_msg += f": {last_error}"
+        raise RuntimeError(error_msg)
 
     return SP_CACHED_ACCESS_TOKEN
 
