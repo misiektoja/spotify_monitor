@@ -2045,7 +2045,7 @@ def spotify_convert_uri_to_url(uri):
     return url
 
 
-# Prints the list of Spotify friends with the last listened track (-l flag)
+# Returns list of Spotify friends
 def spotify_list_friends(friend_activity):
 
     print(f"Number of friends:\t\t{len(friend_activity['friends'])}\n")
