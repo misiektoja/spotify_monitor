@@ -1282,7 +1282,8 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
 def generate_totp():
     import pyotp
 
-    if str((ver := TOTP_VER or max(map(int, SECRET_CIPHER_DICT)))) not in SECRET_CIPHER_DICT:
+    ver = TOTP_VER or max(map(int, SECRET_CIPHER_DICT))
+    if str(ver) not in SECRET_CIPHER_DICT:
         raise Exception(f"generate_totp(): Defined TOTP_VER ({ver}) is missing in SECRET_CIPHER_DICT")
 
     secret_cipher_bytes = SECRET_CIPHER_DICT[str(ver)]
