@@ -3375,6 +3375,7 @@ def main():
     else:
         if FLAG_FILE:
             FLAG_FILE = os.path.expanduser(FLAG_FILE)
+            flag_file_delete()
 
     if args.send_test_email:
         print("* Sending test email notification ...\n")
