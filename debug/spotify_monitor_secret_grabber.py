@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.1
+v1.2
 
 Automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -19,6 +19,9 @@ playwright install
 
 Change log:
 
+v1.2 (12 Oct 25):
+- Added CLI output modes (--secret, --secretbytes and --secretdict CLI flags, see -h for help)
+
 v1.1 (12 Jul 25):
 - Added JSON array output for plain secrets and secret bytes
 
@@ -33,6 +36,8 @@ from datetime import datetime
 import json
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright
+import argparse
+import sys
 
 
 BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player)\.[0-9a-f]{4,}\.(?:js|mjs)""")
@@ -40,12 +45,16 @@ TIMEOUT = 45000  # 45s
 VERBOSE = True
 
 
+def _inline_int_array(nums):
+    return '[ ' + ', '.join(str(n) for n in nums) + ' ]'
+
+
 def log(m):
     if VERBOSE:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
 
 
-def summarise(caps: List[Dict[str, Any]]):
+def summarise(caps: List[Dict[str, Any]], mode=None):
     real = {}
 
     for cap in caps:
@@ -61,37 +70,58 @@ def summarise(caps: List[Dict[str, Any]]):
         log('No real secrets with version.')
         return
 
-    print("\n--- List of extracted secrets ---\n")
-    for v, s in sorted(real.items(), key=lambda kv: int(kv[0])): print(f"v{v}: '{s}'")
-
     sorted_items = sorted(real.items(), key=lambda kv: int(kv[0]))
     formatted_data = [{"version": int(v), "secret": s} for v, s in sorted_items]
     secret_bytes = [{"version": int(v), "secret": [ord(c) for c in s]} for v, s in sorted_items]
 
-    print("\n--- Plain secrets (JSON array) ---\n")
-    print(json.dumps(formatted_data, indent=2))
+    if mode is None:
+        print("\n--- List of extracted secrets ---\n")
+        for v, s in sorted(real.items(), key=lambda kv: int(kv[0])):
+            print(f"v{v}: '{s}'")
 
-    print("\n--- Secret bytes (JSON array) ---\n")
-    print('[')
-    for idx, itm in enumerate(secret_bytes):
-        comma = ',' if idx < len(secret_bytes) - 1 else ''
-        bytes_line = ', '.join(str(b) for b in itm["secret"])
-        print('  {')
-        print(f'    "version": {itm["version"]},')
-        print(f'    "secret": [ {bytes_line} ]')
-        print(f'  }}{comma}')
-    print(']')
+        print("\n--- Plain secrets (JSON array) ---\n")
+        print(json.dumps(formatted_data, indent=2))
 
-    print("\n--- Secret bytes (JSON object/dict): version -> byte list mapping ---\n")
-    print('{')
-    last = len(real) - 1
+        print("\n--- Secret bytes (JSON array) ---\n")
+        print('[')
+        for idx, itm in enumerate(secret_bytes):
+            comma = ',' if idx < len(secret_bytes) - 1 else ''
+            print('  {')
+            print(f'    "version": {itm["version"]},')
+            print(f'    "secret": {_inline_int_array(itm["secret"])}')
+            print(f'  }}{comma}')
+        print(']')
 
-    for idx, (v, s) in enumerate(sorted(real.items(), key=lambda kv: int(kv[0]))):
-        arr = ', '.join(str(ord(c)) for c in s)
-        comma = ',' if idx < last else ''
-        print(f'  "{v}": [{arr}]{comma}')
+        print("\n--- Secret bytes (JSON object/dict): version -> byte list mapping ---\n")
+        print('{')
+        last = len(real) - 1
+        for idx, (v, s) in enumerate(sorted(real.items(), key=lambda kv: int(kv[0]))):
+            arr = [ord(c) for c in s]
+            comma = ',' if idx < last else ''
+            print(f'  "{v}": {_inline_int_array(arr)}{comma}')
+        print('}')
 
-    print('}')
+    elif mode == 'secret':
+        print(json.dumps(formatted_data, indent=2))
+
+    elif mode == 'secretbytes':
+        print('[')
+        for idx, itm in enumerate(secret_bytes):
+            comma = ',' if idx < len(secret_bytes) - 1 else ''
+            print('  {')
+            print(f'    "version": {itm["version"]},')
+            print(f'    "secret": {_inline_int_array(itm["secret"])}')
+            print(f'  }}{comma}')
+        print(']')
+
+    elif mode == 'secretdict':
+        print('{')
+        last = len(real) - 1
+        for idx, (v, s) in enumerate(sorted(real.items(), key=lambda kv: int(kv[0]))):
+            arr = [ord(c) for c in s]
+            comma = ',' if idx < last else ''
+            print(f'  "{v}": {_inline_int_array(arr)}{comma}')
+        print('}')
 
 
 async def grab_live():
@@ -113,7 +143,6 @@ Object.defineProperty(this,'secret',{value:v,writable:true,configurable:true,enu
 
         if caps:
             for c in caps:
-                # if isinstance(c.get('secret'), str):
                 if isinstance(c.get('secret'), str) and c.get('version') is not None:
                     log(f"✔ secret({c.get('version')}) → {c.get('secret')}")
 
@@ -122,8 +151,30 @@ Object.defineProperty(this,'secret',{value:v,writable:true,configurable:true,enu
 
 
 def main():
-    caps = asyncio.run(grab_live())
-    summarise(caps)
+    parser = argparse.ArgumentParser(description='Extract Spotify web-player TOTP secrets')
+    parser.add_argument('--secret', action='store_true', help='Output plain secrets JSON only')
+    parser.add_argument('--secretbytes', action='store_true', help='Output secret-bytes JSON only')
+    parser.add_argument('--secretdict', action='store_true', help='Output version->byte-list dict JSON only')
+    args = parser.parse_args()
+
+    mode = None
+    if args.secret:
+        mode = 'secret'
+    elif args.secretbytes:
+        mode = 'secretbytes'
+    elif args.secretdict:
+        mode = 'secretdict'
+
+    global VERBOSE
+    if mode:
+        VERBOSE = False
+
+    try:
+        caps = asyncio.run(grab_live())
+        summarise(caps, mode)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
