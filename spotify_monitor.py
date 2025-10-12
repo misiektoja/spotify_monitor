@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.4
+v2.5
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -16,7 +16,7 @@ python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
 """
 
-VERSION = "2.4"
+VERSION = "2.5"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -253,19 +253,17 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 # Newest secrets are downloaded automatically from SECRET_CIPHER_DICT_URL (see below)
 # Can also be fetched via spotify_monitor_secret_grabber.py utility - see debug dir
 SECRET_CIPHER_DICT = {
-    "12": [107, 81, 49, 57, 67, 93, 87, 81, 69, 67, 40, 93, 48, 50, 46, 91, 94, 113, 41, 108, 77, 107, 34],
-    "11": [111, 45, 40, 73, 95, 74, 35, 85, 105, 107, 60, 110, 55, 72, 69, 70, 114, 83, 63, 88, 91],
-    "10": [61, 110, 58, 98, 35, 79, 117, 69, 102, 72, 92, 102, 69, 93, 41, 101, 42, 75],
-    "9": [109, 101, 90, 99, 66, 92, 116, 108, 85, 70, 86, 49, 68, 54, 87, 50, 72, 121, 52, 64, 57, 43, 36, 81, 97, 72, 53, 41, 78, 56],
-    "8": [37, 84, 32, 76, 87, 90, 87, 47, 13, 75, 48, 54, 44, 28, 19, 21, 22],
-    "7": [59, 91, 66, 74, 30, 66, 74, 38, 46, 50, 72, 61, 44, 71, 86, 39, 89],
     "6": [21, 24, 85, 46, 48, 35, 33, 8, 11, 63, 76, 12, 55, 77, 14, 7, 54],
     "5": [12, 56, 76, 33, 88, 44, 88, 33, 78, 78, 11, 66, 22, 22, 55, 69, 54],
 }
 
-# Remote URL used to fetch updated secrets needed for TOTP generation
+# Remote or local URL used to fetch updated secrets needed for TOTP generation
 # Set to empty string to disable
-SECRET_CIPHER_DICT_URL = "https://github.com/Thereallo1026/spotify-secrets/blob/main/secrets/secretDict.json?raw=true"
+# If you used "spotify_monitor_secret_grabber.py --secretdict > secretDict.json" specify the file location below
+# SECRET_CIPHER_DICT_URL = "https://github.com/Thereallo1026/spotify-secrets/blob/main/secrets/secretDict.json?raw=true"
+SECRET_CIPHER_DICT_URL = "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true"
+# SECRET_CIPHER_DICT_URL = file:///C:/your_path/secretDict.json
+# SECRET_CIPHER_DICT_URL = "file:///your_path/secretDict.json"
 
 # Identifier used to select the appropriate secret from SECRET_CIPHER_DICT when generating a TOTP token
 # Set to 0 to auto-select the highest available version
@@ -1303,12 +1301,43 @@ def fetch_and_update_secrets():
         return False
 
     try:
-        response = req.get(SECRET_CIPHER_DICT_URL, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-        response.raise_for_status()
-        secrets = response.json()
+        if SECRET_CIPHER_DICT_URL.startswith("file:"):
+            import os
+            from urllib.parse import urlparse, unquote
+
+            parsed = urlparse(SECRET_CIPHER_DICT_URL)
+
+            if parsed.netloc:
+                raw_path = f"/{parsed.netloc}{parsed.path or ''}"
+            else:
+                if SECRET_CIPHER_DICT_URL.startswith("file://"):
+                    raw_path = parsed.path or SECRET_CIPHER_DICT_URL[len("file://"):]
+                else:
+                    raw_path = parsed.path or SECRET_CIPHER_DICT_URL[len("file:"):]
+
+            raw_path = unquote(raw_path)
+
+            if raw_path.startswith("/~"):
+                raw_path = raw_path[1:]
+
+            if not raw_path.startswith("/") and not raw_path.startswith("~"):
+                raw_path = "/" + raw_path
+
+            path = os.path.expanduser(os.path.expandvars(raw_path))
+
+            print(f"Loading Spotify web-player TOTP secrets from file: {path}")
+            with open(path, "r", encoding="utf-8") as f:
+                secrets = json.load(f)
+            print("─" * HORIZONTAL_LINE)
+        else:
+            print(f"Fetching Spotify web-player TOTP secrets from URL: {SECRET_CIPHER_DICT_URL}")
+            response = req.get(SECRET_CIPHER_DICT_URL, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+            response.raise_for_status()
+            secrets = response.json()
+            print("─" * HORIZONTAL_LINE)
 
         if not isinstance(secrets, dict) or not secrets:
-            raise ValueError("fetch_and_update_secrets(): Fetched payload not a non‑empty dict")
+            raise ValueError("fetch_and_update_secrets(): Fetched payload not a non-empty dict")
 
         for key, value in secrets.items():
             if not isinstance(key, str) or not key.isdigit():
