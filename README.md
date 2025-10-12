@@ -54,7 +54,8 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
    * [Access Token Retrieval via sp_dc Cookie and TOTP](#access-token-retrieval-via-sp_dc-cookie-and-totp)
    * [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles)
 7. [Change Log](#change-log)
-8. [License](#license)
+8. [Maintainers](#maintainers)
+9. [License](#license)
 
 <a id="requirements"></a>
 ## Requirements
@@ -64,8 +65,8 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 
 Tested on:
 
-* **macOS**: Ventura, Sonoma, Sequoia
-* **Linux**: Raspberry Pi OS (Bullseye, Bookworm), Ubuntu 24, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
+* **macOS**: Ventura, Sonoma, Sequoia, Tahoe
+* **Linux**: Raspberry Pi OS (Bullseye, Bookworm, Trixie), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
 * **Windows**: 10, 11
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
@@ -700,6 +701,12 @@ You can now update the secrets used for TOTP generation (for example `SECRET_CIP
 ## Change Log
 
 See [RELEASE_NOTES.md](https://github.com/misiektoja/spotify_monitor/blob/main/RELEASE_NOTES.md) for details.
+
+<a id="maintainers"></a>
+## Maintainers
+
+[![Maintainer: misiektoja](https://img.shields.io/badge/maintainer-misiektoja-blue)](https://github.com/misiektoja)  
+[![Maintainer: tomballgithub](https://img.shields.io/badge/maintainer-tomballgithub-blue)](https://github.com/tomballgithub)
 
 <a id="license"></a>
 ## License
