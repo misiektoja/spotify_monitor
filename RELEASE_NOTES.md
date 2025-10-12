@@ -2,6 +2,19 @@
 
 This is a high-level summary of the most important changes. 
 
+# Changes in 2.5 (12 Oct 2025)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Added support for loading TOTP secrets from local files via file:// URLs
+- **IMPROVE:** Updated remote URL in SECRET_CIPHER_DICT_URL
+- **IMPROVE:** Added deletion of flag_file at launch if specified via .conf file. Previously only done when flag_file was specified on command line
+- **IMPROVE:** Added info to console output when TOTP secrets are fetched from a remote URL or local file
+
+**Bug fixes**:
+
+- **BUGFIX:** Removed walrus operator to support min python version 3.6 (fixes [#20](https://github.com/misiektoja/spotify_monitor/issues/20))
+
 # Changes in 2.4 (14 Jul 2025)
 
 **Features and Improvements**:
