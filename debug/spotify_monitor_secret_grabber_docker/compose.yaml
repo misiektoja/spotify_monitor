@@ -1,0 +1,8 @@
+services:
+  spotify-secrets-grabber:
+    image: docker.io/misiektoja/spotify-secrets-grabber:latest
+    working_dir: /work
+    # SELinux (Fedora/RHEL): change to ".:/work:Z"
+    volumes:
+      - .:/work
+    shm_size: 1g
