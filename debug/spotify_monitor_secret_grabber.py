@@ -21,6 +21,7 @@ Change log:
 
 v1.2 (12 Oct 25):
 - Added CLI output modes (--secret, --secretbytes and --secretdict CLI flags, see -h for help)
+- Added --all mode writing all secret formats to files (secrets.json, secretBytes.json, secretDict.json) (thx @tomballgithub)
 
 v1.1 (12 Jul 25):
 - Added JSON array output for plain secrets and secret bytes
@@ -44,9 +45,33 @@ BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player
 TIMEOUT = 45000  # 45s
 VERBOSE = True
 
+OUTPUT_FILES = {
+    'plain_json': 'secrets.json',
+    'bytes_json_array': 'secretBytes.json',
+    'bytes_json_dict': 'secretDict.json',
+}
+
 
 def _inline_int_array(nums):
     return '[ ' + ', '.join(str(n) for n in nums) + ' ]'
+
+
+def _write_secretbytes_compact(fp, items):
+    fp.write('[\n')
+    last = len(items) - 1
+    for i, itm in enumerate(items):
+        comma = ',' if i < last else ''
+        fp.write(f'  {{ "version": {itm["version"]}, "secret": {_inline_int_array(itm["secret"])} }}{comma}\n')
+    fp.write(']\n')
+
+
+def _write_secretdict_compact(fp, mapping):
+    keys = sorted(mapping.keys(), key=lambda k: int(k))
+    fp.write('{\n')
+    for i, v in enumerate(keys):
+        comma = ',' if i < len(keys) - 1 else ''
+        fp.write(f'  "{v}": {_inline_int_array(mapping[v])}{comma}\n')
+    fp.write('}\n')
 
 
 def log(m):
@@ -73,6 +98,7 @@ def summarise(caps: List[Dict[str, Any]], mode=None):
     sorted_items = sorted(real.items(), key=lambda kv: int(kv[0]))
     formatted_data = [{"version": int(v), "secret": s} for v, s in sorted_items]
     secret_bytes = [{"version": int(v), "secret": [ord(c) for c in s]} for v, s in sorted_items]
+    secret_dict = {v: [ord(c) for c in s] for v, s in sorted_items}
 
     if mode is None:
         print("\n--- List of extracted secrets ---\n")
@@ -108,10 +134,7 @@ def summarise(caps: List[Dict[str, Any]], mode=None):
         print('[')
         for idx, itm in enumerate(secret_bytes):
             comma = ',' if idx < len(secret_bytes) - 1 else ''
-            print('  {')
-            print(f'    "version": {itm["version"]},')
-            print(f'    "secret": {_inline_int_array(itm["secret"])}')
-            print(f'  }}{comma}')
+            print(f'  {{ "version": {itm["version"]}, "secret": {_inline_int_array(itm["secret"])} }}{comma}')
         print(']')
 
     elif mode == 'secretdict':
@@ -122,6 +145,22 @@ def summarise(caps: List[Dict[str, Any]], mode=None):
             comma = ',' if idx < last else ''
             print(f'  "{v}": {_inline_int_array(arr)}{comma}')
         print('}')
+
+    elif mode == 'all':
+        try:
+            with open(OUTPUT_FILES['plain_json'], 'w') as f:
+                json.dump(formatted_data, f, indent=2)
+                f.write('\n')
+            with open(OUTPUT_FILES['bytes_json_array'], 'w') as f:
+                _write_secretbytes_compact(f, secret_bytes)
+            with open(OUTPUT_FILES['bytes_json_dict'], 'w') as f:
+                _write_secretdict_compact(f, secret_dict)
+            if VERBOSE:
+                print(f"[+] Wrote plain secrets to {OUTPUT_FILES['plain_json']}")
+                print(f"[+] Wrote secret bytes array to {OUTPUT_FILES['bytes_json_array']}")
+                print(f"[+] Wrote secret bytes dict to {OUTPUT_FILES['bytes_json_dict']}")
+        except Exception as e:
+            print(f"Error writing output files: {e}", file=sys.stderr)
 
 
 async def grab_live():
@@ -155,6 +194,7 @@ def main():
     parser.add_argument('--secret', action='store_true', help='Output plain secrets JSON only')
     parser.add_argument('--secretbytes', action='store_true', help='Output secret-bytes JSON only')
     parser.add_argument('--secretdict', action='store_true', help='Output version->byte-list dict JSON only')
+    parser.add_argument('--all', action='store_true', help='Write plain, bytes array and bytes dict JSON files')
     args = parser.parse_args()
 
     mode = None
@@ -164,10 +204,14 @@ def main():
         mode = 'secretbytes'
     elif args.secretdict:
         mode = 'secretdict'
+    elif args.all:
+        mode = 'all'
 
     global VERBOSE
-    if mode:
+    if mode and mode != 'all':
         VERBOSE = False
+    elif mode == 'all':
+        VERBOSE = True
 
     try:
         caps = asyncio.run(grab_live())
