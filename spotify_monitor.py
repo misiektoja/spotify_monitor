@@ -2580,7 +2580,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_active_ts_stop = 0
                 listened_songs = 1
                 song_on_loop = 1
-                recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': sp_ts}]
+                recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': sp_ts, 'skipped': False}]
                 print("\n*** Friend is currently ACTIVE !")
 
                 if FLAG_FILE:
@@ -2837,16 +2837,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     print(f"Duration:\t\t\t{display_time(sp_track_duration)}")
 
                     listened_songs += 1
-                    # Add current song to recent songs session list
-                    recent_songs_session.append({
-                        'artist': sp_artist,
-                        'track': sp_track,
-                        'timestamp': sp_ts
-                    })
-                    # Keep only last 5 songs
-                    if len(recent_songs_session) > 5:
-                        recent_songs_session.pop(0)
 
+                    song_skipped = False
                     if (sp_ts - sp_ts_old) < (sp_track_duration - 1):
                         played_for_time = sp_ts - sp_ts_old
                         listened_percentage = (played_for_time) / (sp_track_duration - 1)
@@ -2854,6 +2846,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if listened_percentage <= SKIPPED_SONG_THRESHOLD:
                             played_for += f" - SKIPPED ({int(listened_percentage * 100)}%)"
                             skipped_songs += 1
+                            song_skipped = True
                         else:
                             played_for += f" ({int(listened_percentage * 100)}%)"
                         print(f"Played for:\t\t\t{played_for}")
@@ -2862,6 +2855,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     else:
                         played_for_m_body = ""
                         played_for_m_body_html = ""
+                    
+                    # Add current song to recent songs session list
+                    recent_songs_session.append({
+                        'artist': sp_artist,
+                        'track': sp_track,
+                        'timestamp': sp_ts,
+                        'skipped': song_skipped
+                    })
+                    # Keep only last 5 songs
+                    if len(recent_songs_session) > 5:
+                        recent_songs_session.pop(0)
 
                     if is_playlist:
                         print(f"Playlist:\t\t\t{sp_playlist}")
@@ -2917,7 +2921,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         skipped_songs = 0
                         looped_songs = 0
                         song_on_loop = 1
-                        recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': sp_ts}]
+                        recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': sp_ts, 'skipped': False}]
 
                         if FLAG_FILE:
                             flag_file_create()
@@ -3043,8 +3047,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 recent_songs_list_html = []
                                 for song in songs_to_show:
                                     song_date = get_date_from_ts(song['timestamp'])
-                                    recent_songs_list.append(f"{song['artist']} - {song['track']} ({song_date})")
-                                    recent_songs_list_html.append(f"<b>{escape(song['artist'])} - {escape(song['track'])}</b> ({song_date})")
+                                    skipped_text = ", SKIPPED" if song.get('skipped', False) else ""
+                                    recent_songs_list.append(f"{song['artist']} - {song['track']} ({song_date}{skipped_text})")
+                                    skipped_html = ", <b>SKIPPED</b>" if song.get('skipped', False) else ""
+                                    recent_songs_list_html.append(f"<b>{escape(song['artist'])} - {escape(song['track'])}</b> ({song_date}{skipped_html})")
                                 if recent_songs_list:
                                     recent_songs_mbody = f"\n\nRecently listened songs in this session:\n" + "\n".join(recent_songs_list)
                                     recent_songs_mbody_html = f"<br><br>Recently listened songs in this session:<br>" + "<br>".join(recent_songs_list_html)
