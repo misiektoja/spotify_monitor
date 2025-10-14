@@ -107,6 +107,17 @@ INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
 # (treats as if song was played for its full duration to account for timestamp jitter)
 PLAYED_FOR_DURATION_TOLERANCE = 1
 
+# Whether to detect and annotate crossfaded songs (songs played with transition timing)
+# When enabled, songs played within the crossfade detection thresholds will be marked as
+# "(X% - crossfade enabled)" to indicate that the song likely ended early due to crossfade transitions
+DETECT_CROSSFADED_SONGS = True
+
+# Thresholds for crossfade detection (as percentage of track duration)
+# Songs played between CROSSFADE_DETECTION_MIN and CROSSFADE_DETECTION_MAX will be annotated
+# as crossfaded if DETECT_CROSSFADED_SONGS is enabled
+CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
+CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
+
 # Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
 # Can happen due to:
 #   - unfollowing the user
@@ -252,10 +263,10 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
 ENABLE_GENIUS_LYRICS_URL = True
 
 # Whether to show AZLyrics URL in console and emails
-ENABLE_AZLYRICS_URL = True
+ENABLE_AZLYRICS_URL = False
 
 # Whether to show Tekstowo.pl lyrics URL in console and emails
-ENABLE_TEKSTOWO_URL = True
+ENABLE_TEKSTOWO_URL = False
 
 # ---------------------------------------------------------------------
 
@@ -459,6 +470,9 @@ SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
 INACTIVE_EMAIL_RECENT_SONGS_COUNT = 0
 PLAYED_FOR_DURATION_TOLERANCE = 0
+DETECT_CROSSFADED_SONGS = False
+CROSSFADE_DETECTION_MIN = 0.0
+CROSSFADE_DETECTION_MAX = 0.0
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 TRACK_SONGS = False
 SPOTIFY_MACOS_PLAYING_METHOD = ""
@@ -2918,12 +2932,18 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         played_for_time = sp_ts - sp_ts_old
                         listened_percentage = (played_for_time) / (sp_track_duration - 1)
                         played_for = display_time(played_for_time)
+                        percentage_display = int(listened_percentage * 100)
+                        
                         if listened_percentage <= SKIPPED_SONG_THRESHOLD:
-                            played_for += f" - SKIPPED ({int(listened_percentage * 100)}%)"
+                            played_for += f" - SKIPPED ({percentage_display}%)"
                             skipped_songs += 1
                             song_skipped = True
                         else:
-                            played_for += f" ({int(listened_percentage * 100)}%)"
+                            # Check for potential crossfade (within detection thresholds, not skipped)
+                            crossfade_note = ""
+                            if DETECT_CROSSFADED_SONGS and CROSSFADE_DETECTION_MIN <= listened_percentage < CROSSFADE_DETECTION_MAX:
+                                crossfade_note = " - crossfade enabled"
+                            played_for += f" ({percentage_display}%{crossfade_note})"
                         print(f"Played for:\t\t\t{played_for}")
                         played_for_m_body = f"\nPlayed for: {played_for}"
                         played_for_m_body_html = f"<br>Played for: {played_for}"
