@@ -98,6 +98,10 @@ SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
 # Note: If the user listens to songs longer than this value, they may be marked as inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 
+# How many recently listened songs to display in the inactive notification email
+# Set to 0 to disable the recently listened songs list
+INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
+
 # Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
 # Can happen due to:
 #   - unfollowing the user
@@ -439,6 +443,7 @@ ERROR_NOTIFICATION = False
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
+INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 TRACK_SONGS = False
 SPOTIFY_MACOS_PLAYING_METHOD = ""
@@ -2863,8 +2868,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         'timestamp': sp_ts,
                         'skipped': song_skipped
                     })
-                    # Keep only last 5 songs
-                    if len(recent_songs_session) > 5:
+                    # Keep only last INACTIVE_EMAIL_RECENT_SONGS_COUNT songs (or 5 if not set)
+                    max_songs = INACTIVE_EMAIL_RECENT_SONGS_COUNT if INACTIVE_EMAIL_RECENT_SONGS_COUNT > 0 else 5
+                    if len(recent_songs_session) > max_songs:
                         recent_songs_session.pop(0)
 
                     if is_playlist:
@@ -3040,9 +3046,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             # Format recently listened songs list for email (skip if only 1 song)
                             recent_songs_mbody = ""
                             recent_songs_mbody_html = ""
-                            if listened_songs > 1 and len(recent_songs_session) > 0:
-                                # Get last up to 5 songs
-                                songs_to_show = recent_songs_session[-min(5, len(recent_songs_session)):]
+                            if listened_songs > 1 and len(recent_songs_session) > 0 and INACTIVE_EMAIL_RECENT_SONGS_COUNT > 0:
+                                # Get last up to INACTIVE_EMAIL_RECENT_SONGS_COUNT songs
+                                songs_to_show = recent_songs_session[-min(INACTIVE_EMAIL_RECENT_SONGS_COUNT, len(recent_songs_session)):]
                                 recent_songs_list = []
                                 recent_songs_list_html = []
                                 for song in songs_to_show:
