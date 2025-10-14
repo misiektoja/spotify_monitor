@@ -102,6 +102,11 @@ SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
 # Set to 0 to disable the recently listened songs list
 INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
 
+# Tolerance in seconds for "Played for" display when comparing actual playback time to track duration
+# If the difference is within +-PLAYED_FOR_DURATION_TOLERANCE seconds, "Played for" is suppressed
+# (treats as if song was played for its full duration to account for timestamp jitter)
+PLAYED_FOR_DURATION_TOLERANCE = 1
+
 # Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
 # Can happen due to:
 #   - unfollowing the user
@@ -443,7 +448,8 @@ ERROR_NOTIFICATION = False
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
-INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
+INACTIVE_EMAIL_RECENT_SONGS_COUNT = 0
+PLAYED_FOR_DURATION_TOLERANCE = 0
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 TRACK_SONGS = False
 SPOTIFY_MACOS_PLAYING_METHOD = ""
@@ -2863,14 +2869,15 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     elif not resumed_after_offline:
                         # Song played for full duration or longer (e.g. pause, ad etc.)
                         played_for_time = sp_ts - sp_ts_old
-                        if played_for_time > sp_track_duration:
-                            # Song was played longer than its duration
+                        time_diff = abs(played_for_time - sp_track_duration)
+                        if time_diff > PLAYED_FOR_DURATION_TOLERANCE:
+                            # Song was played significantly longer or shorter than its duration
                             played_for = display_time(played_for_time)
                             print(f"Played for:\t\t\t{played_for}")
                             played_for_m_body = f"\nPlayed for: {played_for}"
                             played_for_m_body_html = f"<br>Played for: {played_for}"
                         else:
-                            # Song played exactly for its duration (normal case)
+                            # Song played within tolerance of its duration (treat as full duration, suppress "Played for")
                             played_for_m_body = ""
                             played_for_m_body_html = ""
                     else:
