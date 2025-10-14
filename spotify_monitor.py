@@ -2577,7 +2577,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if not is_playlist:
                 sp_playlist = ""
 
-            print(f"\nLast activity:\t\t\t{get_date_from_ts(sp_ts)}")
+            print(f"\nLast activity:\t\t\t{get_date_from_ts(sp_ts)} ({calculate_timespan(int(time.time()), sp_ts)} ago)")
 
             # Friend is currently active (listens to music)
             if (cur_ts - sp_ts) <= SPOTIFY_INACTIVITY_CHECK:
@@ -2843,8 +2843,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                     listened_songs += 1
 
+                    # Suppress "Played for" if this track is the first after inactivity
+                    cur_ts = int(time.time())
+                    resumed_after_offline = (sp_active_ts_stop > 0) and ((cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK)
                     song_skipped = False
-                    if (sp_ts - sp_ts_old) < (sp_track_duration - 1):
+                    if not resumed_after_offline and (sp_ts - sp_ts_old) < (sp_track_duration - 1):
                         played_for_time = sp_ts - sp_ts_old
                         listened_percentage = (played_for_time) / (sp_track_duration - 1)
                         played_for = display_time(played_for_time)
@@ -2857,10 +2860,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"Played for:\t\t\t{played_for}")
                         played_for_m_body = f"\nPlayed for: {played_for}"
                         played_for_m_body_html = f"<br>Played for: {played_for}"
+                    elif not resumed_after_offline:
+                        # Song played for full duration or longer (e.g. pause, ad etc.)
+                        played_for_time = sp_ts - sp_ts_old
+                        if played_for_time > sp_track_duration:
+                            # Song was played longer than its duration
+                            played_for = display_time(played_for_time)
+                            print(f"Played for:\t\t\t{played_for}")
+                            played_for_m_body = f"\nPlayed for: {played_for}"
+                            played_for_m_body_html = f"<br>Played for: {played_for}"
+                        else:
+                            # Song played exactly for its duration (normal case)
+                            played_for_m_body = ""
+                            played_for_m_body_html = ""
                     else:
+                        # First track after inactivity: do not show "Played for" and never mark as skipped
                         played_for_m_body = ""
                         played_for_m_body_html = ""
-                    
+
                     # Add current song to recent songs session list
                     recent_songs_session.append({
                         'artist': sp_artist,
