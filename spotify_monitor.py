@@ -2940,9 +2940,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             song_skipped = True
                         else:
                             # Check for potential crossfade (within detection thresholds, not skipped)
+                            # Use displayed percentage for comparison to match what user sees
                             crossfade_note = ""
-                            if DETECT_CROSSFADED_SONGS and CROSSFADE_DETECTION_MIN <= listened_percentage < CROSSFADE_DETECTION_MAX:
-                                crossfade_note = " - crossfade enabled"
+                            if DETECT_CROSSFADED_SONGS:
+                                percentage_for_check = percentage_display / 100.0
+                                if CROSSFADE_DETECTION_MIN <= percentage_for_check <= CROSSFADE_DETECTION_MAX:
+                                    crossfade_note = " - crossfade enabled"
                             played_for += f" ({percentage_display}%{crossfade_note})"
                         print(f"Played for:\t\t\t{played_for}")
                         played_for_m_body = f"\nPlayed for: {played_for}"
