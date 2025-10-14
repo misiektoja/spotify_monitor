@@ -1153,7 +1153,7 @@ def get_apple_genius_search_urls(artist, track):
     apple_search_string = quote(f"{artist} {track}")
     apple_search_url = f"https://music.apple.com/pl/search?term={apple_search_string}"
     genius_search_url = f"https://genius.com/search?q={quote_plus(lyrics_search_string)}"
-    azlyrics_search_url = f"https://search.azlyrics.com/search.php?q={quote_plus(lyrics_search_string)}"
+    azlyrics_search_url = f"https://www.azlyrics.com/search/?q={quote_plus(lyrics_search_string)}"
     tekstowo_search_url = f"https://www.tekstowo.pl/szukaj,{quote_plus(lyrics_search_string)}.html"
     youtube_music_search_url = f"https://music.youtube.com/search?q={youtube_music_search_string}"
     return apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url
