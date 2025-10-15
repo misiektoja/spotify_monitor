@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spotify_monitor"
-version = "2.5"
+version = "2.6"
 description = "Tool implementing real-time tracking of Spotify friends music activity"
 readme = "README.md"
 license = "GPL-3.0-or-later"
