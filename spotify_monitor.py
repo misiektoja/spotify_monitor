@@ -2745,12 +2745,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 if ACTIVE_NOTIFICATION:
                     music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                     music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                    music_section_text = f"\n\n{music_urls_text}" if music_urls_text else "\n\n"
-                    music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else "<br><br>"
                     lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                     lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                    lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                    lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                    if music_urls_text:
+                        music_section_text = f"\n\n{music_urls_text}"
+                        music_section_html = f"<br><br>{music_urls_html}"
+                        lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                        lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                    else:
+                        if lyrics_urls_text:
+                            music_section_text = "\n\n"
+                            music_section_html = "<br><br>"
+                            lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                            lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                        else:
+                            music_section_text = "\n\n"
+                            music_section_html = "<br><br>"
+                            lyrics_section_text = ""
+                            lyrics_section_html = ""
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -3129,12 +3141,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else "\n\n"
-                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else "<br><br>"
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                        lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        if music_urls_text:
+                            music_section_text = f"\n\n{music_urls_text}"
+                            music_section_html = f"<br><br>{music_urls_html}"
+                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        else:
+                            if lyrics_urls_text:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                            else:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = ""
+                                lyrics_section_html = ""
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
@@ -3151,12 +3175,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else "\n\n"
-                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else "<br><br>"
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                        lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        if music_urls_text:
+                            music_section_text = f"\n\n{music_urls_text}"
+                            music_section_html = f"<br><br>{music_urls_html}"
+                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        else:
+                            if lyrics_urls_text:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                            else:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = ""
+                                lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -3167,12 +3203,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else "\n\n"
-                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else "<br><br>"
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                        lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        if music_urls_text:
+                            music_section_text = f"\n\n{music_urls_text}"
+                            music_section_html = f"<br><br>{music_urls_html}"
+                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        else:
+                            if lyrics_urls_text:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                            else:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = ""
+                                lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
@@ -3269,12 +3317,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
                             music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                             music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                            music_section_text = f"\n\n{music_urls_text}" if music_urls_text else "\n\n"
-                            music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else "<br><br>"
                             lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                             lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                            if music_urls_text:
+                                music_section_text = f"\n\n{music_urls_text}"
+                                music_section_html = f"<br><br>{music_urls_html}"
+                                lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                                lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                            else:
+                                if lyrics_urls_text:
+                                    music_section_text = "\n\n"
+                                    music_section_html = "<br><br>"
+                                    lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                                    lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                                else:
+                                    music_section_text = "\n\n"
+                                    music_section_html = "<br><br>"
+                                    lyrics_section_text = ""
+                                    lyrics_section_html = ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
