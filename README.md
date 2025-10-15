@@ -19,6 +19,7 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 - Displaying basic statistics for the user's playing session (duration, time span, number of listened and skipped songs, songs on loop)
 - Support for two different methods to get a Spotify access token (`sp_dc cookie`, `desktop client`)
 - Possibility to control the running copy of the script via signals
+- Functional, procedural Python (minimal OOP)
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
