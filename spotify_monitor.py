@@ -268,6 +268,13 @@ ENABLE_AZLYRICS_URL = False
 # Whether to show Tekstowo.pl lyrics URL in console and emails
 ENABLE_TEKSTOWO_URL = False
 
+# Whether to show Musixmatch lyrics URL in console and emails
+# Note: Musixmatch requires users to be logged in to their account in the web browser to use the search functionality
+ENABLE_MUSIXMATCH_URL = False
+
+# Whether to show Lyrics.com lyrics URL in console and emails
+ENABLE_LYRICS_COM_URL = False
+
 # ---------------------------------------------------------------------
 
 # The section below is used when the token source is set to 'cookie'
@@ -504,6 +511,8 @@ SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
 ENABLE_GENIUS_LYRICS_URL = False
 ENABLE_AZLYRICS_URL = False
 ENABLE_TEKSTOWO_URL = False
+ENABLE_MUSIXMATCH_URL = False
+ENABLE_LYRICS_COM_URL = False
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
 SECRET_CIPHER_DICT = {}
@@ -1169,12 +1178,14 @@ def get_apple_genius_search_urls(artist, track):
     genius_search_url = f"https://genius.com/search?q={quote_plus(lyrics_search_string)}"
     azlyrics_search_url = f"https://www.azlyrics.com/search/?q={quote_plus(lyrics_search_string)}"
     tekstowo_search_url = f"https://www.tekstowo.pl/szukaj,{quote_plus(lyrics_search_string)}.html"
+    musixmatch_search_url = f"https://www.musixmatch.com/search?query={quote_plus(lyrics_search_string)}"
+    lyrics_com_search_url = f"https://www.lyrics.com/serp.php?st={quote_plus(lyrics_search_string)}&qtype=1"
     youtube_music_search_url = f"https://music.youtube.com/search?q={youtube_music_search_string}"
-    return apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url
+    return apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url
 
 
 # Formats lyrics URLs for console output based on configuration
-def format_lyrics_urls_console(genius_url, azlyrics_url, tekstowo_url):
+def format_lyrics_urls_console(genius_url, azlyrics_url, tekstowo_url, musixmatch_url, lyrics_com_url):
     lines = []
     if ENABLE_GENIUS_LYRICS_URL:
         lines.append(f"Genius lyrics URL:\t\t{genius_url}")
@@ -1182,11 +1193,15 @@ def format_lyrics_urls_console(genius_url, azlyrics_url, tekstowo_url):
         lines.append(f"AZLyrics URL:\t\t\t{azlyrics_url}")
     if ENABLE_TEKSTOWO_URL:
         lines.append(f"Tekstowo.pl URL:\t\t{tekstowo_url}")
+    if ENABLE_MUSIXMATCH_URL:
+        lines.append(f"Musixmatch URL:\t\t\t{musixmatch_url}")
+    if ENABLE_LYRICS_COM_URL:
+        lines.append(f"Lyrics.com URL:\t\t\t{lyrics_com_url}")
     return "\n".join(lines) if lines else ""
 
 
 # Formats lyrics URLs for plain text email body based on configuration
-def format_lyrics_urls_email_text(genius_url, azlyrics_url, tekstowo_url):
+def format_lyrics_urls_email_text(genius_url, azlyrics_url, tekstowo_url, musixmatch_url, lyrics_com_url):
     lines = []
     if ENABLE_GENIUS_LYRICS_URL:
         lines.append(f"Genius lyrics URL: {genius_url}")
@@ -1194,11 +1209,15 @@ def format_lyrics_urls_email_text(genius_url, azlyrics_url, tekstowo_url):
         lines.append(f"AZLyrics URL: {azlyrics_url}")
     if ENABLE_TEKSTOWO_URL:
         lines.append(f"Tekstowo.pl URL: {tekstowo_url}")
+    if ENABLE_MUSIXMATCH_URL:
+        lines.append(f"Musixmatch URL: {musixmatch_url}")
+    if ENABLE_LYRICS_COM_URL:
+        lines.append(f"Lyrics.com URL: {lyrics_com_url}")
     return "\n".join(lines) if lines else ""
 
 
 # Formats lyrics URLs for HTML email body based on configuration
-def format_lyrics_urls_email_html(genius_url, azlyrics_url, tekstowo_url, artist, track):
+def format_lyrics_urls_email_html(genius_url, azlyrics_url, tekstowo_url, musixmatch_url, lyrics_com_url, artist, track):
     lines = []
     escaped_artist = escape(artist)
     escaped_track = escape(track)
@@ -1208,6 +1227,10 @@ def format_lyrics_urls_email_html(genius_url, azlyrics_url, tekstowo_url, artist
         lines.append(f'AZLyrics URL: <a href="{azlyrics_url}">{escaped_artist} - {escaped_track}</a>')
     if ENABLE_TEKSTOWO_URL:
         lines.append(f'Tekstowo.pl URL: <a href="{tekstowo_url}">{escaped_artist} - {escaped_track}</a>')
+    if ENABLE_MUSIXMATCH_URL:
+        lines.append(f'Musixmatch URL: <a href="{musixmatch_url}">{escaped_artist} - {escaped_track}</a>')
+    if ENABLE_LYRICS_COM_URL:
+        lines.append(f'Lyrics.com URL: <a href="{lyrics_com_url}">{escaped_artist} - {escaped_track}</a>')
     return "<br>".join(lines) if lines else ""
 
 
@@ -2196,11 +2219,11 @@ def spotify_list_friends(friend_activity):
         if 'spotify:artist:' in sp_playlist_uri:
             print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-        apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+        apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
         print(f"Apple Music URL:\t\t{apple_search_url}")
         print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
-        lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url)
+        lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
         if lyrics_output:
             print(lyrics_output)
 
@@ -2643,11 +2666,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if 'spotify:artist:' in sp_playlist_uri:
                 print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
             print(f"Apple Music URL:\t\t{apple_search_url}")
             print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
-            lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url)
+            lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
             if lyrics_output:
                 print(lyrics_output)
 
@@ -2678,8 +2701,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     print(f"* Error: {e}")
 
                 if ACTIVE_NOTIFICATION:
-                    lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url)
-                    lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, sp_artist, sp_track)
+                    lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                    lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                     lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
                     lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
@@ -3012,11 +3035,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if 'spotify:artist:' in sp_playlist_uri:
                         print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-                    apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+                    apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
                     print(f"Apple Music URL:\t\t{apple_search_url}")
                     print(f"YouTube Music URL:\t\t{youtube_music_search_url}")
-                    lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url)
+                    lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                     if lyrics_output:
                         print(lyrics_output)
 
@@ -3057,8 +3080,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 sp_active_ts_start = sp_active_ts_start_old
                         sp_active_ts_stop = 0
 
-                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url)
-                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, sp_artist, sp_track)
+                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
                         lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}\n\nApple Music URL: {apple_search_url}\nYouTube Music URL:{youtube_music_search_url}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
@@ -3075,8 +3098,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         on_the_list = True
 
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
-                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url)
-                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, sp_artist, sp_track)
+                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
                         lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
@@ -3087,8 +3110,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         email_sent = True
 
                     if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
-                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url)
-                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, sp_artist, sp_track)
+                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
                         lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
@@ -3184,9 +3207,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     recent_songs_mbody_html = f"<br><br>Recently listened songs in this session:<br>" + "<br>".join(recent_songs_list_html)
 
                             # Get URLs for the last played track
-                            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
-                            lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url)
-                            lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, sp_artist, sp_track)
+                            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+                            lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                            lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                             lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
                             lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
