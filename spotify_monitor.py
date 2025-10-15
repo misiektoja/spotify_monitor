@@ -3172,6 +3172,35 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print("\n*** Track/playlist/album matched with the list!")
                         on_the_list = True
 
+                    # Check for loop notification first - if sent, skip track/song notification
+                    if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION and not email_sent:
+                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
+                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
+                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
+                        if music_urls_text:
+                            music_section_text = f"\n\n{music_urls_text}"
+                            music_section_html = f"<br><br>{music_urls_html}"
+                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
+                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
+                        else:
+                            if lyrics_urls_text:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
+                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
+                            else:
+                                music_section_text = "\n\n"
+                                music_section_html = "<br><br>"
+                                lyrics_section_text = ""
+                                lyrics_section_html = ""
+                        m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
+                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        print(f"Sending email notification to {RECEIVER_EMAIL}")
+                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                        email_sent = True
+
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
@@ -3199,34 +3228,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"Sending email notification to {RECEIVER_EMAIL}")
                         send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         email_sent = True
-
-                    if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION:
-                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
-                        lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
-                        lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        if music_urls_text:
-                            music_section_text = f"\n\n{music_urls_text}"
-                            music_section_html = f"<br><br>{music_urls_html}"
-                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                        else:
-                            if lyrics_urls_text:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                            else:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = ""
-                                lyrics_section_html = ""
-                        m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
-                        m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                        if not email_sent:
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
 
                     try:
                         if csv_file_name:
