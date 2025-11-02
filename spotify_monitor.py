@@ -2542,7 +2542,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     out = f"Monitoring user {user_uri_id}"
     print(out)
-    print("-" * len(out))
+    # print("─" * len(out))
+    print("─" * HORIZONTAL_LINE)
+
+    # Display token owner information
+    try:
+        if TOKEN_SOURCE == "client":
+            sp_accessToken_init = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
+        else:
+            sp_accessToken_init = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
+        user_info = spotify_get_current_user(sp_accessToken_init)
+        if user_info:
+            print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
+        else:
+            print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE})")
+    except Exception as e:
+        print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE}): {e}")
+
+    print("─" * HORIZONTAL_LINE)
 
     tracks_upper = {t.upper() for t in tracks}
 
@@ -2619,10 +2636,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         if sp_found:
             user_not_found = False
 
-            user_info = spotify_get_current_user(sp_accessToken)
-            if user_info:
-                print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
-
             sp_track_uri = sp_data["sp_track_uri"]
             sp_track_uri_id = sp_data["sp_track_uri_id"]
             sp_album_uri = sp_data["sp_album_uri"]
@@ -2674,7 +2687,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 playlist_m_body = f"\nPlaylist: {sp_playlist}"
                 playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
 
-            print(f"\nUsername:\t\t\t{sp_username}")
+            print(f"Username:\t\t\t{sp_username}")
             print(f"User URI ID:\t\t\t{sp_data['sp_uri']}")
             print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}")
             print(f"Duration:\t\t\t{display_time(sp_track_duration)}\n")
