@@ -265,6 +265,16 @@ ENABLE_APPLE_MUSIC_URL = True
 # Whether to show YouTube Music URL in console and emails
 ENABLE_YOUTUBE_MUSIC_URL = True
 
+# Whether to show Amazon Music URL in console and emails
+ENABLE_AMAZON_MUSIC_URL = False
+
+# Whether to show Deezer URL in console and emails
+ENABLE_DEEZER_URL = False
+
+# Whether to show Tidal URL in console and emails
+# Note: Tidal requires users to be logged in to their account in the web browser to use the search functionality
+ENABLE_TIDAL_URL = False
+
 # Whether to show Genius lyrics URL in console and emails
 ENABLE_GENIUS_LYRICS_URL = True
 
@@ -521,6 +531,9 @@ ENABLE_MUSIXMATCH_URL = False
 ENABLE_LYRICS_COM_URL = False
 ENABLE_APPLE_MUSIC_URL = False
 ENABLE_YOUTUBE_MUSIC_URL = False
+ENABLE_AMAZON_MUSIC_URL = False
+ENABLE_DEEZER_URL = False
+ENABLE_TIDAL_URL = False
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
 SECRET_CIPHER_DICT = {}
@@ -1176,12 +1189,13 @@ def reload_secrets_signal_handler(sig, frame):
 
 # Returns Apple & lyrics search URLs for specified track
 def get_apple_genius_search_urls(artist, track):
-    youtube_music_search_string = quote_plus(f"{artist} {track}")
+    spotify_search_string = f"{artist} {track}"
+    youtube_music_search_string = quote_plus(spotify_search_string)
     # Clean search string for lyrics services (remove remaster, extended, etc.)
-    lyrics_search_string = f"{artist} {track}"
+    lyrics_search_string = spotify_search_string
     if re.search(re_search_str, lyrics_search_string, re.IGNORECASE):
         lyrics_search_string = re.sub(re_replace_str, '', lyrics_search_string, flags=re.IGNORECASE)
-    apple_search_string = quote(f"{artist} {track}")
+    apple_search_string = quote(spotify_search_string)
     apple_search_url = f"https://music.apple.com/pl/search?term={apple_search_string}"
     genius_search_url = f"https://genius.com/search?q={quote_plus(lyrics_search_string)}"
     azlyrics_search_url = f"https://www.azlyrics.com/search/?q={quote_plus(lyrics_search_string)}"
@@ -1189,7 +1203,10 @@ def get_apple_genius_search_urls(artist, track):
     musixmatch_search_url = f"https://www.musixmatch.com/search?query={quote_plus(lyrics_search_string)}"
     lyrics_com_search_url = f"https://www.lyrics.com/serp.php?st={quote_plus(lyrics_search_string)}&qtype=1"
     youtube_music_search_url = f"https://music.youtube.com/search?q={youtube_music_search_string}"
-    return apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url
+    amazon_music_search_url = f"https://music.amazon.com/search/{quote_plus(spotify_search_string)}"
+    deezer_search_url = f"https://www.deezer.com/search/{quote_plus(spotify_search_string)}"
+    tidal_search_url = f"https://tidal.com/search?q={quote_plus(spotify_search_string)}"
+    return apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url
 
 
 # Formats lyrics URLs for console output based on configuration
@@ -1243,27 +1260,39 @@ def format_lyrics_urls_email_html(genius_url, azlyrics_url, tekstowo_url, musixm
 
 
 # Formats music service URLs for console output based on configuration
-def format_music_urls_console(apple_music_url, youtube_music_url):
+def format_music_urls_console(apple_music_url, youtube_music_url, amazon_music_url, deezer_url, tidal_url):
     lines = []
     if ENABLE_APPLE_MUSIC_URL:
         lines.append(f"Apple Music URL:\t\t{apple_music_url}")
     if ENABLE_YOUTUBE_MUSIC_URL:
         lines.append(f"YouTube Music URL:\t\t{youtube_music_url}")
+    if ENABLE_AMAZON_MUSIC_URL:
+        lines.append(f"Amazon Music URL:\t\t{amazon_music_url}")
+    if ENABLE_DEEZER_URL:
+        lines.append(f"Deezer URL:\t\t\t{deezer_url}")
+    if ENABLE_TIDAL_URL:
+        lines.append(f"Tidal URL:\t\t\t{tidal_url}")
     return "\n".join(lines) if lines else ""
 
 
 # Formats music service URLs for plain text email body based on configuration
-def format_music_urls_email_text(apple_music_url, youtube_music_url):
+def format_music_urls_email_text(apple_music_url, youtube_music_url, amazon_music_url, deezer_url, tidal_url):
     lines = []
     if ENABLE_APPLE_MUSIC_URL:
         lines.append(f"Apple Music URL: {apple_music_url}")
     if ENABLE_YOUTUBE_MUSIC_URL:
         lines.append(f"YouTube Music URL: {youtube_music_url}")
+    if ENABLE_AMAZON_MUSIC_URL:
+        lines.append(f"Amazon Music URL: {amazon_music_url}")
+    if ENABLE_DEEZER_URL:
+        lines.append(f"Deezer URL: {deezer_url}")
+    if ENABLE_TIDAL_URL:
+        lines.append(f"Tidal URL: {tidal_url}")
     return "\n".join(lines) if lines else ""
 
 
 # Formats music service URLs for HTML email body based on configuration
-def format_music_urls_email_html(apple_music_url, youtube_music_url, artist, track):
+def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_music_url, deezer_url, tidal_url, artist, track):
     lines = []
     escaped_artist = escape(artist)
     escaped_track = escape(track)
@@ -1271,6 +1300,12 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, artist, tra
         lines.append(f'Apple Music URL: <a href="{apple_music_url}">{escaped_artist} - {escaped_track}</a>')
     if ENABLE_YOUTUBE_MUSIC_URL:
         lines.append(f'YouTube Music URL: <a href="{youtube_music_url}">{escaped_artist} - {escaped_track}</a>')
+    if ENABLE_AMAZON_MUSIC_URL:
+        lines.append(f'Amazon Music URL: <a href="{amazon_music_url}">{escaped_artist} - {escaped_track}</a>')
+    if ENABLE_DEEZER_URL:
+        lines.append(f'Deezer URL: <a href="{deezer_url}">{escaped_artist} - {escaped_track}</a>')
+    if ENABLE_TIDAL_URL:
+        lines.append(f'Tidal URL: <a href="{tidal_url}">{escaped_artist} - {escaped_track}</a>')
     return "<br>".join(lines) if lines else ""
 
 
@@ -2259,9 +2294,9 @@ def spotify_list_friends(friend_activity):
         if 'spotify:artist:' in sp_playlist_uri:
             print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-        apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+        apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-        music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url)
+        music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
         if music_urls_output:
             print(music_urls_output)
         lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -2720,9 +2755,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if 'spotify:artist:' in sp_playlist_uri:
                 print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-            music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url)
+            music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
             if music_urls_output:
                 print(music_urls_output)
             lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -2756,8 +2791,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     print(f"* Error: {e}")
 
                 if ACTIVE_NOTIFICATION:
-                    music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                    music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                    music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
+                    music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                     lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                     lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                     if music_urls_text:
@@ -3106,9 +3141,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if 'spotify:artist:' in sp_playlist_uri:
                         print(f"Context (Artist) URL:\t\t{spotify_convert_uri_to_url(sp_playlist_uri)}")
 
-                    apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+                    apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
 
-                    music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url)
+                    music_urls_output = format_music_urls_console(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
                     if music_urls_output:
                         print(music_urls_output)
                     lyrics_output = format_lyrics_urls_console(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -3152,8 +3187,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 sp_active_ts_start = sp_active_ts_start_old
                         sp_active_ts_stop = 0
 
-                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
+                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         if music_urls_text:
@@ -3187,8 +3222,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                     # Check for loop notification first - if sent, skip track/song notification
                     if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION and not email_sent:
-                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
+                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         if music_urls_text:
@@ -3215,8 +3250,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         email_sent = True
 
                     if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
-                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                        music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
+                        music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                         if music_urls_text:
@@ -3328,9 +3363,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     recent_songs_mbody_html = f"<br><br>Recently listened songs in this session:<br>" + "<br>".join(recent_songs_list_html)
 
                             # Get URLs for the last played track
-                            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
-                            music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url)
-                            music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, sp_artist, sp_track)
+                            apple_search_url, genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url = get_apple_genius_search_urls(str(sp_artist), str(sp_track))
+                            music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
+                            music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                             lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                             lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
                             if music_urls_text:
