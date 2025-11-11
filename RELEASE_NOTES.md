@@ -6,9 +6,9 @@ This is a high-level summary of the most important changes.
 
 **Features and Improvements**:
 
-- **NEW:** Added support for Amazon Music, Deezer and Tidal URLs in console and email outputs
-- **NEW:** Added support for AZLyrics, Tekstowo.pl, Musixmatch and Lyrics.com lyrics services
-- **NEW:** Added detection and annotation for crossfaded songs during playback with configurable thresholds (see `DETECT_CROSSFADED_SONGS`, `CROSSFADE_DETECTION_MIN` and `CROSSFADE_DETECTION_MAX` config options)
+- **NEW:** Added support for **Amazon Music**, **Deezer** and **Tidal** URLs in console and email outputs
+- **NEW:** Added support for **AZLyrics**, **Tekstowo.pl**, **Musixmatch** and **Lyrics.com** lyrics services
+- **NEW:** Added detection and annotation for **crossfaded songs** during playback with configurable thresholds (see `DETECT_CROSSFADED_SONGS`, `CROSSFADE_DETECTION_MIN` and `CROSSFADE_DETECTION_MAX` config options)
 - **NEW:** Added configuration options to enable/disable music service URLs in console and email outputs (see `ENABLE_APPLE_MUSIC_URL`, `ENABLE_YOUTUBE_MUSIC_URL`, `ENABLE_AMAZON_MUSIC_URL`, `ENABLE_DEEZER_URL` and `ENABLE_TIDAL_URL` config options)
 - **NEW:** Added configuration options to enable/disable lyrics service URLs in console and email outputs (see `ENABLE_GENIUS_LYRICS_URL`, `ENABLE_AZLYRICS_URL`, `ENABLE_TEKSTOWO_URL`, `ENABLE_MUSIXMATCH_URL` and `ENABLE_LYRICS_COM_URL` config options)
 - **NEW:** Added recent songs tracking in session with inclusion in inactivity emails, including skipped track status (see `INACTIVE_EMAIL_RECENT_SONGS_COUNT` config option)
