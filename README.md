@@ -9,18 +9,18 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 <a id="features"></a>
 ## Features
 
-- Real-time tracking of songs listened by Spotify users (including detection when user gets online & offline)
-- Possibility to automatically play songs listened by the tracked user in your local Spotify client
-- Information about the duration the user listened to a song and whether the song was skipped
-- Detection and annotation for crossfaded songs during playback with configurable thresholds
-- Information about the context of the listened song (playlist/artist/album) with clickable URLs
-- Email notifications for various events (user becomes active/inactive, specific or all songs, songs on loop, errors)
-- Saving all listened songs with timestamps to the CSV file
-- Clickable Spotify, Apple Music, YouTube Music, Amazon Music, Deezer, Tidal, Genius Lyrics, AZLyrics, Tekstowo.pl, Musixmatch and Lyrics.com search URLs printed in the console and included in email notifications (configurable per service)
-- Displaying basic statistics for the user's playing session (duration, time span, number of listened and skipped songs, songs on loop)
-- Support for two different methods to get a Spotify access token (`sp_dc cookie`, `desktop client`)
-- Possibility to control the running copy of the script via signals
-- Functional, procedural Python (minimal OOP)
+- **Real-time tracking** of songs listened by Spotify users (including detection when user gets online & offline)
+- Possibility to **automatically play songs** listened by the tracked user in your local Spotify client
+- Information about the **duration** the user listened to a song and whether the **song was skipped**
+- Detection and annotation for **crossfaded songs** during playback with configurable thresholds
+- Information about the **context of the listened song** (playlist/artist/album) with clickable URLs
+- **Email notifications** for various events (user becomes active/inactive, specific or all songs, songs on loop, errors)
+- **Saving all listened songs** with timestamps to the **CSV file**
+- **Clickable** **Spotify**, **Apple Music**, **YouTube Music**, **Amazon Music**, **Deezer**, **Tidal**, **Genius Lyrics**, **AZLyrics**, **Tekstowo.pl**, **Musixmatch** and **Lyrics.com** search URLs printed in the console and included in email notifications (configurable per service)
+- Displaying **basic statistics for the user's playing session** (duration, time span, number of listened and skipped songs, songs on loop)
+- Support for **two different methods to get a Spotify access token** (`sp_dc cookie`, `desktop client`)
+- Possibility to **control the running copy** of the script via signals
+- **Functional, procedural Python** (minimal OOP)
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
