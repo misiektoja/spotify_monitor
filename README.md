@@ -12,10 +12,11 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 - Real-time tracking of songs listened by Spotify users (including detection when user gets online & offline)
 - Possibility to automatically play songs listened by the tracked user in your local Spotify client
 - Information about the duration the user listened to a song and whether the song was skipped
+- Detection and annotation for crossfaded songs during playback with configurable thresholds
 - Information about the context of the listened song (playlist/artist/album) with clickable URLs
 - Email notifications for various events (user becomes active/inactive, specific or all songs, songs on loop, errors)
 - Saving all listened songs with timestamps to the CSV file
-- Clickable Spotify, Apple Music, YouTube Music and Genius Lyrics search URLs printed in the console & included in email notifications
+- Clickable Spotify, Apple Music, YouTube Music, Amazon Music, Deezer, Tidal, Genius Lyrics, AZLyrics, Tekstowo.pl, Musixmatch and Lyrics.com search URLs printed in the console and included in email notifications (configurable per service)
 - Displaying basic statistics for the user's playing session (duration, time span, number of listened and skipped songs, songs on loop)
 - Support for two different methods to get a Spotify access token (`sp_dc cookie`, `desktop client`)
 - Possibility to control the running copy of the script via signals
@@ -133,6 +134,10 @@ To get the list of all supported command-line arguments / flags:
 spotify_monitor --help
 ```
 
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
+</p>
+
 <a id="configuration"></a>
 ## Configuration
 
@@ -149,6 +154,8 @@ spotify_monitor --generate-config > spotify_monitor.conf
 ```
 
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
+
+**New in v2.6:** The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.
 
 <a id="spotify-access-token-source"></a>
 ### Spotify access token source
@@ -393,6 +400,8 @@ To be informed when a user gets inactive:
 ```sh
 spotify_monitor <spotify_user_uri_id> -i
 ```
+
+Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To get email notifications when a monitored track/playlist/album plays:
 - set `TRACK_NOTIFICATION` to `True`
