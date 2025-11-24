@@ -1,6 +1,6 @@
 # spotify_monitor release notes
 
-This is a high-level summary of the most important changes. 
+This is a high-level summary of the most important changes.
 
 # Changes in 2.6 (11 Nov 2025)
 
@@ -26,14 +26,14 @@ This is a high-level summary of the most important changes.
 
 - **IMPROVE:** Added support for loading TOTP secrets from local files via file:// URLs
 - **IMPROVE:** Updated remote URL in SECRET_CIPHER_DICT_URL
-- **IMPROVE:** Updated  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to dump secrets in different formats. Choose what you need with the `--secret`,` --secretbytes` and `--secretdict` CLI flags, or go all out with the `--all` mode to write all secret formats to files like `secrets.json`, `secretBytes.json` and `secretDict.json`
+- **IMPROVE:** Updated  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to dump secrets in different formats. Choose what you need with the `--secret`,` --secretbytes` and `--secretdict` CLI flags, or go all out with the `--all` mode to write all secret formats to files like `secrets.json`, `secretBytes.json` and `secretDict.json` (thanks [@tomballgithub](https://github.com/tomballgithub))
 - **IMPROVE:** Added multi-arch Docker image build and compose support for  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) - more info at [🐳 Secret Key Extraction via Docker](https://github.com/misiektoja/spotify_monitor#-secret-key-extraction-via-docker-recommended-easiest-way)
 - **IMPROVE:** Added deletion of flag_file at launch if specified via .conf file. Previously only done when flag_file was specified on command line
 - **IMPROVE:** Added info to console output when TOTP secrets are fetched from a remote URL or local file
 
 **Bug fixes**:
 
-- **BUGFIX:** Removed walrus operator to support min python version 3.6 (fixes [#20](https://github.com/misiektoja/spotify_monitor/issues/20))
+- **BUGFIX:** Removed walrus operator to support min python version 3.6 (thanks [@tomballgithub](https://github.com/tomballgithub), fixes [#20](https://github.com/misiektoja/spotify_monitor/issues/20))
 
 # Changes in 2.4 (14 Jul 2025)
 
