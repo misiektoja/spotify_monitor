@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.6
+v2.7
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -16,7 +16,7 @@ python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
 """
 
-VERSION = "2.6"
+VERSION = "2.7"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -940,7 +940,7 @@ def write_csv_entry(csv_file_name, timestamp, artist, track, playlist, album, la
 
 # Returns the current date/time in human readable format; eg. Sun 21 Apr 2024, 15:08:45
 def get_cur_ts(ts_str=""):
-    return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]}, {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
+    return (f'{ts_str}{calendar.day_abbr[(datetime.fromtimestamp(int(time.time()))).weekday()]} {datetime.fromtimestamp(int(time.time())).strftime("%d %b %Y, %H:%M:%S")}')
 
 
 # Prints the current date/time in human readable format with separator; eg. Sun 21 Apr 2024, 15:08:45
@@ -2947,7 +2947,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             if ERROR_NOTIFICATION:
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
                                 m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) was probably removed<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) was probably removed<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 print(f"Sending email notification to {RECEIVER_EMAIL}")
                                 send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         else:
@@ -2955,7 +2955,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             if ERROR_NOTIFICATION:
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
                                 m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 print(f"Sending email notification to {RECEIVER_EMAIL}")
                                 send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
@@ -2970,7 +2970,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if ERROR_NOTIFICATION:
                             m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
                             m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                             print(f"Sending email notification to {RECEIVER_EMAIL}")
                             send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
@@ -3062,7 +3062,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         listened_percentage = (played_for_time) / (sp_track_duration - 1)
                         played_for = display_time(played_for_time)
                         percentage_display = int(listened_percentage * 100)
-                        
+
                         if listened_percentage <= SKIPPED_SONG_THRESHOLD:
                             played_for += f" - SKIPPED ({percentage_display}%)"
                             skipped_songs += 1
