@@ -14,6 +14,7 @@ urllib3
 pyotp (optional, needed when the token source is set to cookie)
 python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
+spotipy (required since v2.7 due to new Spotify restrictions introduced on 22 Dec 2025)
 """
 
 VERSION = "2.7"
@@ -42,6 +43,31 @@ TOKEN_SOURCE = "cookie"
 #   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
 #   - Fallback: hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
+
+# ---------------------------------------------------------------------
+
+# The section below is used to get tracks and playlist info (Client Credentials OAuth Flow - 'oauth_app')
+#
+# To obtain the credentials:
+#   - Log in to Spotify Developer dashboard: https://developer.spotify.com/dashboard
+#   - Create a new app
+#   - For 'Redirect URL', use: http://127.0.0.1:1234
+#   - Select 'Web API' as the intended API
+#   - Copy the 'Client ID' and 'Client Secret'
+#
+# Provide the SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET secrets using one of the following methods:
+#   - Pass it at runtime with -r / --oauth-app-creds (use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format - note the colon separator)
+#   - Set it as an environment variable (e.g. export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...)
+#   - Add it to ".env" file (SP_APP_CLIENT_ID=... and SP_APP_CLIENT_SECRET=...) for persistent use
+#   - Fallback: hard-code it in the code or config file
+#
+# The tool automatically refreshes the access token, so it remains valid indefinitely
+SP_APP_CLIENT_ID = "your_spotify_app_client_id"
+SP_APP_CLIENT_SECRET = "your_spotify_app_client_secret"
+
+# Path to cache file used to store OAuth app access tokens across tool restarts
+# Set to empty to use in-memory cache only
+SP_APP_TOKENS_FILE = ".spotify-monitor-oauth-app.json"
 
 # ---------------------------------------------------------------------
 
@@ -460,6 +486,9 @@ APP_VERSION = ""
 # Do not change values below - modify them in the configuration section or config file instead
 TOKEN_SOURCE = ""
 SP_DC_COOKIE = ""
+SP_APP_CLIENT_ID = ""
+SP_APP_CLIENT_SECRET = ""
+SP_APP_TOKENS_FILE = ""
 LOGIN_REQUEST_BODY_FILE = ""
 CLIENTTOKEN_REQUEST_BODY_FILE = ""
 LOGIN_URL = ""
@@ -548,7 +577,7 @@ exec(CONFIG_BLOCK, globals())
 DEFAULT_CONFIG_FILENAME = "spotify_monitor.conf"
 
 # List of secret keys to load from env/config
-SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD")
+SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET")
 
 # Strings removed from track names for generating proper Genius search URLs
 re_search_str = r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
@@ -561,11 +590,14 @@ FUNCTION_TIMEOUT = 15
 ALARM_TIMEOUT = 15
 ALARM_RETRY = 10
 
-# Variables for caching functionality of the Spotify access and refresh token to avoid unnecessary refreshing
+# Variables for caching functionality of the Spotify 'cookie' access token and 'client' refresh token to avoid unnecessary refreshing
 SP_CACHED_ACCESS_TOKEN = None
 SP_CACHED_REFRESH_TOKEN = None
 SP_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
+
+# Variables for caching OAuth app access token (Client Credentials Flow)
+SP_CACHED_OAUTH_APP_TOKEN = None
 
 # URL of the Spotify Web Player endpoint to get access token
 TOKEN_URL = "https://open.spotify.com/api/token"
@@ -1310,8 +1342,12 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_musi
 
 
 # Sends a lightweight request to check Spotify token validity
-def check_token_validity(access_token: str, client_id: Optional[str] = None, user_agent: Optional[str] = None) -> bool:
-    url = "https://api.spotify.com/v1/me"
+def check_token_validity(access_token: str, client_id: Optional[str] = None, user_agent: Optional[str] = None, oauth_app: Optional[bool] = False) -> bool:
+    url1 = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
+    url2 = "https://api.spotify.com/v1/browse/categories?limit=1&fields=categories.items(id)"
+
+    url = url2 if oauth_app else url1
+
     headers = {"Authorization": f"Bearer {access_token}"}
 
     if user_agent is not None:
@@ -1319,7 +1355,7 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
             "User-Agent": user_agent
         })
 
-    if TOKEN_SOURCE == "cookie" and client_id is not None:
+    if not oauth_app and TOKEN_SOURCE == "cookie" and client_id is not None:
         headers.update({
             "Client-Id": client_id
         })
@@ -2196,6 +2232,37 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 
 # --------------------------------------------------------
 
+# Fetches Spotify access token based on provided sp_client_id & sp_client_secret values (Client Credentials OAuth Flow)
+def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
+    global SP_CACHED_OAUTH_APP_TOKEN
+
+    if not sp_client_id or not sp_client_secret:
+        return None
+
+    try:
+        from spotipy.oauth2 import SpotifyClientCredentials
+        from spotipy.cache_handler import CacheFileHandler, MemoryCacheHandler
+    except ImportError:
+        print("* Warning: the 'spotipy' package is required, install it with `pip install spotipy`")
+        return None
+
+    if SP_CACHED_OAUTH_APP_TOKEN and check_token_validity(SP_CACHED_OAUTH_APP_TOKEN, oauth_app=True):
+        return SP_CACHED_OAUTH_APP_TOKEN
+
+    if SP_APP_TOKENS_FILE:
+        cache_handler = CacheFileHandler(cache_path=SP_APP_TOKENS_FILE)
+    else:
+        cache_handler = MemoryCacheHandler()
+
+    session = req.Session()
+    session.headers.update({'User-Agent': USER_AGENT})
+
+    auth_manager = SpotifyClientCredentials(client_id=sp_client_id, client_secret=sp_client_secret, cache_handler=cache_handler, requests_session=session)  # type: ignore[arg-type]
+
+    SP_CACHED_OAUTH_APP_TOKEN = auth_manager.get_access_token(as_dict=False)
+
+    return SP_CACHED_OAUTH_APP_TOKEN
+
 
 # Fetches list of Spotify friends
 def spotify_get_friends_json(access_token):
@@ -2329,7 +2396,10 @@ def spotify_get_friend_info(friend_activity, uri):
 
 
 # Returns information for specific Spotify track URI
-def spotify_get_track_info(access_token, track_uri):
+def spotify_get_track_info(access_token, track_uri, oauth_app=False):
+    if not access_token:
+        raise Exception("spotify_get_track_info(): access_token is empty")
+
     track_id = track_uri.split(':', 2)[2]
     url = "https://api.spotify.com/v1/tracks/" + track_id
     headers = {
@@ -2337,7 +2407,7 @@ def spotify_get_track_info(access_token, track_uri):
         "User-Agent": USER_AGENT
     }
 
-    if TOKEN_SOURCE == "cookie":
+    if TOKEN_SOURCE == "cookie" and not oauth_app:
         headers.update({
             "Client-Id": SP_CACHED_CLIENT_ID
         })
@@ -2361,7 +2431,10 @@ def spotify_get_track_info(access_token, track_uri):
 
 
 # Returns information for specific Spotify playlist URI
-def spotify_get_playlist_info(access_token, playlist_uri):
+def spotify_get_playlist_info(access_token, playlist_uri, oauth_app=False):
+    if not access_token:
+        raise Exception("spotify_get_playlist_info(): access_token is empty")
+
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
     headers = {
@@ -2369,7 +2442,7 @@ def spotify_get_playlist_info(access_token, playlist_uri):
         "User-Agent": USER_AGENT
     }
 
-    if TOKEN_SOURCE == "cookie":
+    if TOKEN_SOURCE == "cookie" and not oauth_app:
         headers.update({
             "Client-Id": SP_CACHED_CLIENT_ID
         })
@@ -2566,6 +2639,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     error_network_issue_counter = 0
     error_network_issue_start_ts = 0
     sp_accessToken = ""
+    sp_accessToken_oauth_app = ""
 
     try:
         if csv_file_name:
@@ -2581,20 +2655,21 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     print("─" * HORIZONTAL_LINE)
 
     # Display token owner information
-    try:
-        if TOKEN_SOURCE == "client":
-            sp_accessToken_init = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
-        else:
-            sp_accessToken_init = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-        user_info = spotify_get_current_user(sp_accessToken_init)
-        if user_info:
-            print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
-        else:
-            print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE})")
-    except Exception as e:
-        print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE}): {e}")
+    # try:
+    #     if TOKEN_SOURCE == "client":
+    #         sp_accessToken_init = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
+    #     else:
+    #         sp_accessToken_init = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
 
-    print("─" * HORIZONTAL_LINE)
+    #     user_info = spotify_get_current_user(sp_accessToken_init)
+    #     if user_info:
+    #         print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
+    #     else:
+    #         print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE})")
+    # except Exception as e:
+    #     print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE}): {e}")
+
+    # print("─" * HORIZONTAL_LINE)
 
     tracks_upper = {t.upper() for t in tracks}
 
@@ -2611,6 +2686,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
             else:
                 sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
+
+            sp_accessToken_oauth_app = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET)
+
             sp_friends = spotify_get_friends_json(sp_accessToken)
             sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
             email_sent = False
@@ -2678,10 +2756,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             sp_playlist_data = {}
             try:
-                sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
+                sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
                 if 'spotify:playlist:' in sp_playlist_uri:
                     is_playlist = True
-                    sp_playlist_data = spotify_get_playlist_info(sp_accessToken, sp_playlist_uri)
+                    sp_playlist_data = spotify_get_playlist_info(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
                     if not sp_playlist_data:
                         is_playlist = False
                 else:
@@ -2857,6 +2935,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
                         else:
                             sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
+
+                        sp_accessToken_oauth_app = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET)
+
                         sp_friends = spotify_get_friends_json(sp_accessToken)
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         email_sent = False
@@ -2989,10 +3070,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_album_uri = sp_data["sp_album_uri"]
                     sp_playlist_uri = sp_data["sp_playlist_uri"]
                     try:
-                        sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
+                        sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
                         if 'spotify:playlist:' in sp_playlist_uri:
                             is_playlist = True
-                            sp_playlist_data = spotify_get_playlist_info(sp_accessToken, sp_playlist_uri)
+                            sp_playlist_data = spotify_get_playlist_info(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
                             if not sp_playlist_data:
                                 is_playlist = False
                         else:
@@ -3438,7 +3519,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
     if "--generate-config" in sys.argv:
         print(CONFIG_BLOCK.strip("\n"))
@@ -3533,6 +3614,15 @@ def main():
         help=argparse.SUPPRESS
     )
 
+    # OAuth app credentials (Client Credentials Flow) for track/playlist API calls, required for both cookie and client token sources
+    oauth_app_auth = parser.add_argument_group("OAuth app credentials for track/playlist API calls")
+    oauth_app_auth.add_argument(
+        "-r", "--oauth-app-creds",
+        dest="oauth_app_creds",
+        metavar='SPOTIFY_APP_CLIENT_ID:SPOTIFY_APP_CLIENT_SECRET',
+        help="Spotify OAuth app client credentials - specify both values as SPOTIFY_APP_CLIENT_ID:SPOTIFY_APP_CLIENT_SECRET"
+    )
+
     # Notifications
     notify = parser.add_argument_group("Notifications")
     notify.add_argument(
@@ -3616,12 +3706,12 @@ def main():
         action="store_true",
         help="List Spotify friends with their last listened track"
     )
-    listing.add_argument(
-        "-v", "--show-user-info",
-        dest="show_user_info",
-        action="store_true",
-        help="Get basic information about access token owner"
-    )
+    # listing.add_argument(
+    #     "-v", "--show-user-info",
+    #     dest="show_user_info",
+    #     action="store_true",
+    #     help="Get basic information about access token owner"
+    # )
 
     # Features & output
     opts = parser.add_argument_group("Features & output")
@@ -3750,6 +3840,11 @@ def main():
         except ModuleNotFoundError:
             raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip install pyotp\n\nOnce installed, re-run this tool")
 
+    try:
+        from spotipy.oauth2 import SpotifyClientCredentials
+    except ModuleNotFoundError:
+        raise SystemExit("Error: Couldn't find the spotipy library !\n\nTo install it, run:\n    pip install spotipy\n\nOnce installed, re-run this tool")
+
     if args.user_agent:
         USER_AGENT = args.user_agent
 
@@ -3805,7 +3900,8 @@ def main():
                     print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    if not args.user_id and not args.list_friends and not args.show_user_info and login_request_body_file_param:
+                    # if not args.user_id and not args.list_friends and not args.show_user_info and login_request_body_file_param:
+                    if not args.user_id and not args.list_friends and login_request_body_file_param:
                         print(f"* Login data correctly read from Protobuf file ({LOGIN_REQUEST_BODY_FILE}):")
                         print(" - Device ID:\t\t", DEVICE_ID)
                         print(" - System ID:\t\t", SYSTEM_ID)
@@ -3857,7 +3953,8 @@ def main():
                     print(f"* Error: Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    if not args.user_id and not args.list_friends and not args.show_user_info and clienttoken_request_body_file_param:
+                    # if not args.user_id and not args.list_friends and not args.show_user_info and clienttoken_request_body_file_param:
+                    if not args.user_id and not args.list_friends and clienttoken_request_body_file_param:
                         print(f"* Client token data correctly read from Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}):")
                         print(" - App version:\t\t", APP_VERSION)
                         print(" - CPU arch:\t\t", CPU_ARCH)
@@ -3889,32 +3986,51 @@ def main():
             print("* Error: SP_DC_COOKIE (-u / --spotify_dc_cookie) value is empty or incorrect")
             sys.exit(1)
 
-    if args.show_user_info:
-        print("* Getting basic information about access token owner ...\n")
+    if args.oauth_app_creds:
         try:
-            if TOKEN_SOURCE == "client":
-                sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
-            else:
-                sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-            user_info = spotify_get_current_user(sp_accessToken)
-
-            if user_info:
-                print(f"Token fetched via {TOKEN_SOURCE} belongs to:\n")
-
-                print(f"Username:\t\t{user_info.get('display_name', '')}")
-                print(f"User URI ID:\t\t{user_info.get('uri', '').split('spotify:user:', 1)[1]}")
-                print(f"User URL:\t\t{user_info.get('spotify_url', '')}")
-                print(f"User e-mail:\t\t{user_info.get('email', '')}")
-                print(f"User country:\t\t{user_info.get('country', '')}")
-                print(f"Is Premium?:\t\t{user_info.get('is_premium', '')}")
-            else:
-                print("Failed to retrieve user info.")
-
-            print("─" * HORIZONTAL_LINE)
-        except Exception as e:
-            print(f"* Error: {e}")
+            SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET = args.oauth_app_creds.split(":")
+        except ValueError:
+            print("* Error: -r / --oauth-app-creds has invalid format - use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET")
             sys.exit(1)
-        sys.exit(0)
+
+    if any([
+        not SP_APP_CLIENT_ID,
+        SP_APP_CLIENT_ID == "your_spotify_app_client_id",
+        not SP_APP_CLIENT_SECRET,
+        SP_APP_CLIENT_SECRET == "your_spotify_app_client_secret",
+    ]):
+        print("* Error: SP_APP_CLIENT_ID or SP_APP_CLIENT_SECRET (-r / --oauth-app-creds) value is empty or incorrect")
+        sys.exit(1)
+
+    if SP_APP_TOKENS_FILE:
+        SP_APP_TOKENS_FILE = os.path.expanduser(SP_APP_TOKENS_FILE)
+
+    # if args.show_user_info:
+    #     print("* Getting basic information about access token owner ...\n")
+    #     try:
+    #         if TOKEN_SOURCE == "client":
+    #             sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
+    #         else:
+    #             sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
+    #         user_info = spotify_get_current_user(sp_accessToken)
+
+    #         if user_info:
+    #             print(f"Token fetched via {TOKEN_SOURCE} belongs to:\n")
+
+    #             print(f"Username:\t\t{user_info.get('display_name', '')}")
+    #             print(f"User URI ID:\t\t{user_info.get('uri', '').split('spotify:user:', 1)[1]}")
+    #             print(f"User URL:\t\t{user_info.get('spotify_url', '')}")
+    #             print(f"User e-mail:\t\t{user_info.get('email', '')}")
+    #             print(f"User country:\t\t{user_info.get('country', '')}")
+    #             print(f"Is Premium?:\t\t{user_info.get('is_premium', '')}")
+    #         else:
+    #             print("Failed to retrieve user info.")
+
+    #         print("─" * HORIZONTAL_LINE)
+    #     except Exception as e:
+    #         print(f"* Error: {e}")
+    #         sys.exit(1)
+    #     sys.exit(0)
 
     if args.list_friends:
         print("* Listing Spotify friends ...\n")
@@ -3923,9 +4039,9 @@ def main():
                 sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
             else:
                 sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-            user_info = spotify_get_current_user(sp_accessToken)
-            if user_info:
-                print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
+            # user_info = spotify_get_current_user(sp_accessToken)
+            # if user_info:
+            #     print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
             sp_friends = spotify_get_friends_json(sp_accessToken)
             spotify_list_friends(sp_friends)
             print("─" * HORIZONTAL_LINE)
@@ -4053,6 +4169,8 @@ def main():
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
     if not DISABLE_LOGGING and TRUNCATE_CHARS > 0:
         print(f"* Truncate terminal lines:\t{TRUNCATE_CHARS} chars")
+    if SP_APP_TOKENS_FILE:
+        print(f"* Spotify OAuth cache file:\t{SP_APP_TOKENS_FILE}")
     if FLAG_FILE:
         print(f"* Flag file:\t\t\t{FLAG_FILE}")
     print(f"* Configuration file:\t\t{cfg_path}")
