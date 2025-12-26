@@ -2503,7 +2503,7 @@ def spotify_get_current_user(access_token) -> dict | None:
 
 
 # Checks if a Spotify user URI ID has been deleted
-def is_user_removed(access_token, user_uri_id):
+def is_user_removed(access_token, user_uri_id, oauth_app=False):
     url = f"https://api.spotify.com/v1/users/{user_uri_id}"
 
     headers = {
@@ -2511,18 +2511,40 @@ def is_user_removed(access_token, user_uri_id):
         "User-Agent": USER_AGENT
     }
 
-    if TOKEN_SOURCE == "cookie":
+    if TOKEN_SOURCE == "cookie" and not oauth_app:
         headers.update({
             "Client-Id": SP_CACHED_CLIENT_ID
         })
 
+    if platform.system() != 'Windows':
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(FUNCTION_TIMEOUT + 2)
+
     try:
-        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        temp_session = req.Session()
+        temp_session.headers.update(headers)
+
+        response = temp_session.get(url, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+
+        if response.status_code == 429:
+            return False
+
         if response.status_code == 404:
+            return True
+        return False
+    except TimeoutException:
+        return False
+    except req.HTTPError as e:
+        if e.response.status_code == 429:
+            return False
+        elif e.response.status_code == 404:
             return True
         return False
     except Exception:
         return False
+    finally:
+        if platform.system() != 'Windows':
+            signal.alarm(0)
 
 
 def spotify_macos_play_song(sp_track_uri_id, method=SPOTIFY_MACOS_PLAYING_METHOD):
@@ -3023,7 +3045,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         time.sleep(SPOTIFY_CHECK_INTERVAL)
                         continue
                     if user_not_found is False:
-                        if is_user_removed(sp_accessToken, user_uri_id):
+                        if is_user_removed(sp_accessToken_oauth_app, user_uri_id, oauth_app=True):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                             if ERROR_NOTIFICATION:
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
@@ -3508,7 +3530,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         # User is not found in the Spotify's friend list just after starting the tool
         else:
             if user_not_found is False:
-                if is_user_removed(sp_accessToken, user_uri_id):
+                if is_user_removed(sp_accessToken_oauth_app, user_uri_id, oauth_app=True):
                     print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                 else:
                     print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
