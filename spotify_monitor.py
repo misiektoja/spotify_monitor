@@ -1578,15 +1578,17 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     client_time = int(time_ns() / 1000 / 1000)
     otp_value = totp_obj.at(server_time)
 
+    totp_ver = TOTP_VER or max(map(int, SECRET_CIPHER_DICT))
+
     params = {
         "reason": "transport",
         "productType": "web-player",
         "totp": otp_value,
         "totpServer": otp_value,
-        "totpVer": TOTP_VER,
+        "totpVer": totp_ver,
     }
 
-    if TOTP_VER < 10:
+    if totp_ver < 10:
         params.update({
             "sTime": server_time,
             "cTime": client_time,
