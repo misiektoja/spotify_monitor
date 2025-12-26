@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.9
+v2.0
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -27,6 +27,9 @@ options:
 ---------------
 
 Change log:
+
+v2.0 (26 Dec 25):
+- Updated URL in check_token_validity() due to new Spotify restrictions introduced on 22 Dec 2025
 
 v1.9 (12 Oct 25):
 - Added support for loading secrets from local files via file:// URLs (with support for expansion of ~ and environment variables in file paths)
@@ -488,7 +491,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
 
 
 def check_token_validity(access_token: str, client_id: str = "", user_agent: str = "") -> bool:
-    url = "https://api.spotify.com/v1/me"
+    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 
     headers = {
         "Authorization": f"Bearer {access_token}",
