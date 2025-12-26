@@ -2429,41 +2429,6 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
         return {"sp_track_duration": sp_track_duration, "sp_track_url": sp_track_url, "sp_artist_url": sp_artist_url, "sp_album_url": sp_album_url, "sp_track_name": sp_track_name, "sp_artist_name": sp_artist_name, "sp_album_name": sp_album_name}
     except Exception:
         raise
-
-
-# Returns information for specific Spotify playlist URI
-def spotify_get_playlist_info(access_token, playlist_uri, oauth_app=False):
-    if not access_token:
-        raise Exception("spotify_get_playlist_info(): access_token is empty")
-
-    playlist_id = playlist_uri.split(':', 2)[2]
-    url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,followers,external_urls"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "User-Agent": USER_AGENT
-    }
-
-    if TOKEN_SOURCE == "cookie" and not oauth_app:
-        headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID
-        })
-    # add si parameter so link opens in native Spotify app after clicking
-    si = "?si=1"
-
-    try:
-        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-        response.raise_for_status()
-        json_response = response.json()
-        sp_playlist_name = json_response.get("name")
-        sp_playlist_owner = json_response["owner"].get("display_name")
-        sp_playlist_owner_url = json_response["owner"]["external_urls"].get("spotify")
-        sp_playlist_followers = int(json_response["followers"].get("total"))
-        sp_playlist_url = json_response["external_urls"].get("spotify") + si
-        return {"sp_playlist_name": sp_playlist_name, "sp_playlist_owner": sp_playlist_owner, "sp_playlist_owner_url": sp_playlist_owner_url, "sp_playlist_followers": sp_playlist_followers, "sp_playlist_url": sp_playlist_url}
-    except Exception:
-        raise
-
-
 # Gets basic information about access token owner
 def spotify_get_current_user(access_token) -> dict | None:
     url = "https://api.spotify.com/v1/me"
@@ -2777,16 +2742,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_album_uri = sp_data["sp_album_uri"]
             sp_playlist_uri = sp_data["sp_playlist_uri"]
 
-            sp_playlist_data = {}
             try:
                 sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
-                if 'spotify:playlist:' in sp_playlist_uri:
-                    is_playlist = True
-                    sp_playlist_data = spotify_get_playlist_info(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
-                    if not sp_playlist_data:
-                        is_playlist = False
-                else:
-                    is_playlist = False
+                is_playlist = 'spotify:playlist:' in sp_playlist_uri
             except Exception as e:
                 print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                 print_cur_ts("Timestamp:\t\t\t")
@@ -2819,7 +2777,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             sp_playlist_url = ""
             if is_playlist:
-                sp_playlist_url = sp_playlist_data.get("sp_playlist_url")
+                sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
                 playlist_m_body = f"\nPlaylist: {sp_playlist}"
                 playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
 
@@ -3094,13 +3052,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_playlist_uri = sp_data["sp_playlist_uri"]
                     try:
                         sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
-                        if 'spotify:playlist:' in sp_playlist_uri:
-                            is_playlist = True
-                            sp_playlist_data = spotify_get_playlist_info(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
-                            if not sp_playlist_data:
-                                is_playlist = False
-                        else:
-                            is_playlist = False
+                        is_playlist = 'spotify:playlist:' in sp_playlist_uri
                     except Exception as e:
                         print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                         print_cur_ts("Timestamp:\t\t\t")
@@ -3137,7 +3089,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             spotify_linux_play_song(sp_track_uri_id)
 
                     if is_playlist:
-                        sp_playlist_url = sp_playlist_data.get("sp_playlist_url")
+                        sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
                         playlist_m_body = f"\nPlaylist: {sp_playlist}"
                         playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
                     else:
