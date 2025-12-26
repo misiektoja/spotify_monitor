@@ -2429,43 +2429,6 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
         return {"sp_track_duration": sp_track_duration, "sp_track_url": sp_track_url, "sp_artist_url": sp_artist_url, "sp_album_url": sp_album_url, "sp_track_name": sp_track_name, "sp_artist_name": sp_artist_name, "sp_album_name": sp_album_name}
     except Exception:
         raise
-# Gets basic information about access token owner
-def spotify_get_current_user(access_token) -> dict | None:
-    url = "https://api.spotify.com/v1/me"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "User-Agent": USER_AGENT
-    }
-
-    if TOKEN_SOURCE == "cookie":
-        headers.update({
-            "Client-Id": SP_CACHED_CLIENT_ID
-        })
-
-    if platform.system() != 'Windows':
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(FUNCTION_TIMEOUT + 2)
-    try:
-        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-        response.raise_for_status()
-        data = response.json()
-
-        user_info = {
-            "display_name": data.get("display_name"),
-            "uri": data.get("uri"),
-            "is_premium": data.get("product") == "premium",
-            "country": data.get("country"),
-            "email": data.get("email"),
-            "spotify_url": data.get("external_urls", {}).get("spotify") + "?si=1" if data.get("external_urls", {}).get("spotify") else None
-        }
-
-        return user_info
-    except Exception as e:
-        print(f"* Error: {e}")
-        return None
-    finally:
-        if platform.system() != 'Windows':
-            signal.alarm(0)
 
 
 # Checks if a Spotify user URI ID has been deleted
@@ -2641,23 +2604,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     print(out)
     # print("─" * len(out))
     print("─" * HORIZONTAL_LINE)
-
-    # Display token owner information
-    # try:
-    #     if TOKEN_SOURCE == "client":
-    #         sp_accessToken_init = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
-    #     else:
-    #         sp_accessToken_init = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-
-    #     user_info = spotify_get_current_user(sp_accessToken_init)
-    #     if user_info:
-    #         print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
-    #     else:
-    #         print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE})")
-    # except Exception as e:
-    #     print(f"Token belongs to:\t\tUnable to retrieve user info (via {TOKEN_SOURCE}): {e}")
-
-    # print("─" * HORIZONTAL_LINE)
 
     tracks_upper = {t.upper() for t in tracks}
 
@@ -3980,33 +3926,6 @@ def main():
     if SP_APP_TOKENS_FILE:
         SP_APP_TOKENS_FILE = os.path.expanduser(SP_APP_TOKENS_FILE)
 
-    # if args.show_user_info:
-    #     print("* Getting basic information about access token owner ...\n")
-    #     try:
-    #         if TOKEN_SOURCE == "client":
-    #             sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
-    #         else:
-    #             sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-    #         user_info = spotify_get_current_user(sp_accessToken)
-
-    #         if user_info:
-    #             print(f"Token fetched via {TOKEN_SOURCE} belongs to:\n")
-
-    #             print(f"Username:\t\t{user_info.get('display_name', '')}")
-    #             print(f"User URI ID:\t\t{user_info.get('uri', '').split('spotify:user:', 1)[1]}")
-    #             print(f"User URL:\t\t{user_info.get('spotify_url', '')}")
-    #             print(f"User e-mail:\t\t{user_info.get('email', '')}")
-    #             print(f"User country:\t\t{user_info.get('country', '')}")
-    #             print(f"Is Premium?:\t\t{user_info.get('is_premium', '')}")
-    #         else:
-    #             print("Failed to retrieve user info.")
-
-    #         print("─" * HORIZONTAL_LINE)
-    #     except Exception as e:
-    #         print(f"* Error: {e}")
-    #         sys.exit(1)
-    #     sys.exit(0)
-
     if args.list_friends:
         print("* Listing Spotify friends ...\n")
         try:
@@ -4014,9 +3933,6 @@ def main():
                 sp_accessToken = spotify_get_access_token_from_client_auto(DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN)
             else:
                 sp_accessToken = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
-            # user_info = spotify_get_current_user(sp_accessToken)
-            # if user_info:
-            #     print(f"Token belongs to:\t\t{user_info.get('display_name', '')} (via {TOKEN_SOURCE})\n\t\t\t\t[ {user_info.get('spotify_url')} ]")
             sp_friends = spotify_get_friends_json(sp_accessToken)
             spotify_list_friends(sp_friends)
             print("─" * HORIZONTAL_LINE)
@@ -4135,7 +4051,7 @@ def main():
 
     print(f"* Spotify polling intervals:\t[check: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]\n*\t\t\t\t[disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}] [error: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
     print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
-    print(f"* Token source:\t\t\t{TOKEN_SOURCE}")
+    print(f"* Token source:\t\t\t{TOKEN_SOURCE} + oauth_app")
     print(f"* Track listened songs:\t\t{TRACK_SONGS}")
     # print(f"* User agent:\t\t\t{USER_AGENT}")
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
@@ -4144,8 +4060,7 @@ def main():
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
     if not DISABLE_LOGGING and TRUNCATE_CHARS > 0:
         print(f"* Truncate terminal lines:\t{TRUNCATE_CHARS} chars")
-    if SP_APP_TOKENS_FILE:
-        print(f"* Spotify OAuth cache file:\t{SP_APP_TOKENS_FILE}")
+    print(f"* Spotify OAuth cache file:\t{SP_APP_TOKENS_FILE if SP_APP_TOKENS_FILE else 'None (memory only)'}")
     if FLAG_FILE:
         print(f"* Flag file:\t\t\t{FLAG_FILE}")
     print(f"* Configuration file:\t\t{cfg_path}")
