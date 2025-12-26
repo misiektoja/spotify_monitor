@@ -4,3 +4,4 @@ urllib3
 pyotp
 python-dotenv
 wcwidth
+spotipy
