@@ -18,7 +18,7 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 - **Saving all listened songs** with timestamps to the **CSV file**
 - **Clickable** **Spotify**, **Apple Music**, **YouTube Music**, **Amazon Music**, **Deezer**, **Tidal**, **Genius Lyrics**, **AZLyrics**, **Tekstowo.pl**, **Musixmatch** and **Lyrics.com** search URLs printed in the console and included in email notifications (configurable per service)
 - Displaying **basic statistics for the user's playing session** (duration, time span, number of listened and skipped songs, songs on loop)
-- Support for **two different methods to get a Spotify access token** (`sp_dc cookie`, `desktop client`)
+- Support for **hybrid authentication approach** to get a **Spotify access token** (`sp_dc cookie`/`desktop client` + `OAuth app`)
 - Possibility to **control the running copy** of the script via signals
 - **Functional, procedural Python** (minimal OOP)
 
@@ -40,6 +40,7 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
    * [Spotify access token source](#spotify-access-token-source)
       * [Spotify sp_dc Cookie](#spotify-sp_dc-cookie)
       * [Spotify Desktop Client](#spotify-desktop-client)
+   * [Spotify OAuth App](#spotify-oauth-app)
    * [Following the Monitored User](#following-the-monitored-user)
    * [How to Get a Friend's User URI ID](#how-to-get-a-friends-user-uri-id)
    * [SMTP Settings](#smtp-settings)
@@ -64,7 +65,7 @@ Tool for real-time monitoring of **Spotify friends' music activity feed**.
 ## Requirements
 
 * Python 3.6 or higher
-* Libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
+* Libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `spotipy`
 
 Tested on:
 
@@ -92,7 +93,7 @@ Download the *[spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/
 Install dependencies via pip:
 
 ```sh
-pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth
+pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth spotipy
 ```
 
 Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt)*:
@@ -115,17 +116,20 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
-- Grab your [Spotify sp_dc cookie](#spotify-sp_dc-cookie) and track the `spotify_user_uri_id` music activities:
+1. Grab your [Spotify sp_dc cookie](#spotify-sp_dc-cookie) and set up [OAuth app credentials](#spotify-oauth-app) (required since v2.7)
 
+2. Follow the user you wish to track as described [here](#following-the-monitored-user)
+
+3. Track the `spotify_user_uri_id` music activities:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
+spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
 ```
 
 Or if you installed [manually](#manual-installation):
 
 ```sh
-python3 spotify_monitor.py <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
+python3 spotify_monitor.py <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
 ```
 
 To get the list of all supported command-line arguments / flags:
@@ -155,20 +159,26 @@ spotify_monitor --generate-config > spotify_monitor.conf
 
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
+**New in v2.7:** The tool now uses a hybrid authentication approach. OAuth app credentials (`SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`) are required for track information retrieval when using either `cookie` or `client` token source methods. See [Spotify OAuth App](#spotify-oauth-app) section for setup instructions.
+
 **New in v2.6:** The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.
 
 <a id="spotify-access-token-source"></a>
 ### Spotify access token source
 
-The tool supports two methods for obtaining a Spotify access token.
+The tool uses a **hybrid authentication approach**.
 
-It can be configured via the `TOKEN_SOURCE` configuration option or the `--token-source` flag. 
+For friend activity monitoring, you need to configure either the `cookie` or `client` token source method.
 
-**Recommended: `cookie`** 
+Additionally, you also need to configure **OAuth app credentials** (`SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`) for track information retrieval as described in [Spotify OAuth App](#spotify-oauth-app).
+
+The token source method can be configured via the `TOKEN_SOURCE` configuration option or the `--token-source` flag.
+
+**Recommended: `cookie`**
 
 Uses the `sp_dc` cookie to retrieve a token from the Spotify web endpoint. This method is easy to set up and recommended for most users.
 
-**Alternative: `client`** 
+**Alternative: `client`**
 
 Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.
 
@@ -196,7 +206,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every two days, that's why since v2.4 the tool fetches it from remote URL (see `SECRET_CIPHER_DICT_URL`); you can also run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
+> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every few days, that's why since v2.4 the tool fetches it from remote URL (see `SECRET_CIPHER_DICT_URL`); you can also run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -242,16 +252,53 @@ The same applies to `--token-source client` flag - you can persist it via `TOKEN
 
 The tool will automatically refresh both the access token and client token using the intercepted refresh token.
 
-If your refresh token expires, the tool will notify you via the console and email. In that case, you'll need to re-export the login request body. 
+If your refresh token expires, the tool will notify you via the console and email. In that case, you'll need to re-export the login request body.
 
 If you re-export the login request body to the same file name, you can send a `SIGHUP` signal to reload the file with the new refresh token without restarting the tool. More info in [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
 Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.
 
+<a id="spotify-oauth-app"></a>
+### Spotify OAuth App
+
+Due to restrictions introduced by Spotify on December 22, 2025, the tool now requires this in addition to either a `cookie` or `client` token source method to retrieve track information.
+
+This method uses an official Spotify Web API (Client Credentials OAuth flow).
+
+To obtain the credentials:
+
+- Log in to [Spotify Developer dashboard](https://developer.spotify.com/dashboard)
+
+- Create a new app
+
+- For **Redirect URL**, use: `http://127.0.0.1:1234`
+   - The URL must match exactly as shown, including not having a `/` at the end
+   - When copying the link via right-click, some browsers may add an extra `/` to the URL
+
+- Select **Web API** as the intended API
+
+- Copy the **Client ID** and **Client Secret**
+
+- Provide the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` secrets using one of the following methods:
+   - Pass it at runtime with `-r` / `--oauth-app-creds` (use `SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET` format - note the colon separator)
+   - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...`)
+   - Add it to [.env file](#storing-secrets) (`SP_APP_CLIENT_ID=...` and `SP_APP_CLIENT_SECRET=...`) for persistent use
+   - Fallback: hard-code it in the code or config file
+
+Example:
+
+```sh
+spotify_monitor <spotify_user_uri_id> -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+```
+
+The tool automatically refreshes the OAuth app access token, so it remains valid indefinitely. Tokens are cached in the file specified by `SP_APP_TOKENS_FILE` configuration option (default: `.spotify-monitor-oauth-app.json`).
+
+If you store the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` in a dotenv file you can update their values and send a `SIGHUP` signal to reload the file with the new secret values without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
+
 <a id="following-the-monitored-user"></a>
 ### Following the Monitored User
 
-To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie.
+To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
 
 Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
 
@@ -274,7 +321,7 @@ Alternatively you can list all user URI IDs of accounts you follow by using [Lis
 <a id="smtp-settings"></a>
 ### SMTP Settings
 
-If you want to use email notifications functionality, configure SMTP settings in the `spotify_monitor.conf` file. 
+If you want to use email notifications functionality, configure SMTP settings in the `spotify_monitor.conf` file.
 
 Verify your SMTP settings by using `--send-test-email` flag (the tool will try to send a test email notification):
 
@@ -285,13 +332,15 @@ spotify_monitor --send-test-email
 <a id="storing-secrets"></a>
 ### Storing Secrets
 
-It is recommended to store secrets like `SP_DC_COOKIE`, `REFRESH_TOKEN` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
+It is recommended to store secrets like `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
 
 Set the needed environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
 
 ```sh
 export SP_DC_COOKIE="your_sp_dc_cookie_value"
 export REFRESH_TOKEN="your_spotify_app_refresh_token"
+export SP_APP_CLIENT_ID="your_spotify_app_client_id"
+export SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 export SMTP_PASSWORD="your_smtp_password"
 ```
 
@@ -302,10 +351,12 @@ Alternatively store them persistently in a dotenv file (recommended):
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
 REFRESH_TOKEN="your_spotify_app_refresh_token"
+SP_APP_CLIENT_ID="your_spotify_app_client_id"
+SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 SMTP_PASSWORD="your_smtp_password"
 ```
 
-By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it. 
+By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it.
 
 You can specify a custom file with `DOTENV_FILE` or `--env-file` flag:
 
@@ -339,10 +390,18 @@ If you use the default method to obtain a Spotify access token (`cookie`) and ha
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
 
+**Note:** OAuth app credentials are now required for track information retrieval. If you haven't set `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` via environment variables or `.env` file, you can use the `-r` flag:
+
+```sh
+spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+```
+
+See [Spotify OAuth App](#spotify-oauth-app) for detailed setup instructions.
+
 By default, the tool looks for a configuration file named `spotify_monitor.conf` in:
- - current directory 
+ - current directory
  - home directory (`~`)
- - script directory 
+ - script directory
 
  If you generated a configuration file as described in [Configuration](#configuration), but saved it under a different name or in a different directory, you can specify its location using the `--config-file` flag:
 
@@ -375,12 +434,6 @@ It also displays your friend's Spotify username (often the user's first and last
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
-
-To get basic information about the Spotify access token owner (`-v` flag):
-
-```sh
-spotify_monitor -v
-```
 
 <a id="email-notifications"></a>
 ### Email Notifications
@@ -483,7 +536,7 @@ Your Spotify client needs to be installed and running for this feature to work.
 
 The tool fully supports automatic playback on **Linux** and **macOS**. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the `SP_USER_GOT_OFFLINE_TRACK_ID` configuration option).
 
-For **Windows**, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first track will play automatically. However, subsequent tracks will be located in the client, but you will need to press the play button manually. 
+For **Windows**, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first track will play automatically. However, subsequent tracks will be located in the client, but you will need to press the play button manually.
 
 You can change the playback method per platform using the corresponding configuration option.
 
@@ -576,7 +629,7 @@ To help with troubleshooting and development, two debug utilities are available 
 <a id="access-token-retrieval-via-sp_dc-cookie-and-totp"></a>
 ### Access Token Retrieval via sp_dc Cookie and TOTP
 
-The [spotify_monitor_totp_test](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py) tool retrieves a Spotify access token using a Web Player `sp_dc` cookie and TOTP parameters. 
+The [spotify_monitor_totp_test](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py) tool retrieves a Spotify access token using a Web Player `sp_dc` cookie and TOTP parameters.
 
 Download from [here](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py) or:
 
@@ -602,12 +655,12 @@ You should get a valid Spotify access token, example output:
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_totp_test.png" alt="spotify_monitor_totp_test" width="100%"/>
 </p>
 
-> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every two days; you can either run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [here](#secret-key-extraction-from-spotify-web-player-bundles) for more info) or you can pass `--fetch-secrets` flag in `spotify_monitor_totp_test` (available since v1.6). There is also a [xyloflake/spot-secrets-go/](https://github.com/xyloflake/spot-secrets-go/) repo which offers JSON files that are automatically updated with current secrets (you can pass `--download-secrets` flag in `spotify_monitor_totp_test` to get it automatically from remote URL, available since v1.8).
+> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every few days; you can either run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [here](#secret-key-extraction-from-spotify-web-player-bundles) for more info) or you can pass `--fetch-secrets` flag in `spotify_monitor_totp_test` (available since v1.6). There is also a [xyloflake/spot-secrets-go/](https://github.com/xyloflake/spot-secrets-go/) repo which offers JSON files that are automatically updated with current secrets (you can pass `--download-secrets` flag in `spotify_monitor_totp_test` to get it automatically from remote URL, available since v1.8).
 
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ### Secret Key Extraction from Spotify Web Player Bundles
 
-The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles. 
+The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles.
 
 > 💡 **Quick tip:** The easiest and recommended way to run this tool is via Docker. Jump directly to the [Docker usage section below](#-secret-key-extraction-via-docker-recommended-easiest-way).
 
@@ -727,7 +780,7 @@ See [RELEASE_NOTES.md](https://github.com/misiektoja/spotify_monitor/blob/main/R
 <a id="maintainers"></a>
 ## Maintainers
 
-[![Maintainer: misiektoja](https://img.shields.io/badge/maintainer-misiektoja-blue)](https://github.com/misiektoja)  
+[![Maintainer: misiektoja](https://img.shields.io/badge/maintainer-misiektoja-blue)](https://github.com/misiektoja)
 [![Maintainer: tomballgithub](https://img.shields.io/badge/maintainer-tomballgithub-blue)](https://github.com/tomballgithub)
 
 <a id="license"></a>
