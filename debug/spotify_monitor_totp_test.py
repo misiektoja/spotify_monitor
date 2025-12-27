@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.0
+v2.1
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -21,12 +21,16 @@ options:
   -h, --help           show this help message and exit
   --sp-dc SP_DC        Value of sp_dc cookie
   --totp-ver TOTP_VER  Identifier of the secret key when generating a TOTP token (TOTP_VER)
+  --token-validity-url TOKEN_VALIDITY_URL  URL used for token validity check
   --fetch-secrets      Additionally fetch and update secret keys used for TOTP generation (extraction via headless web browser, requires playwright)
   --download-secrets   Additionally download and update secret keys used for TOTP generation (from remote or local URL)
 
 ---------------
 
 Change log:
+
+v2.1 (27 Dec 25):
+- Added TOKEN_VALIDITY_URL global variable and --token-validity-url CLI parameter to allow customization of the URL used for token validity checks
 
 v2.0 (26 Dec 25):
 - Updated URL in check_token_validity() due to new Spotify restrictions introduced on 22 Dec 2025
@@ -89,6 +93,7 @@ SP_DC_COOKIE = ""
 
 TOKEN_URL = "https://open.spotify.com/api/token"
 SERVER_TIME_URL = "https://open.spotify.com/"
+TOKEN_VALIDITY_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 
 # Set to 0 to auto-select the highest available version
 TOTP_VER = 0
@@ -491,8 +496,6 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
 
 
 def check_token_validity(access_token: str, client_id: str = "", user_agent: str = "") -> bool:
-    url = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
-
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Client-Id": client_id,
@@ -504,7 +507,7 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
         })
 
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(TOKEN_VALIDITY_URL, headers=headers, timeout=5)
         valid = response.status_code == 200
     except Exception:
         valid = False
@@ -515,11 +518,12 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
 
 
 def main():
-    global USER_AGENT, TOTP_VER
+    global USER_AGENT, TOTP_VER, TOKEN_VALIDITY_URL
 
     parser = argparse.ArgumentParser(description="Fetch Spotify access token using a Web Player sp_dc cookie and TOTP parameters")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
     parser.add_argument("--totp-ver", help="Identifier of the secret key when generating a TOTP token (TOTP_VER)", default=None)
+    parser.add_argument("--token-validity-url", help="URL used for token validity check", default=None)
     parser.add_argument("--fetch-secrets", action="store_true", help="Additionally fetch and update secret keys used for TOTP generation (extraction via headless web browser, requires playwright)")
     parser.add_argument("--download-secrets", action="store_true", help="Additionally download and update secret keys used for TOTP generation (from remote or local URL)")
     args = parser.parse_args()
@@ -552,6 +556,10 @@ def main():
         except Exception as e:
             _LOGGER.error("Failed to set TOTP_VER from parameter: %s", e)
             _LOGGER.debug("Reverting to existing TOTP_VER")
+
+    if args.token_validity_url:
+        _LOGGER.debug(f"Setting TOKEN_VALIDITY_URL to {args.token_validity_url}")
+        TOKEN_VALIDITY_URL = args.token_validity_url
 
     sp_dc = args.sp_dc or SP_DC_COOKIE
     if not sp_dc:
