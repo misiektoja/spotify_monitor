@@ -2,6 +2,8 @@
 
 Tool for real-time monitoring of **Spotify friends' music activity feed**.
 
+🎵 For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, check out [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor) - it is much easier to set up, simply ask your friend to connect Last.fm to Spotify (Last.fm Settings → Applications → Connect Spotify Scrobbling) and you're ready to go!
+
 ✨ If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
 🛠️ If you're looking for debug tools to get Spotify Web Player access tokens and extract secret keys: [click here](#debugging-tools)
