@@ -46,7 +46,7 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
 # ---------------------------------------------------------------------
 
-# The section below is used to get tracks and playlist info (Client Credentials OAuth Flow - 'oauth_app')
+# The section below is used to get tracks and user info via secondary token (Client Credentials OAuth Flow - 'oauth_app')
 #
 # To obtain the credentials:
 #   - Log in to Spotify Developer dashboard: https://developer.spotify.com/dashboard
@@ -3535,8 +3535,8 @@ def main():
         help=argparse.SUPPRESS
     )
 
-    # OAuth app credentials (Client Credentials Flow) for track/playlist API calls, required for both cookie and client token sources
-    oauth_app_auth = parser.add_argument_group("OAuth app credentials for track/playlist API calls")
+    # OAuth app credentials (Client Credentials Flow) for track/user API calls, required for both cookie and client token sources
+    oauth_app_auth = parser.add_argument_group("OAuth app credentials for track/user API calls")
     oauth_app_auth.add_argument(
         "-r", "--oauth-app-creds",
         dest="oauth_app_creds",
@@ -3627,12 +3627,6 @@ def main():
         action="store_true",
         help="List Spotify friends with their last listened track"
     )
-    # listing.add_argument(
-    #     "-v", "--show-user-info",
-    #     dest="show_user_info",
-    #     action="store_true",
-    #     help="Get basic information about access token owner"
-    # )
 
     # Features & output
     opts = parser.add_argument_group("Features & output")
@@ -3821,7 +3815,6 @@ def main():
                     print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    # if not args.user_id and not args.list_friends and not args.show_user_info and login_request_body_file_param:
                     if not args.user_id and not args.list_friends and login_request_body_file_param:
                         print(f"* Login data correctly read from Protobuf file ({LOGIN_REQUEST_BODY_FILE}):")
                         print(" - Device ID:\t\t", DEVICE_ID)
@@ -3874,7 +3867,6 @@ def main():
                     print(f"* Error: Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    # if not args.user_id and not args.list_friends and not args.show_user_info and clienttoken_request_body_file_param:
                     if not args.user_id and not args.list_friends and clienttoken_request_body_file_param:
                         print(f"* Client token data correctly read from Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}):")
                         print(" - App version:\t\t", APP_VERSION)
