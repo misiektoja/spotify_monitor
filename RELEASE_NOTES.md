@@ -2,6 +2,28 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 2.7 (27 Dec 2025)
+
+**Features and Improvements**:
+
+- **NEW:** Implemented **hybrid authentication approach** to support two auth methods: **cookie/client** for friend activity monitoring and **oauth_app** (**Client Credentials OAuth Flow**) for track API calls to address restrictions introduced by Spotify on **22 Dec 2025** (thanks [@tomballgithub](https://github.com/tomballgithub) and [@0xXiHan](https://github.com/0xXiHan), fixes [#27](https://github.com/misiektoja/spotify_monitor/issues/27))
+- **NEW:** Added configuration options (`SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`) and `-r` / `--oauth-app-creds` flag for **Client Credentials OAuth Flow (oauth_app)**
+- **NEW:** Added **OAuth app token caching** via `SP_APP_TOKENS_FILE` configuration option
+- **NEW:** Added **Spotipy** dependency (required since v2.7 due to new Spotify restrictions)
+- **IMPROVE:** Enhanced **email notification formatting**
+
+**Bug fixes**:
+
+- **BUGFIX:** Removed `spotify_get_playlist_info` function to overcome Spotify's client credentials flow limitations and streamline playlist handling (fixes [#31](https://github.com/misiektoja/spotify_monitor/issues/31))
+- **BUGFIX:** Removed old **TOTP versions** from `SECRET_CIPHER_DICT` (fixes [#28](https://github.com/misiektoja/spotify_monitor/issues/28))
+- **BUGFIX:** Updated **TOTP version handling** in `refresh_access_token_from_sp_dc` function to ensure compatibility with varying **TOTP versions** (fixes [#32](https://github.com/misiektoja/spotify_monitor/issues/32))
+- **BUGFIX:** Added missing **OAuth app** support for user removal check and improved error handling in `is_user_removed` function (fixes [#30](https://github.com/misiektoja/spotify_monitor/issues/30))
+
+**Breaking changes**:
+
+- **BREAKING:** Removed **token owner display** at startup due to `/v1/me` endpoint limitations introduced by Spotify on **22 Dec 2025**
+- **BREAKING:** **OAuth app credentials** are now required for track information retrieval when using either `cookie` or `client` **token source methods**
+
 # Changes in 2.6 (11 Nov 2025)
 
 **Features and Improvements**:
