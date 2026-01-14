@@ -1,6 +1,6 @@
 # spotify_monitor
 
-Tool for real-time monitoring of **Spotify friends' music activity feed**.
+**spotify_monitor** is a powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
 
 🎵 For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, check out [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor) - it is much easier to set up, simply ask your friend to connect Last.fm to Spotify (Last.fm Settings → Applications → Connect Spotify Scrobbling) and you're ready to go!
 
