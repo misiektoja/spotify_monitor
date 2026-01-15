@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spotify_monitor"
 version = "2.7"
-description = "Tool implementing real-time tracking of Spotify friends music activity"
+description = "Track Spotify friends' music activity in real time with auto-playback, skipped tracks detection and instant notifications"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
