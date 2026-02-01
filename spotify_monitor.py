@@ -3449,7 +3449,22 @@ def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
     if "--generate-config" in sys.argv:
-        print(CONFIG_BLOCK.strip("\n"))
+        config_content = CONFIG_BLOCK.strip("\n") + "\n"
+        # Check if a filename was provided after --generate-config
+        try:
+            idx = sys.argv.index("--generate-config")
+            if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
+                # Write directly to file (bypasses PowerShell UTF-16 encoding issue on Windows)
+                output_file = sys.argv[idx + 1]
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write(config_content)
+                print(f"Config written to: {output_file}")
+                sys.exit(0)
+        except (ValueError, IndexError):
+            pass
+        # No filename provided - write to stdout using buffer to ensure UTF-8
+        sys.stdout.buffer.write(config_content.encode("utf-8"))
+        sys.stdout.buffer.flush()
         sys.exit(0)
 
     if "--version" in sys.argv:
@@ -3496,8 +3511,11 @@ def main():
     )
     conf.add_argument(
         "--generate-config",
-        action="store_true",
-        help="Print default config template and exit",
+        dest="generate_config",
+        nargs="?",
+        const=True,
+        metavar="FILENAME",
+        help="Print default config template and exit (on Windows PowerShell, specify a filename to avoid redirect encoding issues)",
     )
     conf.add_argument(
         "--env-file",
