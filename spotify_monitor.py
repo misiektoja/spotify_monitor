@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.7
+v2.8
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -17,7 +17,7 @@ wcwidth (optional, needed by TRUNCATE_CHARS feature)
 spotipy (required since v2.7 due to new Spotify restrictions introduced on 22 Dec 2025)
 """
 
-VERSION = "2.7"
+VERSION = "2.8"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -337,7 +337,6 @@ SECRET_CIPHER_DICT = {
 # Remote or local URL used to fetch updated secrets needed for TOTP generation
 # Set to empty string to disable
 # If you used "spotify_monitor_secret_grabber.py --secretdict > secretDict.json" specify the file location below
-# SECRET_CIPHER_DICT_URL = "https://github.com/Thereallo1026/spotify-secrets/blob/main/secrets/secretDict.json?raw=true"
 SECRET_CIPHER_DICT_URL = "https://github.com/xyloflake/spot-secrets-go/blob/main/secrets/secretDict.json?raw=true"
 # SECRET_CIPHER_DICT_URL = file:///C:/your_path/secretDict.json
 # SECRET_CIPHER_DICT_URL = "file:///your_path/secretDict.json"
@@ -1537,6 +1536,8 @@ def fetch_and_update_secrets():
             path = os.path.expanduser(os.path.expandvars(raw_path))
 
             print(f"Loading Spotify web-player TOTP secrets from file: {path}")
+            if os.path.getsize(path) == 0:
+                raise ValueError(f"Secret file is empty: {path}")
             with open(path, "r", encoding="utf-8") as f:
                 secrets = json.load(f)
             print("─" * HORIZONTAL_LINE)
@@ -1544,21 +1545,26 @@ def fetch_and_update_secrets():
             print(f"Fetching Spotify web-player TOTP secrets from URL: {SECRET_CIPHER_DICT_URL}")
             response = req.get(SECRET_CIPHER_DICT_URL, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
             response.raise_for_status()
+            if not response.text.strip():
+                raise ValueError("Fetched payload is empty")
             secrets = response.json()
             print("─" * HORIZONTAL_LINE)
 
         if not isinstance(secrets, dict) or not secrets:
-            raise ValueError("fetch_and_update_secrets(): Fetched payload not a non-empty dict")
+            raise ValueError("Fetched payload not a non-empty dict")
 
         for key, value in secrets.items():
             if not isinstance(key, str) or not key.isdigit():
-                raise ValueError(f"fetch_and_update_secrets(): Invalid key format: {key}")
+                raise ValueError(f"Invalid key format: {key}")
             if not isinstance(value, list) or not all(isinstance(x, int) for x in value):
-                raise ValueError(f"fetch_and_update_secrets(): Invalid value format for key {key}")
+                raise ValueError(f"Invalid value format for key {key}")
 
         SECRET_CIPHER_DICT = secrets
         return True
 
+    except json.JSONDecodeError as e:
+        print(f"fetch_and_update_secrets(): Failed to parse secrets (invalid JSON format): {e}")
+        return False
     except Exception as e:
         print(f"fetch_and_update_secrets(): Failed to get new secrets: {e}")
         return False
