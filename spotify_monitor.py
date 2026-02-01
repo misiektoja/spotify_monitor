@@ -716,7 +716,8 @@ class Logger(object):
         self.logfile = open(filename, "a", buffering=1, encoding="utf-8")
 
     def write(self, message):
-        self.logfile.write(message)
+        # Expand tabs for file output (stdout remains untouched)
+        self.logfile.write(message.expandtabs(8))
         if (TRUNCATE_CHARS):
             message = truncate_string_per_line(message, TRUNCATE_CHARS)
         self.terminal.write(message)
