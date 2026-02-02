@@ -16,38 +16,39 @@
 ```sh
 pip install spotify_monitor
 ```
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
+</p>
+
 <a id="features"></a>
 ## Features
 
 ### 🔍 Real-time Tracking
 - **Friend Activity**: Monitor songs listened by Spotify users in real-time.
-- **Presence Detection**: Detect when friends get online or offline.
-- **Session Stats**: Display duration, track counts and songs on loop.
+- **Presence Detection**: Detect when friends get **online** or **offline**.
+- **Session Stats**: Display **duration, track counts** and **songs on loop**.
 
 ### 🎮 Playback Control
-- **Auto-Sync**: Automatically play friends' songs in your local Spotify client.
-- **Smart Pause**: Pause or switch tracks when the monitored user goes offline.
-- **Crossfade Support**: Detect and annotate crossfaded songs during transitions.
+- **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
+- **Smart Pause**: **Pause** or **switch** tracks when the monitored user goes offline.
+- **Crossfade Support**: Detect and annotate **crossfaded songs** during transitions.
 
 ### 📊 Rich Insights
-- **Track Context**: View playlist, artist and album info with clickable URLs.
+- **Track Context**: View **playlist, artist** and **album info** with clickable URLs.
 - **Skip Detection**: Identify exactly when and how long a song was played.
-- **Global Search**: Instant links to YouTube Music, Apple Music, Tidal, lyrics and more.
+- **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 
 ### 🔔 Smart Notifications
-- **Instant Alerts**: Detailed Email notifications for activity and loops.
+- **Instant Alerts**: Detailed **Email notifications** for activity and songs on loop.
 - **Session Summaries**: Receive detailed reports when a friend finishes a session.
 - **Error Reporting**: Be notified if the monitoring process hits a snag.
 
 ### ⚙️ Power Features
 - **Auth Flexibility**: Hybrid support for `sp_dc` cookie, Desktop Client and OAuth app.
-- **CSV Export**: Save every listened song with full timestamps to a CSV file.
+- **CSV Logging**: Save every listened song with full timestamps to a CSV file.
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
-
-<p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
-</p>
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
