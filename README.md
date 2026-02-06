@@ -2,15 +2,15 @@
 
 <p align="left">
   <img src="https://img.shields.io/github/v/release/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="GitHub Release" />
-  <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=orange" alt="PyPI Version" />
-  <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=yellow" alt="GitHub Stars" />
-  <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
+  <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=teal" alt="PyPI Version" />
+  <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=magenta" alt="GitHub Stars" />
+  <img src="https://img.shields.io/badge/python-3.6+-blueviolet?style=flat-square" alt="Python Versions" />
   <img src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="License" />
-  <img src="https://img.shields.io/pypi/pyversions/spotify_monitor?style=flat-square&color=blueviolet" alt="Python Versions" />
+  <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
   <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
 </p>
 
-**spotify_monitor** is a powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
+Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
 
 ### 🚀 Quick Install
 ```sh
