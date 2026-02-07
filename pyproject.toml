@@ -45,7 +45,13 @@ Changelog= "https://github.com/misiektoja/spotify_monitor/blob/main/RELEASE_NOTE
 
 [project.scripts]
 spotify_monitor = "spotify_monitor:main"
+spotify_monitor_secret_grabber = "debug.spotify_monitor_secret_grabber:main"
+spotify_monitor_totp_test = "debug.spotify_monitor_totp_test:main"
 
 [tool.setuptools]
 py-modules = ["spotify_monitor"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["debug*"]
+namespaces = true
