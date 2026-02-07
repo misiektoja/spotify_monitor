@@ -10,6 +10,7 @@ This is a high-level summary of the most important changes.
 - **IMPROVE:** Enhanced `--generate-config` to support writing directly to a file (e.g. `spotify_monitor --generate-config spotify_monitor.conf`). This avoids UTF-16 encoding issues on **Windows PowerShell**
 - **IMPROVE:** Expanded tabs to spaces in output log files to ensure **consistent alignment across different viewers**
 - **IMPROVE:** Enhanced error handling for empty or malformed secret files
+- **IMPROVE:** Added `spotify_monitor_secret_grabber` and `spotify_monitor_totp_test` as pip-installed **console scripts**
 
 # Changes in 2.7 (27 Dec 2025)
 
