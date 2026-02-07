@@ -1343,7 +1343,8 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_musi
 # Sends a lightweight request to check Spotify token validity
 def check_token_validity(access_token: str, client_id: Optional[str] = None, user_agent: Optional[str] = None, oauth_app: Optional[bool] = False) -> bool:
     url1 = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
-    url2 = "https://api.spotify.com/v1/browse/categories?limit=1&fields=categories.items(id)"
+    # Use a known stable track for validation (Bohemian Rhapsody - Queen)
+    url2 = "https://api.spotify.com/v1/tracks/7tFiyTwD0nx5a1eklYtX2J"
 
     url = url2 if oauth_app else url1
 
@@ -2440,7 +2441,8 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
 
 # Checks if a Spotify user URI ID has been deleted
 def is_user_removed(access_token, user_uri_id, oauth_app=False):
-    url = f"https://api.spotify.com/v1/users/{user_uri_id}"
+    # Use internal Spotify API (official /users/{id} endpoint was removed in Feb 2026)
+    url = f"https://spclient.wg.spotify.com/user-profile-view/v3/profile/{user_uri_id}?playlist_limit=0&artist_limit=0&episode_limit=0&market=from_token"
 
     headers = {
         "Authorization": f"Bearer {access_token}",
