@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.1
+v2.2
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -28,6 +28,9 @@ options:
 ---------------
 
 Change log:
+
+v2.2 (07 Feb 26):
+- Moved logging configuration into main() to ensure debug messages are displayed when run as a pip-installed console script
 
 v2.1 (27 Dec 25):
 - Added TOKEN_VALIDITY_URL global variable and --token-validity-url CLI parameter to allow customization of the URL used for token validity checks
@@ -520,6 +523,12 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
 def main():
     global USER_AGENT, TOTP_VER, TOKEN_VALIDITY_URL
 
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     parser = argparse.ArgumentParser(description="Fetch Spotify access token using a Web Player sp_dc cookie and TOTP parameters")
     parser.add_argument("--sp-dc", help="Value of sp_dc cookie", default=None)
     parser.add_argument("--totp-ver", help="Identifier of the secret key when generating a TOTP token (TOTP_VER)", default=None)
@@ -588,9 +597,4 @@ def main():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
     main()
