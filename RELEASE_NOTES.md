@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 2.8 (TBD)
+# Changes in 2.8 (07 Feb 2026)
 
 **Features and Improvements**:
 
