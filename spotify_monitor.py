@@ -317,6 +317,18 @@ ENABLE_MUSIXMATCH_URL = False
 # Whether to show Lyrics.com lyrics URL in console and emails
 ENABLE_LYRICS_COM_URL = False
 
+# String to add after playlist name to indicate it's a Spotify public curated and customized playlist
+# The distinction may be important because the songs will vary by account due to listening habits.
+# This will be used for messages on console and emails
+# Include all characters, including a preceeding space and paranthesis if desired
+#
+# Example: 
+#   For: 90s Pop (Spotify curated), SPOTIFY_SUFFIX = " (Spotify curated)"
+#   For: 90s Pop (custom),          SPOTIFY_SUFFIX = " (custom)"
+#
+# Use "" to disable
+SPOTIFY_SUFFIX = ""
+
 # ---------------------------------------------------------------------
 
 # The section below is used when the token source is set to 'cookie'
@@ -568,6 +580,7 @@ SECRET_CIPHER_DICT_URL = ""
 TOTP_VER = 0
 FLAG_FILE = ""
 TRUNCATE_CHARS = 0
+playlist_suffix = ""
 
 exec(CONFIG_BLOCK, globals())
 
@@ -2344,13 +2357,20 @@ def spotify_list_friends(friend_activity):
         sp_playlist_uri = friend["track"]["context"].get("uri")
         sp_track_uri = friend["track"].get("uri")
 
+        sp_playlist_owner = ""
+        if sp_playlist_uri:
+            sp_accessToken_oauth_app = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET)
+            if sp_accessToken_oauth_app:
+                sp_playlist_owner = spotify_get_playlist_owner(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
+        playlist_suffix = f"{SPOTIFY_SUFFIX}" if sp_playlist_owner == "Spotify" else ""
+
         print("─" * HORIZONTAL_LINE)
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
         print(f"User URL:\t\t\t{spotify_convert_uri_to_url('spotify:user:' + sp_uri)}")
         print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}\n")
         if 'spotify:playlist:' in sp_playlist_uri:
-            print(f"Playlist:\t\t\t{sp_playlist}")
+            print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
         print(f"Album:\t\t\t\t{sp_album}")
 
         if 'spotify:album:' in sp_playlist_uri and sp_playlist != sp_album:
@@ -2404,6 +2424,36 @@ def spotify_get_friend_info(friend_activity, uri):
     return False, {}
 
 
+# Returns information for specific Spotify playlist URI
+def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
+    playlist_id = playlist_uri.split(':', 2)[2]
+    
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": USER_AGENT
+    }
+
+    if TOKEN_SOURCE == "cookie":
+        headers.update({
+            "Client-Id": SP_CACHED_CLIENT_ID
+        })
+
+    try:
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        if response.status_code == 404:
+            sp_playlist_owner = "Spotify"
+        else:
+            response.raise_for_status()
+            json_response = response.json()
+
+            sp_playlist_owner = json_response["owner"].get("display_name", "")
+        return sp_playlist_owner
+    except Exception as e:
+        print(e)
+        raise
+
+    
 # Returns information for specific Spotify track URI
 def spotify_get_track_info(access_token, track_uri, oauth_app=False):
     if not access_token:
@@ -2579,7 +2629,7 @@ def resolve_executable(path):
 
 # Monitors music activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
-    global SP_CACHED_ACCESS_TOKEN
+    global SP_CACHED_ACCESS_TOKEN, playlist_suffix
     sp_active_ts_start = 0
     sp_active_ts_stop = 0
     sp_active_ts_start_old = 0
@@ -2697,9 +2747,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_album_uri = sp_data["sp_album_uri"]
             sp_playlist_uri = sp_data["sp_playlist_uri"]
 
+            sp_playlist_data = {}
             try:
                 sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
                 is_playlist = 'spotify:playlist:' in sp_playlist_uri
+                if is_playlist:
+                    sp_playlist_owner = spotify_get_playlist_owner(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
+                    playlist_suffix = f"{SPOTIFY_SUFFIX}" if sp_playlist_owner == "Spotify" else ""
+
             except Exception as e:
                 print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                 print_cur_ts("Timestamp:\t\t\t")
@@ -2733,15 +2788,15 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_playlist_url = ""
             if is_playlist:
                 sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
-                playlist_m_body = f"\nPlaylist: {sp_playlist}"
-                playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
+                playlist_m_body = f"\nPlaylist: {sp_playlist}{playlist_suffix}"
+                playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}{playlist_suffix}</a>"
 
             print(f"Username:\t\t\t{sp_username}")
             print(f"User URI ID:\t\t\t{sp_data['sp_uri']}")
             print(f"\nLast played:\t\t\t{sp_artist} - {sp_track}")
             print(f"Duration:\t\t\t{display_time(sp_track_duration)}\n")
             if is_playlist:
-                print(f"Playlist:\t\t\t{sp_playlist}")
+                print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
 
             print(f"Album:\t\t\t\t{sp_album}")
 
@@ -2856,6 +2911,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             email_sent = False
 
             disappeared_counter = 0
+
+            playlist_suffix = ""
 
             # Primary loop
             while True:
@@ -3008,6 +3065,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     try:
                         sp_track_data = spotify_get_track_info(sp_accessToken_oauth_app, sp_track_uri, oauth_app=True)
                         is_playlist = 'spotify:playlist:' in sp_playlist_uri
+                        if is_playlist:
+                            sp_playlist_owner = spotify_get_playlist_owner(sp_accessToken_oauth_app, sp_playlist_uri, oauth_app=True)
+                            playlist_suffix = f"{SPOTIFY_SUFFIX}" if sp_playlist_owner == "Spotify" else ""
                     except Exception as e:
                         print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
                         print_cur_ts("Timestamp:\t\t\t")
@@ -3045,8 +3105,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                     if is_playlist:
                         sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
-                        playlist_m_body = f"\nPlaylist: {sp_playlist}"
-                        playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}</a>"
+                        playlist_m_body = f"\nPlaylist: {sp_playlist}{playlist_suffix}"
+                        playlist_m_body_html = f"<br>Playlist: <a href=\"{sp_playlist_url}\">{escape(sp_playlist)}{playlist_suffix}</a>"
                     else:
                         playlist_m_body = ""
                         playlist_m_body_html = ""
@@ -3122,7 +3182,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         recent_songs_session.pop(0)
 
                     if is_playlist:
-                        print(f"Playlist:\t\t\t{sp_playlist}")
+                        print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
 
                     print(f"Album:\t\t\t\t{sp_album}")
 
@@ -3328,6 +3388,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             listened_songs_text += looped_songs_text
                             listened_songs_mbody += looped_songs_mbody
                             listened_songs_mbody_html += looped_songs_mbody_html
+
+                        if is_playlist:
+                            playlist_suffix = f"{SPOTIFY_SUFFIX}" if sp_playlist_owner == "Spotify" else ""
 
                         print(listened_songs_text)
 
