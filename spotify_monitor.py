@@ -320,7 +320,7 @@ ENABLE_LYRICS_COM_URL = False
 # String to add after playlist name to indicate it's a Spotify public curated and customized playlist
 # The distinction may be important because the songs will vary by account due to listening habits.
 # This will be used for messages on console and emails
-# Include all characters, including a preceeding space and paranthesis if desired
+# The string should include all desired characters, including a preceding space and parenthesis, if desired
 #
 # Example: 
 #   For: 90s Pop (Spotify curated), SPOTIFY_SUFFIX = " (Spotify curated)"
