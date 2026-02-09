@@ -323,8 +323,8 @@ ENABLE_LYRICS_COM_URL = False
 # The string should include all desired characters, including a preceding space and parenthesis, if desired
 #
 # Example: 
-#   For: 90s Pop (Spotify curated), SPOTIFY_SUFFIX = " (Spotify curated)"
-#   For: 90s Pop (custom),          SPOTIFY_SUFFIX = " (custom)"
+#   For: 90s Pop (by Spotify), SPOTIFY_SUFFIX = " (by Spotify)"
+#   For: 90s Pop ♥,            SPOTIFY_SUFFIX = " \u2665"
 #
 # Use "" to disable
 SPOTIFY_SUFFIX = ""
