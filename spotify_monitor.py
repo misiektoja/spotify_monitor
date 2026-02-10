@@ -580,7 +580,6 @@ TOTP_VER = 0
 FLAG_FILE = ""
 TRUNCATE_CHARS = 0
 SPOTIFY_SUFFIX = ""
-playlist_suffix = ""
 
 exec(CONFIG_BLOCK, globals())
 
@@ -2444,10 +2443,14 @@ def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
 
     try:
         response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-        response.raise_for_status()
-        json_response = response.json()
+        if response.status_code == 404:
+            # Spotify-curated playlists often return 404 when accessed via Client Credentials Flow
+            sp_playlist_owner = "Spotify"
+        else:
+            response.raise_for_status()
+            json_response = response.json()
 
-        sp_playlist_owner = json_response["owner"].get("display_name", "")
+            sp_playlist_owner = json_response["owner"].get("display_name", "")
         return sp_playlist_owner
     except Exception as e:
         print(e)
@@ -2629,7 +2632,7 @@ def resolve_executable(path):
 
 # Monitors music activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
-    global SP_CACHED_ACCESS_TOKEN, playlist_suffix
+    global SP_CACHED_ACCESS_TOKEN
     sp_active_ts_start = 0
     sp_active_ts_stop = 0
     sp_active_ts_start_old = 0
@@ -2737,6 +2740,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         played_for_m_body = ""
         played_for_m_body_html = ""
         is_playlist = False
+        playlist_suffix = ""
 
         # User is found in the Spotify's friend list just after starting the tool
         if sp_found:
