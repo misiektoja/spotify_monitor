@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.8
+v2.9
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -17,7 +17,7 @@ wcwidth (optional, needed by TRUNCATE_CHARS feature)
 spotipy (required since v2.7 due to new Spotify restrictions introduced on 22 Dec 2025)
 """
 
-VERSION = "2.8"
+VERSION = "2.9"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -324,9 +324,8 @@ ENABLE_LYRICS_COM_URL = False
 #
 # Example:
 #   For: 90s Pop (by Spotify), SPOTIFY_SUFFIX = " (by Spotify)"
-#   For: 90s Pop ♥,            SPOTIFY_SUFFIX = " \u2665"
 #
-# Use "" to disable
+# Leave empty to disable
 SPOTIFY_SUFFIX = ""
 
 # ---------------------------------------------------------------------
