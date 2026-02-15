@@ -2,6 +2,17 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 2.9 (TBD)
+
+**Features and Improvements**:
+
+- **NEW:** Added configuration option `SPOTIFY_SUFFIX` to allow a **custom string** after **Spotify-curated public playlists** (thanks [@tomballgithub](https://github.com/tomballgithub))
+- **NEW:** Added **debug mode** with `DEBUG_MODE` config option and `--debug` CLI flag for technical troubleshooting output
+
+**Bug fixes**:
+
+- **BUGFIX:** Capped server-provided `Retry-After` for HTTP 429 responses to avoid long hangs
+
 # Changes in 2.8 (07 Feb 2026)
 
 **Features and Improvements**:
