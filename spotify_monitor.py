@@ -264,6 +264,10 @@ SP_LOGFILE = "spotify_monitor"
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
+# Enable debug mode for technical logging (can also be enabled via --debug flag)
+# Shows request flow, selected params and internal state changes (with sensitive values redacted)
+DEBUG_MODE = False
+
 # Width of horizontal line
 HORIZONTAL_LINE = 113
 
@@ -559,6 +563,7 @@ DOTENV_FILE = ""
 FILE_SUFFIX = ""
 SP_LOGFILE = ""
 DISABLE_LOGGING = False
+DEBUG_MODE = False
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
@@ -790,9 +795,12 @@ def signal_handler(sig, frame):
 # Checks internet connectivity
 def check_internet(url=CHECK_INTERNET_URL, timeout=CHECK_INTERNET_TIMEOUT, verify=VERIFY_SSL):
     try:
+        debug_print(f"HTTP GET {url} [connectivity check], timeout={timeout}, verify_ssl={verify}")
         _ = req.get(url, headers={'User-Agent': USER_AGENT}, timeout=timeout, verify=verify)
+        debug_print(f"HTTP GET {url} -> OK")
         return True
     except req.RequestException as e:
+        debug_print(f"HTTP GET {url} -> failed: {e}")
         print(f"* No connectivity, please check your network:\n\n{e}")
         return False
 
@@ -808,6 +816,50 @@ def clear_screen(enabled=True):
             os.system('clear')
     except Exception:
         print("* Cannot clear the screen contents")
+
+
+# Debug print helper - only prints when DEBUG_MODE is enabled
+def debug_print(message):
+    if DEBUG_MODE:
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[DEBUG {timestamp}] {message}")
+
+
+def mask_secret(value, prefix=4, suffix=2):
+    if value is None:
+        return None
+    s = str(value)
+    if not s:
+        return ""
+    if len(s) <= (prefix + suffix):
+        return "*" * len(s)
+    return f"{s[:prefix]}...{s[-suffix:]}"
+
+
+def sanitize_debug_params(params):
+    if not isinstance(params, dict):
+        return params
+    redacted_keys = {"totp", "totpServer", "refresh_token", "access_token"}
+    out = {}
+    for k, v in params.items():
+        if k in redacted_keys:
+            out[k] = mask_secret(v)
+        else:
+            out[k] = v
+    return out
+
+
+def sanitize_debug_headers(headers):
+    if not isinstance(headers, dict):
+        return headers
+    sensitive = {"authorization", "cookie", "client-token"}
+    out = {}
+    for k, v in headers.items():
+        if str(k).lower() in sensitive:
+            out[k] = mask_secret(v)
+        else:
+            out[k] = v
+    return out
 
 
 # Converts absolute value of seconds to human readable format
@@ -1388,10 +1440,13 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(FUNCTION_TIMEOUT + 2)
     try:
+        debug_print(f"HTTP GET {url} [token validity] headers={sanitize_debug_headers(headers)}")
         response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         valid = response.status_code == 200
+        debug_print(f"HTTP GET {url} -> {response.status_code} (valid={valid})")
     except Exception:
         valid = False
+        debug_print(f"HTTP GET {url} -> failed during token validity check")
     finally:
         if platform.system() != 'Windows':
             signal.alarm(0)
@@ -1495,8 +1550,10 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
         if platform.system() != 'Windows':
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
+        debug_print(f"HTTP HEAD {SERVER_TIME_URL} [server time] timeout={FUNCTION_TIMEOUT}")
         response = session.head(SERVER_TIME_URL, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
+        debug_print(f"HTTP HEAD {SERVER_TIME_URL} -> {response.status_code}")
     except TimeoutException as e:
         raise Exception(f"fetch_server_time() head network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
     except Exception as e:
@@ -1569,8 +1626,10 @@ def fetch_and_update_secrets():
             print("─" * HORIZONTAL_LINE)
         else:
             print(f"Fetching Spotify web-player TOTP secrets from URL: {SECRET_CIPHER_DICT_URL}")
+            debug_print(f"HTTP GET {SECRET_CIPHER_DICT_URL} [secrets update]")
             response = req.get(SECRET_CIPHER_DICT_URL, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
             response.raise_for_status()
+            debug_print(f"HTTP GET {SECRET_CIPHER_DICT_URL} -> {response.status_code}")
             if not response.text.strip():
                 raise ValueError("Fetched payload is empty")
             secrets = response.json()
@@ -1642,14 +1701,17 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
 
+        debug_print(f"HTTP GET {TOKEN_URL} [sp_dc transport] params={sanitize_debug_params(params)} headers={sanitize_debug_headers(headers)}")
         response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         response.raise_for_status()
         data = response.json()
         token = data.get("accessToken", "")
+        debug_print(f"HTTP GET {TOKEN_URL} [sp_dc transport] -> {response.status_code}, token_len={len(token)}")
 
     except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
         transport = False
         last_err = str(e)
+        debug_print(f"HTTP GET {TOKEN_URL} [sp_dc transport] failed: {e}")
     finally:
         if platform.system() != "Windows":
             signal.alarm(0)
@@ -1662,14 +1724,17 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(FUNCTION_TIMEOUT + 2)
 
+            debug_print(f"HTTP GET {TOKEN_URL} [sp_dc init] params={sanitize_debug_params(params)} headers={sanitize_debug_headers(headers)}")
             response = session.get(TOKEN_URL, params=params, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
             response.raise_for_status()
             data = response.json()
             token = data.get("accessToken", "")
+            debug_print(f"HTTP GET {TOKEN_URL} [sp_dc init] -> {response.status_code}, token_len={len(token)}")
 
         except (req.RequestException, TimeoutException, req.HTTPError, ValueError) as e:
             init = False
             last_err = str(e)
+            debug_print(f"HTTP GET {TOKEN_URL} [sp_dc init] failed: {e}")
         finally:
             if platform.system() != "Windows":
                 signal.alarm(0)
@@ -1692,6 +1757,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
     now = time.time()
 
     if SP_CACHED_ACCESS_TOKEN and now < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+        debug_print("Using cached Spotify access token (sp_dc source)")
         return SP_CACHED_ACCESS_TOKEN
 
     max_retries = TOKEN_MAX_RETRIES
@@ -1701,6 +1767,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
 
     while retry < max_retries:
         try:
+            debug_print(f"Refreshing Spotify access token via sp_dc (attempt {retry + 1}/{max_retries})")
             token_data = refresh_access_token_from_sp_dc(sp_dc)
             token = token_data["access_token"]
             client_id = token_data.get("client_id", "")
@@ -1711,12 +1778,15 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
             SP_CACHED_CLIENT_ID = client_id
 
             if SP_CACHED_ACCESS_TOKEN is None or not check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+                debug_print("Received token is invalid, retrying")
                 retry += 1
                 time.sleep(TOKEN_RETRY_TIMEOUT)
             else:
+                debug_print(f"Spotify access token obtained successfully, length={length}")
                 break
         except Exception as e:
             last_error = str(e)
+            debug_print(f"Token refresh attempt failed: {e}")
             retry += 1
             if retry < max_retries:
                 time.sleep(TOKEN_RETRY_TIMEOUT)
@@ -1725,6 +1795,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
 
         if fetch_and_update_secrets():
             try:
+                debug_print("Retrying token refresh after secrets update")
                 token_data = refresh_access_token_from_sp_dc(sp_dc)
                 token = token_data["access_token"]
                 client_id = token_data.get("client_id", "")
@@ -1735,9 +1806,11 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 SP_CACHED_CLIENT_ID = client_id
 
                 if SP_CACHED_ACCESS_TOKEN and check_token_validity(SP_CACHED_ACCESS_TOKEN, SP_CACHED_CLIENT_ID, USER_AGENT):
+                    debug_print("Spotify access token obtained successfully after secrets update")
                     return SP_CACHED_ACCESS_TOKEN
             except Exception as e:
                 last_error = str(e)
+                debug_print(f"Token refresh after secrets update failed: {e}")
 
         error_msg = f"Failed to obtain a valid Spotify access token after {max_retries} attempts"
         if last_error:
@@ -2075,12 +2148,14 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
     global SP_CACHED_ACCESS_TOKEN, SP_CACHED_REFRESH_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT
 
     if SP_CACHED_ACCESS_TOKEN and time.time() < SP_ACCESS_TOKEN_EXPIRES_AT and check_token_validity(SP_CACHED_ACCESS_TOKEN, user_agent=USER_AGENT):
+        debug_print("Using cached Spotify access token (client source)")
         return SP_CACHED_ACCESS_TOKEN
 
     if not client_token:
         raise Exception("Client token is missing")
 
     if SP_CACHED_REFRESH_TOKEN:
+        debug_print("Using cached refresh token for client auth flow")
         refresh_token = SP_CACHED_REFRESH_TOKEN
 
     protobuf_body = build_spotify_auth_protobuf(device_id, system_id, user_uri_id, refresh_token)
@@ -2108,10 +2183,14 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
         if platform.system() != 'Windows':
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
+        debug_print(f"HTTP POST {LOGIN_URL} [client auth] headers={sanitize_debug_headers(headers)} payload_len={len(protobuf_body)}")
         response = req.post(LOGIN_URL, headers=headers, data=protobuf_body, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP POST {LOGIN_URL} [client auth] -> {response.status_code}")
     except TimeoutException as e:
+        debug_print(f"HTTP POST {LOGIN_URL} [client auth] timeout: {e}")
         raise Exception(f"spotify_get_access_token_from_client() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
     except Exception as e:
+        debug_print(f"HTTP POST {LOGIN_URL} [client auth] failed: {e}")
         raise Exception(f"spotify_get_access_token_from_client() network request error: {e}")
     finally:
         if platform.system() != 'Windows':
@@ -2174,6 +2253,7 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
     global SP_CACHED_CLIENT_TOKEN, SP_CLIENT_TOKEN_EXPIRES_AT
 
     if SP_CACHED_CLIENT_TOKEN and time.time() < SP_CLIENT_TOKEN_EXPIRES_AT:
+        debug_print("Using cached client token")
         return SP_CACHED_CLIENT_TOKEN
 
     body = build_clienttoken_request_protobuf(app_version, device_id, system_id, **device_overrides)
@@ -2198,10 +2278,14 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
         if platform.system() != 'Windows':
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(FUNCTION_TIMEOUT + 2)
+        debug_print(f"HTTP POST {CLIENTTOKEN_URL} [client token] app_version={app_version}, device_overrides={device_overrides}, payload_len={len(body)}")
         response = req.post(CLIENTTOKEN_URL, headers=headers, data=body, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP POST {CLIENTTOKEN_URL} [client token] -> {response.status_code}")
     except TimeoutException as e:
+        debug_print(f"HTTP POST {CLIENTTOKEN_URL} [client token] timeout: {e}")
         raise Exception(f"spotify_get_client_token() network request timeout after {display_time(FUNCTION_TIMEOUT + 2)}: {e}")
     except Exception as e:
+        debug_print(f"HTTP POST {CLIENTTOKEN_URL} [client token] failed: {e}")
         raise Exception(f"spotify_get_client_token() network request error: {e}")
     finally:
         if platform.system() != 'Windows':
@@ -2220,6 +2304,7 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
 
     SP_CACHED_CLIENT_TOKEN = client_token
     SP_CLIENT_TOKEN_EXPIRES_AT = time.time() + ttl
+    debug_print(f"Client token refreshed successfully, ttl={ttl}s")
 
     return client_token
 
@@ -2238,12 +2323,14 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
         OS_MINOR is not None and OS_MINOR > 0,
         CLIENT_MODEL is not None and CLIENT_MODEL > 0
     ]):
+        debug_print("Attempting to refresh/get client token before client auth")
         client_token = spotify_get_client_token(app_version=APP_VERSION, device_id=device_id, system_id=system_id, cpu_arch=CPU_ARCH, os_build=OS_BUILD, platform=PLATFORM, os_major=OS_MAJOR, os_minor=OS_MINOR, client_model=CLIENT_MODEL)
 
     try:
         return spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refresh_token, client_token)
     except Exception as e:
         err = str(e).lower()
+        debug_print(f"Client auth failed: {e}")
         if all([
             CLIENTTOKEN_URL,
             APP_VERSION,
@@ -2256,6 +2343,7 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
         ]) and ("invalid client token" in err or "expired client token" in err):
             global SP_CLIENT_TOKEN_EXPIRES_AT
             SP_CLIENT_TOKEN_EXPIRES_AT = 0
+            debug_print("Client token invalid/expired, forcing refresh and retry")
 
             client_token = spotify_get_client_token(app_version=APP_VERSION, device_id=DEVICE_ID, system_id=SYSTEM_ID, cpu_arch=CPU_ARCH, os_build=OS_BUILD, platform=PLATFORM, os_major=OS_MAJOR, os_minor=OS_MINOR, client_model=CLIENT_MODEL)
 
@@ -2280,6 +2368,7 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
         return None
 
     if SP_CACHED_OAUTH_APP_TOKEN and check_token_validity(SP_CACHED_OAUTH_APP_TOKEN, oauth_app=True):
+        debug_print("Using cached OAuth app access token")
         return SP_CACHED_OAUTH_APP_TOKEN
 
     if SP_APP_TOKENS_FILE:
@@ -2293,6 +2382,7 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
     auth_manager = SpotifyClientCredentials(client_id=sp_client_id, client_secret=sp_client_secret, cache_handler=cache_handler, requests_session=session)  # type: ignore[arg-type]
 
     SP_CACHED_OAUTH_APP_TOKEN = auth_manager.get_access_token(as_dict=False)
+    debug_print("OAuth app access token refreshed successfully")
 
     return SP_CACHED_OAUTH_APP_TOKEN
 
@@ -2310,7 +2400,9 @@ def spotify_get_friends_json(access_token):
             "Client-Id": SP_CACHED_CLIENT_ID
         })
 
+    debug_print(f"HTTP GET {url} [buddylist] headers={sanitize_debug_headers(headers)}")
     response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    debug_print(f"HTTP GET {url} [buddylist] -> {response.status_code}")
     if response.status_code == 401:
         raise Exception("401 Unauthorized for url: " + url)
     response.raise_for_status()
@@ -2454,7 +2546,9 @@ def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
         })
 
     try:
+        debug_print(f"HTTP GET {url} [playlist owner] headers={sanitize_debug_headers(headers)}")
         response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP GET {url} [playlist owner] -> {response.status_code}")
         if response.status_code == 404:
             # Spotify-curated playlists often return 404 when accessed via Client Credentials Flow
             sp_playlist_owner = "Spotify"
@@ -2489,7 +2583,9 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
     si = "?si=1"
 
     try:
+        debug_print(f"HTTP GET {url} [track info] headers={sanitize_debug_headers(headers)}")
         response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP GET {url} [track info] -> {response.status_code}")
         response.raise_for_status()
         json_response = response.json()
         sp_track_duration = int(json_response.get("duration_ms") / 1000)
@@ -2527,7 +2623,9 @@ def is_user_removed(access_token, user_uri_id, oauth_app=False):
         temp_session = req.Session()
         temp_session.headers.update(headers)
 
+        debug_print(f"HTTP GET {url} [user removed check] headers={sanitize_debug_headers(headers)}")
         response = temp_session.get(url, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP GET {url} [user removed check] -> {response.status_code}")
 
         if response.status_code == 429:
             return False
@@ -2683,6 +2781,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     # Start loop
     while True:
+        debug_print(f"Loop tick: token_source={TOKEN_SOURCE}, check_interval={SPOTIFY_CHECK_INTERVAL}, error_interval={SPOTIFY_ERROR_INTERVAL}")
 
         # Sometimes Spotify network functions halt even though we specified the timeout
         # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
@@ -2699,6 +2798,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             sp_friends = spotify_get_friends_json(sp_accessToken)
             sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
+            debug_print(f"Friend lookup result: found={sp_found}")
             email_sent = False
             if platform.system() != 'Windows':
                 signal.alarm(0)
@@ -2714,6 +2814,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 signal.alarm(0)
 
             err = str(e).lower()
+            debug_print(f"Main monitor loop error: {e}")
 
             print(f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: {e}")
 
@@ -3528,7 +3629,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
     if "--generate-config" in sys.argv:
         config_content = CONFIG_BLOCK.strip("\n") + "\n"
@@ -3785,6 +3886,13 @@ def main():
         help="Disable logging to spotify_monitor_<user_uri_id/file_suffix>.log"
     )
     opts.add_argument(
+        "--debug",
+        dest="debug_mode",
+        action="store_true",
+        default=None,
+        help="Enable debug mode for technical logging"
+    )
+    opts.add_argument(
         "--truncate",
         dest="truncate",
         metavar="N",
@@ -3814,6 +3922,9 @@ def main():
         except Exception as e:
             print(f"* Error loading config file '{cfg_path}': {e}")
             sys.exit(1)
+
+    if args.debug_mode is not None:
+        DEBUG_MODE = args.debug_mode
 
     if args.env_file:
         DOTENV_FILE = os.path.expanduser(args.env_file)
@@ -4156,6 +4267,7 @@ def main():
     print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
     print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
     print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
+    print(f"* Debug mode:\t\t\t{DEBUG_MODE}")
     if not DISABLE_LOGGING and TRUNCATE_CHARS > 0:
         print(f"* Truncate terminal lines:\t{TRUNCATE_CHARS} chars")
     print(f"* Spotify OAuth cache file:\t{SP_APP_TOKENS_FILE if SP_APP_TOKENS_FILE else 'None (memory only)'}")
