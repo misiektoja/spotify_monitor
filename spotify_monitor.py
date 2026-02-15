@@ -676,7 +676,19 @@ SESSION = req.Session()
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-retry = Retry(
+# Cap server-provided Retry-After to avoid long blocking sleeps on 429 responses
+MAX_RETRY_AFTER_SECONDS = 60
+
+
+class CappedRetry(Retry):
+    def get_retry_after(self, response):
+        retry_after = super().get_retry_after(response)
+        if retry_after is None:
+            return None
+        return min(retry_after, MAX_RETRY_AFTER_SECONDS)
+
+
+retry = CappedRetry(
     total=5,
     connect=3,
     read=3,
