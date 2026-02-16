@@ -12,6 +12,7 @@ This is a high-level summary of the most important changes.
 **Bug fixes**:
 
 - **BUGFIX:** Capped server-provided `Retry-After` for HTTP 429 responses to avoid long hangs
+- **BUGFIX:** Fixed fetching of TOTP secrets so it happens before retries
 
 # Changes in 2.8 (07 Feb 2026)
 
