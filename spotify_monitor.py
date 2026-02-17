@@ -1428,6 +1428,7 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
     url2 = "https://api.spotify.com/v1/tracks/7tFiyTwD0nx5a1eklYtX2J"
 
     url = url2 if oauth_app else url1
+    check_mode = "oauth_app" if oauth_app else f"{TOKEN_SOURCE}_token"
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -1445,13 +1446,17 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.alarm(FUNCTION_TIMEOUT + 2)
     try:
+        debug_print(
+            f"Token validity check mode={check_mode}, url={url}, "
+            f"client_id_header={'yes' if 'Client-Id' in headers else 'no'}"
+        )
         debug_print(f"HTTP GET {url} [token validity] headers={sanitize_debug_headers(headers)}")
         response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         valid = response.status_code == 200
-        debug_print(f"HTTP GET {url} -> {response.status_code} (valid={valid})")
+        debug_print(f"HTTP GET {url} -> {response.status_code} [token validity mode={check_mode}] (valid={valid})")
     except Exception:
         valid = False
-        debug_print(f"HTTP GET {url} -> failed during token validity check")
+        debug_print(f"HTTP GET {url} -> failed during token validity check [mode={check_mode}]")
     finally:
         if platform.system() != 'Windows':
             signal.alarm(0)
