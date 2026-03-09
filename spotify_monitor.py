@@ -346,7 +346,7 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 # Newest secrets are downloaded automatically from SECRET_CIPHER_DICT_URL (see below)
 # Can also be fetched via spotify_monitor_secret_grabber.py utility - see debug dir
 SECRET_CIPHER_DICT = {
-#    "61": [44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78],
+    "61": [44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78],
 }
 
 # Remote or local URL used to fetch updated secrets needed for TOTP generation
