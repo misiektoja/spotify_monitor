@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 2.9.1 (TBD)
+
+**Features and Improvements**:
+
+- **IMPROVE:** Updated SECRET_CIPHER_DICT_URL used in `cookie` mode and enabled last v61 secret since it does not appear to be rotated anymore
+
 # Changes in 2.9 (23 Feb 2026)
 
 **Features and Improvements**:
