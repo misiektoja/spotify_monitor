@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 2.9.1 (TBD)
+# Changes in 2.9.1 (09 Mar 2026)
 
 **Features and Improvements**:
 
