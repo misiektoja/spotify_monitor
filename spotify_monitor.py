@@ -1807,6 +1807,9 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
             debug_print(f"TOTP secrets unavailable: {e}")
             if fetch_and_update_secrets():
                 debug_print("TOTP secrets updated, retrying token refresh immediately")
+                retry += 1
+                if retry < max_retries:
+                    time.sleep(TOKEN_RETRY_TIMEOUT)
                 continue
             raise RuntimeError(f"Failed to obtain TOTP secrets for token refresh: {e}")
         except Exception as e:
