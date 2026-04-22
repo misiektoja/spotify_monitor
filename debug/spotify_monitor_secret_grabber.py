@@ -44,6 +44,8 @@ import sys
 BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player)\.[0-9a-f]{4,}\.(?:js|mjs)""")
 TIMEOUT = 45000  # 45s
 VERBOSE = True
+RETRIES = 3
+RETRY_DELAY = 5.0
 
 OUTPUT_FILES = {
     'plain_json': 'secrets.json',
@@ -213,13 +215,25 @@ def main():
     elif mode == 'all':
         VERBOSE = True
 
-    try:
-        caps = asyncio.run(grab_live())
-        summarise(caps, mode)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    caps = []
+    for attempt in range(1, RETRIES + 1):
+        try:
+            if RETRIES > 1:
+                log(f"Attempt {attempt}/{RETRIES} ...")
+            caps = asyncio.run(grab_live())
+            if caps:
+                break
+            log(f"No secrets captured on attempt {attempt}")
+        except Exception as e:
+            log(f"Attempt {attempt} failed: {e}")
+        if attempt < RETRIES:
+            log(f"Retrying in {RETRY_DELAY}s ...")
+            time.sleep(RETRY_DELAY)
+    else:
+        print("Error: all attempts exhausted without capturing secrets", file=sys.stderr)
         sys.exit(1)
 
+    summarise(caps, mode)
 
 if __name__ == '__main__':
     main()
