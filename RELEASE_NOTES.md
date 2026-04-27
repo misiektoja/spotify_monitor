@@ -2,6 +2,13 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 2.9.2 (27 Apr 2026)
+
+**Bug fixes**:
+
+- **BUGFIX:** Bounded the retry loop in `spotify_get_access_token_from_sp_dc` to prevent an infinite loop when TOTP secrets are repeatedly fetched but the resulting token refresh keeps failing (thanks [@tomballgithub](https://github.com/tomballgithub), fixes [#37](https://github.com/misiektoja/spotify_monitor/issues/37))
+- **BUGFIX:** Auto-fallback to the highest available TOTP version when the configured `TOTP_VER` is missing from `SECRET_CIPHER_DICT` (with a warning) so the script self-heals instead of failing every retry
+
 # Changes in 2.9.1 (09 Mar 2026)
 
 **Features and Improvements**:
