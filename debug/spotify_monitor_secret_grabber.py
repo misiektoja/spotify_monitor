@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v1.2
+v1.3
 
 Automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles
 https://github.com/misiektoja/spotify_monitor#debugging-tools
@@ -19,6 +19,10 @@ playwright install
 
 Change log:
 
+v1.3 (30 Apr 26):
+- Added static extraction from inline secret object literals in current Spotify web-player bundles
+- Preserved the original runtime property hook as a fallback for older bundle formats
+
 v1.2 (12 Oct 25):
 - Added CLI output modes (--secret, --secretbytes and --secretdict CLI flags, see -h for help)
 - Added --all mode writing all secret formats to files (secrets.json, secretBytes.json, secretDict.json) (thx @tomballgithub)
@@ -32,6 +36,7 @@ v1.0 (09 Jul 25):
 
 
 import asyncio
+import ast
 import re
 from datetime import datetime
 import json
@@ -42,6 +47,9 @@ import sys
 
 
 BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player)\.[0-9a-f]{4,}\.(?:js|mjs)""")
+JS_STRING_PATTERN = r"(?:'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")"
+SECRET_FIRST_RE = re.compile(r"\{\s*(?:secret|['\"]secret['\"])\s*:\s*(?P<secret>" + JS_STRING_PATTERN + r")\s*,\s*(?:version|['\"]version['\"])\s*:\s*(?P<version>\d+)\s*\}")
+VERSION_FIRST_RE = re.compile(r"\{\s*(?:version|['\"]version['\"])\s*:\s*(?P<version>\d+)\s*,\s*(?:secret|['\"]secret['\"])\s*:\s*(?P<secret>" + JS_STRING_PATTERN + r")\s*\}")
 TIMEOUT = 45000  # 45s
 VERBOSE = True
 
@@ -74,11 +82,40 @@ def _write_secretdict_compact(fp, mapping):
     fp.write('}\n')
 
 
+# Logs a timestamped message when verbose output is enabled
 def log(m):
     if VERBOSE:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {m}")
 
 
+# Decodes a quoted JavaScript string literal used by a secret object
+def decode_js_string_literal(literal):
+    try:
+        value = ast.literal_eval(literal)
+    except (SyntaxError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+# Extracts versioned TOTP secrets from current inline bundle object literals
+def extract_bundle_secrets(source):
+    captures = []
+    seen = set()
+    for pattern in (SECRET_FIRST_RE, VERSION_FIRST_RE):
+        for match in pattern.finditer(source):
+            secret = decode_js_string_literal(match.group('secret'))
+            if secret is None:
+                continue
+            version = int(match.group('version'))
+            key = (version, secret)
+            if key in seen:
+                continue
+            seen.add(key)
+            captures.append({'secret': secret, 'version': version, 'source': 'bundle'})
+    return captures
+
+
+# Formats extracted secrets for the selected output mode
 def summarise(caps: List[Dict[str, Any]], mode=None):
     real = {}
 
@@ -163,6 +200,7 @@ def summarise(caps: List[Dict[str, Any]], mode=None):
             print(f"Error writing output files: {e}", file=sys.stderr)
 
 
+# Extracts TOTP secrets from a live Spotify web-player session
 async def grab_live():
     hook = """(()=>{if(globalThis.__secretHookInstalled)return;globalThis.__secretHookInstalled=true;globalThis.__captures=[];
 Object.defineProperty(Object.prototype,'secret',{configurable:true,set:function(v){try{__captures.push({secret:v,version:this.version,obj:this});}catch(e){}
@@ -173,22 +211,46 @@ Object.defineProperty(this,'secret',{value:v,writable:true,configurable:true,enu
         ctx = await b.new_context()
         await ctx.add_init_script(hook)
         pg = await ctx.new_page()
-        pg.on('response', lambda resp: BUNDLE_RE.fullmatch(resp.url.split('/')[-1]) and log(f"↓ {resp.url.split('/')[-1]} ({resp.status})"))
-        log('→ opening open.spotify.com ...')
+        bundle_urls = []
+
+        # Records matching Spotify bundle URLs for static parsing
+        def record_bundle_response(resp):
+            filename = resp.url.split('/')[-1].split('?', 1)[0]
+            if BUNDLE_RE.fullmatch(filename):
+                if resp.url not in bundle_urls:
+                    bundle_urls.append(resp.url)
+                log(f"[bundle] {filename} ({resp.status})")
+
+        pg.on('response', record_bundle_response)
+        log('Opening open.spotify.com ...')
         await pg.goto('https://open.spotify.com', timeout=TIMEOUT)
         await pg.wait_for_load_state('networkidle', timeout=TIMEOUT)
         await pg.wait_for_timeout(3000)
         caps = await pg.evaluate('__captures')
 
+        for bundle_url in bundle_urls:
+            try:
+                response = await ctx.request.get(bundle_url, timeout=TIMEOUT)
+                if not response.ok:
+                    log(f"Bundle scan skipped HTTP {response.status}: {bundle_url}")
+                    continue
+                bundle_caps = extract_bundle_secrets(await response.text())
+                caps.extend(bundle_caps)
+                if bundle_caps:
+                    log(f"Bundle scan found {len(bundle_caps)} versioned secret(s) in {bundle_url.split('/')[-1].split('?', 1)[0]}")
+            except Exception as e:
+                log(f"Bundle scan failed for {bundle_url}: {e}")
+
         if caps:
             for c in caps:
                 if isinstance(c.get('secret'), str) and c.get('version') is not None:
-                    log(f"✔ secret({c.get('version')}) → {c.get('secret')}")
+                    log(f"Secret v{c.get('version')}: {c.get('secret')}")
 
         await b.close()
         return caps or []
 
 
+# Parses CLI options and runs the secret extraction workflow
 def main():
     parser = argparse.ArgumentParser(description='Extract Spotify web-player TOTP secrets')
     parser.add_argument('--secret', action='store_true', help='Output plain secrets JSON only')
