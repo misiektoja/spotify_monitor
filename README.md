@@ -241,7 +241,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every few days, that's why since v2.4 the tool fetches it from remote URL (see `SECRET_CIPHER_DICT_URL`); you can also run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles) for more info).
+> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. The tool can fetch the shared secret dictionary or you can extract the current bundle values with [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py).
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -690,12 +690,14 @@ You should get a valid Spotify access token, example output:
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_totp_test.png" alt="spotify_monitor_totp_test" width="100%"/>
 </p>
 
-> **NOTE:** secrets used for TOTP generation (`SECRET_CIPHER_DICT`) expire every few days; you can either run the [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) and extract it by yourself (see [here](#secret-key-extraction-from-spotify-web-player-bundles) for more info) or you can pass `--fetch-secrets` flag in `spotify_monitor_totp_test` (available since v1.6). There is also a [xyloflake/spot-secrets-go/](https://github.com/xyloflake/spot-secrets-go/) repo which offers JSON files that are automatically updated with current secrets (you can pass `--download-secrets` flag in `spotify_monitor_totp_test` to get it automatically from remote URL, available since v1.8).
+> **NOTE:** Spotify still requires TOTP but continues to select v61. You can run [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to extract the current bundle values or use the `--fetch-secrets` and `--download-secrets` options provided by `spotify_monitor_totp_test`.
 
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ### Secret Key Extraction from Spotify Web Player Bundles
 
-The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles.
+The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles. Version 1.3 scans the loaded bundle source for the inline object-literal format used by the current web player and retains the original runtime property hook as a fallback for older formats.
+
+The restored extractor returns v59, v60 and v61 directly from Spotify's current web-player bundle even when the original runtime hook reports no captures.
 
 > 💡 **Quick tip:** The easiest and recommended way to run this tool is via Docker. Jump directly to the [Docker usage section below](#-secret-key-extraction-via-docker-recommended-easiest-way).
 
@@ -805,7 +807,7 @@ This will save all files into your current directory on any system (macOS, Linux
 
 ---
 
-You can now update the secrets used for TOTP generation (for example `SECRET_CIPHER_DICT` in `spotify_monitor_totp_test`, `spotify_monitor` and `spotify_profile_monitor`) either manually or by referencing an external `secretDict.json` file, which can be hosted in another repo or stored locally. See the description of `SECRET_CIPHER_DICT_URL` in those files for details.
+You can now update the secrets used for TOTP generation in `spotify_monitor_totp_test` and `spotify_monitor` either manually or through an external `secretDict.json` file. See the description of `SECRET_CIPHER_DICT_URL` in those files for details. `spotify_profile_monitor` v3.5 embeds v61 directly and no longer depends on an external dictionary.
 
 <a id="change-log"></a>
 ## Change Log
