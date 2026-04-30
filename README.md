@@ -45,7 +45,7 @@ pip install spotify_monitor
 - **Error Reporting**: Be notified if the monitoring process hits a snag.
 
 ### ⚙️ Power Features
-- **Auth Flexibility**: Hybrid support for `sp_dc` cookie, Desktop Client and OAuth app.
+- **Auth Flexibility**: Cookie or Desktop Client access with automatic web-player metadata fallback and optional legacy OAuth app support.
 - **CSV Logging**: Save every listened song with full timestamps to a CSV file.
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
@@ -150,20 +150,20 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
-1. Grab your [Spotify sp_dc cookie](#spotify-sp_dc-cookie) and set up [OAuth app credentials](#spotify-oauth-app) (required since v2.7)
+1. Grab your [Spotify sp_dc cookie](#spotify-sp_dc-cookie)
 
 2. Follow the user you wish to track as described [here](#following-the-monitored-user)
 
 3. Track the `spotify_user_uri_id` music activities:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
 
 Or if you installed [manually](#manual-installation):
 
 ```sh
-python3 spotify_monitor.py <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+python3 spotify_monitor.py <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
 
 To get the list of all supported command-line arguments / flags:
@@ -194,18 +194,20 @@ spotify_monitor --generate-config spotify_monitor.conf
 
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
-**New in v2.7:** The tool now uses a hybrid authentication approach. OAuth app credentials (`SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`) are required for track and user information retrieval when using either `cookie` or `client` token source methods. See [Spotify OAuth App](#spotify-oauth-app) section for setup instructions.
+**New in v3.0:** Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for `cookie` or `client` mode.
 
 **New in v2.6:** The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.
 
 <a id="spotify-access-token-source"></a>
 ### Spotify access token source
 
-The tool uses a **hybrid authentication approach**.
+The tool uses a **hybrid authentication approach** with automatic metadata backend selection.
 
 For friend activity monitoring, you need to configure either the `cookie` or `client` token source method.
 
-Additionally, you also need to configure **OAuth app credentials** (`SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`) for track and user information retrieval as described in [Spotify OAuth App](#spotify-oauth-app).
+Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403.
+
+The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.
 
 The token source method can be configured via the `TOKEN_SOURCE` configuration option or the `--token-source` flag.
 
@@ -296,9 +298,9 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ### Spotify OAuth App
 
-Due to restrictions introduced by Spotify on December 22, 2025, the tool now requires this in addition to either a `cookie` or `client` token source method to retrieve track and user information.
+OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata. The tool keeps this path first for working existing apps then falls back automatically when Spotify returns a restricted response.
 
-This method uses an official Spotify Web API (Client Credentials OAuth flow).
+Spotify documents new Development Mode restrictions and the February 2026 migration timeline in its [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide). You do not need to create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
 
 To obtain the credentials:
 
@@ -326,7 +328,7 @@ Example:
 spotify_monitor <spotify_user_uri_id> -r "your_spotify_app_client_id:your_spotify_app_client_secret"
 ```
 
-The tool automatically refreshes the OAuth app access token, so it remains valid indefinitely. Tokens are cached in the file specified by `SP_APP_TOKENS_FILE` configuration option (default: `.spotify-monitor-oauth-app.json`).
+When configured the tool automatically refreshes the OAuth app access token. Tokens are cached in the file specified by `SP_APP_TOKENS_FILE` configuration option (default: `.spotify-monitor-oauth-app.json`).
 
 If you store the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` in a dotenv file you can update their values and send a `SIGHUP` signal to reload the file with the new secret values without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
@@ -425,7 +427,7 @@ If you use the default method to obtain a Spotify access token (`cookie`) and ha
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
 
-**Note:** OAuth app credentials are now required for track and user information retrieval. If you haven't set `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` via environment variables or `.env` file, you can use the `-r` flag:
+**Optional:** If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the `-r` flag:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
