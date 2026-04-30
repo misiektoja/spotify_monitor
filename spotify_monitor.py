@@ -2430,6 +2430,11 @@ def spotify_has_oauth_app_credentials():
     return not any([not SP_APP_CLIENT_ID, SP_APP_CLIENT_ID == "your_spotify_app_client_id", not SP_APP_CLIENT_SECRET, SP_APP_CLIENT_SECRET == "your_spotify_app_client_secret"])
 
 
+# Describes the configured metadata backend policy for startup output
+def spotify_get_metadata_backend_description():
+    return "automatic (legacy Web API + web player)" if spotify_has_oauth_app_credentials() else "web player"
+
+
 # Returns a cached or freshly generated anonymous Spotify web-player token
 def spotify_get_web_access_token_data():
     global SP_CACHED_WEB_ACCESS_TOKEN, SP_WEB_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_WEB_CLIENT_ID
@@ -4402,8 +4407,8 @@ def main():
 
     print(f"* Spotify polling intervals:\t[check: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]\n*\t\t\t\t[disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}] [error: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
     print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
-    metadata_backends = "oauth_app -> web-player" if spotify_has_oauth_app_credentials() else "web-player"
-    print(f"* Token source:\t\t\t{TOKEN_SOURCE} + {metadata_backends}")
+    print(f"* Token source:\t\t\t{TOKEN_SOURCE}")
+    print(f"* Metadata backend:\t\t{spotify_get_metadata_backend_description()}")
     print(f"* Track listened songs:\t\t{TRACK_SONGS}")
     # print(f"* User agent:\t\t\t{USER_AGENT}")
     print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
