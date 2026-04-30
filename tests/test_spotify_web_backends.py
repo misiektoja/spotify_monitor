@@ -85,6 +85,13 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(session.get.call_args.kwargs["params"]["totpVer"], 61)
         validity_check.assert_not_called()
 
+    # Verifies startup output describes only metadata backends available from configuration
+    def test_describes_configured_metadata_backend(self):
+        self.assertEqual(monitor.spotify_get_metadata_backend_description(), "web player")
+        monitor.SP_APP_CLIENT_ID = "legacy-client"
+        monitor.SP_APP_CLIENT_SECRET = "legacy-secret"
+        self.assertEqual(monitor.spotify_get_metadata_backend_description(), "automatic (legacy Web API + web player)")
+
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
         track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}}})
