@@ -194,7 +194,7 @@ spotify_monitor --generate-config spotify_monitor.conf
 
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
 
-**New in v3.0:** Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for `cookie` or `client` mode.
+**New in v3.0:** Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for `cookie` or `client` mode. New users should not create a Spotify app solely for this tool.
 
 **New in v2.6:** The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.
 
@@ -206,6 +206,8 @@ The tool uses a **hybrid authentication approach** with automatic metadata backe
 For friend activity monitoring, you need to configure either the `cookie` or `client` token source method.
 
 Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403.
+
+> **OAuth app guidance:** Spotify restricted new Development Mode apps created on or after February 11, 2026. Some older apps have been observed to retain the legacy endpoint access used by this tool, but creation date alone does not guarantee compatibility. Configure OAuth app credentials only if you already have an app which you have verified still works. If it returns HTTP 403 then remove the credentials and use the automatic web backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
 The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.
 
@@ -298,21 +300,15 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ### Spotify OAuth App
 
-OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata. The tool keeps this path first for working existing apps then falls back automatically when Spotify returns a restricted response.
+OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response.
 
-Spotify documents new Development Mode restrictions and the February 2026 migration timeline in its [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide). You do not need to create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
+Apps created under the current Development Mode restrictions are not useful for this legacy path. Do not create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
 
-To obtain the credentials:
+If you already have a working existing app:
 
 - Log in to [Spotify Developer dashboard](https://developer.spotify.com/dashboard)
 
-- Create a new app
-
-- For **Redirect URL**, use: `http://127.0.0.1:1234`
-   - The URL must match exactly as shown, including not having a `/` at the end
-   - When copying the link via right-click, some browsers may add an extra `/` to the URL
-
-- Select **Web API** as the intended API
+- Open the existing app which still has verified legacy endpoint access
 
 - Copy the **Client ID** and **Client Secret**
 
