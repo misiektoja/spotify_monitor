@@ -243,7 +243,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. The tool can fetch the shared secret dictionary or you can extract the current bundle values with [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py).
+> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. You can still use [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to verify the current bundle values or prepare an update if Spotify resumes rotation.
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -809,7 +809,7 @@ This will save all files into your current directory on any system (macOS, Linux
 
 ---
 
-You can now update the secrets used for TOTP generation in `spotify_monitor_totp_test` and `spotify_monitor` either manually or through an external `secretDict.json` file. See the description of `SECRET_CIPHER_DICT_URL` in those files for details. `spotify_profile_monitor` v3.5 embeds v61 directly and no longer depends on an external dictionary.
+You can use the generated `secretDict.json` with `spotify_monitor_totp_test`. `spotify_monitor` v3.0 and `spotify_profile_monitor` v3.5 embed v61 directly and no longer depend on an external dictionary. If Spotify selects a new TOTP version later then the embedded version and cipher bytes must be updated after checking the current web-player bundle.
 
 <a id="change-log"></a>
 ## Change Log
