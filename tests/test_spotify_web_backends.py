@@ -64,6 +64,27 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
         monitor.SP_WEB_TRACK_BACKEND_PREFERRED = False
 
+    # Verifies the embedded v61 cipher generates the expected TOTP
+    def test_generates_expected_v61_totp(self):
+        self.assertEqual(monitor.TOTP_VERSION, 61)
+        self.assertEqual(monitor.generate_totp().at(1700000000), "371599")
+
+    # Verifies anonymous token retrieval skips the authenticated validity probe
+    def test_anonymous_token_skips_authenticated_validity_probe(self):
+        response = Mock(status_code=200)
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"accessToken": "anonymous-token", "accessTokenExpirationTimestampMs": 1700003600000, "clientId": "web-client"}
+        session = Mock()
+        session.get.return_value = response
+
+        with patch.object(monitor.req, "Session", return_value=session), patch.object(monitor, "fetch_server_time", return_value=1700000000), patch.object(monitor, "check_token_validity") as validity_check:
+            token_data = monitor.refresh_access_token_from_sp_dc("")
+
+        self.assertEqual(token_data["access_token"], "anonymous-token")
+        self.assertEqual(session.get.call_count, 1)
+        self.assertEqual(session.get.call_args.kwargs["params"]["totpVer"], 61)
+        validity_check.assert_not_called()
+
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
         track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}}})
