@@ -592,6 +592,10 @@ SP_CACHED_CLIENT_ID = ""
 # Separate cache for the optional OAuth app access token used by the legacy metadata path
 SP_CACHED_OAUTH_APP_TOKEN = None
 
+# Tracks whether Spotipy was loaded and whether its missing dependency warning was shown
+SPOTIPY_AVAILABLE = None
+SPOTIPY_IMPORT_WARNING_SHOWN = False
+
 # Separate cache for the anonymous token used by the public web-player metadata backend
 SP_CACHED_WEB_ACCESS_TOKEN = None
 SP_WEB_ACCESS_TOKEN_EXPIRES_AT = 0
@@ -637,10 +641,11 @@ nl_ch = "\n"
 
 import sys
 
-if sys.version_info < (3, 6):
-    print("* Error: Python version 3.6 or higher required !")
+if sys.version_info < (3, 9):
+    print("* Error: Python version 3.9 or higher required !")
     sys.exit(1)
 
+import importlib.util
 import time
 import string
 import json
@@ -2255,17 +2260,27 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 
 # Fetches Spotify access token based on provided sp_client_id & sp_client_secret values (Client Credentials OAuth Flow)
 def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
-    global SP_CACHED_OAUTH_APP_TOKEN
+    global SP_CACHED_OAUTH_APP_TOKEN, SPOTIPY_AVAILABLE, SPOTIPY_IMPORT_WARNING_SHOWN
 
     if not sp_client_id or not sp_client_secret:
+        return None
+
+    if SPOTIPY_AVAILABLE is False:
+        if not SPOTIPY_IMPORT_WARNING_SHOWN:
+            print("* Warning: Spotipy is unavailable. Install legacy OAuth support with `pip install 'spotify_monitor[legacy-oauth]'`")
+            SPOTIPY_IMPORT_WARNING_SHOWN = True
         return None
 
     try:
         from spotipy.oauth2 import SpotifyClientCredentials
         from spotipy.cache_handler import CacheFileHandler, MemoryCacheHandler
     except ImportError:
-        print("* Warning: the 'spotipy' package is required, install it with `pip install spotipy`")
+        SPOTIPY_AVAILABLE = False
+        if not SPOTIPY_IMPORT_WARNING_SHOWN:
+            print("* Warning: Spotipy is unavailable. Install legacy OAuth support with `pip install 'spotify_monitor[legacy-oauth]'`")
+            SPOTIPY_IMPORT_WARNING_SHOWN = True
         return None
+    SPOTIPY_AVAILABLE = True
 
     if SP_CACHED_OAUTH_APP_TOKEN and check_token_validity(SP_CACHED_OAUTH_APP_TOKEN, oauth_app=True):
         debug_print("Using cached OAuth app access token")
@@ -2432,7 +2447,15 @@ def spotify_has_oauth_app_credentials():
 
 # Describes the configured metadata backend policy for startup output
 def spotify_get_metadata_backend_description():
-    return "automatic (legacy Web API + web player)" if spotify_has_oauth_app_credentials() else "web player"
+    if not spotify_has_oauth_app_credentials():
+        return "web player"
+    try:
+        spotipy_available = SPOTIPY_AVAILABLE is not False and importlib.util.find_spec("spotipy") is not None
+    except (ImportError, ValueError):
+        spotipy_available = False
+    if not spotipy_available:
+        return "web player (legacy OAuth unavailable: Spotipy missing)"
+    return "automatic (legacy Web API + web player)"
 
 
 # Returns a cached or freshly generated anonymous Spotify web-player token
@@ -4127,11 +4150,6 @@ def main():
         import pyotp
     except ModuleNotFoundError:
         raise SystemExit("Error: Couldn't find the pyotp library !\n\nTo install it, run:\n    pip install pyotp\n\nOnce installed, re-run this tool")
-
-    try:
-        from spotipy.oauth2 import SpotifyClientCredentials
-    except ModuleNotFoundError:
-        raise SystemExit("Error: Couldn't find the spotipy library !\n\nTo install it, run:\n    pip install spotipy\n\nOnce installed, re-run this tool")
 
     if args.user_agent:
         USER_AGENT = args.user_agent
