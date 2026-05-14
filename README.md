@@ -167,10 +167,11 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 
 2. Follow the user you wish to track as described [here](#following-the-monitored-user)
 
-3. Track the `spotify_user_uri_id` music activities:
+3. Track the user's music activity with a raw user ID, Spotify user URI or profile URL:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
+spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" -u "your_sp_dc_cookie_value"
 ```
 
 Or if you installed [manually](#manual-installation):
@@ -206,6 +207,12 @@ spotify_monitor --generate-config spotify_monitor.conf
 > **IMPORTANT**: On **Windows PowerShell**, using redirection (`>`) can cause the file to be encoded in UTF-16, which will lead to "null bytes" errors when running the tool. It is highly recommended to provide the filename directly as an argument to `--generate-config` to ensure UTF-8 encoding.
 
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
+
+You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
+
+```sh
+spotify_monitor --config-file spotify_monitor.conf
+```
 
 **New in v3.0:** Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for `cookie` or `client` mode. New users should not create a Spotify app solely for this tool.
 
@@ -358,9 +365,9 @@ The easiest way is via the Spotify desktop or mobile client:
 
 You'll get a URL like: [https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id](https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id)
 
-Extract the part between `/user/` and `?si=` - in this case: `spotify_user_uri_id`
+Pass that profile URL directly to the tool. Raw IDs and Spotify user URIs such as `spotify:user:spotify_user_uri_id` are also accepted.
 
-Use that as the user URI ID (`spotify_user_uri_id`) in the tool.
+As an alternative you can extract the part between `/user/` and `?si=` - in this case: `spotify_user_uri_id` - then pass that raw ID to the tool.
 
 Alternatively you can list all user URI IDs of accounts you follow by using [Listing mode](#listing-mode).
 
@@ -394,6 +401,12 @@ On **Windows Command Prompt** use `set` instead of `export` and on **Windows Pow
 
 Alternatively store them persistently in a dotenv file (recommended):
 
+Copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
+
+```sh
+cp .env.example .env
+```
+
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
 REFRESH_TOKEN="your_spotify_app_refresh_token"
@@ -424,7 +437,7 @@ As a fallback, you can also store secrets in the configuration file or source co
 <a id="monitoring-mode"></a>
 ### Monitoring Mode
 
-To monitor specific user activity, just type [Spotify user URI ID](#how-to-get-a-friends-user-uri-id) as a command-line argument (`spotify_user_uri_id` in the example below):
+To monitor specific user activity, pass a [Spotify user target](#how-to-get-a-friends-user-uri-id) as a command-line argument. The target may be a raw user ID, Spotify user URI or profile URL:
 
 ```sh
 spotify_monitor <spotify_user_uri_id>
