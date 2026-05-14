@@ -98,8 +98,9 @@ pip install spotify_monitor
 <a id="requirements"></a>
 ## Requirements
 
-* Python 3.6 or higher
-* Libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `spotipy`
+* Python 3.9 or higher
+* Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
+* Optional legacy OAuth library: `spotipy`
 
 Tested on:
 
@@ -127,13 +128,25 @@ Download the *[spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/
 Install dependencies via pip:
 
 ```sh
-pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth spotipy
+pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth
 ```
 
 Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt)*:
 
 ```sh
 pip install -r requirements.txt
+```
+
+Spotipy is optional and is needed only for configured legacy OAuth app credentials that use the Web API metadata path. PyPI users can install that support through the `legacy-oauth` extra:
+
+```sh
+pip install "spotify_monitor[legacy-oauth]"
+```
+
+For manual single-file installations install the optional dependency directly:
+
+```sh
+pip install "spotipy>=2.24.0"
 ```
 
 <a id="upgrading"></a>
@@ -300,7 +313,7 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ### Spotify OAuth App
 
-OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response.
+OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
 
 Apps created under the current Development Mode restrictions are not useful for this legacy path. Do not create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
 
