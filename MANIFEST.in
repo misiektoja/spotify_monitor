@@ -2,3 +2,4 @@ recursive-include debug *.py
 include README.md
 include LICENSE
 include RELEASE_NOTES.md
+include .env.example
