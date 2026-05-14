@@ -10,7 +10,7 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
 authors = [{ name = "Michal Szymanski", email = "misiektoja-pypi@rm-rf.ninja" }]
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 dependencies = [
   "requests>=2.0",
   "python-dateutil>=2.8",
@@ -18,13 +18,9 @@ dependencies = [
   "pyotp>=2.9.0",
   "python-dotenv>=0.19",
   "wcwidth>=0.2.7",
-  "spotipy>=2.24.0",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.6",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -37,6 +33,11 @@ classifiers = [
   "Operating System :: MacOS :: MacOS X",
 ]
 keywords = ["spotify", "monitoring", "tracking", "real-time", "friend-activity",  "osint"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+legacy-oauth = ["spotipy>=2.24.0"]
+browser = ["pycookiecheat>=0.8"]
 
 [project.urls]
 Homepage = "https://github.com/misiektoja/spotify_monitor"
@@ -55,3 +56,8 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["debug*"]
 namespaces = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
