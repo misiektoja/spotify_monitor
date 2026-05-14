@@ -1,5 +1,12 @@
+import io
+import os
+import subprocess
+import sys
 import time
+import types
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import Mock, call, patch
 
 import requests
@@ -9,6 +16,22 @@ import spotify_monitor as monitor
 
 TRACK_URI = "spotify:track:4N1MFKjziFHH4IS3RYYUrU"
 PLAYLIST_URI = "spotify:playlist:1yjvJQztEdo7pKTpIsIdOa"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
+ISOLATED_PRELUDE = "import builtins, requests, runpy, socket, sys; _real_import = builtins.__import__; builtins.__import__ = lambda name, *args, **kwargs: (_ for _ in ()).throw(ModuleNotFoundError('blocked Spotipy import')) if name == 'spotipy' or name.startswith('spotipy.') else _real_import(name, *args, **kwargs); requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
+
+
+# Runs isolated Python source with network access and Spotipy imports blocked
+def run_isolated(source):
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, capture_output=True, text=True, env=env, timeout=30, check=False)
+
+
+# Runs the command-line entry point with network access and Spotipy imports blocked
+def run_cli(*arguments):
+    source = f"sys.argv = {[str(CLI_PATH), *arguments]!r}; runpy.run_path({str(CLI_PATH)!r}, run_name='__main__')"
+    return run_isolated(source)
 
 
 class FakeResponse:
@@ -63,6 +86,9 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_CACHED_TRACK_QUERY_HASH = ""
         monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
         monitor.SP_WEB_TRACK_BACKEND_PREFERRED = False
+        monitor.SP_CACHED_OAUTH_APP_TOKEN = None
+        monitor.SPOTIPY_AVAILABLE = None
+        monitor.SPOTIPY_IMPORT_WARNING_SHOWN = False
 
     # Verifies the embedded v61 cipher generates the expected TOTP
     def test_generates_expected_v61_totp(self):
@@ -90,7 +116,88 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(monitor.spotify_get_metadata_backend_description(), "web player")
         monitor.SP_APP_CLIENT_ID = "legacy-client"
         monitor.SP_APP_CLIENT_SECRET = "legacy-secret"
-        self.assertEqual(monitor.spotify_get_metadata_backend_description(), "automatic (legacy Web API + web player)")
+        with patch.object(monitor.importlib.util, "find_spec", return_value=Mock()):
+            self.assertEqual(monitor.spotify_get_metadata_backend_description(), "automatic (legacy Web API + web player)")
+        with patch.object(monitor.importlib.util, "find_spec", return_value=None):
+            self.assertEqual(monitor.spotify_get_metadata_backend_description(), "web player (legacy OAuth unavailable: Spotipy missing)")
+
+    # Verifies module execution does not import Spotipy when legacy credentials are absent
+    def test_module_runs_without_spotipy(self):
+        source = f"module = runpy.run_path({str(CLI_PATH)!r}, run_name='spotify_monitor_import_test'); print(module['spotify_get_metadata_backend_description']())"
+        result = run_isolated(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "web player")
+
+    # Verifies cookie-mode CLI startup reaches monitoring without Spotipy or network access
+    def test_cookie_cli_startup_runs_without_spotipy(self):
+        argv = [str(CLI_PATH), "spotify-user", "--spotify-dc-cookie", "cookie-value", "--env-file", "none", "--disable-logging"]
+        source = f"module = runpy.run_path({str(CLI_PATH)!r}, run_name='spotify_monitor_runtime_test'); runtime = module['main'].__globals__; runtime['sys'].argv = {argv!r}; runtime['CLEAR_SCREEN'] = False; runtime['find_config_file'] = lambda path: None; runtime['check_internet'] = lambda: True; runtime['spotify_monitor_friend_uri'] = lambda *args, **kwargs: None; runtime['signal'].signal = lambda *args, **kwargs: None; module['main']()"
+        result = run_isolated(source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("* Metadata backend:\t\tweb player", result.stdout)
+        self.assertNotIn("Spotipy is unavailable", result.stdout)
+
+    # Verifies a missing Spotipy dependency returns no token and warns only once
+    def test_missing_spotipy_returns_none_and_warns_once(self):
+        missing_modules = {"spotipy": None, "spotipy.oauth2": None, "spotipy.cache_handler": None}
+        output = io.StringIO()
+        with patch.dict(sys.modules, missing_modules), redirect_stdout(output):
+            first = monitor.spotify_get_access_token_from_oauth_app("legacy-client", "legacy-secret")
+            second = monitor.spotify_get_access_token_from_oauth_app("legacy-client", "legacy-secret")
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(output.getvalue().count("* Warning: Spotipy is unavailable."), 1)
+        self.assertIn("spotify_monitor[legacy-oauth]", output.getvalue())
+
+    # Verifies missing Spotipy falls through to anonymous web-player metadata
+    def test_missing_spotipy_falls_back_to_web_metadata(self):
+        monitor.SP_APP_CLIENT_ID = "legacy-client"
+        monitor.SP_APP_CLIENT_SECRET = "legacy-secret"
+        normalized = monitor.spotify_normalize_web_track(web_track_fixture())
+        missing_modules = {"spotipy": None, "spotipy.oauth2": None, "spotipy.cache_handler": None}
+        with patch.dict(sys.modules, missing_modules), patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            result = monitor.spotify_get_track_info("cookie-token", TRACK_URI)
+        self.assertEqual(result, normalized)
+        web.assert_called_once_with(TRACK_URI)
+
+    # Verifies mocked Spotipy keeps the legacy OAuth token flow working
+    def test_mocked_spotipy_legacy_oauth_success(self):
+        auth_manager = Mock()
+        auth_manager.get_access_token.return_value = "legacy-token"
+        credentials_factory = Mock(return_value=auth_manager)
+        spotipy_module = types.ModuleType("spotipy")
+        oauth_module = types.ModuleType("spotipy.oauth2")
+        cache_module = types.ModuleType("spotipy.cache_handler")
+        setattr(oauth_module, "SpotifyClientCredentials", credentials_factory)
+        setattr(cache_module, "CacheFileHandler", Mock())
+        setattr(cache_module, "MemoryCacheHandler", Mock())
+        setattr(spotipy_module, "oauth2", oauth_module)
+        setattr(spotipy_module, "cache_handler", cache_module)
+        modules = {"spotipy": spotipy_module, "spotipy.oauth2": oauth_module, "spotipy.cache_handler": cache_module}
+        with patch.object(monitor, "SP_APP_TOKENS_FILE", ""), patch.dict(sys.modules, modules):
+            result = monitor.spotify_get_access_token_from_oauth_app("legacy-client", "legacy-secret")
+        self.assertEqual(result, "legacy-token")
+        credentials_factory.assert_called_once()
+        auth_manager.get_access_token.assert_called_once_with(as_dict=False)
+
+    # Verifies help exits successfully without network access or Spotipy
+    def test_help_is_offline(self):
+        result = run_cli("--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage: spotify_monitor", result.stdout)
+
+    # Verifies version output exits successfully without network access or Spotipy
+    def test_version_is_offline(self):
+        result = run_cli("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("spotify_monitor.py v3.0", result.stdout)
+
+    # Verifies config generation emits valid Python without network access or Spotipy
+    def test_generate_config_is_offline(self):
+        result = run_cli("--generate-config")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compile(result.stdout, "<generated-config>", "exec")
+        self.assertIn('TOKEN_SOURCE = "cookie"', result.stdout)
 
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
