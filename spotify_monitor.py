@@ -30,6 +30,10 @@ CONFIG_BLOCK = """
 #   client - uses captured credentials from the Spotify desktop client and a Protobuf-based login flow (for advanced users)
 TOKEN_SOURCE = "cookie"
 
+# Spotify user to monitor by raw ID, Spotify user URI or Spotify profile URL
+# A positional command-line target overrides this value
+TARGET_USER_URI_ID = ""
+
 # Token refresh settings used by cookie mode and the anonymous metadata backend
 # (to configure the alternative 'client' method, see the section at the end of this config block)
 #
@@ -479,6 +483,7 @@ APP_VERSION = ""
 # Default dummy values so linters shut up
 # Do not change values below - modify them in the configuration section or config file instead
 TOKEN_SOURCE = ""
+TARGET_USER_URI_ID = ""
 SP_DC_COOKIE = ""
 SP_APP_CLIENT_ID = ""
 SP_APP_CLIENT_SECRET = ""
@@ -662,7 +667,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import argparse
 import csv
-from urllib.parse import quote_plus, quote, urljoin, urlparse
+from urllib.parse import quote_plus, quote, unquote, urljoin, urlparse, urlsplit
 import subprocess
 import platform
 import re
@@ -671,10 +676,268 @@ from html import escape
 import base64
 import random
 import shutil
+import tempfile
 from pathlib import Path
 import secrets
 from typing import Optional
 from email.utils import parsedate_to_datetime
+
+# Error text shared by all rejected Spotify target forms
+TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID."
+
+
+# Normalizes a raw Spotify user ID, user URI or profile URL into one user ID
+def normalize_spotify_user_id(value):
+    if not isinstance(value, str):
+        raise ValueError(TARGET_INPUT_ERROR)
+
+    target = value.strip()
+    if not target or any(character.isspace() or ord(character) < 32 or 127 <= ord(character) <= 159 for character in target):
+        raise ValueError(TARGET_INPUT_ERROR)
+
+    encoded_user_id = target
+    if target.lower().startswith("spotify:"):
+        parts = target.split(":")
+        if len(parts) != 3 or parts[0].lower() != "spotify" or parts[1].lower() != "user":
+            raise ValueError(TARGET_INPUT_ERROR)
+        encoded_user_id = parts[2]
+    elif "://" in target or target.lower().startswith(("http:", "https:")):
+        try:
+            parsed = urlsplit(target)
+            parsed_port = parsed.port
+        except ValueError as exc:
+            raise ValueError(TARGET_INPUT_ERROR) from exc
+        if parsed.scheme.lower() not in ("http", "https") or parsed.hostname is None or parsed.hostname.lower() != "open.spotify.com":
+            raise ValueError(TARGET_INPUT_ERROR)
+        if parsed.username is not None or parsed.password is not None or parsed_port is not None or parsed.fragment:
+            raise ValueError(TARGET_INPUT_ERROR)
+        path_parts = parsed.path.split("/")
+        if path_parts and path_parts[-1] == "":
+            path_parts = path_parts[:-1]
+        if len(path_parts) != 3 or path_parts[0] != "" or path_parts[1].lower() != "user":
+            raise ValueError(TARGET_INPUT_ERROR)
+        encoded_user_id = path_parts[2]
+    elif any(character in target for character in (":", "?", "#")):
+        raise ValueError(TARGET_INPUT_ERROR)
+
+    if re.search(r"%(?![0-9A-Fa-f]{2})", encoded_user_id):
+        raise ValueError(TARGET_INPUT_ERROR)
+    try:
+        user_id = unquote(encoded_user_id, encoding="utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError(TARGET_INPUT_ERROR) from exc
+
+    if not user_id or user_id in (".", "..") or any(character in user_id for character in ("/", "\\", "?", "#")):
+        raise ValueError(TARGET_INPUT_ERROR)
+    if any(character.isspace() or ord(character) < 32 or 127 <= ord(character) <= 159 for character in user_id):
+        raise ValueError(TARGET_INPUT_ERROR)
+    return user_id
+
+
+# Resolves CLI and configured targets with CLI precedence then normalizes the selected value
+def resolve_target_user_id(cli_value, configured_value):
+    if cli_value is not None:
+        return normalize_spotify_user_id(cli_value)
+    if configured_value is None or configured_value == "":
+        return None
+    return normalize_spotify_user_id(configured_value)
+
+
+# Splits an assignment value from an inline comment while ignoring hashes inside strings
+def _split_inline_comment_preserving_strings(rhs: str) -> tuple[str, str]:
+    in_single = False
+    in_double = False
+    escaped = False
+    for index, character in enumerate(rhs):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == "'" and not in_double:
+            in_single = not in_single
+            continue
+        if character == '"' and not in_single:
+            in_double = not in_double
+            continue
+        if character == "#" and not in_single and not in_double:
+            return rhs[:index].rstrip(), rhs[index:].rstrip()
+    return rhs.rstrip(), ""
+
+
+# Formats a supported runtime value as a valid Python config literal
+def _format_config_value(value, prefer_double_quotes: bool) -> str:
+    if isinstance(value, str):
+        if prefer_double_quotes:
+            return json.dumps(value, ensure_ascii=True)
+        escaped = value.encode("unicode_escape").decode("ascii").replace("'", "\\'")
+        return f"'{escaped}'"
+    if value is None or isinstance(value, (bool, int, float, list, tuple, dict)):
+        return repr(value)
+    raise TypeError(f"Unsupported config value type: {type(value).__name__}")
+
+
+# Validates Python config content without executing it
+def validate_config_content(content: str, filename: str = "<generated-config>") -> None:
+    compile(content, filename, "exec")
+
+
+# Renders CONFIG_BLOCK with current non-secret runtime values and preserved template secrets
+def generate_config_with_current_values(values=None) -> str:
+    current_values = globals() if values is None else values
+    assignment_pattern = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
+    output_lines = []
+
+    for line in CONFIG_BLOCK.strip("\n").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            output_lines.append(line)
+            continue
+
+        match = assignment_pattern.match(line)
+        if not match:
+            output_lines.append(line)
+            continue
+
+        variable = match.group(1)
+        expression, comment = _split_inline_comment_preserving_strings(match.group(2))
+        expression_stripped = expression.strip()
+        if expression_stripped.endswith(("{", "[", "(")) and not any(character in expression_stripped for character in ("}", "]", ")")):
+            output_lines.append(line)
+            continue
+        try:
+            compile(f"{variable} = {expression}\n", "<config-template-line>", "exec")
+        except SyntaxError:
+            output_lines.append(line)
+            continue
+        if variable in SECRET_KEYS or variable not in current_values:
+            output_lines.append(line)
+            continue
+
+        rendered_value = _format_config_value(current_values[variable], prefer_double_quotes=expression_stripped.startswith('"'))
+        rendered_line = f"{variable} = {rendered_value}"
+        if comment:
+            rendered_line = f"{rendered_line}  {comment}"
+        output_lines.append(rendered_line)
+
+    rendered = "\n".join(output_lines) + "\n"
+    validate_config_content(rendered)
+    return rendered
+
+
+# Writes validated config content atomically and backs up an existing destination
+def write_config_file(destination, content: str):
+    destination_path = Path(destination).expanduser()
+    validate_config_content(content, str(destination_path))
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    backup_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix=f".{destination_path.name}.", suffix=".tmp", dir=str(destination_path.parent), delete=False) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+
+        if destination_path.exists():
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            for collision_index in range(1000):
+                collision_suffix = "" if collision_index == 0 else f"-{collision_index:02d}"
+                candidate = destination_path.with_name(f"{destination_path.name}.{timestamp}{collision_suffix}.bak")
+                try:
+                    with destination_path.open("rb") as source_file, candidate.open("xb") as backup_file:
+                        shutil.copyfileobj(source_file, backup_file)
+                        backup_file.flush()
+                        os.fsync(backup_file.fileno())
+                    backup_path = candidate
+                    break
+                except FileExistsError:
+                    continue
+                except Exception:
+                    if candidate.exists():
+                        candidate.unlink()
+                    raise
+            if backup_path is None:
+                raise FileExistsError(f"Could not create a unique backup for '{destination_path}'")
+
+        os.replace(temporary_path, destination_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+    return {"path": str(destination_path), "backup_path": str(backup_path) if backup_path is not None else None}
+
+
+# Quotes one secret value for lossless parsing by python-dotenv
+def _format_dotenv_value(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("Dotenv secret values must be strings")
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "\\r").replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+# Updates allowed secrets in a dotenv file through an atomic replacement
+def update_dotenv_file(destination, updates):
+    if not hasattr(updates, "items"):
+        raise TypeError("Dotenv updates must be a mapping")
+    update_items = list(updates.items())
+    for key, value in update_items:
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key not in SECRET_KEYS:
+            raise ValueError(f"Unsupported dotenv key: {key!r}")
+        if not isinstance(value, str):
+            raise TypeError(f"Dotenv value for {key} must be a string")
+
+    destination_path = Path(destination).expanduser()
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    if destination_path.exists():
+        existing_lines = destination_path.read_text(encoding="utf-8").splitlines()
+    else:
+        existing_lines = []
+
+    update_keys = {key for key, _ in update_items}
+    values_by_key = dict(update_items)
+    seen_keys = set()
+    output_lines = []
+    assignment_pattern = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+    for line in existing_lines:
+        match = assignment_pattern.match(line)
+        key = match.group(1) if match else None
+        if key not in update_keys:
+            output_lines.append(line)
+            continue
+        if key in seen_keys:
+            continue
+        output_lines.append(f"{key}={_format_dotenv_value(values_by_key[key])}")
+        seen_keys.add(key)
+
+    for key, value in update_items:
+        if key not in seen_keys:
+            output_lines.append(f"{key}={_format_dotenv_value(value)}")
+            seen_keys.add(key)
+
+    content = "\n".join(output_lines)
+    if output_lines:
+        content += "\n"
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix=f".{destination_path.name}.", suffix=".tmp", dir=str(destination_path.parent), delete=False) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        if os.name == "posix":
+            os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, destination_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+    return {"path": str(destination_path), "updated_keys": tuple(key for key, _ in update_items)}
 
 import urllib3
 if not VERIFY_SSL:
@@ -1243,7 +1506,7 @@ def reload_secrets_signal_handler(sig, frame):
             else:
                 env_path = find_dotenv()
             if env_path:
-                load_dotenv(env_path, override=True)
+                load_dotenv(env_path, override=True, interpolate=False)
             else:
                 print(f"* No .env file found, skipping env-var reload{suffix}")
         except ImportError:
@@ -2910,6 +3173,34 @@ def find_config_file(cli_path=None):
     return None
 
 
+# Loads one UTF-8 Python config file and reports expected user errors without a traceback
+def load_config_file(config_path, namespace=None):
+    target_namespace = globals() if namespace is None else namespace
+    try:
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            source = config_file.read()
+        compiled = compile(source, str(config_path), "exec")
+        exec(compiled, target_namespace)
+        return True
+    except SyntaxError as exc:
+        print(f"* Error: Config file '{config_path}' has invalid Python syntax")
+        if exc.lineno is not None:
+            print(f"* Line: {exc.lineno}")
+        if exc.text:
+            print(f"* Source: {exc.text.rstrip()}")
+        print(f"* Parser: {exc.msg}")
+        print("To fix: Correct the line and matching quotes. For Windows paths use forward slashes or doubled backslashes then retry.")
+        return False
+    except UnicodeDecodeError:
+        print(f"* Error: Config file '{config_path}' is not valid UTF-8")
+        print("To fix: Save the file as UTF-8 then retry.")
+        return False
+    except Exception as exc:
+        print(f"* Error: Config file '{config_path}' failed with {type(exc).__name__}: {exc}")
+        print("To fix: Review the edited values or generate a fresh config at a different path then retry.")
+        return False
+
+
 # Resolves an executable path by checking if it's a valid file or searching in $PATH
 def resolve_executable(path):
     if os.path.isfile(path) and os.access(path, os.X_OK):
@@ -3810,16 +4101,21 @@ def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
     if "--generate-config" in sys.argv:
-        config_content = CONFIG_BLOCK.strip("\n") + "\n"
+        config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
             idx = sys.argv.index("--generate-config")
             if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
                 # Write directly to file (bypasses PowerShell UTF-16 encoding issue on Windows)
                 output_file = sys.argv[idx + 1]
-                with open(output_file, "w", encoding="utf-8") as f:
-                    f.write(config_content)
-                print(f"Config written to: {output_file}")
+                try:
+                    write_status = write_config_file(output_file, config_content)
+                except Exception as exc:
+                    print(f"* Error: Could not write config file '{output_file}': {type(exc).__name__}: {exc}")
+                    sys.exit(1)
+                print(f"Config written to: {write_status['path']}")
+                if write_status["backup_path"]:
+                    print(f"Backup written to: {write_status['backup_path']}")
                 sys.exit(0)
         except (ValueError, IndexError):
             pass
@@ -3851,7 +4147,7 @@ def main():
         "user_id",
         nargs="?",
         metavar="SPOTIFY_USER_URI_ID",
-        help="Spotify user URI ID",
+        help="Spotify user ID, spotify:user URI or open.spotify.com profile URL",
         type=str
     )
 
@@ -4091,14 +4387,18 @@ def main():
 
     if not cfg_path and CLI_CONFIG_PATH:
         print(f"* Error: Config file '{CLI_CONFIG_PATH}' does not exist")
+        print("To fix: Verify the --config-file path or generate a new config at that path.")
         sys.exit(1)
 
-    if cfg_path:
+    if cfg_path and not load_config_file(cfg_path):
+        sys.exit(1)
+
+    target_user_id = None
+    if not args.list_friends and not args.send_test_email:
         try:
-            with open(cfg_path, "r") as cf:
-                exec(cf.read(), globals())
-        except Exception as e:
-            print(f"* Error loading config file '{cfg_path}': {e}")
+            target_user_id = resolve_target_user_id(args.user_id, TARGET_USER_URI_ID)
+        except ValueError as exc:
+            print(f"* Error: {exc}")
             sys.exit(1)
 
     if args.debug_mode is not None:
@@ -4121,11 +4421,11 @@ def main():
                 if not os.path.isfile(env_path):
                     print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                 else:
-                    load_dotenv(env_path, override=True)
+                    load_dotenv(env_path, override=True, interpolate=False)
             else:
                 env_path = find_dotenv() or None
                 if env_path:
-                    load_dotenv(env_path, override=True)
+                    load_dotenv(env_path, override=True, interpolate=False)
         except ImportError:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             if env_path:
@@ -4206,7 +4506,7 @@ def main():
                     print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    if not args.user_id and not args.list_friends and login_request_body_file_param:
+                    if not target_user_id and not args.list_friends and login_request_body_file_param:
                         print(f"* Login data correctly read from Protobuf file ({LOGIN_REQUEST_BODY_FILE}):")
                         print(" - Device ID:\t\t", DEVICE_ID)
                         print(" - System ID:\t\t", SYSTEM_ID)
@@ -4258,7 +4558,7 @@ def main():
                     print(f"* Error: Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}) cannot be processed: {e}")
                     sys.exit(1)
                 else:
-                    if not args.user_id and not args.list_friends and clienttoken_request_body_file_param:
+                    if not target_user_id and not args.list_friends and clienttoken_request_body_file_param:
                         print(f"* Client token data correctly read from Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}):")
                         print(" - App version:\t\t", APP_VERSION)
                         print(" - CPU arch:\t\t", CPU_ARCH)
@@ -4315,8 +4615,8 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
-    if not args.user_id:
-        print("* Error: SPOTIFY_USER_URI_ID argument is required !")
+    if not target_user_id:
+        print("* Error: A Spotify target is required. Provide a positional user ID, Spotify user URI or profile URL, or set TARGET_USER_URI_ID in the config file.")
         sys.exit(1)
 
     if args.monitor_list:
@@ -4363,7 +4663,7 @@ def main():
         FILE_SUFFIX = str(args.file_suffix)
     else:
         if not FILE_SUFFIX:
-            FILE_SUFFIX = str(args.user_id)
+            FILE_SUFFIX = str(target_user_id)
 
     if args.truncate:
         if args.truncate != 999:
@@ -4452,7 +4752,7 @@ def main():
         signal.signal(signal.SIGABRT, decrease_inactivity_check_signal_handler)
         signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
-    spotify_monitor_friend_uri(args.user_id, sp_tracks, CSV_FILE)
+    spotify_monitor_friend_uri(target_user_id, sp_tracks, CSV_FILE)
 
     sys.stdout = stdout_bck
     sys.exit(0)
