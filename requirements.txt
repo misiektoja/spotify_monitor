@@ -4,4 +4,9 @@ urllib3
 pyotp
 python-dotenv
 wcwidth
-spotipy
+
+# Optional for configured legacy OAuth app credentials
+# spotipy>=2.24.0
+
+# Optional for browser import feature
+# pycookiecheat>=0.8
