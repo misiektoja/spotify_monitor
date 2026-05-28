@@ -15,6 +15,7 @@ pyotp (needed for web-player token generation)
 python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
 spotipy (optional, used when legacy OAuth app credentials are configured)
+pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
 
 VERSION = "3.0"
@@ -655,6 +656,8 @@ import time
 import string
 import json
 import os
+import configparser
+import sqlite3
 from datetime import datetime
 from dateutil import relativedelta
 import calendar
@@ -681,6 +684,24 @@ from pathlib import Path
 import secrets
 from typing import Optional
 from email.utils import parsedate_to_datetime
+
+# Browsers supported by the sp_dc cookie importer
+IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
+CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
+
+# Chromium user-data directories
+CHROMIUM_USER_DATA_DIRS = {
+    "Darwin": {
+        "chrome": "Library/Application Support/Google/Chrome",
+        "brave": "Library/Application Support/BraveSoftware/Brave-Browser",
+        "chromium": "Library/Application Support/Chromium",
+    },
+    "Linux": {
+        "chrome": ".config/google-chrome",
+        "brave": ".config/BraveSoftware/Brave-Browser",
+        "chromium": ".config/chromium",
+    },
+}
 
 # Error text shared by all rejected Spotify target forms
 TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID."
@@ -938,6 +959,409 @@ def update_dotenv_file(destination, updates):
             temporary_path.unlink()
 
     return {"path": str(destination_path), "updated_keys": tuple(key for key, _ in update_items)}
+
+
+# Raised when a browser cookie cannot be extracted, validated or persisted safely
+class BrowserCookieImportError(Exception):
+    pass
+
+
+# Returns a user-facing label for one supported browser
+def browser_label(browser):
+    return "Firefox" if browser == "firefox" else browser.capitalize()
+
+
+# Returns normal Firefox profile roots for the selected platform
+def _firefox_profile_roots(system_name=None, home=None, environ=None):
+    selected_system = platform.system() if system_name is None else system_name
+    home_path = Path.home() if home is None else Path(home)
+    environment = os.environ if environ is None else environ
+    if selected_system == "Darwin":
+        return [home_path / "Library/Application Support/Firefox"]
+    if selected_system == "Windows":
+        appdata = environment.get("APPDATA")
+        return [Path(appdata) / "Mozilla/Firefox"] if appdata else [home_path / "AppData/Roaming/Mozilla/Firefox"]
+    if selected_system == "Linux":
+        return [home_path / ".mozilla/firefox", home_path / "snap/firefox/common/.mozilla/firefox", home_path / ".var/app/org.mozilla.firefox/.mozilla/firefox"]
+    return []
+
+
+# Builds one normalized browser profile record
+def _browser_profile_record(profile_dir, friendly_name, cookie_file):
+    return {"dir": profile_dir.name, "name": friendly_name or profile_dir.name, "path": str(profile_dir), "cookie_file": str(cookie_file)}
+
+
+# Adds one usable profile record without duplicating its cookie database
+def _add_browser_profile(profiles_by_cookie, profile_dir, friendly_name):
+    cookie_file = profile_dir / "cookies.sqlite"
+    if not cookie_file.is_file():
+        return
+    cookie_key = str(cookie_file.resolve())
+    profiles_by_cookie.setdefault(cookie_key, _browser_profile_record(profile_dir, friendly_name, cookie_file))
+
+
+# Discovers usable Firefox profiles from profiles.ini metadata plus directory scans
+def discover_firefox_profiles(system_name=None, home=None, environ=None):
+    profiles_by_cookie = {}
+    for root in _firefox_profile_roots(system_name=system_name, home=home, environ=environ):
+        profiles_ini = root / "profiles.ini"
+        if profiles_ini.is_file():
+            parser = configparser.RawConfigParser()
+            try:
+                with profiles_ini.open("r", encoding="utf-8") as profiles_file:
+                    parser.read_file(profiles_file)
+                for section in parser.sections():
+                    if not section.lower().startswith("profile") or not parser.has_option(section, "Path"):
+                        continue
+                    configured_path = os.path.expandvars(os.path.expanduser(parser.get(section, "Path")))
+                    profile_dir = Path(configured_path)
+                    if parser.get(section, "IsRelative", fallback="1") != "0":
+                        profile_dir = root / profile_dir
+                    _add_browser_profile(profiles_by_cookie, profile_dir, parser.get(section, "Name", fallback=profile_dir.name))
+            except (OSError, UnicodeError, configparser.Error):
+                pass
+
+        for profile_parent in (root, root / "Profiles"):
+            if not profile_parent.is_dir():
+                continue
+            try:
+                profile_dirs = sorted((entry for entry in profile_parent.iterdir() if entry.is_dir()), key=lambda entry: entry.name.lower())
+            except OSError:
+                continue
+            for profile_dir in profile_dirs:
+                friendly_name = profile_dir.name.split(".", 1)[1] if "." in profile_dir.name else profile_dir.name
+                _add_browser_profile(profiles_by_cookie, profile_dir, friendly_name)
+
+    return sorted(profiles_by_cookie.values(), key=lambda profile: (profile["name"].lower(), profile["dir"].lower(), profile["cookie_file"]))
+
+
+# Formats profile choices without exposing any cookie values
+def _format_profile_choices(profiles):
+    return ", ".join(f"{profile['dir']} ({profile['name']})" if profile["name"] != profile["dir"] else profile["dir"] for profile in profiles)
+
+
+# Selects one browser profile explicitly, automatically or through a terminal prompt
+def select_browser_profile(profiles, browser, requested_profile=None, interactive=None, input_func=None):
+    label = browser_label(browser)
+    if not profiles:
+        raise BrowserCookieImportError(f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
+
+    if requested_profile:
+        requested = requested_profile.casefold()
+        directory_matches = [profile for profile in profiles if profile["dir"].casefold() == requested]
+        friendly_matches = [profile for profile in profiles if profile["name"].casefold() == requested]
+        matches = directory_matches or friendly_matches
+        if len(matches) == 1:
+            return matches[0]
+        choices = _format_profile_choices(profiles)
+        if len(matches) > 1:
+            raise BrowserCookieImportError(f"{label} profile name '{requested_profile}' is ambiguous. Pass one profile directory with --browser-profile. Choices: {choices}")
+        raise BrowserCookieImportError(f"Unknown {label} profile '{requested_profile}'. Choices: {choices}")
+
+    if len(profiles) == 1:
+        return profiles[0]
+
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    choices = _format_profile_choices(profiles)
+    if not terminal_is_interactive:
+        raise BrowserCookieImportError(f"Multiple {label} profiles found: {choices}. Pass --browser-profile PROFILE to select one in a noninteractive environment.")
+
+    print(f"Multiple {label} profiles found:")
+    for index, profile in enumerate(profiles, start=1):
+        print(f"  {index}) {profile['name']} [{profile['dir']}] - {profile['cookie_file']}")
+    prompt = input if input_func is None else input_func
+    try:
+        choice = int(prompt("Select profile number (0 to cancel): "))
+    except (EOFError, ValueError):
+        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.") from None
+    if choice == 0:
+        raise BrowserCookieImportError("Browser cookie import cancelled.")
+    if choice < 1 or choice > len(profiles):
+        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.")
+    return profiles[choice - 1]
+
+
+# Quotes a SQLite identifier obtained from database schema metadata
+def _sqlite_identifier(identifier):
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+# Converts an optional SQLite cookie field into a comparable number
+def _numeric_cookie_field(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+# Reads the best Spotify sp_dc cookie from a Firefox SQLite database
+def read_firefox_sp_dc(cookie_file, now=None):
+    cookie_path = Path(cookie_file).expanduser()
+    if not cookie_path.is_file():
+        raise BrowserCookieImportError(f"Firefox cookie database '{cookie_path}' was not found. Pass a valid cookies.sqlite path with --cookie-file.")
+
+    try:
+        with sqlite3.connect(cookie_path.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+            columns = connection.execute("PRAGMA table_info(moz_cookies)").fetchall()
+            column_names = {str(row[1]).lower(): str(row[1]) for row in columns}
+            if "name" not in column_names or "value" not in column_names:
+                raise sqlite3.DatabaseError("missing required cookie columns")
+            domain_key = "host" if "host" in column_names else "basedomain" if "basedomain" in column_names else None
+            if domain_key is None:
+                raise sqlite3.DatabaseError("missing cookie domain column")
+
+            selected_keys = ["value", domain_key]
+            last_access_key = "lastaccessed" if "lastaccessed" in column_names else "last_accessed" if "last_accessed" in column_names else None
+            expiry_key = next((key for key in ("expiry", "expires", "expirationdate") if key in column_names), None)
+            if last_access_key:
+                selected_keys.append(last_access_key)
+            if expiry_key:
+                selected_keys.append(expiry_key)
+
+            selected_columns = ", ".join(_sqlite_identifier(column_names[key]) for key in selected_keys)
+            name_column = _sqlite_identifier(column_names["name"])
+            value_column = _sqlite_identifier(column_names["value"])
+            domain_column = _sqlite_identifier(column_names[domain_key])
+            query = f"SELECT {selected_columns} FROM moz_cookies WHERE {name_column} = ? AND {value_column} IS NOT NULL AND {value_column} != '' AND (lower(ltrim({domain_column}, '.')) = ? OR lower(ltrim({domain_column}, '.')) LIKE ?)"
+            rows = connection.execute(query, ("sp_dc", "spotify.com", "%.spotify.com")).fetchall()
+    except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
+        raise BrowserCookieImportError("Could not read the Firefox cookie database. Close Firefox then retry or pass --cookie-file with a readable cookies.sqlite copy.") from None
+
+    if not rows:
+        raise BrowserCookieImportError("No sp_dc cookie for spotify.com was found in the selected Firefox profile. Sign in to Spotify in Firefox then retry.")
+
+    now_value = time.time() if now is None else now
+    last_access_index = selected_keys.index(last_access_key) if last_access_key else None
+    expiry_index = selected_keys.index(expiry_key) if expiry_key else None
+
+    # Ranks nonexpired cookies first then uses last access and stable fields for deterministic selection
+    def cookie_rank(row):
+        last_accessed = _numeric_cookie_field(row[last_access_index]) if last_access_index is not None else 0.0
+        expiry = _numeric_cookie_field(row[expiry_index]) if expiry_index is not None else 0.0
+        nonexpired = 1 if expiry <= 0 or expiry > now_value else 0
+        return nonexpired, last_accessed, expiry, str(row[1]).lower(), str(row[0])
+
+    return str(max(rows, key=cookie_rank)[0])
+
+
+# Returns the standard Chromium user-data directory for one browser and platform
+def get_chromium_user_data_dir(browser, system_name=None, home=None):
+    selected_system = platform.system() if system_name is None else system_name
+    relative_path = CHROMIUM_USER_DATA_DIRS.get(selected_system, {}).get(browser)
+    if relative_path is None:
+        return None
+    home_path = Path.home() if home is None else Path(home)
+    return home_path / relative_path
+
+
+# Resolves a Chromium profile cookie database with modern layout preference
+def resolve_chromium_cookie_file(user_data_dir, profile_dir):
+    profile_path = Path(user_data_dir) / profile_dir
+    for relative_path in (Path("Network") / "Cookies", Path("Cookies")):
+        candidate = profile_path / relative_path
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+# Discovers usable Chrome, Brave or Chromium profiles and Local State names
+def discover_chromium_profiles(browser, system_name=None, home=None, user_data_dir=None):
+    base_path = Path(user_data_dir) if user_data_dir is not None else get_chromium_user_data_dir(browser, system_name=system_name, home=home)
+    if base_path is None or not base_path.is_dir():
+        return []
+
+    friendly_names = {}
+    try:
+        with (base_path / "Local State").open("r", encoding="utf-8") as local_state_file:
+            info_cache = json.load(local_state_file).get("profile", {}).get("info_cache", {})
+        friendly_names = {directory: details.get("name") or directory for directory, details in info_cache.items() if isinstance(details, dict)}
+    except (OSError, UnicodeError, ValueError, AttributeError):
+        pass
+
+    profiles = []
+    try:
+        entries = sorted(base_path.iterdir(), key=lambda entry: entry.name.lower())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.is_dir() or (entry.name != "Default" and not entry.name.startswith("Profile ")):
+            continue
+        cookie_file = resolve_chromium_cookie_file(base_path, entry.name)
+        if cookie_file is not None:
+            profiles.append({"dir": entry.name, "name": friendly_names.get(entry.name, entry.name), "path": str(entry), "cookie_file": str(cookie_file)})
+    return profiles
+
+
+# Calls pycookiecheat for Spotify through a narrow dynamically imported adapter
+def _pycookiecheat_spotify_cookies(browser, cookie_file):
+    try:
+        from pycookiecheat import BrowserType, get_cookies
+    except (ImportError, ModuleNotFoundError):
+        raise BrowserCookieImportError("Chromium browser import requires the optional pycookiecheat dependency. Firefox needs no extra dependency. Install it with:\n\n    pip install \"spotify_monitor[browser]\"") from None
+
+    browser_type = {"chrome": BrowserType.CHROME, "brave": BrowserType.BRAVE, "chromium": BrowserType.CHROMIUM}[browser]
+    return get_cookies("https://open.spotify.com", browser=browser_type, cookie_file=str(cookie_file))
+
+
+# Converts a pycookiecheat failure into a secret-safe actionable message
+def _safe_chromium_cookie_error(browser, error):
+    label = browser_label(browser)
+    error_text = str(error).lower()
+    if any(term in error_text for term in ("keyring", "secretservice", "secret service", "password")):
+        return f"Could not access the OS keyring needed to decrypt {label} cookies. Unlock the keyring then retry or use Firefox."
+    if any(term in error_text for term in ("decrypt", "invalidtag", "encryption")):
+        return f"Could not decrypt {label} cookies. Close {label} then retry or import from Firefox."
+    if any(term in error_text for term in ("permission", "denied", "locked", "readonly", "unable to open")):
+        return f"Could not access the {label} cookie database. Close {label}, check file permissions then retry or use Firefox."
+    return f"Could not read {label} cookies. Confirm Spotify is signed in, close {label} then retry or use Firefox."
+
+
+# Reads only the Spotify sp_dc value from a Chromium cookie collection
+def read_chromium_sp_dc(browser, cookie_file, cookie_adapter=None, system_name=None):
+    selected_system = platform.system() if system_name is None else system_name
+    label = browser_label(browser)
+    if selected_system == "Windows":
+        raise BrowserCookieImportError(f"Importing {label} cookies is unavailable on Windows because current Chromium app-bound cookie encryption prevents reliable external access. Use Firefox instead.")
+
+    cookie_path = Path(cookie_file).expanduser()
+    if not cookie_path.is_file():
+        raise BrowserCookieImportError(f"{label} cookie database '{cookie_path}' was not found. Pass a valid path with --cookie-file.")
+    adapter = _pycookiecheat_spotify_cookies if cookie_adapter is None else cookie_adapter
+    try:
+        cookies = adapter(browser, cookie_path)
+    except BrowserCookieImportError:
+        raise
+    except Exception as exc:
+        raise BrowserCookieImportError(_safe_chromium_cookie_error(browser, exc)) from None
+
+    sp_dc = cookies.get("sp_dc") if isinstance(cookies, dict) else next((getattr(cookie, "value", None) for cookie in cookies if getattr(cookie, "name", None) == "sp_dc"), None)
+    if not isinstance(sp_dc, str) or not sp_dc:
+        raise BrowserCookieImportError(f"No sp_dc cookie for spotify.com was found in the selected {label} profile. Sign in to Spotify in {label} then retry.")
+    return sp_dc
+
+
+# Resolves the browser import dotenv destination without parent discovery
+def resolve_import_env_path(env_file=None, cwd=None):
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise BrowserCookieImportError("Browser cookie import requires a dotenv destination. Replace '--env-file none' with a writable path.")
+    base_directory = Path.cwd() if cwd is None else Path(cwd)
+    destination = base_directory / ".env" if env_file is None else Path(env_file).expanduser()
+    return destination.resolve()
+
+
+# Checks whether a dotenv file already contains one named assignment
+def _dotenv_contains_key(destination, key):
+    destination_path = Path(destination)
+    if not destination_path.exists():
+        return False
+    try:
+        lines = destination_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        raise BrowserCookieImportError(f"Could not read dotenv destination '{destination_path}'. Check that it is a readable UTF-8 file.") from None
+    assignment_pattern = re.compile(rf"^\s*(?:export\s+)?{re.escape(key)}\s*=")
+    return any(assignment_pattern.match(line) for line in lines)
+
+
+# Identifies network-shaped authentication failures without returning raw exception text
+def _looks_like_network_failure(error):
+    if isinstance(error, req.RequestException):
+        return True
+    error_text = str(error).lower()
+    return any(term in error_text for term in ("connection", "connectivity", "timeout", "timed out", "name resolution", "dns", "proxy", "ssl", "500", "502", "503", "504"))
+
+
+# Validates one imported sp_dc through token acquisition and the buddy-list endpoint
+def validate_imported_sp_dc(sp_dc):
+    global TOKEN_SOURCE, USER_AGENT, SP_CACHED_CLIENT_ID, DEBUG_MODE
+    if not isinstance(sp_dc, str) or not sp_dc:
+        raise BrowserCookieImportError("No nonempty sp_dc cookie was extracted.")
+
+    previous_token_source = TOKEN_SOURCE
+    previous_user_agent = USER_AGENT
+    previous_client_id = SP_CACHED_CLIENT_ID
+    previous_debug_mode = DEBUG_MODE
+    TOKEN_SOURCE = "cookie"
+    DEBUG_MODE = False
+    if not USER_AGENT:
+        USER_AGENT = get_random_user_agent()
+    try:
+        try:
+            token_data = refresh_access_token_from_sp_dc(sp_dc)
+        except Exception as exc:
+            if _looks_like_network_failure(exc):
+                raise BrowserCookieImportError("A network or connectivity failure prevented Spotify cookie validation. Check connectivity then retry.") from None
+            raise BrowserCookieImportError("The imported sp_dc cookie is invalid or expired. Sign in to Spotify in the browser then retry.") from None
+
+        access_token = token_data.get("access_token") if isinstance(token_data, dict) else None
+        client_id = token_data.get("client_id", "") if isinstance(token_data, dict) else ""
+        if not isinstance(access_token, str) or not access_token:
+            raise BrowserCookieImportError("The imported sp_dc cookie is invalid or expired. Sign in to Spotify in the browser then retry.")
+        SP_CACHED_CLIENT_ID = client_id
+        try:
+            spotify_get_friends_json(access_token)
+        except Exception as exc:
+            if _looks_like_network_failure(exc):
+                raise BrowserCookieImportError("A network or connectivity failure prevented the authenticated Spotify request. Check connectivity then retry.") from None
+            raise BrowserCookieImportError("Spotify authentication rejected the imported sp_dc cookie. Sign in to Spotify in the browser then retry.") from None
+    finally:
+        TOKEN_SOURCE = previous_token_source
+        USER_AGENT = previous_user_agent
+        SP_CACHED_CLIENT_ID = previous_client_id
+        DEBUG_MODE = previous_debug_mode
+    return True
+
+
+# Runs extraction, validation, overwrite handling and atomic dotenv persistence
+def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None):
+    destination = resolve_import_env_path(env_file)
+    print(f"* Dotenv destination: {destination}")
+
+    selected_system = platform.system()
+    if browser in CHROMIUM_IMPORT_BROWSERS and selected_system == "Windows":
+        raise BrowserCookieImportError(f"Importing {browser_label(browser)} cookies is unavailable on Windows because current Chromium app-bound cookie encryption prevents reliable external access. Use Firefox instead.")
+
+    selected_profile = None
+    if cookie_file is not None:
+        selected_cookie_file = Path(cookie_file).expanduser()
+        if browser_profile:
+            print("* Note: --cookie-file takes precedence over --browser-profile")
+    elif browser == "firefox":
+        selected_profile = select_browser_profile(discover_firefox_profiles(), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        selected_cookie_file = Path(selected_profile["cookie_file"])
+    else:
+        selected_profile = select_browser_profile(discover_chromium_profiles(browser), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        selected_cookie_file = Path(selected_profile["cookie_file"])
+
+    if selected_profile is not None:
+        print(f"* Browser profile: {selected_profile['name']} [{selected_profile['dir']}]")
+    print(f"* Cookie database: {selected_cookie_file}")
+
+    sp_dc = read_firefox_sp_dc(selected_cookie_file) if browser == "firefox" else read_chromium_sp_dc(browser, selected_cookie_file)
+    print("* Cookie extracted. Validating it with Spotify ...")
+    validate_imported_sp_dc(sp_dc)
+    print("* Spotify cookie validation succeeded")
+
+    if _dotenv_contains_key(destination, "SP_DC_COOKIE") and not force:
+        terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+        if not terminal_is_interactive:
+            raise BrowserCookieImportError(f"Dotenv destination '{destination}' already contains SP_DC_COOKIE. Re-run with --force to replace it in a noninteractive environment.")
+        prompt = input if input_func is None else input_func
+        try:
+            confirmed = prompt(f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except EOFError:
+            confirmed = False
+        if not confirmed:
+            raise BrowserCookieImportError("Browser cookie import cancelled. The dotenv file was not changed.")
+
+    print(f"* Writing SP_DC_COOKIE to: {destination}")
+    try:
+        update_dotenv_file(destination, {"SP_DC_COOKIE": sp_dc})
+    except Exception:
+        raise BrowserCookieImportError(f"Could not update dotenv destination '{destination}'. Check the path and file permissions.") from None
+    print("* Browser cookie import completed successfully")
+    if TOKEN_SOURCE == "client":
+        print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
+    return str(destination)
 
 import urllib3
 if not VERIFY_SSL:
@@ -4199,6 +4623,35 @@ def main():
         help="Spotify sp_dc cookie"
     )
 
+    # Browser cookie import
+    browser_import = parser.add_argument_group("Browser sp_dc import")
+    browser_import.add_argument(
+        "--import-browser-cookie",
+        action="store_true",
+        help="Import, validate and save Spotify sp_dc from a supported browser"
+    )
+    browser_import.add_argument(
+        "--browser",
+        choices=list(IMPORT_BROWSERS),
+        default=None,
+        help="Browser source: firefox (default), chrome, brave or chromium"
+    )
+    browser_import.add_argument(
+        "--browser-profile",
+        metavar="PROFILE",
+        help="Firefox friendly profile name or Chromium profile directory"
+    )
+    browser_import.add_argument(
+        "--cookie-file",
+        metavar="PATH",
+        help="Advanced explicit browser cookie database override"
+    )
+    browser_import.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace an existing SP_DC_COOKIE without a prompt"
+    )
+
     # Auth details used when token source is set to client
     client_auth = parser.add_argument_group("Auth details for 'client' token source")
     client_auth.add_argument(
@@ -4380,6 +4833,19 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    if not args.import_browser_cookie:
+        import_only_flags = []
+        if args.browser is not None:
+            import_only_flags.append("--browser")
+        if args.browser_profile is not None:
+            import_only_flags.append("--browser-profile")
+        if args.cookie_file is not None:
+            import_only_flags.append("--cookie-file")
+        if args.force:
+            import_only_flags.append("--force")
+        if import_only_flags:
+            parser.error(f"{', '.join(import_only_flags)} require --import-browser-cookie")
+
     if args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
@@ -4392,6 +4858,22 @@ def main():
 
     if cfg_path and not load_config_file(cfg_path):
         sys.exit(1)
+
+    if args.import_browser_cookie:
+        if args.token_source:
+            TOKEN_SOURCE = args.token_source
+        if not TOKEN_SOURCE:
+            TOKEN_SOURCE = "cookie"
+        if args.debug_mode is not None:
+            DEBUG_MODE = args.debug_mode
+        if args.user_agent:
+            USER_AGENT = args.user_agent
+        try:
+            run_browser_cookie_import(browser=args.browser or "firefox", browser_profile=args.browser_profile, cookie_file=args.cookie_file, env_file=args.env_file, force=args.force)
+        except BrowserCookieImportError as exc:
+            print(f"* Error: {exc}")
+            sys.exit(1)
+        sys.exit(0)
 
     target_user_id = None
     if not args.list_friends and not args.send_test_email:
