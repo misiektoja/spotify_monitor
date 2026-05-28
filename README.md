@@ -101,6 +101,7 @@ pip install spotify_monitor
 * Python 3.9 or higher
 * Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
 * Optional legacy OAuth library: `spotipy`
+* Optional Chromium cookie import library: `pycookiecheat`
 
 Tested on:
 
@@ -149,6 +150,14 @@ For manual single-file installations install the optional dependency directly:
 pip install "spotipy>=2.24.0"
 ```
 
+Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:
+
+```sh
+pip install "spotify_monitor[browser]"
+```
+
+For a manual single-file installation use `pip install "pycookiecheat>=0.8"` instead.
+
 <a id="upgrading"></a>
 ### Upgrading
 
@@ -163,21 +172,27 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
-1. Grab your [Spotify sp_dc cookie](#spotify-sp_dc-cookie)
+1. Log in to [Spotify Web Player](https://open.spotify.com/) in Firefox.
 
-2. Follow the user you wish to track as described [here](#following-the-monitored-user)
-
-3. Track the user's music activity with a raw user ID, Spotify user URI or profile URL:
+2. Import the `sp_dc` cookie into `.env` in the current directory:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
-spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" -u "your_sp_dc_cookie_value"
+spotify_monitor --import-browser-cookie --browser firefox
+```
+
+3. Follow the user you wish to track as described [here](#following-the-monitored-user).
+
+4. Start monitoring with a raw user ID, Spotify user URI or profile URL. The saved cookie is loaded without passing `-u` on the command line:
+
+```sh
+spotify_monitor <spotify_user_uri_id>
+spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id"
 ```
 
 Or if you installed [manually](#manual-installation):
 
 ```sh
-python3 spotify_monitor.py <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
+python3 spotify_monitor.py <spotify_user_uri_id>
 ```
 
 To get the list of all supported command-line arguments / flags:
@@ -250,16 +265,55 @@ If no method is specified, the tool defaults to the `cookie` method.
 
 This is the default method used to obtain a Spotify access token.
 
-- Log in to [https://open.spotify.com/](https://open.spotify.com/) in your web browser.
+Firefox browser import is the recommended onboarding path. It works on macOS, Linux and Windows with no optional dependency:
 
-- Locate and copy the value of the `sp_dc` cookie.
-   - Use your web browser's dev console or **Cookie-Editor** by cgagnier to extract it easily: [https://cookie-editor.com/](https://cookie-editor.com/)
+##### Which browsers are supported
 
-- Provide the `SP_DC_COOKIE` secret using one of the following methods:
-   - Pass it at runtime with `-u` / `--spotify-dc-cookie`
-   - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_DC_COOKIE=...`)
-   - Add it to [.env file](#storing-secrets) (`SP_DC_COOKIE=...`) for persistent use
-   - Fallback: hard-code it in the code or config file
+The `--browser` flag accepts these values:
+
+| `--browser` | Application it reads | Platforms |
+| --- | --- | --- |
+| `firefox` (default) | Mozilla Firefox | macOS, Linux, Windows |
+| `chrome` | Google Chrome | macOS, Linux |
+| `brave` | Brave | macOS, Linux |
+| `chromium` | The standalone open-source Chromium browser | macOS, Linux |
+
+**About the `chromium` option:** Chromium is the unbranded open-source browser that Google Chrome is built on. It is a **separate application** from Chrome with its own profile and cookie store. It is also a common default browser on many Linux distributions. Pick `chromium` only if you actually run that browser. If you use Google Chrome pick `chrome`.
+
+**Not currently supported:** Microsoft Edge, Opera, Vivaldi, Arc and other Chromium-based browsers. They share the Chromium engine but each keeps its own separate cookie store. The underlying [`pycookiecheat`](https://github.com/n8henrie/pycookiecheat) library handles only the browsers listed above. If you use one of these browsers log in with Firefox or Chrome/Brave/Chromium for the import instead.
+
+On **Windows** Chromium import is not possible. Chrome's app-bound encryption in Chrome 127 and later blocks external programs from reading its cookies. The tool detects Windows and recommends using Firefox instead.
+
+```sh
+spotify_monitor --import-browser-cookie --browser firefox
+```
+
+The importer discovers Firefox profiles from `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:
+
+```sh
+spotify_monitor --import-browser-cookie --browser firefox --browser-profile "default-release"
+```
+
+The advanced `--cookie-file PATH` option points directly to a Firefox `cookies.sqlite` database and takes precedence over profile discovery:
+
+```sh
+spotify_monitor --import-browser-cookie --browser firefox --cookie-file /path/to/cookies.sqlite
+```
+
+By default import writes only `SP_DC_COOKIE` to `.env` in the current directory. Use `--env-file PATH` to choose another dotenv file. Import never modifies a dotenv file found only through parent-directory discovery. `--env-file none` is invalid for import because persistence is required.
+
+The cookie is validated through Spotify token acquisition and an authenticated buddy-list request before the dotenv file is changed. Existing comments, blank lines and unrelated settings are preserved. Replacing an existing value requires confirmation in an interactive terminal or `--force` in a noninteractive run. `--force` does not skip validation.
+
+Chrome, Brave and Chromium import is available on macOS and Linux through the optional browser extra:
+
+```sh
+pip install "spotify_monitor[browser]"
+spotify_monitor --import-browser-cookie --browser chrome
+```
+
+Chromium profiles support `Default` and `Profile *` directories plus friendly names from Local State. Both modern `<profile>/Network/Cookies` and legacy `<profile>/Cookies` databases are recognized.
+
+Manual extraction is an advanced fallback. Log in to [Spotify Web Player](https://open.spotify.com/) then locate `sp_dc` through browser developer tools or a trusted cookie editor. Store it as `SP_DC_COOKIE` in an environment variable or dotenv file. You can still pass it with `-u` / `--spotify-dc-cookie`, but command-line secrets may be exposed through shell history or process listings.
 
 If your `sp_dc` cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new `sp_dc` cookie value.
 
@@ -401,7 +455,7 @@ On **Windows Command Prompt** use `set` instead of `export` and on **Windows Pow
 
 Alternatively store them persistently in a dotenv file (recommended):
 
-Copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
+Browser import can create or update `.env` with a validated `SP_DC_COOKIE`. If you prefer manual setup copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
 
 ```sh
 cp .env.example .env
@@ -416,6 +470,8 @@ SMTP_PASSWORD="your_smtp_password"
 ```
 
 By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it.
+
+Browser import is intentionally different. Without `--env-file` it writes to `.env` in the current directory and does not modify a parent dotenv file.
 
 You can specify a custom file with `DOTENV_FILE` or `--env-file` flag:
 
@@ -448,6 +504,8 @@ If you use the default method to obtain a Spotify access token (`cookie`) and ha
 ```sh
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
+
+This manual command-line fallback can expose the cookie through shell history or process listings. Browser import into a dotenv file is recommended instead.
 
 **Optional:** If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the `-r` flag:
 
