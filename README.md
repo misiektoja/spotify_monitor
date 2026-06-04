@@ -201,6 +201,49 @@ To get the list of all supported command-line arguments / flags:
 spotify_monitor --help
 ```
 
+### Doctor preflight
+
+Before starting a long monitoring run, use the read-only preflight command:
+
+```sh
+spotify_monitor --doctor
+```
+
+The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers across these sections:
+
+* Environment
+* Configuration
+* Authentication
+* Connectivity
+* Target
+* Notifications
+* Summary
+
+The doctor loads the same effective config, dotenv values and command-line overrides as a normal run. It validates Spotify authentication and connectivity through the configured token source. If email notifications are enabled it can connect and authenticate to SMTP but it never sends an email. It does not create logs, CSV files, flag files, OAuth caches or update config and dotenv files.
+
+Warnings do not make the command fail. The doctor exits nonzero only when at least one check has `[FAIL]`. You can run an authentication-only check without a target or verify one specific account:
+
+```sh
+spotify_monitor --doctor
+spotify_monitor --doctor <spotify_user_uri_id>
+```
+
+Normal configuration overrides work with the doctor:
+
+```sh
+spotify_monitor --doctor <spotify_user_uri_id> --config-file spotify_monitor.conf
+spotify_monitor --doctor <spotify_user_uri_id> --env-file /path/.env-spotify_monitor
+spotify_monitor --doctor <spotify_user_uri_id> --token-source client
+```
+
+Each failed check includes a `To fix:` action. Cookie authentication failures recommend signing in through Firefox then running:
+
+```sh
+spotify_monitor --import-browser-cookie --browser firefox
+```
+
+For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Cookies, tokens, authorization headers and SMTP passwords remain redacted.
+
 <a id="configuration"></a>
 ## Configuration
 
