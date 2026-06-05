@@ -670,6 +670,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import argparse
 import csv
+import getpass
 from urllib.parse import quote_plus, quote, unquote, urljoin, urlparse, urlsplit
 import subprocess
 import platform
@@ -679,12 +680,13 @@ from html import escape
 import base64
 import random
 import shutil
+import shlex
 import tempfile
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 import secrets
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence, cast
 from email.utils import parseaddr, parsedate_to_datetime
 
 # Browsers supported by the sp_dc cookie importer
@@ -4216,6 +4218,522 @@ def print_monitor_recovery(error: Any, context: str, tracker: RecoveryHintTracke
     return advice
 
 
+# Detects how Spotify Monitor was launched so setup can show matching commands
+def _wizard_install_method() -> str:
+    if os.path.exists("/.dockerenv") or os.environ.get("SPOTIFY_MONITOR_DOCKER"):
+        return "compose" if os.environ.get("SPOTIFY_MONITOR_COMPOSE") else "docker"
+    return "manual" if os.path.basename(sys.argv[0] or "").endswith(".py") else "pip"
+
+
+# Returns the portable command prefix for one supported installation method
+def _wizard_cmd_prefix(method: str) -> str:
+    if method == "compose":
+        return "docker compose run --rm spotify_monitor"
+    if method == "docker":
+        return 'docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor'
+    if method == "manual":
+        return "python3 spotify_monitor.py"
+    return "spotify_monitor"
+
+
+# Converts a wizard destination into the matching path inside the /data container mount
+def _wizard_container_path(path) -> str:
+    resolved = Path(path).expanduser().resolve()
+    try:
+        relative = resolved.relative_to(Path.cwd().resolve())
+    except ValueError:
+        relative = Path(resolved.name)
+    return str(Path("/data") / relative)
+
+
+# Builds a Spotify Monitor action command using install-aware paths and an optional target
+def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None) -> str:
+    selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+    selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+    parts = [_wizard_cmd_prefix(method)]
+    if action:
+        parts.append(action)
+    if target:
+        parts.append(shlex.quote(target))
+    parts.extend(("--config-file", shlex.quote(selected_config), "--env-file", shlex.quote(selected_env)))
+    return " ".join(parts)
+
+
+# Returns the Firefox import command with a read-only Linux host profile mount for containers
+def _wizard_firefox_import_cmd(method: str, env_path=None) -> str:
+    prefix = _wizard_cmd_prefix(method)
+    if method == "docker":
+        prefix = prefix.replace("misiektoja/spotify-monitor", '-v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor')
+    elif method == "compose":
+        prefix = 'docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor'
+    command = f"{prefix} --import-browser-cookie --browser firefox"
+    if env_path is not None:
+        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        command += f" --env-file {shlex.quote(selected_env)}"
+    return command
+
+
+# Lists browsers supported by the setup wizard in the active environment
+def _wizard_import_browsers(method: str) -> List[str]:
+    if platform.system() == "Windows" or method in ("docker", "compose"):
+        return ["firefox"]
+    return list(IMPORT_BROWSERS)
+
+
+# Describes one browser import choice without exposing browser data
+def _wizard_browser_description(browser: str) -> str:
+    if browser == "firefox":
+        return "Built-in reader for macOS, Linux and Windows with no extra package."
+    return f"{browser_label(browser)} needs the browser extra and works on macOS or Linux only."
+
+
+# Reads one setup line and exits cleanly when Ctrl+C or Ctrl+D cancels input
+def _wizard_input(prompt_text: str) -> str:
+    try:
+        return input(prompt_text)
+    except (EOFError, KeyboardInterrupt):
+        print("\nSetup cancelled.")
+        raise SystemExit(1) from None
+
+
+# Prompts for optional or required text while applying an Enter default safely
+def _wizard_ask_text(question: str, default: str = "", required: bool = False) -> str:
+    suffix = f" [{default}]" if default else ""
+    while True:
+        value = _wizard_input(f"{question}{suffix}: ").strip()
+        if not value:
+            value = default
+        if value or not required:
+            return value
+        print("  This value is required.")
+
+
+# Prompts until the user provides a valid yes or no response
+def _wizard_ask_yes_no(question: str, default: bool = True) -> bool:
+    hint = "[Y/n]" if default else "[y/N]"
+    while True:
+        value = _wizard_input(f"{question} {hint}: ").strip().casefold()
+        if not value:
+            return default
+        if value in ("y", "yes"):
+            return True
+        if value in ("n", "no"):
+            return False
+        print("  Please answer 'y' or 'n'.")
+
+
+# Displays numbered choices and returns the selected zero-based index
+def _wizard_ask_choice(question: str, options, default_index: int = 0) -> int:
+    print(question)
+    for index, option in enumerate(options, start=1):
+        label, description = option
+        marker = " (default)" if index - 1 == default_index else ""
+        print(f"  {index}. {label}{marker}")
+        if description:
+            for line in description.splitlines():
+                print(f"     {line}")
+    while True:
+        value = _wizard_input(f"Choose [1-{len(options)}]: ").strip()
+        if not value:
+            return default_index
+        if value.isdigit() and 1 <= int(value) <= len(options):
+            return int(value) - 1
+        print(f"  Enter a number between 1 and {len(options)}.")
+
+
+# Prompts until the user provides a positive integer or accepts the default
+def _wizard_ask_positive_int(question: str, default: int) -> int:
+    while True:
+        value = _wizard_ask_text(question, default=str(default), required=True)
+        try:
+            parsed = int(value)
+        except ValueError:
+            parsed = 0
+        if parsed > 0:
+            return parsed
+        print("  Enter a positive whole number.")
+
+
+# Reads a required secret through getpass without echoing the entered value
+def _wizard_ask_secret(question: str) -> str:
+    while True:
+        try:
+            value = getpass.getpass(f"{question}: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nSetup cancelled.")
+            raise SystemExit(1) from None
+        if value:
+            return value
+        print("  This secret is required and cannot be empty.")
+
+
+# Resolves setup destinations without searching parent directories
+def _wizard_destinations(config_file=None, env_file=None):
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
+    config_path = Path(config_file or DEFAULT_CONFIG_FILENAME).expanduser().resolve()
+    env_path = Path(env_file or ".env").expanduser().resolve()
+    return config_path, env_path
+
+
+# Confirms replacement or selects another config destination before secrets are collected
+def _wizard_choose_config_destination(config_path: Path) -> Path:
+    selected = config_path
+    while selected.exists() and not _wizard_ask_yes_no(f"Configuration file '{selected}' exists. Replace it and create a timestamped backup?", default=False):
+        alternative = _wizard_ask_text("Another config destination or leave empty to cancel")
+        if not alternative:
+            print("Setup cancelled. Destination files were not changed.")
+            raise SystemExit(1)
+        selected = Path(alternative).expanduser().resolve()
+    return selected
+
+
+# Returns whether a non-placeholder secret exists in the selected dotenv file or environment
+def _wizard_existing_secret(key: str, env_path: Path, placeholders: Sequence[str] = ()) -> bool:
+    value = None
+    if env_path.is_file():
+        try:
+            from dotenv import dotenv_values
+            value = dotenv_values(env_path, interpolate=False).get(key)
+        except Exception:
+            value = None
+    if value is None:
+        value = os.environ.get(key)
+    return not is_missing_or_placeholder(value, placeholders)
+
+
+# Queues one secret update after confirming replacement of an existing dotenv assignment
+def _wizard_queue_secret(updates: dict, env_path: Path, key: str, value: str) -> bool:
+    try:
+        existing_assignment = _dotenv_contains_key(env_path, key)
+    except BrowserCookieImportError as exc:
+        print(render_recovery_error(exc, "config_invalid"))
+        raise SystemExit(1) from None
+    if existing_assignment and not _wizard_ask_yes_no(f"The dotenv file already contains {key}. Replace that value?", default=False):
+        print(f"  Existing {key} will be retained without being displayed or rewritten.")
+        return False
+    updates[key] = value
+    return True
+
+
+# Prompts for one valid Spotify target and returns its normalized user ID
+def _wizard_target(initial_target: Optional[str] = None) -> str:
+    default = initial_target or ""
+    while True:
+        raw_target = _wizard_ask_text("Spotify user to monitor", default=default, required=True)
+        try:
+            return normalize_spotify_user_id(raw_target)
+        except ValueError:
+            print("  Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID.")
+            default = ""
+
+
+# Validates proposed SMTP values through the shared validator without connecting
+def _wizard_validate_smtp(values: dict, password: str) -> Optional[RecoveryAdvice]:
+    names = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SMTP_PASSWORD", "SENDER_EMAIL", "RECEIVER_EMAIL")
+    previous = {name: globals()[name] for name in names}
+    try:
+        globals().update(values)
+        globals()["SMTP_PASSWORD"] = password
+        return validate_smtp_configuration()
+    finally:
+        globals().update(previous)
+
+
+# Collects SMTP settings and notification flags without opening a connection
+def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
+    notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+    if not _wizard_ask_yes_no("Configure email notifications?", default=False):
+        config_values.update({name: False for name in notification_names})
+        return []
+    while True:
+        smtp_values = {
+            "SMTP_HOST": _wizard_ask_text("SMTP host", required=True),
+            "SMTP_PORT": _wizard_ask_positive_int("SMTP port", 587),
+            "SMTP_SSL": _wizard_ask_yes_no("Use STARTTLS?", default=True),
+            "SMTP_USER": _wizard_ask_text("SMTP username", required=True),
+            "SENDER_EMAIL": _wizard_ask_text("Sender email", required=True),
+            "RECEIVER_EMAIL": _wizard_ask_text("Receiver email", required=True),
+        }
+        smtp_password = _wizard_ask_secret("SMTP password")
+        advice = _wizard_validate_smtp(smtp_values, smtp_password)
+        if advice is None:
+            break
+        print(f"  {advice.summary}: {advice.detail}")
+        print("  Re-enter the SMTP settings.")
+    _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
+    config_values.update(smtp_values)
+    preset = _wizard_ask_choice("Which email notifications should be enabled?", [("Status and errors, recommended", "Active, inactive and error notifications."), ("Every supported event", "Enables all email notification types."), ("Custom", "Choose each notification type separately.")])
+    if preset == 0:
+        selected = {"ACTIVE_NOTIFICATION": True, "INACTIVE_NOTIFICATION": True, "TRACK_NOTIFICATION": False, "SONG_NOTIFICATION": False, "SONG_ON_LOOP_NOTIFICATION": False, "ERROR_NOTIFICATION": True}
+    elif preset == 1:
+        selected = {name: True for name in notification_names}
+    else:
+        questions = (("ACTIVE_NOTIFICATION", "Email when the user becomes active?"), ("INACTIVE_NOTIFICATION", "Email when the user becomes inactive?"), ("TRACK_NOTIFICATION", "Email when a tracked song plays?"), ("SONG_NOTIFICATION", "Email for every song change?"), ("SONG_ON_LOOP_NOTIFICATION", "Email when a song loops?"), ("ERROR_NOTIFICATION", "Email on monitoring errors?"))
+        selected = {name: _wizard_ask_yes_no(question, default=False) for name, question in questions}
+    config_values.update(selected)
+    labels = {"ACTIVE_NOTIFICATION": "active", "INACTIVE_NOTIFICATION": "inactive", "TRACK_NOTIFICATION": "tracked song", "SONG_NOTIFICATION": "every song", "SONG_ON_LOOP_NOTIFICATION": "loop detection", "ERROR_NOTIFICATION": "errors"}
+    return [labels[name] for name in notification_names if selected[name]]
+
+
+# Collects cookie-mode choices while keeping all secret values out of output
+def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dict) -> dict:
+    result = {"complete": False, "validated": False, "browser": None, "source": "not configured"}
+    while True:
+        choice = _wizard_ask_choice("How should cookie authentication be configured?", [("Import from a browser, recommended", "Firefox is the default. Chromium-family imports need the browser extra."), ("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")])
+        if choice == 0:
+            browsers = _wizard_import_browsers(method)
+            browser_index = 0
+            if len(browsers) > 1:
+                browser_index = _wizard_ask_choice("Which browser should be imported?", [(browser_label(browser), _wizard_browser_description(browser)) for browser in browsers])
+            result.update({"browser": browsers[browser_index], "source": f"browser import ({browser_label(browsers[browser_index])})"})
+            if method in ("docker", "compose"):
+                print("  Containers can import Firefox only when the host profile is mounted read-only.")
+                print("  Chromium cookie import is unavailable inside containers.")
+            return result
+        if choice == 1:
+            if not _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)):
+                print("  No non-placeholder SP_DC_COOKIE was found.")
+                continue
+            if _wizard_ask_yes_no("Retain the existing SP_DC_COOKIE without displaying or rewriting it?", default=True):
+                result.update({"complete": True, "source": "existing SP_DC_COOKIE"})
+                return result
+            continue
+        if choice == 2:
+            cookie = _wizard_ask_secret("Existing sp_dc value")
+            replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
+            result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
+            return result
+        return result
+
+
+# Collects advanced client-mode Protobuf values through read-only parsers
+def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_updates: dict) -> dict:
+    print("Client mode is advanced. Follow the Spotify Desktop Client export instructions in README.md.")
+    result = {"complete": False, "validated": False, "browser": None, "source": "advanced client mode without credentials"}
+    if not _wizard_ask_yes_no("Use an exported login request Protobuf file?", default=True):
+        return result
+    while True:
+        login_path_text = _wizard_ask_text("Login request Protobuf path or leave empty to finish incomplete")
+        if not login_path_text:
+            return result
+        login_path = Path(login_path_text).expanduser().resolve()
+        try:
+            device_id, system_id, user_uri_id, refresh_token = parse_login_request_body_file(login_path)
+        except Exception:
+            print(render_recovery_error(context="file_read", detail=f"Login Protobuf file '{login_path}' could not be parsed read-only"))
+            if not _wizard_ask_yes_no("Try another login Protobuf file?", default=True):
+                return result
+            continue
+        if not all(isinstance(value, str) and value for value in (device_id, system_id, user_uri_id, refresh_token)):
+            print("The login Protobuf did not contain all required text values.")
+            if not _wizard_ask_yes_no("Try another login Protobuf file?", default=True):
+                return result
+            continue
+        config_values.update({"LOGIN_REQUEST_BODY_FILE": str(login_path), "DEVICE_ID": device_id, "SYSTEM_ID": system_id, "USER_URI_ID": user_uri_id})
+        _wizard_queue_secret(secret_updates, env_path, "REFRESH_TOKEN", cast(str, refresh_token))
+        result.update({"complete": True, "source": "login request Protobuf"})
+        break
+    if _wizard_ask_yes_no("Use an optional client-token request Protobuf file?", default=False):
+        while True:
+            client_path_text = _wizard_ask_text("Client-token request Protobuf path or leave empty to skip")
+            if not client_path_text:
+                break
+            client_path = Path(client_path_text).expanduser().resolve()
+            try:
+                parsed = parse_clienttoken_request_body_file(client_path)
+            except Exception:
+                print(render_recovery_error(context="file_read", detail=f"Client-token Protobuf file '{client_path}' could not be parsed read-only"))
+                if _wizard_ask_yes_no("Try another client-token Protobuf file?", default=True):
+                    continue
+                break
+            names = ("APP_VERSION", "_DEVICE_ID", "_SYSTEM_ID", "CPU_ARCH", "OS_BUILD", "PLATFORM", "OS_MAJOR", "OS_MINOR", "CLIENT_MODEL")
+            config_values.update({name: value for name, value in zip(names, parsed) if not name.startswith("_") and value is not None})
+            config_values["CLIENTTOKEN_REQUEST_BODY_FILE"] = str(client_path)
+            break
+    return result
+
+
+# Loads the generated config and only allowlisted dotenv secrets for the doctor offer
+def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
+    if not load_config_file(config_path):
+        return False
+    selected_secrets = {key: os.environ.get(key) for key in SECRET_KEYS}
+    if env_path.is_file():
+        try:
+            from dotenv import dotenv_values
+            parsed = dotenv_values(env_path, interpolate=False)
+            selected_secrets.update({key: parsed.get(key) for key in SECRET_KEYS if parsed.get(key) is not None})
+        except Exception:
+            print(render_recovery_error(context="config_invalid", detail=f"Dotenv file '{env_path}' could not be loaded"))
+            return False
+    for key, value in selected_secrets.items():
+        if value is not None:
+            globals()[key] = value
+    return True
+
+
+# Completes a deferred browser import with retry, private entry or incomplete recovery choices
+def _wizard_finish_browser_import(auth: dict, env_path: Path) -> dict:
+    browser = auth.get("browser")
+    if not browser:
+        return auth
+    while True:
+        try:
+            run_browser_cookie_import(browser=browser, env_file=str(env_path), interactive=True, input_func=_wizard_input)
+            auth.update({"complete": True, "validated": True})
+            return auth
+        except BrowserCookieImportError as exc:
+            print(render_recovery_error(exc, "browser_import"))
+        recovery = _wizard_ask_choice("Browser import did not complete. What next?", [("Retry browser import", "Try discovery, extraction and validation again."), ("Enter sp_dc privately", "Save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and import later.")])
+        if recovery == 0:
+            continue
+        if recovery == 1:
+            cookie = _wizard_ask_secret("Existing sp_dc value")
+            try:
+                if _wizard_queue_secret({}, env_path, "SP_DC_COOKIE", cookie):
+                    update_dotenv_file(env_path, {"SP_DC_COOKIE": cookie})
+                    auth.update({"complete": True, "validated": False, "source": "private manual entry"})
+            except Exception:
+                print(f"Config was saved but dotenv destination '{env_path}' could not be updated.")
+                auth.update({"complete": False, "validated": False})
+            return auth
+        auth.update({"complete": False, "validated": False})
+        return auth
+
+
+# Prints a short no-argument welcome and optionally launches guided setup
+def _wizard_welcome() -> None:
+    method = _wizard_install_method()
+    prefix = _wizard_cmd_prefix(method)
+    if not sys.stdin.isatty():
+        print(f"Usage: {prefix} <spotify_user_id> or {prefix} --doctor")
+        print(f"Guided setup requires an interactive terminal: {prefix} --setup")
+        raise SystemExit(1)
+    print("Welcome to Spotify Monitor.")
+    print(f"Guided setup: {prefix} --setup")
+    print(f"Monitor:      {prefix} <spotify_user_id>")
+    print(f"Doctor:       {prefix} --doctor")
+    if _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
+        run_setup_wizard()
+
+
+# Runs the interactive Phase 4 wizard and persists confirmed settings through safe writers
+def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env_file=None) -> None:
+    if not sys.stdin.isatty():
+        print("The setup wizard requires an interactive terminal (TTY).")
+        print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
+        raise SystemExit(1)
+    try:
+        config_path, env_path = _wizard_destinations(config_file, env_file)
+    except ValueError as exc:
+        print(f"Setup cannot start: {exc}")
+        raise SystemExit(1) from None
+    method = _wizard_install_method()
+    print(f"\nSpotify Monitor v{VERSION} - Setup Wizard\n")
+    print("Enter accepts the shown default. Ctrl+C cancels.")
+    print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
+    print("Cookie mode is recommended. Client mode is advanced.\n")
+    print(f"Config destination: {config_path}")
+    print(f"Dotenv destination: {env_path}")
+    print(f"Detected install method: {method}\n")
+    config_path = _wizard_choose_config_destination(config_path)
+    target = _wizard_target(initial_target)
+    persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=True)
+    config_values = dict(globals())
+    config_values["TARGET_USER_URI_ID"] = target if persist_target else ""
+    secret_updates = {}
+    auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", "Browser import is the recommended onboarding path."), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
+    if auth_mode == 0:
+        config_values["TOKEN_SOURCE"] = "cookie"
+        auth = _wizard_collect_cookie_auth(method, env_path, secret_updates)
+    else:
+        config_values["TOKEN_SOURCE"] = "client"
+        auth = _wizard_collect_client_auth(config_values, env_path, secret_updates)
+    config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", SPOTIFY_CHECK_INTERVAL)
+    enabled_notifications = _wizard_collect_email(config_values, secret_updates, env_path)
+    print("\nSetup summary")
+    print(f"  Target: {target}")
+    print(f"  Persist target: {'yes' if persist_target else 'no'}")
+    print(f"  Token source: {auth['source']}")
+    if auth.get("browser"):
+        print(f"  Browser: {browser_label(auth['browser'])}")
+    print(f"  Polling interval: {config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
+    print(f"  Email: {'enabled' if enabled_notifications else 'disabled'}")
+    print(f"  Enabled notifications: {', '.join(enabled_notifications) if enabled_notifications else 'none'}")
+    print(f"  Config destination: {config_path}")
+    print(f"  Dotenv destination: {env_path}")
+    print(f"  Install method: {method}")
+    if not _wizard_ask_yes_no("Write these settings now?", default=True):
+        print("Setup cancelled. Destination files were not changed.")
+        raise SystemExit(1)
+    config_content = generate_config_with_current_values(config_values)
+    try:
+        write_status = write_config_file(config_path, config_content)
+    except Exception:
+        print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
+        raise SystemExit(1) from None
+    print(f"Configuration saved to: {write_status['path']}")
+    if write_status["backup_path"]:
+        print(f"Configuration backup saved to: {write_status['backup_path']}")
+    if secret_updates:
+        try:
+            update_status = update_dotenv_file(env_path, secret_updates)
+            print(f"Secret keys saved to: {update_status['path']}")
+        except Exception:
+            print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
+            print("Setup remains incomplete.")
+            raise SystemExit(1) from None
+    if auth.get("browser") and method not in ("docker", "compose"):
+        auth = _wizard_finish_browser_import(auth, env_path)
+    elif auth.get("browser"):
+        print("Authentication still needs a host-side Firefox import.")
+        print("Linux host example:")
+        print(f"  {_wizard_firefox_import_cmd(method, env_path)}")
+        print("On macOS use the matching host Firefox profile path. On Windows import through Firefox on the host then use the generated dotenv file.")
+    doctor_failed = False
+    doctor_ran = False
+    if _wizard_ask_yes_no("Run the read-only doctor now?", default=True):
+        doctor_ran = True
+        if _wizard_load_effective_setup(config_path, env_path):
+            report = build_doctor_report(target, str(config_path), str(env_path))
+            print(render_doctor_report(report))
+            doctor_failed = any(check.status == "FAIL" for check in report.checks)
+            if not doctor_failed:
+                auth["validated"] = True
+        else:
+            doctor_failed = True
+    doctor_target = None if persist_target else target
+    doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target)
+    monitor_target = None if persist_target else target
+    monitor_command = _wizard_action_command(method, "", config_path, env_path, monitor_target)
+    print(f"\nRun doctor again with:\n  {doctor_command}")
+    if not auth["complete"]:
+        print("Setup was saved but authentication is incomplete.")
+        print(f"Import Firefox later with:\n  {_wizard_firefox_import_cmd(method, env_path)}")
+    if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
+        print("Start monitoring with:\n  docker compose up")
+    else:
+        if method == "compose" and not persist_target:
+            print("docker compose up requires a persisted target. Use this direct command instead:")
+        else:
+            print("Start monitoring with:")
+        print(f"  {monitor_command}")
+    local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
+    if local_ready and _wizard_ask_yes_no("Start monitoring now?", default=True):
+        exec_args = [sys.executable, str(Path(__file__).resolve())]
+        if not persist_target:
+            exec_args.append(target)
+        exec_args.extend(("--config-file", str(config_path), "--env-file", str(env_path)))
+        sys.stdout.flush()
+        os.execv(sys.executable, exec_args)
+    elif method in ("manual", "pip") and auth["complete"] and not auth["validated"]:
+        print("Monitoring was not offered because authentication has not been validated. Run the doctor command first.")
+    if doctor_failed:
+        print("Setup was saved but is not ready. Fix the doctor failures then rerun the doctor command.")
+    raise SystemExit(0)
+
+
 # Monitors music activity of the specified Spotify friend's user URI ID
 def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     global SP_CACHED_ACCESS_TOKEN
@@ -5111,7 +5629,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
-    if "--generate-config" in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -5135,7 +5653,7 @@ def main():
         sys.stdout.buffer.flush()
         sys.exit(0)
 
-    if "--version" in sys.argv:
+    if "--version" in sys.argv and "--setup" not in sys.argv:
         print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
         sys.exit(0)
 
@@ -5162,12 +5680,17 @@ def main():
     # Version, just to list in help, it is handled earlier
     parser.add_argument(
         "--version",
-        action="version",
-        version=f"%(prog)s v{VERSION}"
+        action="store_true",
+        help="Show the Spotify Monitor version and exit"
     )
 
     # Configuration & dotenv files
     conf = parser.add_argument_group("Configuration & dotenv files")
+    conf.add_argument(
+        "--setup",
+        action="store_true",
+        help="Run the interactive first-run setup wizard",
+    )
     conf.add_argument(
         "--config-file",
         dest="config_file",
@@ -5420,8 +5943,44 @@ def main():
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        _wizard_welcome()
+        sys.exit(0)
+
+    if args.setup:
+        setup_conflicts = []
+        conflict_values = (
+            (args.doctor, "--doctor"),
+            (args.version, "--version"),
+            (args.generate_config, "--generate-config"),
+            (args.import_browser_cookie, "--import-browser-cookie"),
+            (args.send_test_email, "--send-test-email"),
+            (args.list_friends, "--list-friends"),
+            (args.token_source, "--token-source"),
+            (args.spotify_dc_cookie, "--spotify-dc-cookie"),
+            (args.login_request_body_file, "--login-request-body-file"),
+            (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
+            (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.check_interval, "--check-interval"),
+            (args.offline_timer, "--offline-timer"),
+            (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_list, "--monitor-list"),
+            (args.csv_file, "--csv-file"),
+            (args.flag_file, "--flag-file"),
+            (args.user_agent, "--user-agent"),
+            (args.file_suffix, "--file-suffix"),
+            (args.truncate, "--truncate"),
+        )
+        setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"))
+        setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
+        import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
+        setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
+        if setup_conflicts:
+            parser.error("--setup cannot be combined with " + ", ".join(setup_conflicts))
+        if args.env_file is not None and args.env_file.casefold() == "none":
+            parser.error("--setup requires a dotenv destination and cannot use --env-file none")
+        run_setup_wizard(args.user_id, args.config_file, args.env_file)
+        sys.exit(0)
 
     if args.doctor:
         conflicting_actions = []
