@@ -1,0 +1,24 @@
+# Main Spotify Monitor application container
+#
+# Quick start:
+#   docker compose run --rm spotify_monitor --setup
+#   docker compose run --rm spotify_monitor --doctor
+#   docker compose up
+#
+# Linux Firefox import example:
+#   docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox
+
+services:
+  spotify_monitor:
+    image: misiektoja/spotify-monitor:latest
+    # To build locally, comment out the image line and uncomment the next line.
+    # build: .
+    init: true
+    stdin_open: true
+    tty: true
+    user: "${SPOTIFY_MONITOR_UID:-10001}:${SPOTIFY_MONITOR_GID:-10001}"
+    environment:
+      SPOTIFY_MONITOR_COMPOSE: "1"
+    volumes:
+      - ./:/data
+    command: ["--config-file", "/data/spotify_monitor.conf"]
