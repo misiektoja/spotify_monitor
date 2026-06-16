@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/github/v/release/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="GitHub Release" />
   <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=teal" alt="PyPI Version" />
   <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=magenta" alt="GitHub Stars" />
-  <img src="https://img.shields.io/badge/python-3.6+-blueviolet?style=flat-square" alt="Python Versions" />
+  <img src="https://img.shields.io/badge/python-3.9+-blueviolet?style=flat-square" alt="Python Versions" />
   <img src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="License" />
   <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
   <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
@@ -67,6 +67,7 @@ pip install spotify_monitor
 2. [Installation](#installation)
    * [Install from PyPI](#install-from-pypi)
    * [Manual Installation](#manual-installation)
+   * [Main Application Docker Image](#main-application-docker-image)
    * [Upgrading](#upgrading)
 3. [Quick Start](#quick-start)
 4. [Configuration](#configuration)
@@ -172,21 +173,40 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
-1. Log in to [Spotify Web Player](https://open.spotify.com/) in Firefox.
+Run the guided setup wizard after a PyPI installation:
 
-2. Import the `sp_dc` cookie into `.env` in the current directory:
+```sh
+spotify_monitor --setup
+```
+
+For a downloaded script use:
+
+```sh
+python3 spotify_monitor.py --setup
+```
+
+The wizard asks for one Spotify target, recommends browser-based `sp_dc` import, writes non-secret settings to `spotify_monitor.conf` and writes secrets only to `.env`. Existing dotenv comments, blank lines and unrelated values are preserved. Replacing an existing secret requires confirmation and the secret value is never displayed.
+
+Cookie mode is recommended. Firefox import works without an optional dependency. Private manual cookie entry is an advanced fallback that uses a hidden prompt. Client mode remains advanced and accepts the existing Spotify Desktop login and client-token Protobuf exports.
+
+After saving, the wizard offers the read-only doctor. The doctor may validate Spotify and SMTP authentication but sends no email. A successful local pip or script setup can then start monitoring immediately without putting secrets in process arguments.
+
+Running Spotify Monitor without arguments in an interactive terminal shows the setup, monitoring and doctor commands for the detected installation method then offers to start the wizard. Noninteractive execution prints a concise usage hint without prompting.
+
+The manual browser import command remains available:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-3. Follow the user you wish to track as described [here](#following-the-monitored-user).
+Follow the user you wish to track as described [here](#following-the-monitored-user).
 
-4. Start monitoring with a raw user ID, Spotify user URI or profile URL. The saved cookie is loaded without passing `-u` on the command line:
+Start monitoring with a raw user ID, Spotify user URI or profile URL. A target saved by the wizard does not need to be repeated:
 
 ```sh
 spotify_monitor <spotify_user_uri_id>
 spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id"
+spotify_monitor --config-file spotify_monitor.conf
 ```
 
 Or if you installed [manually](#manual-installation):
@@ -199,6 +219,68 @@ To get the list of all supported command-line arguments / flags:
 
 ```sh
 spotify_monitor --help
+```
+
+<a id="main-application-docker-image"></a>
+### Main Application Docker Image
+
+The main application image is [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor). It is separate from the `misiektoja/spotify-secrets-grabber` debugging image documented later. Release publishing builds `linux/amd64` and `linux/arm64` variants. A release tag such as `v3.0` also publishes `3.0`, while published releases update `latest`.
+
+The root `docker-compose.yml` provides the recommended container flow:
+
+```sh
+docker compose run --rm spotify_monitor --setup
+docker compose run --rm spotify_monitor --doctor
+docker compose up
+```
+
+Stop and remove the Compose container with:
+
+```sh
+docker compose down
+```
+
+Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
+
+Setup does not contact SMTP. The doctor can authenticate to SMTP only after you accept its prompt but it never sends email. No port is exposed because Spotify Monitor has no server.
+
+If the wizard does not persist the target, `docker compose up` cannot supply it. Use the direct command printed by setup, which follows this form:
+
+```sh
+docker compose run --rm spotify_monitor <spotify_user_uri_id> --config-file /data/spotify_monitor.conf --env-file /data/.env
+```
+
+Firefox import from a container needs the host Firefox profile mounted read-only. This is the Linux host example:
+
+```sh
+docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox
+```
+
+macOS stores Firefox profiles under the user's `Library/Application Support` directory, so its host mount source differs. Windows users should normally import through Firefox on the host then use the generated dotenv file with Compose. Chrome, Brave and Chromium import is not supported inside the container because the required host keyring is unavailable.
+
+The image runs as the dedicated numeric user and group `10001:10001`. On Linux bind mounts, map the service to your host UID and GID when the current directory is not writable by that numeric user:
+
+```sh
+export SPOTIFY_MONITOR_UID="$(id -u)"
+export SPOTIFY_MONITOR_GID="$(id -g)"
+docker compose run --rm spotify_monitor --setup
+docker compose up
+```
+
+Docker Desktop on macOS and Windows normally handles bind-mount ownership without this override. The image itself remains non-root.
+
+For a direct Docker run on Linux, pass the host identity explicitly when needed:
+
+```sh
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
+```
+
+To build locally, comment out `image:` in `docker-compose.yml` and uncomment `build: .`. You can also build and run directly:
+
+```sh
+docker build --tag spotify-monitor:local .
+docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --setup
+docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --config-file /data/spotify_monitor.conf
 ```
 
 ### Doctor preflight
