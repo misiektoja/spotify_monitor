@@ -84,9 +84,14 @@ def test_interactive_welcome_declines_setup(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
     monitor._wizard_welcome()
     output = capsys.readouterr().out
+    assert "Welcome to Spotify Monitor" not in output
+    assert "Quickest start (already configured):\n    spotify_monitor <spotify_user_id>\n" in output
+    assert "Easiest start (guided setup wizard):\n    spotify_monitor --setup   (or just answer Y below)\n" in output
+    assert "Check setup before monitoring:\n    spotify_monitor --doctor <spotify_user_id>\n" in output
     assert "spotify_monitor --setup" in output
     assert "spotify_monitor <spotify_user_id>" in output
     assert "spotify_monitor --doctor" in output
+    assert f"Guide:        {monitor.QUICK_START_GUIDE_URL}" in output
 
 
 # Verifies noninteractive no-argument welcome never prompts and exits with concise guidance
@@ -94,9 +99,81 @@ def test_noninteractive_welcome_does_not_prompt(monkeypatch, capsys):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: False))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=AssertionError("prompted")))
-    with pytest.raises(SystemExit) as error:
-        monitor._wizard_welcome()
-    assert error.value.code == 1
+    monitor._wizard_welcome()
     output = capsys.readouterr().out
-    assert "interactive terminal" in output
-    assert "usage:" not in output.casefold() or "spotify_monitor" in output
+    assert "Quickest start (already configured)" in output
+    assert "Easiest start (guided setup wizard)" in output
+    assert "or just answer Y below" not in output
+    assert "Full options: spotify_monitor --help" in output
+    assert monitor.QUICK_START_GUIDE_URL in output
+
+
+# Verifies manual help examples preserve exact comments, indentation and portable commands
+def test_manual_help_epilog_exact_raw_text(monkeypatch):
+    force_install_environment(monkeypatch, argv0="spotify_monitor.py")
+    assert monitor._build_help_epilog() == """Examples:
+  # Guided setup, recommended for the first run
+  python3 spotify_monitor.py --setup
+
+  # Import Spotify login from Firefox
+  python3 spotify_monitor.py --import-browser-cookie --browser firefox
+
+  # Monitor one Spotify user
+  # A spotify:user URI or profile URL is also accepted
+  python3 spotify_monitor.py <spotify_user_id>
+
+  # Check authentication, connectivity and one target
+  python3 spotify_monitor.py --doctor <spotify_user_id>
+
+  # List friends visible to the configured Spotify account
+  python3 spotify_monitor.py --list-friends
+
+  # Advanced Spotify desktop client mode
+  python3 spotify_monitor.py <spotify_user_id> --token-source client --login-request-body-file <protobuf_file>
+
+Guide: https://github.com/misiektoja/spotify_monitor#quick-start
+"""
+
+
+# Verifies pip help examples use the installed console command throughout
+def test_pip_help_epilog_uses_console_command(monkeypatch):
+    force_install_environment(monkeypatch, argv0="/usr/local/bin/spotify_monitor")
+    epilog = monitor._build_help_epilog()
+    assert "spotify_monitor --setup" in epilog
+    assert "spotify_monitor --import-browser-cookie --browser firefox" in epilog
+    assert "spotify_monitor <spotify_user_id>" in epilog
+    assert "spotify_monitor --doctor <spotify_user_id>" in epilog
+    assert "spotify_monitor --list-friends" in epilog
+
+
+# Verifies Docker help examples include safe container paths and the Linux host note
+def test_docker_help_epilog_uses_container_commands(monkeypatch):
+    force_install_environment(monkeypatch, docker_env=True, argv0="spotify_monitor.py")
+    epilog = monitor._build_help_epilog()
+    prefix = monitor._wizard_cmd_prefix("docker")
+    assert f"{prefix} --setup" in epilog
+    assert monitor._wizard_firefox_import_cmd("docker") in epilog
+    assert "Linux host example" in epilog
+    assert f"{prefix} --doctor <spotify_user_id>" in epilog
+    assert "--login-request-body-file /data/login.protobuf" in epilog
+
+
+# Verifies Compose help examples include service commands and the saved-target launch
+def test_compose_help_epilog_uses_service_commands(monkeypatch):
+    force_install_environment(monkeypatch, dockerenv=True, compose_env=True, argv0="spotify_monitor.py")
+    epilog = monitor._build_help_epilog()
+    prefix = monitor._wizard_cmd_prefix("compose")
+    assert f"{prefix} --setup" in epilog
+    assert monitor._wizard_firefox_import_cmd("compose") in epilog
+    assert f"{prefix} --list-friends" in epilog
+    assert "--login-request-body-file /data/login.protobuf" in epilog
+    assert "# Start from the target saved by setup\n  docker compose up" in epilog
+
+
+# Verifies every help epilog avoids command-line secret flags and values
+@pytest.mark.parametrize("method", ["manual", "pip", "docker", "compose"])
+def test_help_epilog_contains_no_secret_bearing_examples(monkeypatch, method):
+    force_install_environment(monkeypatch, dockerenv=method in ("docker", "compose"), compose_env=method == "compose", argv0="spotify_monitor.py" if method != "pip" else "spotify_monitor")
+    epilog = monitor._build_help_epilog()
+    for forbidden in ("--spotify-dc-cookie", " sp_dc", "refresh_token", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", " -u "):
+        assert forbidden not in epilog
