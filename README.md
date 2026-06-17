@@ -5,6 +5,7 @@
   <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=teal" alt="PyPI Version" />
   <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=magenta" alt="GitHub Stars" />
   <img src="https://img.shields.io/badge/python-3.9+-blueviolet?style=flat-square" alt="Python Versions" />
+  <img src="https://img.shields.io/docker/pulls/misiektoja/spotify-monitor?style=flat-square&logo=docker" alt="Docker Pulls" />
   <img src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="License" />
   <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
   <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
@@ -12,9 +13,31 @@
 
 Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
 
-### 🚀 Quick Install
+### 🚀 Quick Install & Run
+
+Python from PyPI
+
 ```sh
 pip install spotify_monitor
+spotify_monitor --setup
+```
+
+Docker Compose
+
+On Linux the bind mount may reject writes from the image user `10001:10001`. If that happens, set `SPOTIFY_MONITOR_UID` and `SPOTIFY_MONITOR_GID` to your host IDs before the first setup command as shown in the [Docker section](#main-application-docker-image).
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
+docker compose run --rm spotify_monitor --setup
+docker compose up
+```
+
+Docker run
+
+```sh
+docker pull misiektoja/spotify-monitor:latest
+docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
 ```
 
 <p align="center">
@@ -173,33 +196,74 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
-Run the guided setup wizard after a PyPI installation:
+<a id="new-here-run-the-setup-wizard"></a>
+### New here? Run the setup wizard
+
+The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want email alerts. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+
+Use the command that matches how you run the tool:
 
 ```sh
+# PyPI install
 spotify_monitor --setup
-```
 
-For a downloaded script use:
-
-```sh
+# Manual Python script
 python3 spotify_monitor.py --setup
+
+# Docker Compose (skip curl if you cloned the repository)
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
+docker compose run --rm spotify_monitor --setup
+
+# Docker image
+docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
 ```
 
-The wizard asks for one Spotify target, recommends browser-based `sp_dc` import, writes non-secret settings to `spotify_monitor.conf` and writes secrets only to `.env`. Existing dotenv comments, blank lines and unrelated values are preserved. Replacing an existing secret requires confirmation and the secret value is never displayed.
+The wizard asks for one Spotify target, recommends browser-based `sp_dc` import, writes non-secret settings to `spotify_monitor.conf` and writes secrets only to `.env`. It also automatically detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation.
 
-Cookie mode is recommended. Firefox import works without an optional dependency. Private manual cookie entry is an advanced fallback that uses a hidden prompt. Client mode remains advanced and accepts the existing Spotify Desktop login and client-token Protobuf exports.
+For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
 
-After saving, the wizard offers the read-only doctor. The doctor may validate Spotify and SMTP authentication but sends no email. A successful local pip or script setup can then start monitoring immediately without putting secrets in process arguments.
+<a id="not-sure-which-command-you-need"></a>
+### Not sure which command you need?
 
-Running Spotify Monitor without arguments shows the same spaced quick-start hierarchy used by its sibling Instagram Monitor project. It presents the quickest configured launch, guided setup, doctor preflight, full help and a direct link to this Quick Start section using commands for the detected installation method. Interactive terminals then offer to start the wizard while noninteractive execution never prompts.
+| I want to... | Run this |
+| --- | --- |
+| Set up Spotify Monitor for the first time | Use the setup command for your installation above |
+| Start monitoring with existing authentication | `spotify_monitor <spotify_user_uri_id>` |
+| Check authentication, connectivity and one target | `spotify_monitor --doctor <spotify_user_uri_id>` |
+| List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
+| Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
+| Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 
-The manual browser import command remains available:
+<a id="manual-commands"></a>
+### Manual commands
+
+If you prefer to configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account you will use for monitoring. Then return to the terminal and import that browser login:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-Follow the user you wish to track as described [here](#following-the-monitored-user).
+If browser import is not available, use the [manual cookie extraction](#manual-cookie-extraction) fallback.
+
+The safe standalone replacement command reads `sp_dc` through a hidden prompt. It validates the cookie with Spotify before atomically updating only `SP_DC_COOKIE`. If validation fails, the dotenv file is left byte-for-byte unchanged. Existing cookie replacement always requires confirmation.
+
+```sh
+# PyPI install
+spotify_monitor --set-sp-dc
+
+# Manual Python script
+python3 spotify_monitor.py --set-sp-dc
+
+# Docker Compose
+docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
+
+# Docker image
+docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+```
+
+`--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
+
+Before monitoring, [follow the Spotify user](#following-the-monitored-user) from the account represented by your configured credentials.
 
 Start monitoring with a raw user ID, Spotify user URI or profile URL. A target saved by the wizard does not need to be repeated:
 
@@ -215,13 +279,16 @@ Or if you installed [manually](#manual-installation):
 python3 spotify_monitor.py <spotify_user_uri_id>
 ```
 
-To get the list of all supported command-line arguments / flags:
+To see all supported command-line arguments and flags:
 
 ```sh
 spotify_monitor --help
 ```
 
-The `--help` output is the source of copy-paste examples for guided setup, Firefox cookie import, normal monitoring, doctor checks and friend listing. The commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installs. Container examples include the required `/data` paths plus a Linux host Firefox mount where appropriate.
+<a id="terminal-output"></a>
+## Terminal Output
+
+The `--help` output provides copy-paste examples for guided setup, private cookie entry, Firefox cookie import, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with `/data/.env` and retain a read-only Linux host Firefox mount as an advanced alternative.
 
 Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
 
@@ -238,13 +305,17 @@ Spotify Monitor normally polls every 30 seconds, so verbose mode is deliberately
 `--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in the concise terminal summary, complete terminal summary, verbose events, debug output or complete log summary.
 
 <a id="main-application-docker-image"></a>
-### Main Application Docker Image
+## Docker
 
 The main application image is [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor). It is separate from the `misiektoja/spotify-secrets-grabber` debugging image documented later. Release publishing builds `linux/amd64` and `linux/arm64` variants. A release tag such as `v3.0` also publishes `3.0`, while published releases update `latest`.
 
 The root `docker-compose.yml` provides the recommended container flow:
 
+On Linux, export your host UID and GID before the first setup command if the current directory is not writable by `10001:10001`. This keeps the image non-root while allowing the `/data` bind mount to receive the generated config, dotenv and output files.
+
 ```sh
+export SPOTIFY_MONITOR_UID="$(id -u)"
+export SPOTIFY_MONITOR_GID="$(id -g)"
 docker compose run --rm spotify_monitor --setup
 docker compose run --rm spotify_monitor --doctor
 docker compose up
@@ -258,6 +329,16 @@ docker compose down
 
 Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
 
+The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:
+
+```sh
+docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
+```
+
+The prompt does not echo `sp_dc`. Spotify validation completes before the existing dotenv file is replaced.
+
+Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.
+
 Setup does not contact SMTP. The doctor can authenticate to SMTP only after you accept its prompt but it never sends email. No port is exposed because Spotify Monitor has no server.
 
 If the wizard does not persist the target, `docker compose up` cannot supply it. Use the direct command printed by setup, which follows this form:
@@ -266,7 +347,7 @@ If the wizard does not persist the target, `docker compose up` cannot supply it.
 docker compose run --rm spotify_monitor <spotify_user_uri_id> --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
-Firefox import from a container needs the host Firefox profile mounted read-only. This is the Linux host example:
+Firefox import is an advanced container alternative. Before importing, open [Spotify Web Player](https://open.spotify.com/) in Firefox on the host and sign in to the Spotify account you will use for monitoring. The container then needs that host Firefox profile mounted read-only. This is the Linux host example:
 
 ```sh
 docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox
@@ -299,7 +380,8 @@ docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --setup
 docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --config-file /data/spotify_monitor.conf
 ```
 
-### Doctor preflight
+<a id="doctor-preflight"></a>
+## Doctor Preflight
 
 Before starting a long monitoring run, use the read-only preflight command:
 
@@ -334,11 +416,13 @@ spotify_monitor --doctor <spotify_user_uri_id> --env-file /path/.env-spotify_mon
 spotify_monitor --doctor <spotify_user_uri_id> --token-source client
 ```
 
-Each failed check includes a `To fix:` action. Cookie authentication failures recommend signing in through Firefox then running:
+Each failed check includes a `To fix:` action. For local cookie authentication failures, open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account used for monitoring. Then run:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox
 ```
+
+Inside Docker or Docker Compose, recovery guidance prefers the hidden `--set-sp-dc` path and also shows the advanced mounted Firefox command.
 
 For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Use `--verbose` for startup settings plus rare operational state changes without per-poll traces. Cookies, tokens, authorization headers and SMTP passwords remain redacted.
 
@@ -406,7 +490,9 @@ If no method is specified, the tool defaults to the `cookie` method.
 
 This is the default method used to obtain a Spotify access token.
 
-Firefox browser import is the recommended onboarding path. It works on macOS, Linux and Windows with no optional dependency:
+Firefox browser import is the recommended onboarding path for local PyPI and downloaded-script installations. It works on macOS, Linux and Windows with no optional dependency. For default Docker and Docker Compose installations, use hidden manual entry with `--set-sp-dc`. Container Firefox import is advanced because it requires a read-only host profile mount.
+
+Before importing, open [Spotify Web Player](https://open.spotify.com/) in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.
 
 ##### Which browsers are supported
 
@@ -454,7 +540,10 @@ spotify_monitor --import-browser-cookie --browser chrome
 
 Chromium profiles support `Default` and `Profile *` directories plus friendly names from Local State. Both modern `<profile>/Network/Cookies` and legacy `<profile>/Cookies` databases are recognized.
 
-Manual extraction is an advanced fallback. Log in to [Spotify Web Player](https://open.spotify.com/) then locate `sp_dc` through browser developer tools or a trusted cookie editor. Store it as `SP_DC_COOKIE` in an environment variable or dotenv file. You can still pass it with `-u` / `--spotify-dc-cookie`, but command-line secrets may be exposed through shell history or process listings.
+<a id="manual-cookie-extraction"></a>
+##### Manual cookie extraction
+
+Manual extraction is an advanced fallback for local installations and the recommended default-container path. Log in to [Spotify Web Player](https://open.spotify.com/) then locate `sp_dc` through browser developer tools or a trusted cookie editor. Run `--set-sp-dc` for your installation and paste the value at its hidden prompt. The command validates it before changing the selected dotenv file. You can still pass it with `-u` or `--spotify-dc-cookie`, but command-line secrets may be exposed through shell history or process listings.
 
 If your `sp_dc` cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new `sp_dc` cookie value.
 
@@ -596,7 +685,7 @@ On **Windows Command Prompt** use `set` instead of `export` and on **Windows Pow
 
 Alternatively store them persistently in a dotenv file (recommended):
 
-Browser import can create or update `.env` with a validated `SP_DC_COOKIE`. If you prefer manual setup copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
+Browser import or `--set-sp-dc` can create or update `.env` with a validated `SP_DC_COOKIE`. If you prefer manual file editing copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
 
 ```sh
 cp .env.example .env
@@ -646,7 +735,7 @@ If you use the default method to obtain a Spotify access token (`cookie`) and ha
 spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
 ```
 
-This manual command-line fallback can expose the cookie through shell history or process listings. Browser import into a dotenv file is recommended instead.
+This manual command-line fallback can expose the cookie through shell history or process listings. Use browser import locally or hidden `--set-sp-dc` entry in a container instead.
 
 **Optional:** If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the `-r` flag:
 
@@ -791,6 +880,8 @@ spotify_monitor <spotify_user_uri_id> -g
 ```
 
 Your Spotify client needs to be installed and running for this feature to work.
+
+Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. A container run prints one warning before monitoring and `--doctor` reports `[WARN]`, but the setting is not disabled automatically.
 
 The tool fully supports automatic playback on **Linux** and **macOS**. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the `SP_USER_GOT_OFFLINE_TRACK_ID` configuration option).
 
@@ -1040,8 +1131,8 @@ See [RELEASE_NOTES.md](https://github.com/misiektoja/spotify_monitor/blob/main/R
 <a id="maintainers"></a>
 ## Maintainers
 
-[![Maintainer: misiektoja](https://img.shields.io/badge/maintainer-misiektoja-blue)](https://github.com/misiektoja)
-[![Maintainer: tomballgithub](https://img.shields.io/badge/maintainer-tomballgithub-blue)](https://github.com/tomballgithub)
+- **misiektoja** ([@misiektoja](https://github.com/misiektoja))
+- **tomballgithub** ([@tomballgithub](https://github.com/tomballgithub))
 
 <a id="license"></a>
 ## License
