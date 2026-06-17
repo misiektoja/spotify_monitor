@@ -32,6 +32,7 @@ def test_http_status_classification_is_context_sensitive(status, context, code):
 def test_cookie_recovery_recommends_firefox_import():
     advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
     assert advice.code == "auth.cookie_invalid"
+    assert monitor.SPOTIFY_WEB_LOGIN_URL in advice.fix
     assert "spotify_monitor --import-browser-cookie --browser firefox" in advice.fix
 
 
