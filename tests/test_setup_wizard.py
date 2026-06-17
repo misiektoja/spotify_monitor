@@ -116,6 +116,10 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         output = capsys.readouterr().out
         assert "cookie-private-value" not in output
         assert "authentication has not been validated" in output
+        assert "Setup Wizard\n\nThis asks a few questions" in output
+        assert "\nSaved files\n\n  Configuration:" in output
+        assert "\nNext steps\n\nCheck setup again:" in output
+        assert monitor.QUICK_START_GUIDE_URL in output
 
 
 # Verifies declining final confirmation leaves both setup destinations unchanged
@@ -403,4 +407,6 @@ def test_noninteractive_setup_is_rejected(monkeypatch, capsys):
     with pytest.raises(SystemExit) as error:
         monitor.run_setup_wizard(config_file="unused.conf", env_file="unused.env")
     assert error.value.code == 1
-    assert "interactive terminal" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "interactive terminal" in output
+    assert monitor.QUICK_START_GUIDE_URL in output
