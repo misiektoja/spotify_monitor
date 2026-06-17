@@ -82,6 +82,20 @@ def test_unknown_error_has_safe_next_step():
     assert "--doctor" in advice.fix
 
 
+# Verifies common onboarding failures link directly to the relevant documentation section
+def test_recovery_guides_target_relevant_documentation():
+    cases = (
+        (monitor.classify_recovery_error(context="config_missing"), monitor.CONFIG_GUIDE_URL),
+        (monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth"), monitor.COOKIE_GUIDE_URL),
+        (monitor.classify_recovery_error(RuntimeError("refresh token expired"), "client_auth"), monitor.CLIENT_GUIDE_URL),
+        (monitor.classify_recovery_error(context="target_not_visible"), monitor.FOLLOWING_GUIDE_URL),
+        (monitor.classify_recovery_error(context="smtp_config"), monitor.SMTP_GUIDE_URL),
+        (monitor.classify_recovery_error(make_http_error(429)), monitor.INTERVALS_GUIDE_URL),
+    )
+    for advice, guide_url in cases:
+        assert f"\n  Guide: {guide_url}" in advice.fix
+
+
 # Verifies complete values and common serialized credentials are redacted
 def test_secret_redaction_covers_values_and_serialized_forms(monkeypatch):
     secret = "FAKE-SECRET-VALUE-123456"
