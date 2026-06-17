@@ -169,7 +169,9 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert error.value.code == 0
         assert import_mock.call_args.kwargs["env_file"] == str(env_path.resolve())
         assert import_mock.call_args.kwargs["browser"] == "firefox"
-        assert "browser-private-value" not in capsys.readouterr().out
+        output = capsys.readouterr().out
+        assert monitor.SPOTIFY_WEB_LOGIN_URL in output
+        assert "browser-private-value" not in output
 
 
 # Verifies browser import failure can finish setup without discarding the generated config
