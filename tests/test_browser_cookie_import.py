@@ -104,7 +104,7 @@ def test_profile_selection_by_directory_basename(tmp_path):
 
 
 # Verifies an explicit cookie database bypasses Firefox profile discovery
-def test_explicit_firefox_cookie_file_takes_precedence(tmp_path, monkeypatch):
+def test_explicit_firefox_cookie_file_takes_precedence(tmp_path, monkeypatch, capsys):
     cookie_file = tmp_path / "explicit.sqlite"
     cookie_file.touch()
     destination = tmp_path / "import.env"
@@ -115,6 +115,7 @@ def test_explicit_firefox_cookie_file_takes_precedence(tmp_path, monkeypatch):
     monitor.run_browser_cookie_import(browser="firefox", browser_profile="ignored", cookie_file=str(cookie_file), env_file=str(destination), interactive=False)
 
     assert dotenv_values(destination, interpolate=False)["SP_DC_COOKIE"] == "secret-cookie"
+    assert monitor.SPOTIFY_WEB_LOGIN_URL in capsys.readouterr().out
 
 
 # Verifies modern Firefox schemas prefer the newest nonexpired Spotify cookie
