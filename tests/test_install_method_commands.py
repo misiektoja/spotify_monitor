@@ -115,7 +115,8 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Guided setup, recommended for the first run
   python3 spotify_monitor.py --setup
 
-  # Import Spotify login from Firefox
+  # Open https://open.spotify.com/ in Firefox and sign in first
+  # Then import Spotify login from Firefox
   python3 spotify_monitor.py --import-browser-cookie --browser firefox
 
   # Monitor one Spotify user
