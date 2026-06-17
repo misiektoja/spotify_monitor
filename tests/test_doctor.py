@@ -72,6 +72,7 @@ def test_report_markers_and_sections(monkeypatch):
         assert section in rendered
     assert "[PASS]" in rendered
     assert "0 failure(s)" in rendered
+    assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
 
 
 # Verifies a clean report returns success
