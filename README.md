@@ -191,7 +191,7 @@ Cookie mode is recommended. Firefox import works without an optional dependency.
 
 After saving, the wizard offers the read-only doctor. The doctor may validate Spotify and SMTP authentication but sends no email. A successful local pip or script setup can then start monitoring immediately without putting secrets in process arguments.
 
-Running Spotify Monitor without arguments in an interactive terminal shows the setup, monitoring and doctor commands for the detected installation method then offers to start the wizard. Noninteractive execution prints a concise usage hint without prompting.
+Running Spotify Monitor without arguments shows the same spaced quick-start hierarchy used by its sibling Instagram Monitor project. It presents the quickest configured launch, guided setup, doctor preflight, full help and a direct link to this Quick Start section using commands for the detected installation method. Interactive terminals then offer to start the wizard while noninteractive execution never prompts.
 
 The manual browser import command remains available:
 
@@ -220,6 +220,22 @@ To get the list of all supported command-line arguments / flags:
 ```sh
 spotify_monitor --help
 ```
+
+The `--help` output is the source of copy-paste examples for guided setup, Firefox cookie import, normal monitoring, doctor checks and friend listing. The commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installs. Container examples include the required `/data` paths plus a Linux host Firefox mount where appropriate.
+
+Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
+
+Normal monitoring shows a concise startup summary led by the target, authentication mode, polling interval, notification state, output destination, config path, dotenv path and metadata backend. Enabled optional features appear only when relevant. When logging is enabled a complete non-secret configuration summary is written once to the log while the terminal remains concise.
+
+Use `--verbose` to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:
+
+```sh
+spotify_monitor <spotify_user_uri_id> --verbose
+```
+
+Spotify Monitor normally polls every 30 seconds, so verbose mode is deliberately event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.
+
+`--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in the concise terminal summary, complete terminal summary, verbose events, debug output or complete log summary.
 
 <a id="main-application-docker-image"></a>
 ### Main Application Docker Image
@@ -324,7 +340,7 @@ Each failed check includes a `To fix:` action. Cookie authentication failures re
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Cookies, tokens, authorization headers and SMTP passwords remain redacted.
+For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Use `--verbose` for startup settings plus rare operational state changes without per-poll traces. Cookies, tokens, authorization headers and SMTP passwords remain redacted.
 
 <a id="configuration"></a>
 ## Configuration
