@@ -20,6 +20,32 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 
 VERSION = "3.0"
 
+PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
+QUICK_START_GUIDE_URL = PROJECT_URL + "#quick-start"
+INSTALLATION_GUIDE_URL = PROJECT_URL + "#installation"
+CONFIG_GUIDE_URL = PROJECT_URL + "#configuration"
+COOKIE_GUIDE_URL = PROJECT_URL + "#spotify-sp_dc-cookie"
+CLIENT_GUIDE_URL = PROJECT_URL + "#spotify-desktop-client"
+TARGET_GUIDE_URL = PROJECT_URL + "#how-to-get-a-friends-user-uri-id"
+FOLLOWING_GUIDE_URL = PROJECT_URL + "#following-the-monitored-user"
+SMTP_GUIDE_URL = PROJECT_URL + "#smtp-settings"
+SECRETS_GUIDE_URL = PROJECT_URL + "#storing-secrets"
+INTERVALS_GUIDE_URL = PROJECT_URL + "#check-intervals"
+DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
+OAUTH_GUIDE_URL = PROJECT_URL + "#spotify-oauth-app"
+
+STARTUP_BANNER = r""" .---------------.    ____              _   _  __
+|  |||  |  ||||  |   / ___| _ __   ___ | |_(_)/ _|_   _
+|  ||| ||| ||||| |   \___ \| '_ \ / _ \| __| | |_| | | |
+|  || |||||| ||| |    ___) | |_) | (_) | |_| |  _| |_| |
+|   |  ||||   |  |   |____/| .__/ \___/ \__|_|_|  \__, |
+ '---------------'         |_|                    |___/
+                      __  __             _ _
+                     |  \/  | ___  _ __ (_) |_ ___  _ __
+                     | |\/| |/ _ \| '_ \| | __/ _ \| '__|
+                     | |  | | (_) | | | | | || (_) | |
+                     |_|  |_|\___/|_| |_|_|\__\___/|_|"""
+
 # ---------------------------
 # CONFIGURATION SECTION START
 # ---------------------------
@@ -271,6 +297,10 @@ DISABLE_LOGGING = False
 # Enable debug mode for technical logging (can also be enabled via --debug flag)
 # Shows request flow, selected params and internal state changes (with sensitive values redacted)
 DEBUG_MODE = False
+
+# Enable verbose operational events and the complete startup summary
+# Shows rare state changes and recoveries without per-poll or debug HTTP noise
+VERBOSE_MODE = False
 
 # Width of horizontal line
 HORIZONTAL_LINE = 113
@@ -551,6 +581,7 @@ FILE_SUFFIX = ""
 SP_LOGFILE = ""
 DISABLE_LOGGING = False
 DEBUG_MODE = False
+VERBOSE_MODE = False
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
@@ -658,7 +689,7 @@ import json
 import os
 import configparser
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import relativedelta
 import calendar
 import requests as req
@@ -688,6 +719,18 @@ from pathlib import Path
 import secrets
 from typing import Any, Callable, List, Optional, Sequence, cast
 from email.utils import parseaddr, parsedate_to_datetime
+
+import urllib3
+if not VERIFY_SSL:
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+SESSION = req.Session()
+
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Cap server-provided Retry-After to avoid long blocking sleeps on 429 responses
+MAX_RETRY_AFTER_SECONDS = 60
 
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
@@ -754,6 +797,22 @@ class DoctorReport:
     authentication_advice: Optional[RecoveryAdvice] = None
 
 
+# Stores one startup setting and its output routing
+@dataclass(frozen=True)
+class StartupSummaryRow:
+    label: str
+    value: str
+    concise: bool = False
+    full: bool = True
+    log: bool = True
+
+
+# Prints the selected ASCII startup banner with a separately aligned version
+def print_startup_banner() -> None:
+    print(STARTUP_BANNER)
+    print(f"{'':21}v{VERSION}\n")
+
+
 # Returns True when a configured value is empty or still uses its shipped placeholder
 def is_missing_or_placeholder(value: Any, placeholders: Sequence[str] = ()) -> bool:
     return not isinstance(value, str) or not value.strip() or value in placeholders
@@ -812,6 +871,11 @@ def make_recovery_advice(code: str, summary: str, fix: str, retryable: bool, det
     return RecoveryAdvice(code, sanitize_error_text(summary), sanitize_error_text(fix), retryable, sanitize_error_text(detail))
 
 
+# Adds a directly relevant documentation link on its own indented line
+def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
+    return f"{fix}\n  Guide: {guide_url}"
+
+
 # Classifies a user-facing failure using typed errors, HTTP status and explicit context
 def classify_recovery_error(error: Any = None, context: str = "runtime", detail: Any = "") -> RecoveryAdvice:
     if isinstance(error, RecoveryError):
@@ -823,86 +887,86 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "browser_import":
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", "Check connectivity then run: spotify_monitor --import-browser-cookie --browser firefox", True, safe_detail)
+            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
-            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", "Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide("Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
             return make_recovery_advice("file.unreadable", safe_detail or "The browser cookie database could not be read", "Close the browser, verify the selected profile or cookie database path then retry", False, safe_detail)
         if any(term in message for term in ("update dotenv", "dotenv destination", "file permissions")):
             return make_recovery_advice("file.unwritable", safe_detail or "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
-        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", "Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", False, safe_detail)
+        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide("Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), False, safe_detail)
 
     if context == "config_missing":
         summary = "The requested configuration file was not found"
         if safe_detail:
             summary += f": {safe_detail.removeprefix('Configuration file not found: ')}"
-        return make_recovery_advice("config.missing", summary, "Verify the --config-file path or generate a new config at that path", False, safe_detail)
+        return make_recovery_advice("config.missing", summary, recovery_fix_with_guide("Verify the --config-file path or generate a new config at that path", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "config_invalid":
-        return make_recovery_advice("config.invalid", "The configuration file could not be loaded", "Correct the reported config line or generate a fresh config at another path then retry", False, safe_detail)
+        return make_recovery_advice("config.invalid", "The configuration file could not be loaded", recovery_fix_with_guide("Correct the reported config line or generate a fresh config at another path then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "dependency":
         dependency = getattr(error, "name", None) or safe_detail or "required package"
-        return make_recovery_advice("dependency.missing", f"A required dependency is missing: {dependency}", "Install the project requirements then retry", False, safe_detail)
+        return make_recovery_advice("dependency.missing", f"A required dependency is missing: {dependency}", recovery_fix_with_guide("Install the project requirements then retry", INSTALLATION_GUIDE_URL), False, safe_detail)
     if context == "secret":
-        return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", "Provide the required secret through a dotenv file, environment variable or supported command-line option", False)
+        return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", recovery_fix_with_guide("Provide the required secret through a dotenv file, environment variable or supported command-line option", SECRETS_GUIDE_URL), False)
     if context == "target_missing":
-        return make_recovery_advice("target.invalid", "No Spotify target was provided", "Provide a positional user ID, spotify:user URI or Spotify profile URL or set TARGET_USER_URI_ID", False)
+        return make_recovery_advice("target.invalid", "No Spotify target was provided", recovery_fix_with_guide("Provide a positional user ID, spotify:user URI or Spotify profile URL or set TARGET_USER_URI_ID", QUICK_START_GUIDE_URL), False)
     if context == "target_invalid":
-        return make_recovery_advice("target.invalid", "Invalid Spotify target", "Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", False, safe_detail)
+        return make_recovery_advice("target.invalid", "Invalid Spotify target", recovery_fix_with_guide("Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", TARGET_GUIDE_URL), False, safe_detail)
     if context == "target_not_visible":
-        return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", "Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity", False, safe_detail)
+        return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide("Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity", FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
         return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
     if context == "file_write":
         return make_recovery_advice("file.unwritable", "An output destination is not writable", "Choose a writable path and verify its parent directory permissions then retry", False, safe_detail)
     if context == "smtp_config":
-        return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", "Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", False, safe_detail)
+        return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
 
     if isinstance(error, smtplib.SMTPAuthenticationError) or status == 535:
-        return make_recovery_advice("smtp.authentication", "SMTP authentication was rejected", "Verify SMTP_USER and SMTP_PASSWORD. Providers such as Gmail may require an app password then run --send-test-email", False, safe_detail)
+        return make_recovery_advice("smtp.authentication", "SMTP authentication was rejected", recovery_fix_with_guide("Verify SMTP_USER and SMTP_PASSWORD. Providers such as Gmail may require an app password then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if isinstance(error, (smtplib.SMTPException, ConnectionError)) and context.startswith("smtp"):
-        return make_recovery_advice("smtp.connection", "The SMTP server connection failed", "Verify SMTP_HOST, SMTP_PORT and SMTP_SSL then run --send-test-email", True, safe_detail)
+        return make_recovery_advice("smtp.connection", "The SMTP server connection failed", recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and SMTP_SSL then run --send-test-email", SMTP_GUIDE_URL), True, safe_detail)
     if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
         code = "smtp.connection" if context.startswith("smtp") else "network.timeout"
         summary = "The SMTP connection timed out" if context.startswith("smtp") else "The Spotify request timed out"
-        fix = "Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email" if context.startswith("smtp") else "Check connectivity and retry. If timeouts continue run --doctor --debug"
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else "Check connectivity and retry. If timeouts continue run --doctor --debug"
         return make_recovery_advice(code, summary, fix, True, safe_detail)
     if isinstance(error, req.exceptions.SSLError) or any(term in message for term in ("certificate verify failed", "tls", "ssl error")):
         if context.startswith("smtp"):
-            return make_recovery_advice("smtp.connection", "A secure SMTP connection could not be established", "Verify SMTP_HOST, SMTP_PORT and SMTP_SSL plus the system CA certificates then run --send-test-email", True, safe_detail)
+            return make_recovery_advice("smtp.connection", "A secure SMTP connection could not be established", recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and SMTP_SSL plus the system CA certificates then run --send-test-email", SMTP_GUIDE_URL), True, safe_detail)
         return make_recovery_advice("network.unavailable", "A secure connection to Spotify could not be established", "Check the system clock, CA certificates, firewall and TLS-inspecting proxy settings then retry", True, safe_detail)
     if isinstance(error, (req.ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
         code = "smtp.connection" if context.startswith("smtp") else "network.unavailable"
         summary = "The SMTP server could not be reached" if context.startswith("smtp") else "Spotify could not be reached"
-        fix = "Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email" if context.startswith("smtp") else "Check DNS, internet access, firewall and proxy settings then retry"
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else "Check DNS, internet access, firewall and proxy settings then retry"
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
-        return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", "Wait before retrying and increase -c or --check-interval to reduce request frequency", True, safe_detail)
+        return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide("Wait before retrying and increase -c or --check-interval to reduce request frequency", INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
         return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", "Wait and retry later. Run --doctor if the failure continues", True, safe_detail)
     if status == 404 and context.startswith("target"):
-        return make_recovery_advice("target.not_found", "The Spotify target was not found", "Check the target ID, URI or profile URL then retry", False, safe_detail)
+        return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
         if context.startswith("cookie"):
-            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", "Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide("Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), False, safe_detail)
         if context.startswith("client"):
-            return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", "Re-export the Spotify desktop login request and follow the Spotify Desktop Client documentation", False, safe_detail)
+            return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", recovery_fix_with_guide("Re-export the Spotify Desktop Client login request", CLIENT_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected authentication", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if status == 403 and context == "metadata":
-        return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", "Remove incompatible legacy OAuth credentials and use the automatic web-player metadata fallback", False, safe_detail)
+        return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("Remove incompatible legacy OAuth credentials and use the automatic web-player metadata fallback", OAUTH_GUIDE_URL), False, safe_detail)
     if status == 403:
         return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated request", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if context.startswith("cookie") and any(term in message for term in ("sp_dc", "unsuccessful token request", "valid spotify access token", "access token after")):
-        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", "Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", False, safe_detail)
+        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide("Sign in to Spotify in Firefox then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), False, safe_detail)
     if context.startswith("client") and any(term in message for term in ("refresh token", "client token", "invalid grant", "access token not found")):
-        return make_recovery_advice("auth.client_invalid", "The Spotify desktop client credentials are invalid or expired", "Re-export the relevant Spotify desktop login or client-token request and follow the Spotify Desktop Client documentation", False, safe_detail)
+        return make_recovery_advice("auth.client_invalid", "The Spotify desktop client credentials are invalid or expired", recovery_fix_with_guide("Re-export the relevant Spotify Desktop Client login or client-token request", CLIENT_GUIDE_URL), False, safe_detail)
     if isinstance(error, ModuleNotFoundError):
         return classify_recovery_error(error, "dependency", safe_detail)
     if isinstance(error, FileNotFoundError):
         return classify_recovery_error(error, "file_read", safe_detail)
     if isinstance(error, (PermissionError, OSError)) and context.startswith("file"):
         return classify_recovery_error(error, context, safe_detail)
-    return make_recovery_advice("unknown", "An unexpected error occurred", "Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail", True, safe_detail)
+    return make_recovery_advice("unknown", "An unexpected error occurred", recovery_fix_with_guide("Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail", DOCTOR_GUIDE_URL), True, safe_detail)
 
 
 # Renders structured recovery advice without exposing secret-bearing exception text
@@ -1595,18 +1659,6 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
         print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
     return str(destination)
 
-import urllib3
-if not VERIFY_SSL:
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-SESSION = req.Session()
-
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-# Cap server-provided Retry-After to avoid long blocking sleeps on 429 responses
-MAX_RETRY_AFTER_SECONDS = 60
-
 
 class CappedRetry(Retry):
     def get_retry_after(self, response):
@@ -1676,8 +1728,19 @@ class Logger(object):
         self.terminal.flush()
         self.logfile.flush()
 
+    def terminal_only(self, message):
+        if TRUNCATE_CHARS:
+            message = truncate_string_per_line(message, TRUNCATE_CHARS)
+        self.terminal.write(message)
+        self.terminal.flush()
+
+    def log_only(self, message):
+        self.logfile.write(message.expandtabs(8))
+        self.logfile.flush()
+
     def flush(self):
-        pass
+        self.terminal.flush()
+        self.logfile.flush()
 
 
 def flag_file_create():
@@ -2007,6 +2070,37 @@ def get_date_from_ts(ts):
         return ""
 
     return (f'{calendar.day_abbr[(datetime.fromtimestamp(ts_new)).weekday()]} {datetime.fromtimestamp(ts_new).strftime("%d %b %Y, %H:%M:%S")}')
+
+
+# Prints one sanitized operational event only when verbose mode is enabled
+def verbose_print(message: Any) -> None:
+    if VERBOSE_MODE:
+        print(f"* {sanitize_error_text(message)}")
+
+
+# Logs the start of one monitoring poll only when debug mode is enabled
+def debug_monitor_check_start(check_number: int, user: str, started_at: Optional[datetime] = None) -> datetime:
+    check_started_at = started_at or datetime.now()
+    debug_print(f"Starting check #{check_number} for {user}")
+    return check_started_at
+
+
+# Logs one completed poll plus its last and next timing details in debug mode
+def debug_monitor_check_timing(check_number: int, user: str, started_at: datetime, sleep_time: int, completed_at: Optional[datetime] = None) -> None:
+    if not DEBUG_MODE:
+        return
+    check_completed_at = completed_at or datetime.now()
+    next_check = check_completed_at + timedelta(seconds=sleep_time)
+    debug_print(f"Check #{check_number} completed for {user}, last={get_date_from_ts(started_at)}, next={get_date_from_ts(next_check)}, interval={display_time(sleep_time)}")
+
+
+# Logs the exact time of a scheduled target visibility retry in debug mode
+def debug_monitor_wait_timing(user: str, sleep_time: int, current_time: Optional[datetime] = None) -> None:
+    if not DEBUG_MODE:
+        return
+    now = current_time or datetime.now()
+    next_check = now + timedelta(seconds=sleep_time)
+    debug_print(f"Next visibility check for {user}: {get_date_from_ts(next_check)}, interval={display_time(sleep_time)}")
 
 
 # Returns the timestamp/datetime object in human readable format (short version); eg.
@@ -2643,6 +2737,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 time.sleep(TOKEN_RETRY_TIMEOUT)
             else:
                 debug_print(f"Spotify access token obtained successfully, length={length}")
+                verbose_print("Authentication token refreshed (cookie mode)")
                 break
         except Exception as e:
             last_error = str(e)
@@ -3086,6 +3181,7 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
     SP_CACHED_ACCESS_TOKEN = access_token
     SP_CACHED_REFRESH_TOKEN = parsed[1].get(3)
     SP_ACCESS_TOKEN_EXPIRES_AT = time.time() + expires_in
+    verbose_print("Authentication token refreshed (advanced client mode)")
     return access_token
 
 
@@ -3146,6 +3242,7 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
     SP_CACHED_CLIENT_TOKEN = client_token
     SP_CLIENT_TOKEN_EXPIRES_AT = time.time() + ttl
     debug_print(f"Client token refreshed successfully, ttl={ttl}s")
+    verbose_print("Spotify client token refreshed")
 
     return client_token
 
@@ -3234,6 +3331,7 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
 
     SP_CACHED_OAUTH_APP_TOKEN = auth_manager.get_access_token(as_dict=False)
     debug_print("OAuth app access token refreshed successfully")
+    verbose_print("Legacy OAuth metadata token refreshed")
 
     return SP_CACHED_OAUTH_APP_TOKEN
 
@@ -3394,6 +3492,90 @@ def spotify_get_metadata_backend_description():
     return "automatic (legacy Web API + web player)"
 
 
+# Returns enabled email notification category names in display order
+def _startup_notification_categories() -> List[str]:
+    settings = (
+        (ACTIVE_NOTIFICATION, "active"),
+        (INACTIVE_NOTIFICATION, "inactive"),
+        (TRACK_NOTIFICATION, "monitored tracks"),
+        (SONG_NOTIFICATION, "every song"),
+        (SONG_ON_LOOP_NOTIFICATION, "songs on loop"),
+        (ERROR_NOTIFICATION, "errors"),
+    )
+    return [label for enabled, label in settings if enabled]
+
+
+# Builds the concise and complete non-secret startup summary rows
+def build_startup_summary(target: str, config_path, env_path, output_path) -> List[StartupSummaryRow]:
+    authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
+    enabled_notifications = _startup_notification_categories()
+    notification_state = "Off" if not enabled_notifications else "On (" + ", ".join(enabled_notifications) + ")"
+    output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
+    rows = [
+        StartupSummaryRow("Target", str(target), concise=True),
+        StartupSummaryRow("Authentication", authentication, concise=True),
+        StartupSummaryRow("Token source", TOKEN_SOURCE, concise=False),
+        StartupSummaryRow("Polling interval", display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
+        StartupSummaryRow("Inactivity timer", display_time(SPOTIFY_INACTIVITY_CHECK), concise=False),
+        StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
+        StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
+        StartupSummaryRow("Notifications", notification_state, concise=True, full=False, log=False),
+        StartupSummaryRow("Notify active", str(ACTIVE_NOTIFICATION), concise=False),
+        StartupSummaryRow("Notify inactive", str(INACTIVE_NOTIFICATION), concise=False),
+        StartupSummaryRow("Notify monitored tracks", str(TRACK_NOTIFICATION), concise=False),
+        StartupSummaryRow("Notify every song", str(SONG_NOTIFICATION), concise=False),
+        StartupSummaryRow("Notify songs on loop", str(SONG_ON_LOOP_NOTIFICATION), concise=False),
+        StartupSummaryRow("Notify errors", str(ERROR_NOTIFICATION), concise=False),
+        StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
+        StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
+        StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
+        StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
+        StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
+        StartupSummaryRow("Spotify playback control", str(TRACK_SONGS), concise=bool(TRACK_SONGS)),
+        StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
+        StartupSummaryRow("CSV output", CSV_FILE or "Disabled", concise=bool(CSV_FILE)),
+        StartupSummaryRow("Monitored-track alerts", MONITOR_LIST_FILE or "Disabled", concise=bool(MONITOR_LIST_FILE)),
+        StartupSummaryRow("Flag file", FLAG_FILE or "None", concise=bool(FLAG_FILE)),
+        StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
+        StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
+    ]
+    if spotify_has_oauth_app_credentials():
+        oauth_cache = SP_APP_TOKENS_FILE or "None (memory only)"
+        rows.append(StartupSummaryRow("Legacy OAuth cache", oauth_cache, concise=True))
+    else:
+        rows.append(StartupSummaryRow("Legacy OAuth cache", "Not used", concise=False))
+    rows.append(StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False))
+    return rows
+
+
+# Formats one startup summary row with aligned plain ASCII columns
+def _format_startup_summary_row(row: StartupSummaryRow) -> str:
+    return f"* {(row.label + ':'):<27}{row.value}\n"
+
+
+# Routes concise or complete startup rows independently to terminal and log destinations
+def emit_startup_summary(rows: Sequence[StartupSummaryRow], show_full: bool, stream=None) -> None:
+    destination: Any = stream or sys.stdout
+    routed = hasattr(destination, "terminal_only") and hasattr(destination, "log_only")
+    for row in rows:
+        line = _format_startup_summary_row(row)
+        if routed and row.full and row.log:
+            destination.log_only(line)
+        show_in_terminal = row.full if show_full else row.concise
+        if show_in_terminal:
+            if routed:
+                destination.terminal_only(line)
+            else:
+                destination.write(line)
+    if routed:
+        destination.log_only("\n")
+        destination.terminal_only("\n")
+    else:
+        destination.write("\n")
+        destination.flush()
+
+
 # Returns a cached or freshly generated anonymous Spotify web-player token
 def spotify_get_web_access_token_data():
     global SP_CACHED_WEB_ACCESS_TOKEN, SP_WEB_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_WEB_CLIENT_ID
@@ -3414,6 +3596,7 @@ def spotify_get_web_access_token_data():
     SP_WEB_ACCESS_TOKEN_EXPIRES_AT = expires_at
     SP_CACHED_WEB_CLIENT_ID = client_id
     debug_print(f"Anonymous Spotify web-player token obtained successfully, token_len={len(access_token)}")
+    verbose_print("Web-player metadata token refreshed")
     return {"access_token": access_token, "expires_at": expires_at, "client_id": client_id}
 
 
@@ -3648,6 +3831,7 @@ def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
             if spotify_get_error_status_code(error) in {403, 404}:
                 SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
                 debug_print("spotify_get_playlist_owner(): restricted Web API response, preferring the web-player backend for remaining playlists")
+                verbose_print("Playlist metadata switched to the web-player backend after a restricted legacy API response")
             else:
                 debug_print(f"spotify_get_playlist_owner(): legacy Web API backend failed for uri={playlist_uri}: {error}")
 
@@ -3706,6 +3890,7 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
             if spotify_get_error_status_code(error) == 403:
                 SP_WEB_TRACK_BACKEND_PREFERRED = True
                 debug_print("spotify_get_track_info(): Web API returned 403, preferring the web-player backend for remaining tracks")
+                verbose_print("Track metadata switched to the web-player backend after a restricted legacy API response")
             else:
                 debug_print(f"spotify_get_track_info(): legacy Web API backend failed for uri={track_uri}: {error}")
 
@@ -3873,6 +4058,7 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
             for item in details[1:]:
                 print(f"* {item}")
             print("To fix: Correct the line and matching quotes. For Windows paths use forward slashes or doubled backslashes then retry.")
+            print(f"Guide: {CONFIG_GUIDE_URL}")
         return False
     except UnicodeDecodeError as exc:
         advice = classify_recovery_error(exc, "config_invalid", f"Config file '{config_path}' is not valid UTF-8")
@@ -3881,6 +4067,7 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
         if report_errors:
             print(f"* Error: Config file '{config_path}' is not valid UTF-8")
             print("To fix: Save the file as UTF-8 then retry.")
+            print(f"Guide: {CONFIG_GUIDE_URL}")
         return False
     except Exception as exc:
         advice = classify_recovery_error(exc, "config_invalid", f"Config file '{config_path}' failed with {type(exc).__name__}: {exc}")
@@ -4169,7 +4356,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = [f"Spotify Monitor v{VERSION} - Doctor", "", "Read-only preflight. No email will be sent and no files will be written."]
+    lines = ["Doctor", "", "Read-only preflight. No email will be sent and no files will be written."]
     sections = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
     for section in sections:
         lines.extend(("", section))
@@ -4184,7 +4371,7 @@ def render_doctor_report(report: DoctorReport) -> str:
                 lines.append(f"  To fix: {rendered_advice.fix}")
     failures = sum(check.status == "FAIL" for check in report.checks)
     warnings = sum(check.status == "WARN" for check in report.checks)
-    lines.extend(("", "Summary", f"{failures} failure(s), {warnings} warning(s)"))
+    lines.extend(("", "Summary", f"{failures} failure(s), {warnings} warning(s)", "", f"Guide: {DOCTOR_GUIDE_URL}"))
     return sanitize_error_text("\n".join(lines))
 
 
@@ -4236,6 +4423,12 @@ def _wizard_cmd_prefix(method: str) -> str:
     return "spotify_monitor"
 
 
+# Prints one labelled command with sibling-style indentation and spacing
+def _wizard_print_command(label: str, command: str, suffix: str = "") -> None:
+    print(label)
+    print(f"    {command}{suffix}\n")
+
+
 # Converts a wizard destination into the matching path inside the /data container mount
 def _wizard_container_path(path) -> str:
     resolved = Path(path).expanduser().resolve()
@@ -4271,6 +4464,39 @@ def _wizard_firefox_import_cmd(method: str, env_path=None) -> str:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
         command += f" --env-file {shlex.quote(selected_env)}"
     return command
+
+
+# Builds install-aware examples for argparse help output
+def _build_help_epilog() -> str:
+    method = _wizard_install_method()
+    prefix = _wizard_cmd_prefix(method)
+    firefox_note = "\n  # Linux host example with a read-only Firefox profile mount" if method in ("docker", "compose") else ""
+    protobuf_file = "/data/login.protobuf" if method in ("docker", "compose") else "<protobuf_file>"
+    sections = [
+        "Examples:",
+        "  # Guided setup, recommended for the first run",
+        f"  {prefix} --setup",
+        "",
+        "  # Import Spotify login from Firefox" + firefox_note,
+        f"  {_wizard_firefox_import_cmd(method)}",
+        "",
+        "  # Monitor one Spotify user",
+        "  # A spotify:user URI or profile URL is also accepted",
+        f"  {prefix} <spotify_user_id>",
+        "",
+        "  # Check authentication, connectivity and one target",
+        f"  {prefix} --doctor <spotify_user_id>",
+        "",
+        "  # List friends visible to the configured Spotify account",
+        f"  {prefix} --list-friends",
+        "",
+        "  # Advanced Spotify desktop client mode",
+        f"  {prefix} <spotify_user_id> --token-source client --login-request-body-file {protobuf_file}",
+    ]
+    if method == "compose":
+        sections.extend(("", "  # Start from the target saved by setup", "  docker compose up"))
+    sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
+    return "\n".join(sections) + "\n"
 
 
 # Lists browsers supported by the setup wizard in the active environment
@@ -4509,7 +4735,8 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
 
 # Collects advanced client-mode Protobuf values through read-only parsers
 def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_updates: dict) -> dict:
-    print("Client mode is advanced. Follow the Spotify Desktop Client export instructions in README.md.")
+    print("Client mode is advanced.")
+    print(f"Guide: {CLIENT_GUIDE_URL}\n")
     result = {"complete": False, "validated": False, "browser": None, "source": "advanced client mode without credentials"}
     if not _wizard_ask_yes_no("Use an exported login request Protobuf file?", default=True):
         return result
@@ -4606,23 +4833,23 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path) -> dict:
 def _wizard_welcome() -> None:
     method = _wizard_install_method()
     prefix = _wizard_cmd_prefix(method)
-    if not sys.stdin.isatty():
-        print(f"Usage: {prefix} <spotify_user_id> or {prefix} --doctor")
-        print(f"Guided setup requires an interactive terminal: {prefix} --setup")
-        raise SystemExit(1)
-    print("Welcome to Spotify Monitor.")
-    print(f"Guided setup: {prefix} --setup")
-    print(f"Monitor:      {prefix} <spotify_user_id>")
-    print(f"Doctor:       {prefix} --doctor")
-    if _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
+    interactive = sys.stdin.isatty()
+    _wizard_print_command("Quickest start (already configured):", f"{prefix} <spotify_user_id>")
+    setup_suffix = "   (or just answer Y below)" if interactive else ""
+    _wizard_print_command("Easiest start (guided setup wizard):", f"{prefix} --setup", setup_suffix)
+    _wizard_print_command("Check setup before monitoring:", f"{prefix} --doctor <spotify_user_id>")
+    print(f"Full options: {prefix} --help")
+    print(f"\nGuide:        {QUICK_START_GUIDE_URL}\n")
+    if interactive and _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
         run_setup_wizard()
 
 
 # Runs the interactive Phase 4 wizard and persists confirmed settings through safe writers
 def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env_file=None) -> None:
     if not sys.stdin.isatty():
-        print("The setup wizard requires an interactive terminal (TTY).")
+        print("The setup wizard needs an interactive terminal (TTY).")
         print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
+        print(f"Guide: {QUICK_START_GUIDE_URL}")
         raise SystemExit(1)
     try:
         config_path, env_path = _wizard_destinations(config_file, env_file)
@@ -4630,19 +4857,21 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print(f"Setup cannot start: {exc}")
         raise SystemExit(1) from None
     method = _wizard_install_method()
-    print(f"\nSpotify Monitor v{VERSION} - Setup Wizard\n")
-    print("Enter accepts the shown default. Ctrl+C cancels.")
+    print("\nSetup Wizard\n")
+    print("This asks a few questions and writes a ready-to-run configuration.")
+    print("Press Enter to accept the shown default. Ctrl+C cancels.\n")
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
     print("Cookie mode is recommended. Client mode is advanced.\n")
-    print(f"Config destination: {config_path}")
-    print(f"Dotenv destination: {env_path}")
-    print(f"Detected install method: {method}\n")
+    print(f"Detected install method: {method}")
+    print(f"Configuration:          {config_path}")
+    print(f"Dotenv:                 {env_path}\n")
     config_path = _wizard_choose_config_destination(config_path)
     target = _wizard_target(initial_target)
     persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=True)
     config_values = dict(globals())
     config_values["TARGET_USER_URI_ID"] = target if persist_target else ""
     secret_updates = {}
+    print()
     auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", "Browser import is the recommended onboarding path."), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
     if auth_mode == 0:
         config_values["TOKEN_SOURCE"] = "cookie"
@@ -4650,9 +4879,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     else:
         config_values["TOKEN_SOURCE"] = "client"
         auth = _wizard_collect_client_auth(config_values, env_path, secret_updates)
+    print()
     config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", SPOTIFY_CHECK_INTERVAL)
+    print()
     enabled_notifications = _wizard_collect_email(config_values, secret_updates, env_path)
-    print("\nSetup summary")
+    print("\nSetup summary\n")
     print(f"  Target: {target}")
     print(f"  Persist target: {'yes' if persist_target else 'no'}")
     print(f"  Token source: {auth['source']}")
@@ -4673,26 +4904,23 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     except Exception:
         print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
         raise SystemExit(1) from None
-    print(f"Configuration saved to: {write_status['path']}")
+    print("\nSaved files\n")
+    print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
-        print(f"Configuration backup saved to: {write_status['backup_path']}")
+        print(f"  Backup:        {write_status['backup_path']}")
     if secret_updates:
         try:
             update_status = update_dotenv_file(env_path, secret_updates)
-            print(f"Secret keys saved to: {update_status['path']}")
+            print(f"  Secrets:       {update_status['path']}")
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
     if auth.get("browser") and method not in ("docker", "compose"):
         auth = _wizard_finish_browser_import(auth, env_path)
-    elif auth.get("browser"):
-        print("Authentication still needs a host-side Firefox import.")
-        print("Linux host example:")
-        print(f"  {_wizard_firefox_import_cmd(method, env_path)}")
-        print("On macOS use the matching host Firefox profile path. On Windows import through Firefox on the host then use the generated dotenv file.")
     doctor_failed = False
     doctor_ran = False
+    print()
     if _wizard_ask_yes_no("Run the read-only doctor now?", default=True):
         doctor_ran = True
         if _wizard_load_effective_setup(config_path, env_path):
@@ -4707,18 +4935,22 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target)
     monitor_target = None if persist_target else target
     monitor_command = _wizard_action_command(method, "", config_path, env_path, monitor_target)
-    print(f"\nRun doctor again with:\n  {doctor_command}")
+    print("\nNext steps\n")
+    _wizard_print_command("Check setup again:", doctor_command)
     if not auth["complete"]:
         print("Setup was saved but authentication is incomplete.")
-        print(f"Import Firefox later with:\n  {_wizard_firefox_import_cmd(method, env_path)}")
+        import_label = "Import Spotify login from Firefox (Linux host example):" if method in ("docker", "compose") else "Import Spotify login from Firefox:"
+        _wizard_print_command(import_label, _wizard_firefox_import_cmd(method, env_path))
+        print(f"Cookie guide: {COOKIE_GUIDE_URL}\n")
     if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
-        print("Start monitoring with:\n  docker compose up")
+        _wizard_print_command("Start monitoring:", "docker compose up")
     else:
         if method == "compose" and not persist_target:
             print("docker compose up requires a persisted target. Use this direct command instead:")
         else:
-            print("Start monitoring with:")
-        print(f"  {monitor_command}")
+            print("Start monitoring:")
+        print(f"    {monitor_command}\n")
+    print(f"Guide: {QUICK_START_GUIDE_URL}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
     if local_ready and _wizard_ask_yes_no("Start monitoring now?", default=True):
         exec_args = [sys.executable, str(Path(__file__).resolve())]
@@ -4757,6 +4989,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     error_network_issue_start_ts = 0
     sp_accessToken = ""
     recovery_hint_tracker = RecoveryHintTracker()
+    transient_request_failure_active = False
 
     try:
         if csv_file_name:
@@ -5021,9 +5254,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             disappeared_counter = 0
 
             playlist_suffix = ""
+            check_count = 0
 
             # Primary loop
             while True:
+                check_count += 1
+                check_started_at = debug_monitor_check_start(check_count, user_uri_id)
 
                 while True:
                     # Sometimes Spotify network functions halt even though we specified the timeout
@@ -5039,6 +5275,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         sp_friends = spotify_get_friends_json(sp_accessToken)
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
+                        if transient_request_failure_active:
+                            verbose_print("Spotify requests recovered after a transient failure")
+                            transient_request_failure_active = False
                         recovery_hint_tracker.reset()
                         email_sent = False
                         if platform.system() != 'Windows':
@@ -5056,6 +5295,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
                         advice = classify_recovery_error(e, auth_context)
+
+                        if (advice.code in ("spotify.unavailable", "network.unavailable", "network.timeout", "spotify.rate_limited") or str(e) == '') and not transient_request_failure_active:
+                            verbose_print(f"{advice.summary}. Automatic retries are active")
+                            transient_request_failure_active = True
 
                         if TOKEN_SOURCE == 'cookie' and advice.code in ("auth.cookie_invalid", "auth.rejected"):
                             SP_CACHED_ACCESS_TOKEN = None
@@ -5115,7 +5358,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 if sp_found is False:
                     # User has disappeared from the Spotify's friend list or account has been removed
                     disappeared_counter += 1
+                    if disappeared_counter == 1:
+                        verbose_print(f"Target {user_uri_id} was absent from one buddy-list response. Waiting for confirmation before reporting disappearance")
                     if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
+                        debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                         time.sleep(SPOTIFY_CHECK_INTERVAL)
                         continue
                     if user_not_found is False:
@@ -5143,11 +5389,15 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 send_email(m_subject, m_body, m_body_html, SMTP_SSL)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
+                    debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
                     time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
                     continue
                 else:
                     # User reappeared in the Spotify's friend list
+                    transient_visibility_misses = disappeared_counter
                     disappeared_counter = 0
+                    if transient_visibility_misses and user_not_found is False:
+                        verbose_print("Target visibility recovered before disappearance was confirmed")
                     if user_not_found is True:
                         print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
                         if ERROR_NOTIFICATION:
@@ -5586,9 +5836,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_cur_ts("\nTimestamp:\t\t\t")
 
                     if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
+                        verbose_print(f"Monitoring healthy for {user_uri_id}. Target remains visible with no activity change")
                         print_cur_ts("Liveness check, timestamp:\t")
                         alive_counter = 0
 
+                debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
 
                 ERROR_500_ZERO_TIME_LIMIT = ERROR_500_TIME_LIMIT + SPOTIFY_CHECK_INTERVAL
@@ -5622,12 +5874,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"  To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
+            debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
             continue
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -5659,13 +5912,14 @@ def main():
 
     stdout_bck = sys.stdout
 
-    clear_screen(CLEAR_SCREEN)
+    clear_screen(CLEAR_SCREEN and sys.stdout.isatty())
 
-    print(f"Spotify Monitoring Tool v{VERSION}\n")
+    print_startup_banner()
 
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
-        description=("Monitor a Spotify friend's activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter
+        description=("Monitor a Spotify friend's activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
+        epilog=_build_help_epilog()
     )
 
     # Positional
@@ -5933,6 +6187,13 @@ def main():
         help="Enable debug mode for technical logging"
     )
     opts.add_argument(
+        "--verbose",
+        dest="verbose_mode",
+        action="store_true",
+        default=None,
+        help="Show rare operational events plus the complete startup summary"
+    )
+    opts.add_argument(
         "--truncate",
         dest="truncate",
         metavar="N",
@@ -5944,7 +6205,7 @@ def main():
 
     if len(sys.argv) == 1:
         _wizard_welcome()
-        sys.exit(0)
+        sys.exit(0 if sys.stdin.isatty() else 1)
 
     if args.setup:
         setup_conflicts = []
@@ -5971,7 +6232,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -6056,6 +6317,9 @@ def main():
 
     if args.debug_mode is not None:
         DEBUG_MODE = args.debug_mode
+
+    if args.verbose_mode is not None:
+        VERBOSE_MODE = args.verbose_mode
 
     if args.env_file:
         DOTENV_FILE = os.path.expanduser(args.env_file)
@@ -6468,24 +6732,8 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = False
         ERROR_NOTIFICATION = False
 
-    print(f"* Spotify polling intervals:\t[check: {display_time(SPOTIFY_CHECK_INTERVAL)}] [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]\n*\t\t\t\t[disappeared: {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}] [error: {display_time(SPOTIFY_ERROR_INTERVAL)}]")
-    print(f"* Email notifications:\t\t[active = {ACTIVE_NOTIFICATION}] [inactive = {INACTIVE_NOTIFICATION}] [tracked = {TRACK_NOTIFICATION}]\n*\t\t\t\t[songs on loop = {SONG_ON_LOOP_NOTIFICATION}] [every song = {SONG_NOTIFICATION}] [errors = {ERROR_NOTIFICATION}]")
-    print(f"* Token source:\t\t\t{TOKEN_SOURCE}")
-    print(f"* Metadata backend:\t\t{spotify_get_metadata_backend_description()}")
-    print(f"* Track listened songs:\t\t{TRACK_SONGS}")
-    # print(f"* User agent:\t\t\t{USER_AGENT}")
-    print(f"* Liveness check:\t\t{bool(LIVENESS_CHECK_INTERVAL)}" + (f" ({display_time(LIVENESS_CHECK_INTERVAL)})" if LIVENESS_CHECK_INTERVAL else ""))
-    print(f"* CSV logging enabled:\t\t{bool(CSV_FILE)}" + (f" ({CSV_FILE})" if CSV_FILE else ""))
-    print(f"* Alert on monitored tracks:\t{bool(MONITOR_LIST_FILE)}" + (f" ({MONITOR_LIST_FILE})" if MONITOR_LIST_FILE else ""))
-    print(f"* Output logging enabled:\t{not DISABLE_LOGGING}" + (f" ({FINAL_LOG_PATH})" if not DISABLE_LOGGING else ""))
-    print(f"* Debug mode:\t\t\t{DEBUG_MODE}")
-    if not DISABLE_LOGGING and TRUNCATE_CHARS > 0:
-        print(f"* Truncate terminal lines:\t{TRUNCATE_CHARS} chars")
-    print(f"* Spotify OAuth cache file:\t{SP_APP_TOKENS_FILE if SP_APP_TOKENS_FILE else 'None (memory only)'}")
-    if FLAG_FILE:
-        print(f"* Flag file:\t\t\t{FLAG_FILE}")
-    print(f"* Configuration file:\t\t{cfg_path}")
-    print(f"* Dotenv file:\t\t\t{env_path or 'None'}\n")
+    startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH)
+    emit_startup_summary(startup_rows, show_full=bool(VERBOSE_MODE or DEBUG_MODE))
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
