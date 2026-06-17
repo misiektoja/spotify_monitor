@@ -89,6 +89,8 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_CACHED_OAUTH_APP_TOKEN = None
         monitor.SPOTIPY_AVAILABLE = None
         monitor.SPOTIPY_IMPORT_WARNING_SHOWN = False
+        monitor.VERBOSE_MODE = False
+        monitor.DEBUG_MODE = False
 
     # Verifies the embedded v61 cipher generates the expected TOTP
     def test_generates_expected_v61_totp(self):
@@ -134,7 +136,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         source = f"module = runpy.run_path({str(CLI_PATH)!r}, run_name='spotify_monitor_runtime_test'); runtime = module['main'].__globals__; runtime['sys'].argv = {argv!r}; runtime['CLEAR_SCREEN'] = False; runtime['find_config_file'] = lambda path: None; runtime['check_internet'] = lambda: True; runtime['spotify_monitor_friend_uri'] = lambda *args, **kwargs: None; runtime['signal'].signal = lambda *args, **kwargs: None; module['main']()"
         result = run_isolated(source)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("* Metadata backend:\t\tweb player", result.stdout)
+        self.assertRegex(result.stdout, r"\* Metadata backend:\s+web player")
         self.assertNotIn("Spotipy is unavailable", result.stdout)
 
     # Verifies a missing Spotipy dependency returns no token and warns only once
@@ -213,7 +215,8 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies one track 403 switches current and later requests to Pathfinder
     def test_track_403_falls_back_and_caches_backend_decision(self):
         normalized = monitor.spotify_normalize_web_track(web_track_fixture())
-        with patch.object(monitor, "_spotify_get_track_info_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web:
+        output = io.StringIO()
+        with patch.object(monitor, "_spotify_get_track_info_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
             first = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
             second = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
         self.assertEqual(first, normalized)
@@ -221,11 +224,13 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(legacy.call_count, 1)
         self.assertEqual(web.call_count, 2)
         self.assertTrue(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+        self.assertEqual(output.getvalue().count("Track metadata switched to the web-player backend"), 1)
 
     # Verifies one playlist 403 switches current and later requests to Pathfinder
     def test_playlist_403_falls_back_and_caches_backend_decision(self):
         normalized = monitor.spotify_normalize_web_playlist(web_playlist_fixture())
-        with patch.object(monitor, "_spotify_get_playlist_owner_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web:
+        output = io.StringIO()
+        with patch.object(monitor, "_spotify_get_playlist_owner_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
             first = monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
             second = monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(first, "Agnes Hali")
@@ -233,6 +238,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(legacy.call_count, 1)
         self.assertEqual(web.call_count, 2)
         self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
+        self.assertEqual(output.getvalue().count("Playlist metadata switched to the web-player backend"), 1)
 
     # Verifies cookie mode without app credentials goes directly to the web backend
     def test_missing_oauth_credentials_uses_web_backend(self):
@@ -269,11 +275,13 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies anonymous token data is reused until its expiration window
     def test_anonymous_token_caching(self):
         token_data = {"access_token": "anonymous-token", "expires_at": int(time.time()) + 3600, "client_id": "web-client"}
-        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh:
+        output = io.StringIO()
+        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
             first = monitor.spotify_get_web_access_token_data()
             second = monitor.spotify_get_web_access_token_data()
         self.assertEqual(first, second)
         self.assertEqual(refresh.call_count, 1)
+        self.assertEqual(output.getvalue().count("Web-player metadata token refreshed"), 1)
 
     # Verifies current desktop bundles provide dynamically discovered operation hashes
     def test_persisted_query_discovery_and_cache(self):
