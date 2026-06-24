@@ -48,6 +48,7 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SONG_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "SONG_ON_LOOP_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "TRACK_SONGS", False)
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "fake-access-token")
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(target))
 
@@ -132,6 +133,27 @@ def test_optional_dependency_reporting():
     assert len(optional) == 2
     assert all(check.status == "WARN" for check in optional)
     assert all("Normal monitoring is unaffected" in check.detail for check in optional)
+
+
+# Verifies requested container playback is a warning rather than a failure
+def test_doctor_reports_container_playback_as_warning(monkeypatch):
+    monkeypatch.setattr(monitor, "is_container_environment", lambda: True)
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    checks = monitor.doctor_check_container_playback()
+    assert len(checks) == 1
+    assert checks[0].status == "WARN"
+    assert "unavailable by default" in checks[0].label
+    assert monitor.CONTAINER_PLAYBACK_WARNING in checks[0].detail
+    report = monitor.DoctorReport(checks)
+    monkeypatch.setattr(monitor, "build_doctor_report", lambda *args, **kwargs: report)
+    assert monitor.run_doctor() == 0
+
+
+# Verifies local playback configuration has no container warning
+def test_doctor_omits_container_playback_warning_locally(monkeypatch):
+    monkeypatch.setattr(monitor, "is_container_environment", lambda: False)
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    assert monitor.doctor_check_container_playback() == []
 
 
 # Verifies an explicit missing config appears inside the doctor summary

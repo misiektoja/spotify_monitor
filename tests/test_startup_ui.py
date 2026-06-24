@@ -126,6 +126,8 @@ def test_help_banner_once_and_raw_epilog():
     assert result.stdout.count(" .---------------.") == 1
     assert "Show rare operational events plus the complete startup summary" in result.stdout
     assert "Examples:\n  # Guided setup, recommended for the first run\n  python3 spotify_monitor.py --setup" in result.stdout
+    assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
+    assert "python3 spotify_monitor.py --set-sp-dc" in result.stdout
     assert "\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  python3 spotify_monitor.py <spotify_user_id>" in result.stdout
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 

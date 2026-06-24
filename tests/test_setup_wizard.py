@@ -90,6 +90,88 @@ def test_secret_helper_uses_getpass(monkeypatch, capsys):
     assert "private-value" not in capsys.readouterr().out
 
 
+# Verifies local cookie setup keeps browser import as the recommended default
+def test_local_cookie_setup_recommends_browser_import(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+
+    # Captures the first default choice without prompting
+    def choose(question, options, default_index=0):
+        captured["question"] = question
+        captured["options"] = options
+        captured["default_index"] = default_index
+        return default_index
+
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
+    result = monitor._wizard_collect_cookie_auth("pip", Path("unused.env"), {})
+    assert result["browser"] == "firefox"
+    assert captured["default_index"] == 0
+    assert captured["options"][0][0] == "Import from a browser, recommended"
+    assert "Firefox is the default" in captured["options"][0][1]
+
+
+# Verifies Docker defaults to hidden private entry when no cookie exists
+def test_docker_cookie_setup_defaults_to_hidden_manual_entry(tmp_path, monkeypatch, capsys):
+    secret = "PHASE6-DOCKER-SETUP-SECRET"
+    captured = {}
+
+    # Selects the displayed default while recording the container choices
+    def choose(question, options, default_index=0):
+        captured["options"] = options
+        return default_index
+
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: secret)
+    updates = {}
+    result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
+    assert captured["options"][0][0] == "Enter sp_dc privately (recommended for Docker)"
+    assert "hidden getpass prompt" in captured["options"][0][1]
+    assert updates == {"SP_DC_COOKIE": secret}
+    assert result["source"] == "private manual entry"
+    assert secret not in capsys.readouterr().out
+
+
+# Verifies Docker naturally retains an existing non-placeholder cookie
+def test_docker_cookie_setup_defaults_to_existing_cookie(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    destination.write_text("# keep\nSP_DC_COOKIE=existing-private-value\n", encoding="utf-8")
+    original = destination.read_bytes()
+    captured = {}
+
+    # Selects the displayed default while recording the container choices
+    def choose(question, options, default_index=0):
+        captured["options"] = options
+        return default_index
+
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
+    result = monitor._wizard_collect_cookie_auth("compose", destination, {})
+    assert captured["options"][0][0] == "Retain the existing SP_DC_COOKIE"
+    assert result["complete"] is True
+    assert result["source"] == "existing SP_DC_COOKIE"
+    assert destination.read_bytes() == original
+
+
+# Verifies container browser import is advanced and explicitly requires a host mount
+def test_container_browser_import_is_advanced_and_mount_dependent(tmp_path, monkeypatch, capsys):
+    captured = {}
+
+    # Selects the advanced browser choice while recording its description
+    def choose(question, options, default_index=0):
+        captured["options"] = options
+        return 1
+
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
+    result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", {})
+    output = capsys.readouterr().out
+    assert captured["options"][1][0] == "Import from Firefox (advanced)"
+    assert "host Firefox profile mounted read-only" in captured["options"][1][1]
+    assert result["complete"] is False
+    assert result["mount_required"] is True
+    assert "advanced Firefox import pending" in result["source"]
+    assert "requires the host Firefox profile mounted read-only" in output
+
+
 # Verifies target prompts accept every supported form and re-prompt after invalid input
 @pytest.mark.parametrize("raw", ["target.user", "spotify:user:target.user", "https://open.spotify.com/user/target.user"])
 def test_target_helper_normalizes_supported_forms(monkeypatch, raw):
@@ -141,7 +223,7 @@ def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
 def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "1", "4", "", "n", "y", "n"])
+        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "1", "3", "", "n", "y", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")

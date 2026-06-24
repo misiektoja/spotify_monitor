@@ -36,6 +36,16 @@ def test_cookie_recovery_recommends_firefox_import():
     assert "spotify_monitor --import-browser-cookie --browser firefox" in advice.fix
 
 
+# Verifies container cookie recovery prefers hidden entry and retains mounted Firefox guidance
+def test_container_cookie_recovery_prefers_private_entry(monkeypatch):
+    monkeypatch.setattr(monitor, "is_container_environment", lambda: True)
+    monkeypatch.setenv("SPOTIFY_MONITOR_COMPOSE", "1")
+    advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
+    assert "docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env" in advice.fix
+    assert "Advanced Firefox alternative" in advice.fix
+    assert advice.fix.index("--set-sp-dc") < advice.fix.index("--import-browser-cookie")
+
+
 # Verifies client refresh failures point back to advanced desktop setup
 def test_client_refresh_recovery_is_specific():
     advice = monitor.classify_recovery_error(RuntimeError("refresh token has expired"), "client_auth")

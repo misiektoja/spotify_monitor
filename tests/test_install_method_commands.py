@@ -66,6 +66,14 @@ def test_firefox_import_commands_mount_linux_profile(tmp_path, monkeypatch):
     assert docker.endswith("--import-browser-cookie --browser firefox --env-file /data/.env")
 
 
+# Verifies private entry commands use installation-aware dotenv paths
+def test_set_sp_dc_commands_use_container_data_paths(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert monitor._wizard_set_sp_dc_cmd("pip") == "spotify_monitor --set-sp-dc"
+    assert monitor._wizard_set_sp_dc_cmd("docker", tmp_path / ".env").endswith("misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env")
+    assert monitor._wizard_set_sp_dc_cmd("compose", tmp_path / ".env") == "docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env"
+
+
 # Verifies Chromium-family browser choices are removed on Windows and inside containers
 def test_browser_choices_respect_platform_and_container(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
@@ -116,8 +124,11 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   python3 spotify_monitor.py --setup
 
   # Open https://open.spotify.com/ in Firefox and sign in first
-  # Then import Spotify login from Firefox
+  # Then import Spotify login from Firefox (recommended for local installs)
   python3 spotify_monitor.py --import-browser-cookie --browser firefox
+
+  # Or enter the Spotify cookie through a hidden prompt
+  python3 spotify_monitor.py --set-sp-dc
 
   # Monitor one Spotify user
   # A spotify:user URI or profile URL is also accepted
@@ -142,6 +153,8 @@ def test_pip_help_epilog_uses_console_command(monkeypatch):
     epilog = monitor._build_help_epilog()
     assert "spotify_monitor --setup" in epilog
     assert "spotify_monitor --import-browser-cookie --browser firefox" in epilog
+    assert "spotify_monitor --set-sp-dc" in epilog
+    assert "recommended for local installs" in epilog
     assert "spotify_monitor <spotify_user_id>" in epilog
     assert "spotify_monitor --doctor <spotify_user_id>" in epilog
     assert "spotify_monitor --list-friends" in epilog
@@ -153,8 +166,13 @@ def test_docker_help_epilog_uses_container_commands(monkeypatch):
     epilog = monitor._build_help_epilog()
     prefix = monitor._wizard_cmd_prefix("docker")
     assert f"{prefix} --setup" in epilog
+    assert f"{prefix} --set-sp-dc --env-file /data/.env" in epilog
     assert monitor._wizard_firefox_import_cmd("docker") in epilog
-    assert "Linux host example" in epilog
+    assert epilog.index("--set-sp-dc") < epilog.index("--import-browser-cookie")
+    assert "recommended for Docker" in epilog
+    assert "Advanced Linux host example" in epilog
+    assert "profile read-only" in epilog
+    assert "Host Spotify auto-play is unavailable by default" in epilog
     assert f"{prefix} --doctor <spotify_user_id>" in epilog
     assert "--login-request-body-file /data/login.protobuf" in epilog
 
@@ -165,6 +183,7 @@ def test_compose_help_epilog_uses_service_commands(monkeypatch):
     epilog = monitor._build_help_epilog()
     prefix = monitor._wizard_cmd_prefix("compose")
     assert f"{prefix} --setup" in epilog
+    assert f"{prefix} --set-sp-dc --env-file /data/.env" in epilog
     assert monitor._wizard_firefox_import_cmd("compose") in epilog
     assert f"{prefix} --list-friends" in epilog
     assert "--login-request-body-file /data/login.protobuf" in epilog

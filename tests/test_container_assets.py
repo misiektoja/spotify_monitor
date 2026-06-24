@@ -83,5 +83,19 @@ def test_reusable_test_workflow_has_container_gate():
     assert "spotify-monitor:ci --setup" in workflow
     assert "--generate-config /data/spotify_monitor.conf" in workflow
     assert "docker compose -f docker-compose.yml config" in workflow
+    assert "docker tag spotify-monitor:ci misiektoja/spotify-monitor:latest" in workflow
+    assert "docker compose -f docker-compose.yml run --rm spotify_monitor --version" in workflow
+    assert "docker compose -f docker-compose.yml run --rm spotify_monitor --generate-config /data/local/container-smoke/compose-spotify-monitor.conf" in workflow
+    assert "SPOTIFY_MONITOR_UID" in workflow
+    assert "SPOTIFY_MONITOR_GID" in workflow
+    assert "test -s local/container-smoke/compose-spotify-monitor.conf" in workflow
     assert "docker login" not in workflow
     assert "docker push" not in workflow
+
+
+# Verifies the README states the default container host playback limitation
+def test_readme_documents_default_container_playback_limitation():
+    readme = read_asset("README.md")
+    assert "Host Spotify auto-play is unavailable by default inside a container" in readme
+    assert "TRACK_SONGS" in readme
+    assert "--track-in-spotify" in readme

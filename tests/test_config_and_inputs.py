@@ -308,6 +308,29 @@ def test_send_test_email_does_not_require_target():
     assert "target is required" not in result.stdout
 
 
+# Verifies container playback emits one warning before monitoring begins
+def test_container_playback_warning_appears_once_before_monitoring():
+    with make_temp_directory() as directory_name:
+        config_path = Path(directory_name) / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "target.user"\nSP_DC_COOKIE = "test-cookie"\nDOTENV_FILE = "none"\nDISABLE_LOGGING = True\nTRACK_SONGS = True\n', encoding="utf-8")
+        setup = "runtime['is_container_environment'] = lambda: True; runtime['check_internet'] = lambda: True; runtime['spotify_monitor_friend_uri'] = lambda *args: print('MONITOR_STARTED');"
+        result = run_cli(["--config-file", str(config_path)], setup)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count(monitor.CONTAINER_PLAYBACK_WARNING) == 1
+    assert result.stdout.index(monitor.CONTAINER_PLAYBACK_WARNING) < result.stdout.index("MONITOR_STARTED")
+
+
+# Verifies local playback does not emit the container warning
+def test_local_playback_has_no_container_warning():
+    with make_temp_directory() as directory_name:
+        config_path = Path(directory_name) / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "target.user"\nSP_DC_COOKIE = "test-cookie"\nDOTENV_FILE = "none"\nDISABLE_LOGGING = True\nTRACK_SONGS = True\n', encoding="utf-8")
+        setup = "runtime['is_container_environment'] = lambda: False; runtime['check_internet'] = lambda: True; runtime['spotify_monitor_friend_uri'] = lambda *args: print('MONITOR_STARTED');"
+        result = run_cli(["--config-file", str(config_path)], setup)
+    assert result.returncode == 0, result.stderr
+    assert monitor.CONTAINER_PLAYBACK_WARNING not in result.stdout
+
+
 # Verifies the missing-target hint does not advertise an unavailable setup command
 def test_missing_target_hint_lists_current_options_only():
     setup = "runtime['check_internet'] = lambda: True;"
