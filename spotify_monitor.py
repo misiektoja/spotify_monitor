@@ -35,6 +35,7 @@ DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
 OAUTH_GUIDE_URL = PROJECT_URL + "#spotify-oauth-app"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
 COOKIE_IMPORT_FIX = f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: spotify_monitor --import-browser-cookie --browser firefox"
+CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
 
 STARTUP_BANNER = r""" .---------------.    ____              _   _  __
 |  |||  |  ||||  |   / ___| _ __   ___ | |_(_)/ _|_   _
@@ -187,6 +188,7 @@ CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
 
 # Whether to auto-play each listened song in your Spotify client
+# Host Spotify auto-play is unavailable by default inside Docker and Docker Compose containers
 # Can also be set using the -g flag
 TRACK_SONGS = False
 
@@ -738,6 +740,11 @@ MAX_RETRY_AFTER_SECONDS = 60
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
 CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
 
+
+# Returns whether Spotify Monitor is running in a Docker or Docker Compose container
+def is_container_environment() -> bool:
+    return os.path.exists("/.dockerenv") or bool(os.environ.get("SPOTIFY_MONITOR_DOCKER"))
+
 # Chromium user-data directories
 CHROMIUM_USER_DATA_DIRS = {
     "Darwin": {
@@ -878,6 +885,16 @@ def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
     return f"{fix}\n  Guide: {guide_url}"
 
 
+# Returns install-aware cookie recovery guidance with private entry preferred in containers
+def cookie_auth_recovery_fix() -> str:
+    if not is_container_environment():
+        return COOKIE_IMPORT_FIX
+    method = _wizard_install_method()
+    private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
+    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env")
+    return f"Run the hidden private entry command: {private_command}\n  Advanced Firefox alternative with a read-only host profile mount: {firefox_command}"
+
+
 # Classifies a user-facing failure using typed errors, HTTP status and explicit context
 def classify_recovery_error(error: Any = None, context: str = "runtime", detail: Any = "") -> RecoveryAdvice:
     if isinstance(error, RecoveryError):
@@ -889,14 +906,25 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "browser_import":
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run: spotify_monitor --import-browser-cookie --browser firefox", COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", COOKIE_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
-            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(COOKIE_IMPORT_FIX, COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
             return make_recovery_advice("file.unreadable", safe_detail or "The browser cookie database could not be read", "Close the browser, verify the selected profile or cookie database path then retry", False, safe_detail)
         if any(term in message for term in ("update dotenv", "dotenv destination", "file permissions")):
             return make_recovery_advice("file.unwritable", safe_detail or "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
-        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide(COOKIE_IMPORT_FIX, COOKIE_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+
+    if context == "set_sp_dc":
+        if "interactive terminal" in message:
+            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", "Run --set-sp-dc from an interactive shell so getpass can hide the cookie", False, safe_detail)
+        if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
+            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", COOKIE_GUIDE_URL), True, safe_detail)
+        if any(term in message for term in ("invalid or expired", "authentication rejected", "no nonempty", "rejected")):
+            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", COOKIE_GUIDE_URL), False, safe_detail)
+        if any(term in message for term in ("dotenv", "file permissions", "writable path")):
+            return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
+        return make_recovery_advice("unknown", "SP_DC_COOKIE was not changed", recovery_fix_with_guide("Run the private entry command again or use the advanced Firefox import path", COOKIE_GUIDE_URL), False, safe_detail)
 
     if context == "config_missing":
         summary = "The requested configuration file was not found"
@@ -950,16 +978,18 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
         if context.startswith("cookie"):
-            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide(COOKIE_IMPORT_FIX, COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
         if context.startswith("client"):
             return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", recovery_fix_with_guide("Re-export the Spotify Desktop Client login request", CLIENT_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected authentication", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if status == 403 and context == "metadata":
         return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("Remove incompatible legacy OAuth credentials and use the automatic web-player metadata fallback", OAUTH_GUIDE_URL), False, safe_detail)
     if status == 403:
+        if context.startswith("cookie"):
+            return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated cookie request", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated request", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if context.startswith("cookie") and any(term in message for term in ("sp_dc", "unsuccessful token request", "valid spotify access token", "access token after")):
-        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide(COOKIE_IMPORT_FIX, COOKIE_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
     if context.startswith("client") and any(term in message for term in ("refresh token", "client token", "invalid grant", "access token not found")):
         return make_recovery_advice("auth.client_invalid", "The Spotify desktop client credentials are invalid or expired", recovery_fix_with_guide("Re-export the relevant Spotify Desktop Client login or client-token request", CLIENT_GUIDE_URL), False, safe_detail)
     if isinstance(error, ModuleNotFoundError):
@@ -1660,6 +1690,53 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     print("* Browser cookie import completed successfully")
     if TOKEN_SOURCE == "client":
         print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
+    return str(destination)
+
+
+# Validates and atomically stores one privately entered sp_dc cookie
+def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
+    destination = resolve_import_env_path(env_file)
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise BrowserCookieImportError("--set-sp-dc requires an interactive terminal. Run it from an interactive shell so the cookie can be entered through a hidden prompt.")
+
+    prompt = input if input_func is None else input_func
+    if _dotenv_contains_key(destination, "SP_DC_COOKIE"):
+        try:
+            confirmed = prompt(f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            confirmed = False
+        if not confirmed:
+            raise BrowserCookieImportError("SP_DC_COOKIE replacement was cancelled. The dotenv file was not changed.")
+
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        sp_dc = hidden_prompt("Enter sp_dc privately: ")
+    except (EOFError, KeyboardInterrupt):
+        raise BrowserCookieImportError("SP_DC_COOKIE entry was cancelled. The dotenv file was not changed.") from None
+    if not isinstance(sp_dc, str) or not sp_dc:
+        raise BrowserCookieImportError("No nonempty sp_dc cookie was entered. The dotenv file was not changed.")
+
+    print("* Validating the entered Spotify cookie before changing the dotenv file ...")
+    try:
+        validate_imported_sp_dc(sp_dc)
+    except Exception as exc:
+        if _looks_like_network_failure(exc):
+            raise BrowserCookieImportError("A network or connectivity failure prevented Spotify cookie validation. The dotenv file was not changed.") from None
+        raise BrowserCookieImportError("The entered sp_dc cookie is invalid or expired. The dotenv file was not changed.") from None
+    try:
+        update_dotenv_file(destination, {"SP_DC_COOKIE": sp_dc})
+    except Exception:
+        raise BrowserCookieImportError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
+
+    selected_config = config_path or find_config_file()
+    method = _wizard_install_method()
+    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
+    monitor_command = _wizard_action_command(method, "", selected_config, destination, "SPOTIFY_USER_URI_ID")
+    print("* SP_DC_COOKIE validation succeeded")
+    print(f"* Updated dotenv: {destination}")
+    _wizard_print_command("Check authentication:", doctor_command)
+    _wizard_print_command("Start monitoring after replacing SPOTIFY_USER_URI_ID:", monitor_command)
     return str(destination)
 
 
@@ -4125,6 +4202,21 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
     return checks
 
 
+# Returns the container playback warning only when host auto-play was requested
+def container_playback_warning() -> Optional[str]:
+    if is_container_environment() and TRACK_SONGS:
+        return CONTAINER_PLAYBACK_WARNING
+    return None
+
+
+# Reports the default container host playback limitation without failing the doctor
+def doctor_check_container_playback() -> List[DoctorCheck]:
+    warning = container_playback_warning()
+    if warning is None:
+        return []
+    return [make_doctor_check("Environment", "WARN", "Container host Spotify auto-play is unavailable by default", warning)]
+
+
 # Returns the nearest existing parent for a path without creating directories
 def nearest_existing_parent(path: Path) -> Path:
     candidate = path.expanduser()
@@ -4198,7 +4290,7 @@ def doctor_check_authentication(report: DoctorReport) -> List[DoctorCheck]:
         if TOKEN_SOURCE == "cookie":
             if is_missing_or_placeholder(SP_DC_COOKIE, ("your_sp_dc_cookie_value",)):
                 advice = classify_recovery_error(context="secret", detail="SP_DC_COOKIE is missing or still a placeholder")
-                advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", COOKIE_IMPORT_FIX, False)
+                advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False)
                 report.authentication_advice = advice
                 return [make_doctor_check("Authentication", "FAIL", advice.summary, advice=advice)]
             access_token = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
@@ -4348,6 +4440,7 @@ def doctor_check_notifications() -> List[DoctorCheck]:
 def build_doctor_report(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), version_info=None, spec_finder: Optional[Callable[[str], Any]] = None) -> DoctorReport:
     report = DoctorReport()
     report.checks.extend(doctor_check_environment(version_info, spec_finder))
+    report.checks.extend(doctor_check_container_playback())
     report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
     report.checks.extend(doctor_check_authentication(report))
     report.checks.extend(doctor_check_optional_oauth())
@@ -4410,7 +4503,7 @@ def print_monitor_recovery(error: Any, context: str, tracker: RecoveryHintTracke
 
 # Detects how Spotify Monitor was launched so setup can show matching commands
 def _wizard_install_method() -> str:
-    if os.path.exists("/.dockerenv") or os.environ.get("SPOTIFY_MONITOR_DOCKER"):
+    if is_container_environment():
         return "compose" if os.environ.get("SPOTIFY_MONITOR_COMPOSE") else "docker"
     return "manual" if os.path.basename(sys.argv[0] or "").endswith(".py") else "pip"
 
@@ -4444,14 +4537,17 @@ def _wizard_container_path(path) -> str:
 
 # Builds a Spotify Monitor action command using install-aware paths and an optional target
 def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None) -> str:
-    selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
-    selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
     parts = [_wizard_cmd_prefix(method)]
     if action:
         parts.append(action)
     if target:
         parts.append(shlex.quote(target))
-    parts.extend(("--config-file", shlex.quote(selected_config), "--env-file", shlex.quote(selected_env)))
+    if config_path is not None:
+        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+        parts.extend(("--config-file", shlex.quote(selected_config)))
+    if env_path is not None:
+        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        parts.extend(("--env-file", shlex.quote(selected_env)))
     return " ".join(parts)
 
 
@@ -4469,22 +4565,50 @@ def _wizard_firefox_import_cmd(method: str, env_path=None) -> str:
     return command
 
 
+# Returns the hidden manual sp_dc entry command for one installation method
+def _wizard_set_sp_dc_cmd(method: str, env_path=None) -> str:
+    command = f"{_wizard_cmd_prefix(method)} --set-sp-dc"
+    if env_path is not None:
+        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        command += f" --env-file {shlex.quote(selected_env)}"
+    return command
+
+
 # Builds install-aware examples for argparse help output
 def _build_help_epilog() -> str:
     method = _wizard_install_method()
     prefix = _wizard_cmd_prefix(method)
-    firefox_note = "\n  # Linux host example with a read-only Firefox profile mount" if method in ("docker", "compose") else ""
-    firefox_login_note = "  # On the host open https://open.spotify.com/ in Firefox and sign in first" if method in ("docker", "compose") else "  # Open https://open.spotify.com/ in Firefox and sign in first"
     protobuf_file = "/data/login.protobuf" if method in ("docker", "compose") else "<protobuf_file>"
     sections = [
         "Examples:",
         "  # Guided setup, recommended for the first run",
         f"  {prefix} --setup",
         "",
-        firefox_login_note,
-        "  # Then import Spotify login from Firefox" + firefox_note,
-        f"  {_wizard_firefox_import_cmd(method)}",
-        "",
+    ]
+    if method in ("docker", "compose"):
+        sections.extend((
+            "  # Enter the Spotify cookie through a hidden prompt (recommended for Docker)",
+            f"  {_wizard_set_sp_dc_cmd(method, Path.cwd() / '.env')}",
+            "",
+            "  # Advanced Linux host example: mount a Firefox profile read-only",
+            "  # Open https://open.spotify.com/ in Firefox on the host and sign in first",
+            f"  {_wizard_firefox_import_cmd(method)}",
+            "",
+            "  # Host Spotify auto-play is unavailable by default inside containers",
+            "  # Run Spotify Monitor locally for TRACK_SONGS or --track-in-spotify",
+            "",
+        ))
+    else:
+        sections.extend((
+            "  # Open https://open.spotify.com/ in Firefox and sign in first",
+            "  # Then import Spotify login from Firefox (recommended for local installs)",
+            f"  {_wizard_firefox_import_cmd(method)}",
+            "",
+            "  # Or enter the Spotify cookie through a hidden prompt",
+            f"  {_wizard_set_sp_dc_cmd(method)}",
+            "",
+        ))
+    sections.extend((
         "  # Monitor one Spotify user",
         "  # A spotify:user URI or profile URL is also accepted",
         f"  {prefix} <spotify_user_id>",
@@ -4497,7 +4621,7 @@ def _build_help_epilog() -> str:
         "",
         "  # Advanced Spotify desktop client mode",
         f"  {prefix} <spotify_user_id> --token-source client --login-request-body-file {protobuf_file}",
-    ]
+    ))
     if method == "compose":
         sections.extend(("", "  # Start from the target saved by setup", "  docker compose up"))
     sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
@@ -4709,10 +4833,22 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
 
 # Collects cookie-mode choices while keeping all secret values out of output
 def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dict) -> dict:
-    result = {"complete": False, "validated": False, "browser": None, "source": "not configured"}
+    result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+    container_method = method in ("docker", "compose")
+    existing_cookie = _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",))
     while True:
-        choice = _wizard_ask_choice("How should cookie authentication be configured?", [("Import from a browser, recommended", "Sign in at https://open.spotify.com/ in that browser first. Firefox is the default. Chromium-family imports need the browser extra."), ("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")])
-        if choice == 0:
+        if container_method:
+            if existing_cookie:
+                options = [("Retain the existing SP_DC_COOKIE", "Keep the non-placeholder value without displaying or rewriting it."), ("Enter sp_dc privately (recommended for Docker)", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Import from Firefox (advanced)", "Requires the host Firefox profile mounted read-only into this container."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
+                actions = ("existing", "manual", "browser", "finish")
+            else:
+                options = [("Enter sp_dc privately (recommended for Docker)", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Import from Firefox (advanced)", "Requires the host Firefox profile mounted read-only into this container."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
+                actions = ("manual", "browser", "finish")
+        else:
+            options = [("Import from a browser, recommended", "Sign in at https://open.spotify.com/ in that browser first. Firefox is the default. Chromium-family imports need the browser extra."), ("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")]
+            actions = ("browser", "existing", "manual", "finish")
+        action = actions[_wizard_ask_choice("How should cookie authentication be configured?", options)]
+        if action == "browser":
             browsers = _wizard_import_browsers(method)
             browser_index = 0
             if len(browsers) > 1:
@@ -4721,18 +4857,19 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
             browser_location = f"{browser_label(browsers[browser_index])} on the host" if method in ("docker", "compose") else browser_label(browsers[browser_index])
             print(f"  Before import, open {SPOTIFY_WEB_LOGIN_URL} in {browser_location} and sign in to the Spotify account used for monitoring.")
             if method in ("docker", "compose"):
-                print("  Containers can import Firefox only when the host profile is mounted read-only.")
+                result.update({"source": "advanced Firefox import pending a read-only host profile mount", "mount_required": True})
+                print("  This advanced container path requires the host Firefox profile mounted read-only.")
                 print("  Chromium cookie import is unavailable inside containers.")
             return result
-        if choice == 1:
-            if not _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)):
+        if action == "existing":
+            if not existing_cookie:
                 print("  No non-placeholder SP_DC_COOKIE was found.")
                 continue
             if _wizard_ask_yes_no("Retain the existing SP_DC_COOKIE without displaying or rewriting it?", default=True):
                 result.update({"complete": True, "source": "existing SP_DC_COOKIE"})
                 return result
             continue
-        if choice == 2:
+        if action == "manual":
             cookie = _wizard_ask_secret("Existing sp_dc value")
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
             result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
@@ -4879,7 +5016,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     config_values["TARGET_USER_URI_ID"] = target if persist_target else ""
     secret_updates = {}
     print()
-    auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", "Browser import is the recommended onboarding path."), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
+    cookie_onboarding = "Private hidden sp_dc entry is recommended for Docker and Docker Compose." if method in ("docker", "compose") else "Browser import is the recommended local onboarding path and Firefox is the easiest source."
+    auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", cookie_onboarding), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
     if auth_mode == 0:
         config_values["TOKEN_SOURCE"] = "cookie"
         auth = _wizard_collect_cookie_auth(method, env_path, secret_updates)
@@ -4894,6 +5032,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"  Target: {target}")
     print(f"  Persist target: {'yes' if persist_target else 'no'}")
     print(f"  Token source: {auth['source']}")
+    print(f"  Authentication status: {'complete' if auth['complete'] else 'incomplete'}")
+    if auth.get("mount_required"):
+        print("  Required action: mount the host Firefox profile read-only and run the separate import command shown below")
     if auth.get("browser"):
         print(f"  Browser: {browser_label(auth['browser'])}")
     print(f"  Polling interval: {config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
@@ -4946,8 +5087,12 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     _wizard_print_command("Check setup again:", doctor_command)
     if not auth["complete"]:
         print("Setup was saved but authentication is incomplete.")
-        import_label = "Import Spotify login from Firefox (Linux host example):" if method in ("docker", "compose") else "Import Spotify login from Firefox:"
-        _wizard_print_command(import_label, _wizard_firefox_import_cmd(method, env_path))
+        if method in ("docker", "compose"):
+            _wizard_print_command("Enter sp_dc privately (recommended for Docker):", _wizard_set_sp_dc_cmd(method, env_path))
+            _wizard_print_command("Advanced Firefox alternative with a read-only Linux host profile mount:", _wizard_firefox_import_cmd(method, env_path))
+        else:
+            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path))
+            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path))
         print(f"Cookie guide: {COOKIE_GUIDE_URL}\n")
     if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
         _wizard_print_command("Start monitoring:", "docker compose up")
@@ -5889,7 +6034,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
-    if "--generate-config" in sys.argv and "--setup" not in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -5913,7 +6058,7 @@ def main():
         sys.stdout.buffer.flush()
         sys.exit(0)
 
-    if "--version" in sys.argv and "--setup" not in sys.argv:
+    if "--version" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv:
         print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
         sys.exit(0)
 
@@ -5951,6 +6096,12 @@ def main():
         "--setup",
         action="store_true",
         help="Run the interactive first-run setup wizard",
+    )
+    conf.add_argument(
+        "--set-sp-dc",
+        dest="set_sp_dc",
+        action="store_true",
+        help="Privately validate and save SP_DC_COOKIE through a hidden prompt",
     )
     conf.add_argument(
         "--config-file",
@@ -6214,6 +6365,51 @@ def main():
         _wizard_welcome()
         sys.exit(0 if sys.stdin.isatty() else 1)
 
+    if args.set_sp_dc:
+        set_sp_dc_conflicts = []
+        conflict_values = (
+            (args.user_id, "SPOTIFY_USER_URI_ID"),
+            (args.setup, "--setup"),
+            (args.doctor, "--doctor"),
+            (args.version, "--version"),
+            (args.generate_config, "--generate-config"),
+            (args.config_file, "--config-file"),
+            (args.import_browser_cookie, "--import-browser-cookie"),
+            (args.send_test_email, "--send-test-email"),
+            (args.list_friends, "--list-friends"),
+            (args.token_source, "--token-source"),
+            (args.spotify_dc_cookie, "--spotify-dc-cookie"),
+            (args.login_request_body_file, "--login-request-body-file"),
+            (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
+            (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.check_interval, "--check-interval"),
+            (args.offline_timer, "--offline-timer"),
+            (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_list, "--monitor-list"),
+            (args.csv_file, "--csv-file"),
+            (args.flag_file, "--flag-file"),
+            (args.user_agent, "--user-agent"),
+            (args.file_suffix, "--file-suffix"),
+            (args.truncate, "--truncate"),
+            (args.browser, "--browser"),
+            (args.browser_profile, "--browser-profile"),
+            (args.cookie_file, "--cookie-file"),
+            (args.force, "--force"),
+        )
+        set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
+        if set_sp_dc_conflicts:
+            parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
+        if args.env_file is not None and args.env_file.casefold() == "none":
+            parser.error("--set-sp-dc requires a writable dotenv destination and cannot use --env-file none")
+        try:
+            run_set_sp_dc(env_file=args.env_file)
+        except BrowserCookieImportError as exc:
+            print_recovery_error(exc, "set_sp_dc")
+            sys.exit(1)
+        sys.exit(0)
+
     if args.setup:
         setup_conflicts = []
         conflict_values = (
@@ -6221,6 +6417,7 @@ def main():
             (args.version, "--version"),
             (args.generate_config, "--generate-config"),
             (args.import_browser_cookie, "--import-browser-cookie"),
+            (args.set_sp_dc, "--set-sp-dc"),
             (args.send_test_email, "--send-test-email"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
@@ -6456,6 +6653,8 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+    if args.track_in_spotify is True:
+        TRACK_SONGS = True
 
     if args.doctor:
         doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
@@ -6597,7 +6796,7 @@ def main():
             SP_DC_COOKIE = args.spotify_dc_cookie
 
         if not SP_DC_COOKIE or SP_DC_COOKIE == "your_sp_dc_cookie_value":
-            advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", COOKIE_IMPORT_FIX, False)
+            advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False)
             print(render_recovery_error(RecoveryError(advice)))
             sys.exit(1)
 
@@ -6741,6 +6940,9 @@ def main():
 
     startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH)
     emit_startup_summary(startup_rows, show_full=bool(VERBOSE_MODE or DEBUG_MODE))
+    playback_warning = container_playback_warning()
+    if playback_warning is not None:
+        print(f"* Warning: {playback_warning}\n")
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
