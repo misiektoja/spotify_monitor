@@ -29,6 +29,7 @@ CLIENT_GUIDE_URL = PROJECT_URL + "#spotify-desktop-client"
 TARGET_GUIDE_URL = PROJECT_URL + "#how-to-get-a-friends-user-uri-id"
 FOLLOWING_GUIDE_URL = PROJECT_URL + "#following-the-monitored-user"
 SMTP_GUIDE_URL = PROJECT_URL + "#smtp-settings"
+WEBHOOK_GUIDE_URL = PROJECT_URL + "#discord-webhook-notifications"
 SECRETS_GUIDE_URL = PROJECT_URL + "#storing-secrets"
 INTERVALS_GUIDE_URL = PROJECT_URL + "#check-intervals"
 DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
@@ -144,6 +145,32 @@ SONG_ON_LOOP_NOTIFICATION = False
 # Whether to send an email on errors
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
+
+# ---------------------------------------------------------------------
+
+# Discord-compatible webhook settings
+# Store WEBHOOK_URL in an environment variable or dotenv file because the URL contains a secret token
+WEBHOOK_ENABLED = False
+WEBHOOK_URL = "your_discord_webhook_url"
+WEBHOOK_USERNAME = "Spotify Monitor"
+
+# Whether to send a webhook when the user becomes active
+WEBHOOK_ACTIVE_NOTIFICATION = False
+
+# Whether to send a webhook when the user goes inactive
+WEBHOOK_INACTIVE_NOTIFICATION = False
+
+# Whether to send a webhook when a monitored track, playlist or album plays
+WEBHOOK_TRACK_NOTIFICATION = False
+
+# Whether to send a webhook on every song change
+WEBHOOK_SONG_NOTIFICATION = False
+
+# Whether to send a webhook when the user plays a song on loop
+WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
+
+# Whether to send a webhook on monitoring errors
+WEBHOOK_ERROR_NOTIFICATION = True
 
 # How often to check for user activity; in seconds
 # Can also be set using the -c flag
@@ -551,6 +578,15 @@ TRACK_NOTIFICATION = False
 SONG_NOTIFICATION = False
 SONG_ON_LOOP_NOTIFICATION = False
 ERROR_NOTIFICATION = False
+WEBHOOK_ENABLED = False
+WEBHOOK_URL = ""
+WEBHOOK_USERNAME = ""
+WEBHOOK_ACTIVE_NOTIFICATION = False
+WEBHOOK_INACTIVE_NOTIFICATION = False
+WEBHOOK_TRACK_NOTIFICATION = False
+WEBHOOK_SONG_NOTIFICATION = False
+WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
+WEBHOOK_ERROR_NOTIFICATION = False
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
@@ -611,7 +647,7 @@ exec(CONFIG_BLOCK, globals())
 DEFAULT_CONFIG_FILENAME = "spotify_monitor.conf"
 
 # List of secret keys to load from env/config
-SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET")
+SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL")
 
 # Strings removed from track names for generating proper Genius search URLs
 re_search_str = r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
@@ -729,12 +765,21 @@ if not VERIFY_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SESSION = req.Session()
+WEBHOOK_SESSION = req.Session()
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Cap server-provided Retry-After to avoid long blocking sleeps on 429 responses
 MAX_RETRY_AFTER_SECONDS = 60
+
+# Keep webhook delivery independent from Spotify API retries and long server timers
+WEBHOOK_MAX_ATTEMPTS = 2
+WEBHOOK_MAX_RETRY_AFTER_SECONDS = 5.0
+WEBHOOK_FALLBACK_RETRY_SECONDS = 1.0
+WEBHOOK_TIMEOUT_SECONDS = 10
+WEBHOOK_EMBED_TITLE_LIMIT = 256
+WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
 
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
@@ -763,7 +808,7 @@ CHROMIUM_USER_DATA_DIRS = {
 TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID."
 
 # Stable machine-readable recovery categories exposed to tests and future renderers
-RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "file.unreadable", "file.unwritable", "unknown"})
+RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
 
 
 # Stores one stable recovery category with safe user-facing guidance
@@ -850,11 +895,11 @@ def sanitize_error_text(value: Any, extra_secrets: Sequence[Any] = ()) -> str:
     for secret in known_secret_values(extra_secrets):
         text = text.replace(secret, "<redacted>")
     patterns = (
-        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD)\b\s*=\s*).*$", r"\1<redacted>"),
+        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD|WEBHOOK_URL)\b\s*=\s*).*$", r"\1<redacted>"),
         (r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?bearer\s+)[^\s,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(cookie\s*[:=][^\r\n]*?sp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(\bsp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
-        (r"(?i)(['\"]?(?:access_token|refresh_token|client-token|client_token|smtp_password)['\"]?\s*[:=]\s*['\"]?)[^\s,;'\"}]+", r"\1<redacted>"),
+        (r"(?i)(['\"]?(?:access_token|refresh_token|client-token|client_token|smtp_password|webhook_url)['\"]?\s*[:=]\s*['\"]?)[^\s,;'\"}]+", r"\1<redacted>"),
     )
     for pattern, replacement in patterns:
         text = re.sub(pattern, replacement, text)
@@ -926,6 +971,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
         return make_recovery_advice("unknown", "SP_DC_COOKIE was not changed", recovery_fix_with_guide("Run the private entry command again or use the advanced Firefox import path", COOKIE_GUIDE_URL), False, safe_detail)
 
+    if context == "set_webhook_url":
+        if "interactive terminal" in message:
+            return make_recovery_advice("webhook.invalid", "--set-webhook-url requires an interactive terminal", "Run --set-webhook-url from an interactive shell so the URL can be entered through a hidden prompt", False, safe_detail)
+        if any(term in message for term in ("dotenv", "file permissions", "writable path")):
+            return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "WEBHOOK_URL was not changed", recovery_fix_with_guide("Enter a complete HTTPS Discord-compatible webhook URL then retry", WEBHOOK_GUIDE_URL), False, safe_detail)
+
     if context == "config_missing":
         summary = "The requested configuration file was not found"
         if safe_detail:
@@ -950,6 +1002,21 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("file.unwritable", "An output destination is not writable", "Choose a writable path and verify its parent directory permissions then retry", False, safe_detail)
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
+    if context == "webhook_config":
+        return make_recovery_advice("webhook.invalid", "The webhook configuration is incomplete or invalid", recovery_fix_with_guide("Set a complete HTTPS WEBHOOK_URL then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+
+    if context.startswith("webhook"):
+        if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
+            return make_recovery_advice("webhook.rate_limited", "The webhook endpoint is rate limiting notifications", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify polling continues independently", WEBHOOK_GUIDE_URL), True, safe_detail)
+        if status is not None and 400 <= status <= 499:
+            return make_recovery_advice("webhook.rejected", "The webhook endpoint rejected the notification", recovery_fix_with_guide("Verify that WEBHOOK_URL is current then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        if status is not None and 500 <= status <= 599:
+            return make_recovery_advice("webhook.connection", "The webhook endpoint is temporarily unavailable", recovery_fix_with_guide("Wait briefly then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+        if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
+            return make_recovery_advice("webhook.connection", "The webhook request timed out", recovery_fix_with_guide("Check network access then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+        if isinstance(error, (req.RequestException, ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
+            return make_recovery_advice("webhook.connection", "The webhook endpoint could not be reached", recovery_fix_with_guide("Check DNS, internet access and firewall rules then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+        return make_recovery_advice("webhook.connection", "The webhook notification could not be delivered", recovery_fix_with_guide("Run --send-test-webhook and retry with --debug if the failure continues", WEBHOOK_GUIDE_URL), True, safe_detail)
 
     if isinstance(error, smtplib.SMTPAuthenticationError) or status == 535:
         return make_recovery_advice("smtp.authentication", "SMTP authentication was rejected", recovery_fix_with_guide("Verify SMTP_USER and SMTP_PASSWORD. Providers such as Gmail may require an app password then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
@@ -1291,6 +1358,11 @@ def update_dotenv_file(destination, updates):
 
 # Raised when a browser cookie cannot be extracted, validated or persisted safely
 class BrowserCookieImportError(Exception):
+    pass
+
+
+# Raised when a webhook secret cannot be validated or persisted safely
+class WebhookConfigurationError(Exception):
     pass
 
 
@@ -1740,6 +1812,49 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     return str(destination)
 
 
+# Validates and atomically stores one privately entered webhook URL
+def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
+    try:
+        destination = resolve_import_env_path(env_file)
+    except BrowserCookieImportError as exc:
+        raise WebhookConfigurationError(str(exc).replace("Browser cookie import", "Webhook setup")) from None
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise WebhookConfigurationError("--set-webhook-url requires an interactive terminal. Run it from an interactive shell so the URL can be entered through a hidden prompt.")
+    prompt = input if input_func is None else input_func
+    try:
+        existing_assignment = _dotenv_contains_key(destination, "WEBHOOK_URL")
+    except BrowserCookieImportError as exc:
+        raise WebhookConfigurationError(str(exc)) from None
+    if existing_assignment:
+        try:
+            confirmed = prompt(f"Replace WEBHOOK_URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            confirmed = False
+        if not confirmed:
+            raise WebhookConfigurationError("WEBHOOK_URL replacement was cancelled. The dotenv file was not changed.")
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        webhook_url = hidden_prompt("Enter webhook URL privately: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        raise WebhookConfigurationError("WEBHOOK_URL entry was cancelled. The dotenv file was not changed.") from None
+    if not validate_webhook_url(webhook_url):
+        raise WebhookConfigurationError("The entered webhook URL is incomplete or is not HTTPS. The dotenv file was not changed.")
+    try:
+        update_dotenv_file(destination, {"WEBHOOK_URL": webhook_url})
+    except Exception:
+        raise WebhookConfigurationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
+    selected_config = config_path or find_config_file()
+    method = _wizard_install_method()
+    test_command = _wizard_action_command(method, "--send-test-webhook", selected_config, destination)
+    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
+    print("* WEBHOOK_URL format validation succeeded")
+    print(f"* Updated dotenv: {destination}")
+    _wizard_print_command("Send a test notification:", test_command)
+    _wizard_print_command("Check the complete setup:", doctor_command)
+    return str(destination)
+
+
 class CappedRetry(Retry):
     def get_retry_after(self, response):
         retry_after = super().get_retry_after(response)
@@ -2102,6 +2217,118 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
         print_recovery_error(e, "smtp")
         return 1
     return 0
+
+
+# Returns whether a webhook URL is a complete HTTPS endpoint without embedded credentials
+def validate_webhook_url(url: Any = None) -> bool:
+    selected_url = WEBHOOK_URL if url is None else url
+    if not isinstance(selected_url, str) or not selected_url.strip():
+        return False
+    try:
+        parsed = urlsplit(selected_url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme.casefold() == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and bool(parsed.path.strip("/"))
+
+
+# Returns whether one configured webhook event is enabled independently of email settings
+def webhook_event_enabled(notification_type: str) -> bool:
+    settings = {
+        "active": WEBHOOK_ACTIVE_NOTIFICATION,
+        "inactive": WEBHOOK_INACTIVE_NOTIFICATION,
+        "track": WEBHOOK_TRACK_NOTIFICATION,
+        "song": WEBHOOK_SONG_NOTIFICATION,
+        "loop": WEBHOOK_SONG_ON_LOOP_NOTIFICATION,
+        "error": WEBHOOK_ERROR_NOTIFICATION,
+    }
+    return bool(WEBHOOK_ENABLED and settings.get(notification_type, False))
+
+
+# Parses a webhook rate-limit delay and caps untrusted server values to a short wait
+def webhook_retry_after_seconds(response: Any) -> float:
+    candidates: List[Any] = []
+    headers = getattr(response, "headers", {}) or {}
+    if hasattr(headers, "get"):
+        candidates.append(headers.get("Retry-After"))
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        candidates.append(payload.get("retry_after"))
+    for candidate in candidates:
+        if candidate is None or candidate == "":
+            continue
+        try:
+            seconds = float(candidate)
+        except (TypeError, ValueError):
+            try:
+                retry_at = parsedate_to_datetime(str(candidate))
+                seconds = (retry_at - datetime.now(retry_at.tzinfo)).total_seconds()
+            except Exception:
+                continue
+        return max(0.0, min(seconds, WEBHOOK_MAX_RETRY_AFTER_SECONDS))
+    return WEBHOOK_FALLBACK_RETRY_SECONDS
+
+
+# Builds one bounded Discord embed without allowing notification text to trigger mentions
+def build_webhook_payload(title: str, description: str, notification_type: str) -> dict:
+    colors = {"active": 0x1DB954, "inactive": 0x747F8D, "track": 0x1DB954, "song": 0x3498DB, "loop": 0x9B59B6, "error": 0xE74C3C}
+    safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
+    safe_description = sanitize_error_text(description)[:WEBHOOK_EMBED_DESCRIPTION_LIMIT]
+    embed = {"title": safe_title, "description": safe_description, "color": colors.get(notification_type, 0x1DB954), "footer": {"text": f"Spotify Monitor v{VERSION}"}, "timestamp": datetime.now().astimezone().isoformat()}
+    payload = {"allowed_mentions": {"parse": []}, "embeds": [embed]}
+    if isinstance(WEBHOOK_USERNAME, str) and WEBHOOK_USERNAME.strip():
+        payload["username"] = WEBHOOK_USERNAME.strip()[:80]
+    return payload
+
+
+# Sends one webhook through an isolated bounded retry path that never uses Spotify retries
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None) -> int:
+    if not force and not webhook_event_enabled(notification_type):
+        return 1
+    if not validate_webhook_url():
+        print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must be a complete HTTPS endpoint")
+        return 1
+    sleep_func = time.sleep if sleeper is None else sleeper
+    payload = build_webhook_payload(title, description, notification_type)
+    last_error: Any = None
+    for attempt in range(WEBHOOK_MAX_ATTEMPTS):
+        try:
+            response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=payload, headers={"User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+            if 200 <= response.status_code <= 299:
+                return 0
+            last_error = response
+            retryable = response.status_code == 429 or 500 <= response.status_code <= 599
+            if not retryable or attempt == WEBHOOK_MAX_ATTEMPTS - 1:
+                detail = f"HTTP {response.status_code}: {sanitize_error_text(getattr(response, 'text', ''))[:200]}"
+                print_recovery_error(response, "webhook", detail=detail)
+                return 1
+            delay = webhook_retry_after_seconds(response) if response.status_code == 429 else WEBHOOK_FALLBACK_RETRY_SECONDS
+            debug_print(f"Webhook delivery returned HTTP {response.status_code}. Retrying once in {delay:g} seconds")
+            sleep_func(delay)
+        except req.RequestException as exc:
+            last_error = exc
+            if attempt == WEBHOOK_MAX_ATTEMPTS - 1:
+                print_recovery_error(exc, "webhook")
+                return 1
+            debug_print(f"Webhook delivery failed. Retrying once in {WEBHOOK_FALLBACK_RETRY_SECONDS:g} seconds: {sanitize_error_text(exc)}")
+            sleep_func(WEBHOOK_FALLBACK_RETRY_SECONDS)
+    print_recovery_error(last_error, "webhook")
+    return 1
+
+
+# Delivers one semantic notification to enabled email and webhook channels independently
+def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None) -> tuple[bool, bool]:
+    email_attempted = bool(email_enabled)
+    webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    if email_attempted:
+        print(f"Sending email notification to {RECEIVER_EMAIL}")
+        send_email(subject, body, body_html, SMTP_SSL)
+    if webhook_attempted:
+        print("Sending Discord-compatible webhook notification")
+        send_webhook(subject, body, notification_type, force=True)
+    return email_attempted, webhook_attempted
 
 
 # Initializes the CSV file
@@ -3585,11 +3812,30 @@ def _startup_notification_categories() -> List[str]:
     return [label for enabled, label in settings if enabled]
 
 
+# Returns enabled webhook notification category names in display order
+def _startup_webhook_notification_categories() -> List[str]:
+    settings = (
+        (WEBHOOK_ACTIVE_NOTIFICATION, "active"),
+        (WEBHOOK_INACTIVE_NOTIFICATION, "inactive"),
+        (WEBHOOK_TRACK_NOTIFICATION, "monitored tracks"),
+        (WEBHOOK_SONG_NOTIFICATION, "every song"),
+        (WEBHOOK_SONG_ON_LOOP_NOTIFICATION, "songs on loop"),
+        (WEBHOOK_ERROR_NOTIFICATION, "errors"),
+    )
+    return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
+
+
 # Builds the concise and complete non-secret startup summary rows
 def build_startup_summary(target: str, config_path, env_path, output_path) -> List[StartupSummaryRow]:
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
-    notification_state = "Off" if not enabled_notifications else "On (" + ", ".join(enabled_notifications) + ")"
+    enabled_webhooks = _startup_webhook_notification_categories()
+    if enabled_notifications and enabled_webhooks:
+        notification_state = "On (email: " + ", ".join(enabled_notifications) + " | webhook: " + ", ".join(enabled_webhooks) + ")"
+    elif enabled_webhooks:
+        notification_state = "On (webhook: " + ", ".join(enabled_webhooks) + ")"
+    else:
+        notification_state = "Off" if not enabled_notifications else "On (" + ", ".join(enabled_notifications) + ")"
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     rows = [
         StartupSummaryRow("Target", str(target), concise=True),
@@ -3606,6 +3852,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notify every song", str(SONG_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify songs on loop", str(SONG_ON_LOOP_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify errors", str(ERROR_NOTIFICATION), concise=False),
+        StartupSummaryRow("Webhook enabled", str(WEBHOOK_ENABLED), concise=False),
+        StartupSummaryRow("Webhook categories", ", ".join(enabled_webhooks) if enabled_webhooks else "None", concise=False),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
@@ -4410,6 +4658,12 @@ def email_notifications_enabled() -> bool:
     return bool(event_notifications or (ERROR_NOTIFICATION and configured_host))
 
 
+# Determines whether Discord-compatible webhook notifications are effectively enabled
+def webhook_notifications_enabled() -> bool:
+    event_notifications = any((WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION))
+    return bool(WEBHOOK_ENABLED and event_notifications)
+
+
 # Validates SMTP configuration and login without sending an email
 def doctor_check_notifications() -> List[DoctorCheck]:
     if not email_notifications_enabled():
@@ -4436,23 +4690,49 @@ def doctor_check_notifications() -> List[DoctorCheck]:
                 pass
 
 
+# Validates webhook settings locally without contacting the endpoint
+def doctor_check_webhook_notifications() -> List[DoctorCheck]:
+    if not WEBHOOK_ENABLED:
+        return [make_doctor_check("Notifications", "PASS", "Webhook notifications are disabled", "No webhook request was attempted")]
+    if not validate_webhook_url():
+        advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must be a complete HTTPS endpoint")
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    if not webhook_notifications_enabled():
+        advice = make_recovery_advice("webhook.invalid", "Webhook delivery is enabled but no event categories are selected", "Enable at least one WEBHOOK_*_NOTIFICATION setting or disable WEBHOOK_ENABLED", False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook request was attempted", advice)]
+    return [make_doctor_check("Notifications", "PASS", "Webhook URL format and event settings are valid", "The secret URL was not displayed and no webhook request was attempted")]
+
+
 # Builds all independent and dependent doctor checks before rendering
-def build_doctor_report(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), version_info=None, spec_finder: Optional[Callable[[str], Any]] = None) -> DoctorReport:
+def build_doctor_report(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), version_info=None, spec_finder: Optional[Callable[[str], Any]] = None, progress: Optional[Callable[[str], None]] = None) -> DoctorReport:
     report = DoctorReport()
+    if progress is not None:
+        progress("environment")
     report.checks.extend(doctor_check_environment(version_info, spec_finder))
     report.checks.extend(doctor_check_container_playback())
+    if progress is not None:
+        progress("configuration")
     report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+    if progress is not None:
+        progress("authentication")
     report.checks.extend(doctor_check_authentication(report))
     report.checks.extend(doctor_check_optional_oauth())
+    if progress is not None:
+        progress("connectivity")
     report.checks.extend(doctor_check_connectivity(report))
+    if progress is not None:
+        progress("target")
     report.checks.extend(doctor_check_target(report, target_value))
+    if progress is not None:
+        progress("notifications")
     report.checks.extend(doctor_check_notifications())
+    report.checks.extend(doctor_check_webhook_notifications())
     return report
 
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = ["Doctor", "", "Read-only preflight. No email will be sent and no files will be written."]
+    lines = ["Doctor", "", "Read-only preflight. No email or webhook will be sent and no files will be written."]
     sections = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
     for section in sections:
         lines.extend(("", section))
@@ -4471,9 +4751,27 @@ def render_doctor_report(report: DoctorReport) -> str:
     return sanitize_error_text("\n".join(lines))
 
 
+# Shows one transient doctor step only on an interactive terminal
+def _doctor_progress(label: str) -> None:
+    if sys.stdout.isatty():
+        sys.stdout.write((f"\r* Checking {label} ...").ljust(79))
+        sys.stdout.flush()
+
+
+# Clears the transient doctor progress line on an interactive terminal
+def _doctor_progress_clear() -> None:
+    if sys.stdout.isatty():
+        sys.stdout.write("\r" + (" " * 79) + "\r")
+        sys.stdout.flush()
+
+
 # Runs the read-only doctor preflight and returns zero unless at least one check fails
 def run_doctor(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = ()) -> int:
-    report = build_doctor_report(target_value, config_path, env_path, startup_checks)
+    progress = _doctor_progress if sys.stdout.isatty() else None
+    try:
+        report = build_doctor_report(target_value, config_path, env_path, startup_checks, progress=progress)
+    finally:
+        _doctor_progress_clear()
     print(render_doctor_report(report))
     return 1 if any(check.status == "FAIL" for check in report.checks) else 0
 
@@ -4574,6 +4872,15 @@ def _wizard_set_sp_dc_cmd(method: str, env_path=None) -> str:
     return command
 
 
+# Returns the hidden webhook URL entry command for one installation method
+def _wizard_set_webhook_url_cmd(method: str, env_path=None) -> str:
+    command = f"{_wizard_cmd_prefix(method)} --set-webhook-url"
+    if env_path is not None:
+        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        command += f" --env-file {shlex.quote(selected_env)}"
+    return command
+
+
 # Builds install-aware examples for argparse help output
 def _build_help_epilog() -> str:
     method = _wizard_install_method()
@@ -4608,6 +4915,15 @@ def _build_help_epilog() -> str:
             f"  {_wizard_set_sp_dc_cmd(method)}",
             "",
         ))
+    webhook_env = Path.cwd() / ".env" if method in ("docker", "compose") else None
+    sections.extend((
+        "  # Store a Discord-compatible webhook URL through a hidden prompt",
+        f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
+        "",
+        "  # Send one test webhook without starting monitoring",
+        f"  {prefix} --send-test-webhook",
+        "",
+    ))
     sections.extend((
         "  # Monitor one Spotify user",
         "  # A spotify:user URI or profile URL is also accepted",
@@ -4831,6 +5147,43 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     return [labels[name] for name in notification_names if selected[name]]
 
 
+# Collects one hidden webhook secret and independent event settings without making a request
+def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
+    notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
+    if not _wizard_ask_yes_no("Configure Discord-compatible webhook notifications?", default=False):
+        config_values["WEBHOOK_ENABLED"] = False
+        config_values.update({name: False for name in notification_names})
+        return []
+    existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_discord_webhook_url",))
+    replace_webhook = True
+    if existing_webhook:
+        choice = _wizard_ask_choice("How should the webhook secret be configured?", [("Retain the existing WEBHOOK_URL", "Keeps the non-placeholder value without displaying or rewriting it."), ("Enter a replacement privately", "Uses a hidden prompt and saves only after local format validation.")])
+        replace_webhook = choice == 1
+    if replace_webhook:
+        while True:
+            webhook_url = _wizard_ask_secret("Discord-compatible webhook URL")
+            if validate_webhook_url(webhook_url):
+                break
+            print("  Enter a complete HTTPS webhook URL.")
+        if existing_webhook:
+            secret_updates["WEBHOOK_URL"] = webhook_url
+        else:
+            _wizard_queue_secret(secret_updates, env_path, "WEBHOOK_URL", webhook_url)
+    config_values["WEBHOOK_ENABLED"] = True
+    config_values["WEBHOOK_USERNAME"] = "Spotify Monitor"
+    preset = _wizard_ask_choice("Which webhook notifications should be enabled?", [("Status and errors, recommended", "Active, inactive and error notifications."), ("Every supported event", "Enables all webhook notification types."), ("Custom", "Choose each webhook notification type separately.")])
+    if preset == 0:
+        selected = {"WEBHOOK_ACTIVE_NOTIFICATION": True, "WEBHOOK_INACTIVE_NOTIFICATION": True, "WEBHOOK_TRACK_NOTIFICATION": False, "WEBHOOK_SONG_NOTIFICATION": False, "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": False, "WEBHOOK_ERROR_NOTIFICATION": True}
+    elif preset == 1:
+        selected = {name: True for name in notification_names}
+    else:
+        questions = (("WEBHOOK_ACTIVE_NOTIFICATION", "Webhook when the user becomes active?"), ("WEBHOOK_INACTIVE_NOTIFICATION", "Webhook when the user becomes inactive?"), ("WEBHOOK_TRACK_NOTIFICATION", "Webhook when a tracked song plays?"), ("WEBHOOK_SONG_NOTIFICATION", "Webhook for every song change?"), ("WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "Webhook when a song loops?"), ("WEBHOOK_ERROR_NOTIFICATION", "Webhook on monitoring errors?"))
+        selected = {name: _wizard_ask_yes_no(question, default=False) for name, question in questions}
+    config_values.update(selected)
+    labels = {"WEBHOOK_ACTIVE_NOTIFICATION": "active", "WEBHOOK_INACTIVE_NOTIFICATION": "inactive", "WEBHOOK_TRACK_NOTIFICATION": "tracked song", "WEBHOOK_SONG_NOTIFICATION": "every song", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": "loop detection", "WEBHOOK_ERROR_NOTIFICATION": "errors"}
+    return [labels[name] for name in notification_names if selected[name]]
+
+
 # Collects cookie-mode choices while keeping all secret values out of output
 def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dict) -> dict:
     result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
@@ -5028,6 +5381,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", SPOTIFY_CHECK_INTERVAL)
     print()
     enabled_notifications = _wizard_collect_email(config_values, secret_updates, env_path)
+    print()
+    enabled_webhooks = _wizard_collect_webhook(config_values, secret_updates, env_path)
     print("\nSetup summary\n")
     print(f"  Target: {target}")
     print(f"  Persist target: {'yes' if persist_target else 'no'}")
@@ -5039,7 +5394,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print(f"  Browser: {browser_label(auth['browser'])}")
     print(f"  Polling interval: {config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
     print(f"  Email: {'enabled' if enabled_notifications else 'disabled'}")
-    print(f"  Enabled notifications: {', '.join(enabled_notifications) if enabled_notifications else 'none'}")
+    print(f"  Email notifications: {', '.join(enabled_notifications) if enabled_notifications else 'none'}")
+    print(f"  Webhook: {'enabled' if enabled_webhooks else 'disabled'}")
+    print(f"  Webhook notifications: {', '.join(enabled_webhooks) if enabled_webhooks else 'none'}")
     print(f"  Config destination: {config_path}")
     print(f"  Dotenv destination: {env_path}")
     print(f"  Install method: {method}")
@@ -5072,7 +5429,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if _wizard_ask_yes_no("Run the read-only doctor now?", default=True):
         doctor_ran = True
         if _wizard_load_effective_setup(config_path, env_path):
-            report = build_doctor_report(target, str(config_path), str(env_path))
+            try:
+                report = build_doctor_report(target, str(config_path), str(env_path), progress=_doctor_progress)
+            finally:
+                _doctor_progress_clear()
             print(render_doctor_report(report))
             doctor_failed = any(check.status == "FAIL" for check in report.checks)
             if not doctor_failed:
@@ -5150,6 +5510,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         print_recovery_error(e, "file_write", detail=f"CSV destination '{csv_file_name}' could not be initialized: {e}")
 
     email_sent = False
+    webhook_sent = False
 
     out = f"Monitoring user {user_uri_id}"
     print(out)
@@ -5178,6 +5539,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             recovery_hint_tracker.reset()
             debug_print(f"Friend lookup result: found={sp_found}")
             email_sent = False
+            webhook_sent = False
             if platform.system() != 'Windows':
                 signal.alarm(0)
         except TimeoutException:
@@ -5200,24 +5562,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 SP_CACHED_ACCESS_TOKEN = None
 
             if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
-                if ERROR_NOTIFICATION and not email_sent:
+                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
                     safe_error = sanitize_error_text(e)
                     m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
                     m_body = f"Client or refresh token may be invalid or expired!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                    email_sent = True
+                    email_attempted, webhook_attempted = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
+                    email_sent = email_sent or email_attempted
+                    webhook_sent = webhook_sent or webhook_attempted
 
             elif TOKEN_SOURCE == 'cookie' and advice.code == "auth.cookie_invalid":
-                if ERROR_NOTIFICATION and not email_sent:
+                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
                     safe_error = sanitize_error_text(e)
                     m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
                     m_body = f"sp_dc may be invalid/expired or Spotify has broken sth again!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>sp_dc may be invalid/expired or Spotify has broken sth again!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                    email_sent = True
+                    email_attempted, webhook_attempted = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
+                    email_sent = email_sent or email_attempted
+                    webhook_sent = webhook_sent or webhook_attempted
 
             print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
@@ -5352,7 +5714,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 except Exception as e:
                     print_recovery_error(e, "file_write", detail=f"CSV destination '{csv_file_name}' could not be written: {e}")
 
-                if ACTIVE_NOTIFICATION:
+                if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
                     music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
                     music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                     lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -5376,8 +5738,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                    send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
 
                 if TRACK_SONGS and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
@@ -5485,24 +5846,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
 
                             if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
-                                if ERROR_NOTIFICATION and not email_sent:
+                                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
                                     safe_error = sanitize_error_text(e)
                                     m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
                                     m_body = f"Client or refresh token may be invalid or expired!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                                     m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                                    email_sent = True
+                                    email_attempted, webhook_attempted = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
+                                    email_sent = email_sent or email_attempted
+                                    webhook_sent = webhook_sent or webhook_attempted
 
                             elif TOKEN_SOURCE == 'cookie' and advice.code == "auth.cookie_invalid":
-                                if ERROR_NOTIFICATION and not email_sent:
+                                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
                                     safe_error = sanitize_error_text(e)
                                     m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
                                     m_body = f"sp_dc may be invalid/expired or Spotify has broken sth again!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                                     m_body_html = f"<html><head></head><body>sp_dc may be invalid/expired or Spotify has broken sth again!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                    print(f"Sending email notification to {RECEIVER_EMAIL}")
-                                    send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                                    email_sent = True
+                                    email_attempted, webhook_attempted = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
+                                    email_sent = email_sent or email_attempted
+                                    webhook_sent = webhook_sent or webhook_attempted
 
                             print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
@@ -5522,23 +5883,21 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", "Check the target ID, URI or profile URL then retry", False)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"  To fix: {not_found_advice.fix}")
-                            if ERROR_NOTIFICATION:
+                            if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
                                 m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                                 m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) was probably removed<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                print(f"Sending email notification to {RECEIVER_EMAIL}")
-                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                                send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                             not_visible_advice = classify_recovery_error(context="target_not_visible")
                             if recovery_hint_tracker.should_render(not_visible_advice):
                                 print(f"  To fix: {not_visible_advice.fix}")
-                            if ERROR_NOTIFICATION:
+                            if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
                                 m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                                 m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                print(f"Sending email notification to {RECEIVER_EMAIL}")
-                                send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                                send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
                     debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -5552,12 +5911,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         verbose_print("Target visibility recovered before disappearance was confirmed")
                     if user_not_found is True:
                         print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
-                        if ERROR_NOTIFICATION:
+                        if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                             m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
                             m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
+                            send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
 
                 user_not_found = False
@@ -5792,18 +6150,18 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
-                        if ACTIVE_NOTIFICATION:
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                            email_sent = True
+                        if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
+                            email_attempted, webhook_attempted = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
+                            email_sent = email_sent or email_attempted
+                            webhook_sent = webhook_sent or webhook_attempted
 
                     on_the_list = False
                     if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
                         print("\n*** Track/playlist/album matched with the list!")
                         on_the_list = True
 
-                    # Check for loop notification first - if sent, skip track/song notification
-                    if song_on_loop == SONG_ON_LOOP_VALUE and SONG_ON_LOOP_NOTIFICATION and not email_sent:
+                    # Check for loop notification first so each channel can suppress its lower-priority song alert
+                    if song_on_loop == SONG_ON_LOOP_VALUE and ((SONG_ON_LOOP_NOTIFICATION and not email_sent) or (webhook_event_enabled("loop") and not webhook_sent)):
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -5827,11 +6185,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                        print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                        email_sent = True
+                        email_attempted, webhook_attempted = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent)
+                        email_sent = email_sent or email_attempted
+                        webhook_sent = webhook_sent or webhook_attempted
 
-                    if (TRACK_NOTIFICATION and on_the_list and not email_sent) or (SONG_NOTIFICATION and not email_sent):
+                    email_song_enabled = ((TRACK_NOTIFICATION and on_the_list) or SONG_NOTIFICATION) and not email_sent
+                    webhook_song_enabled = ((webhook_event_enabled("track") and on_the_list) or webhook_event_enabled("song")) and not webhook_sent
+                    if email_song_enabled or webhook_song_enabled:
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -5855,9 +6215,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                        print(f"Sending email notification to {RECEIVER_EMAIL}")
-                        send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                        email_sent = True
+                        notification_type = "track" if on_the_list and ((TRACK_NOTIFICATION and email_song_enabled) or webhook_event_enabled("track")) else "song"
+                        email_attempted, webhook_attempted = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled)
+                        email_sent = email_sent or email_attempted
+                        webhook_sent = webhook_sent or webhook_attempted
 
                     try:
                         if csv_file_name:
@@ -5928,7 +6289,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     pass
                                 else:                                   # Linux variants
                                     spotify_linux_play_pause("pause")
-                        if INACTIVE_NOTIFICATION:
+                        if INACTIVE_NOTIFICATION or webhook_event_enabled("inactive"):
                             # Format recently listened songs list for email (skip if only 1 song)
                             recent_songs_mbody = ""
                             recent_songs_mbody_html = ""
@@ -5972,9 +6333,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                            print(f"Sending email notification to {RECEIVER_EMAIL}")
-                            send_email(m_subject, m_body, m_body_html, SMTP_SSL)
-                            email_sent = True
+                            email_attempted, webhook_attempted = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION)
+                            email_sent = email_sent or email_attempted
+                            webhook_sent = webhook_sent or webhook_attempted
                         sp_active_ts_start_old = sp_active_ts_start
                         sp_active_ts_start = 0
                         listened_songs_old = listened_songs
@@ -6032,9 +6393,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
 
-    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -6058,7 +6419,7 @@ def main():
         sys.stdout.buffer.flush()
         sys.exit(0)
 
-    if "--version" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv:
+    if "--version" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
         print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
         sys.exit(0)
 
@@ -6070,7 +6431,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
-        description=("Monitor a Spotify friend's activity and send customizable email alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
+        description=("Monitor a Spotify friend's activity and send customizable email or webhook alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
         epilog=_build_help_epilog()
     )
 
@@ -6102,6 +6463,12 @@ def main():
         dest="set_sp_dc",
         action="store_true",
         help="Privately validate and save SP_DC_COOKIE through a hidden prompt",
+    )
+    conf.add_argument(
+        "--set-webhook-url",
+        dest="set_webhook_url",
+        action="store_true",
+        help="Privately validate and save WEBHOOK_URL through a hidden prompt",
     )
     conf.add_argument(
         "--config-file",
@@ -6254,6 +6621,71 @@ def main():
         help="Send test email to verify SMTP settings"
     )
 
+    webhook_notify = parser.add_argument_group("Discord-compatible webhooks")
+    webhook_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_toggle.add_argument(
+        "--webhook",
+        dest="webhook_enabled",
+        action="store_true",
+        default=None,
+        help="Enable configured webhook notifications"
+    )
+    webhook_toggle.add_argument(
+        "--no-webhook",
+        dest="webhook_enabled",
+        action="store_false",
+        default=None,
+        help="Disable configured webhook notifications"
+    )
+    webhook_notify.add_argument(
+        "--webhook-active",
+        dest="webhook_active",
+        action="store_true",
+        default=None,
+        help="Send a webhook when the user becomes active"
+    )
+    webhook_notify.add_argument(
+        "--webhook-inactive",
+        dest="webhook_inactive",
+        action="store_true",
+        default=None,
+        help="Send a webhook when the user goes inactive"
+    )
+    webhook_notify.add_argument(
+        "--webhook-track",
+        dest="webhook_track",
+        action="store_true",
+        default=None,
+        help="Send a webhook when a monitored track, playlist or album plays"
+    )
+    webhook_notify.add_argument(
+        "--webhook-song-changes",
+        dest="webhook_song_changes",
+        action="store_true",
+        default=None,
+        help="Send a webhook on every song change"
+    )
+    webhook_notify.add_argument(
+        "--webhook-loop",
+        dest="webhook_loop",
+        action="store_true",
+        default=None,
+        help="Send a webhook when the user plays a song on loop"
+    )
+    webhook_notify.add_argument(
+        "--no-webhook-error-notify",
+        dest="webhook_errors",
+        action="store_false",
+        default=None,
+        help="Disable webhook notifications on errors"
+    )
+    webhook_notify.add_argument(
+        "--send-test-webhook",
+        dest="send_test_webhook",
+        action="store_true",
+        help="Send one test webhook without starting monitoring"
+    )
+
     # Intervals & timers
     times = parser.add_argument_group("Intervals & timers")
     times.add_argument(
@@ -6370,12 +6802,14 @@ def main():
         conflict_values = (
             (args.user_id, "SPOTIFY_USER_URI_ID"),
             (args.setup, "--setup"),
+            (args.set_webhook_url, "--set-webhook-url"),
             (args.doctor, "--doctor"),
             (args.version, "--version"),
             (args.generate_config, "--generate-config"),
             (args.config_file, "--config-file"),
             (args.import_browser_cookie, "--import-browser-cookie"),
             (args.send_test_email, "--send-test-email"),
+            (args.send_test_webhook, "--send-test-webhook"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
             (args.spotify_dc_cookie, "--spotify-dc-cookie"),
@@ -6397,7 +6831,7 @@ def main():
             (args.force, "--force"),
         )
         set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_sp_dc_conflicts:
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
@@ -6410,6 +6844,53 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
+    if args.set_webhook_url:
+        set_webhook_conflicts = []
+        conflict_values = (
+            (args.user_id, "SPOTIFY_USER_URI_ID"),
+            (args.setup, "--setup"),
+            (args.set_sp_dc, "--set-sp-dc"),
+            (args.doctor, "--doctor"),
+            (args.version, "--version"),
+            (args.generate_config, "--generate-config"),
+            (args.config_file, "--config-file"),
+            (args.import_browser_cookie, "--import-browser-cookie"),
+            (args.send_test_email, "--send-test-email"),
+            (args.send_test_webhook, "--send-test-webhook"),
+            (args.list_friends, "--list-friends"),
+            (args.token_source, "--token-source"),
+            (args.spotify_dc_cookie, "--spotify-dc-cookie"),
+            (args.login_request_body_file, "--login-request-body-file"),
+            (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
+            (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.check_interval, "--check-interval"),
+            (args.offline_timer, "--offline-timer"),
+            (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_list, "--monitor-list"),
+            (args.csv_file, "--csv-file"),
+            (args.flag_file, "--flag-file"),
+            (args.user_agent, "--user-agent"),
+            (args.file_suffix, "--file-suffix"),
+            (args.truncate, "--truncate"),
+            (args.browser, "--browser"),
+            (args.browser_profile, "--browser-profile"),
+            (args.cookie_file, "--cookie-file"),
+            (args.force, "--force"),
+        )
+        set_webhook_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        set_webhook_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
+        if set_webhook_conflicts:
+            parser.error("--set-webhook-url cannot be combined with " + ", ".join(set_webhook_conflicts))
+        if args.env_file is not None and args.env_file.casefold() == "none":
+            parser.error("--set-webhook-url requires a writable dotenv destination and cannot use --env-file none")
+        try:
+            run_set_webhook_url(env_file=args.env_file)
+        except WebhookConfigurationError as exc:
+            print_recovery_error(exc, "set_webhook_url")
+            sys.exit(1)
+        sys.exit(0)
+
     if args.setup:
         setup_conflicts = []
         conflict_values = (
@@ -6418,7 +6899,9 @@ def main():
             (args.generate_config, "--generate-config"),
             (args.import_browser_cookie, "--import-browser-cookie"),
             (args.set_sp_dc, "--set-sp-dc"),
+            (args.set_webhook_url, "--set-webhook-url"),
             (args.send_test_email, "--send-test-email"),
+            (args.send_test_webhook, "--send-test-webhook"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
             (args.spotify_dc_cookie, "--spotify-dc-cookie"),
@@ -6436,7 +6919,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -6453,6 +6936,8 @@ def main():
             conflicting_actions.append("--import-browser-cookie")
         if args.send_test_email:
             conflicting_actions.append("--send-test-email")
+        if args.send_test_webhook:
+            conflicting_actions.append("--send-test-webhook")
         if args.list_friends:
             conflicting_actions.append("--list-friends")
         if conflicting_actions:
@@ -6512,7 +6997,7 @@ def main():
         sys.exit(0)
 
     target_user_id = None
-    if not args.list_friends and not args.send_test_email and not args.doctor:
+    if not args.list_friends and not args.send_test_email and not args.send_test_webhook and not args.doctor:
         try:
             target_user_id = resolve_target_user_id(args.user_id, TARGET_USER_URI_ID)
         except ValueError as exc:
@@ -6653,12 +7138,39 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+    if args.webhook_enabled is not None:
+        WEBHOOK_ENABLED = args.webhook_enabled
+    if args.webhook_active is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_ACTIVE_NOTIFICATION = True
+    if args.webhook_inactive is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_INACTIVE_NOTIFICATION = True
+    if args.webhook_track is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_TRACK_NOTIFICATION = True
+    if args.webhook_song_changes is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_NOTIFICATION = True
+    if args.webhook_loop is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
+    if args.webhook_errors is False:
+        WEBHOOK_ERROR_NOTIFICATION = False
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
     if args.doctor:
         doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
         sys.exit(run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks))
+
+    if args.send_test_webhook:
+        print("* Sending test webhook notification ...\n")
+        if send_webhook("spotify_monitor: test webhook", "This is a test webhook. Your Discord-compatible webhook settings appear to be correct.", "song", force=True) == 0:
+            print("* Webhook sent successfully !")
+        else:
+            sys.exit(1)
+        sys.exit(0)
 
     try:
         import pyotp
@@ -6926,6 +7438,32 @@ def main():
 
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+
+    if args.webhook_enabled is not None:
+        WEBHOOK_ENABLED = args.webhook_enabled
+
+    if args.webhook_active is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_ACTIVE_NOTIFICATION = True
+
+    if args.webhook_inactive is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_INACTIVE_NOTIFICATION = True
+
+    if args.webhook_track is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_TRACK_NOTIFICATION = True
+
+    if args.webhook_song_changes is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_NOTIFICATION = True
+
+    if args.webhook_loop is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
+
+    if args.webhook_errors is False:
+        WEBHOOK_ERROR_NOTIFICATION = False
 
     if args.track_in_spotify is True:
         TRACK_SONGS = True
