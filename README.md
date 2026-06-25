@@ -63,7 +63,8 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
 - **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 
 ### 🔔 Smart Notifications
-- **Instant Alerts**: Detailed **Email notifications** for activity and songs on loop.
+- **Multi-Channel**: Instant alerts via **Email** and **Webhooks** (**Discord** etc.).
+- **Detailed Alerts**: Choose activity, tracked-song, every-song, loop and error alerts.
 - **Session Summaries**: Receive detailed reports when a friend finishes a session.
 - **Error Reporting**: Be notified if the monitoring process hits a snag.
 
@@ -102,11 +103,13 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
    * [Following the Monitored User](#following-the-monitored-user)
    * [How to Get a Friend's User URI ID](#how-to-get-a-friends-user-uri-id)
    * [SMTP Settings](#smtp-settings)
+   * [Webhook Settings](#webhook-settings)
    * [Storing Secrets](#storing-secrets)
 5. [Usage](#usage)
    * [Monitoring Mode](#monitoring-mode)
    * [Listing Mode](#listing-mode)
    * [Email Notifications](#email-notifications)
+   * [Webhook Notifications](#webhook-notifications)
    * [CSV Export](#csv-export)
    * [Automatic Playback of Listened Tracks in the Spotify Client](#automatic-playback-of-listened-tracks-in-the-spotify-client)
    * [Check Intervals](#check-intervals)
@@ -199,7 +202,7 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="new-here-run-the-setup-wizard"></a>
 ### New here? Run the setup wizard
 
-The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want email alerts. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
 
 Use the command that matches how you run the tool:
 
@@ -218,7 +221,7 @@ docker compose run --rm spotify_monitor --setup
 docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
 ```
 
-The wizard asks for one Spotify target, recommends browser-based `sp_dc` import, writes non-secret settings to `spotify_monitor.conf` and writes secrets only to `.env`. It also automatically detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation.
+The wizard asks for one Spotify target, recommends browser-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation.
 
 For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
 
@@ -233,6 +236,9 @@ For a local PyPI or downloaded-script installation, Firefox browser import remai
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
+| Set up webhook alerts | Run the setup wizard and choose webhook alerts |
+| Save a new webhook URL | Run `spotify_monitor --set-webhook-url` |
+| Send a test webhook | Run `spotify_monitor --send-test-webhook` |
 
 <a id="manual-commands"></a>
 ### Manual commands
@@ -263,6 +269,24 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-sp-d
 
 `--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
 
+A webhook URL is a private link that receives notifications. Treat it like a password because anyone who has it may be able to post through it. Follow the [webhook setup steps](#webhook-settings) then save the link with the command that matches your installation:
+
+```sh
+# PyPI install
+spotify_monitor --set-webhook-url
+
+# Manual Python script
+python3 spotify_monitor.py --set-webhook-url
+
+# Docker Compose
+docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
+
+# Docker image
+docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+```
+
+The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`. This command only saves the link. It does not turn on webhook alerts or send a message. See [Webhook Settings](#webhook-settings) to choose your alerts then run `spotify_monitor --send-test-webhook` to test them.
+
 Before monitoring, [follow the Spotify user](#following-the-monitored-user) from the account represented by your configured credentials.
 
 Start monitoring with a raw user ID, Spotify user URI or profile URL. A target saved by the wizard does not need to be repeated:
@@ -288,7 +312,7 @@ spotify_monitor --help
 <a id="terminal-output"></a>
 ## Terminal Output
 
-The `--help` output provides copy-paste examples for guided setup, private cookie entry, Firefox cookie import, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with `/data/.env` and retain a read-only Linux host Firefox mount as an advanced alternative.
+The `--help` output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with `/data/.env` and retain a read-only Linux host Firefox mount as an advanced alternative.
 
 Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
 
@@ -339,7 +363,7 @@ The prompt does not echo `sp_dc`. Spotify validation completes before the existi
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.
 
-Setup does not contact SMTP. The doctor can authenticate to SMTP only after you accept its prompt but it never sends email. No port is exposed because Spotify Monitor has no server.
+Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it can check your email login but it still sends no alerts.
 
 If the wizard does not persist the target, `docker compose up` cannot supply it. Use the direct command printed by setup, which follows this form:
 
@@ -399,7 +423,7 @@ The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers across these sections:
 * Notifications
 * Summary
 
-The doctor loads the same effective config, dotenv values and command-line overrides as a normal run. It validates Spotify authentication and connectivity through the configured token source. If email notifications are enabled it can connect and authenticate to SMTP but it never sends an email. It does not create logs, CSV files, flag files, OAuth caches or update config and dotenv files.
+The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. If email alerts are enabled it can check your email login but it never sends an email. If webhook alerts are enabled it checks the saved link and your alert choices without sending a webhook. It does not create logs, CSV files, flag files, OAuth caches or update config and dotenv files.
 
 Warnings do not make the command fail. The doctor exits nonzero only when at least one check has `[FAIL]`. You can run an authentication-only check without a target or verify one specific account:
 
@@ -424,7 +448,7 @@ spotify_monitor --import-browser-cookie --browser firefox
 
 Inside Docker or Docker Compose, recovery guidance prefers the hidden `--set-sp-dc` path and also shows the advanced mounted Firefox command.
 
-For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Use `--verbose` for startup settings plus rare operational state changes without per-poll traces. Cookies, tokens, authorization headers and SMTP passwords remain redacted.
+For advanced client-mode failures, follow the [Spotify Desktop Client](#spotify-desktop-client) export instructions again. Add `--debug` to normal runs or doctor checks for sanitized technical detail. Use `--verbose` for startup settings plus rare operational state changes without per-poll traces. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.
 
 <a id="configuration"></a>
 ## Configuration
@@ -666,10 +690,51 @@ Verify your SMTP settings by using `--send-test-email` flag (the tool will try t
 spotify_monitor --send-test-email
 ```
 
+<a id="webhook-settings"></a>
+### Webhook Settings
+
+Spotify Monitor can send activity alerts through a Discord-compatible webhook. You can use webhooks instead of email or use both. The easiest option is to run `spotify_monitor --setup` then choose webhook alerts when asked.
+
+Discord works directly. Other services can be used if they accept Discord-compatible webhook messages. Services that require a different JSON format need an adapter or a future payload option.
+
+If you are new to Discord, follow these steps to get your private webhook URL:
+
+1. Open your Discord server and choose the channel that should receive the alerts.
+2. Click **Edit Channel** then open **Integrations** > **Webhooks**.
+3. Click **New Webhook**, choose a name if you want then click **Copy Webhook URL**.
+4. Return to the terminal and run:
+
+```sh
+spotify_monitor --set-webhook-url
+```
+
+Paste the copied link at the hidden prompt. Spotify Monitor saves it in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
+
+If you used the setup wizard, it saves your alert choices automatically. For the recommended alerts, the saved settings look like this:
+
+```ini
+WEBHOOK_ENABLED = True
+WEBHOOK_ACTIVE_NOTIFICATION = True
+WEBHOOK_INACTIVE_NOTIFICATION = True
+WEBHOOK_ERROR_NOTIFICATION = True
+```
+
+This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. See [Webhook Notifications](#webhook-notifications) if you want different alerts.
+
+Send one test webhook without starting monitoring:
+
+```sh
+spotify_monitor --send-test-webhook
+```
+
+Email and webhooks work separately. If one fails, Spotify Monitor can still send the other. Discord-compatible messages cannot trigger `@everyone` or `@here` mentions.
+
+If the webhook service temporarily refuses a message, Spotify Monitor tries once more and waits at most five seconds. Spotify monitoring continues normally and its retry behavior is unchanged.
+
 <a id="storing-secrets"></a>
 ### Storing Secrets
 
-It is recommended to store secrets like `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET` or `SMTP_PASSWORD` as either an environment variable or in a dotenv file.
+Keep private values in an environment variable or a dotenv file. This includes `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD` and `WEBHOOK_URL`.
 
 Set the needed environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
 
@@ -679,6 +744,7 @@ export REFRESH_TOKEN="your_spotify_app_refresh_token"
 export SP_APP_CLIENT_ID="your_spotify_app_client_id"
 export SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 export SMTP_PASSWORD="your_smtp_password"
+export WEBHOOK_URL="https://discord.com/api/webhooks/your_id/your_token"
 ```
 
 On **Windows Command Prompt** use `set` instead of `export` and on **Windows PowerShell** use `$env`.
@@ -697,6 +763,7 @@ REFRESH_TOKEN="your_spotify_app_refresh_token"
 SP_APP_CLIENT_ID="your_spotify_app_client_id"
 SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 SMTP_PASSWORD="your_smtp_password"
+WEBHOOK_URL="https://discord.com/api/webhooks/your_id/your_token"
 ```
 
 By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it.
@@ -856,6 +923,30 @@ Example email:
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_email_notifications.png" alt="spotify_monitor_email_notifications" width="80%"/>
 </p>
+
+<a id="webhook-notifications"></a>
+### Webhook Notifications
+
+The setup wizard's recommended choice sends active, inactive and error alerts. Choose the custom option in the wizard if you want to decide one by one.
+
+You can also change the settings yourself in `spotify_monitor.conf` or use a command-line option for one run:
+
+| Event | Config setting | CLI override |
+| --- | --- | --- |
+| User becomes active | `WEBHOOK_ACTIVE_NOTIFICATION` | `--webhook-active` |
+| User becomes inactive | `WEBHOOK_INACTIVE_NOTIFICATION` | `--webhook-inactive` |
+| Monitored track, playlist or album plays | `WEBHOOK_TRACK_NOTIFICATION` | `--webhook-track` |
+| Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
+| Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
+| Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Disable with `--no-webhook-error-notify` |
+
+For example, this sends a webhook alert for every song change during one run:
+
+```sh
+spotify_monitor <spotify_user_uri_id> --webhook-song-changes
+```
+
+Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
 
 <a id="csv-export"></a>
 ### CSV Export
