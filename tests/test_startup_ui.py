@@ -222,7 +222,7 @@ def test_concise_summary_shows_enabled_optional_settings(monkeypatch):
         assert visible in output
 
 
-# Verifies webhook categories appear without exposing the secret endpoint
+# Verifies webhook alerts appear without exposing the private URL
 def test_webhook_summary_is_secret_safe(monkeypatch):
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
@@ -230,7 +230,7 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
     output = emit_to_string(summary_rows(), show_full=True)
     assert "Webhook enabled" in output
-    assert "Webhook categories:        active, errors" in output
+    assert "Webhook alerts:            active, errors" in output
     assert "known-webhook-secret" not in output
 
 

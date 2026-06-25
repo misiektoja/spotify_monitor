@@ -73,7 +73,7 @@ def test_set_webhook_url_rejects_invalid_secret_without_leak(capsys):
     with make_test_directory() as directory_name:
         destination = Path(directory_name) / ".env"
         secret = "http://example.test/private-token"
-        with pytest.raises(monitor.WebhookConfigurationError, match="not HTTPS") as error:
+        with pytest.raises(monitor.WebhookConfigurationError, match="complete HTTPS") as error:
             monitor.run_set_webhook_url(env_file=destination, interactive=True, getpass_func=lambda prompt: secret)
         output = capsys.readouterr().out
         assert secret not in output
@@ -229,13 +229,13 @@ def test_send_test_webhook_cli_is_spotify_independent(monkeypatch):
     connectivity.assert_not_called()
 
 
-# Verifies the doctor validates webhook settings without making a network request
+# Verifies the doctor checks webhook settings without sending a message
 def test_doctor_webhook_check_is_read_only(monkeypatch):
     configure_webhook(monkeypatch)
     post = Mock(side_effect=AssertionError("webhook request attempted"))
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
     checks = monitor.doctor_check_webhook_notifications()
-    assert checks == [monitor.make_doctor_check("Notifications", "PASS", "Webhook URL format and event settings are valid", "The secret URL was not displayed and no webhook request was attempted")]
+    assert checks == [monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed and no webhook was sent")]
     post.assert_not_called()
 
 
