@@ -3,6 +3,7 @@
 # Quick start:
 #   docker compose run --rm spotify_monitor --setup
 #   docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
+#   docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 #   docker compose run --rm spotify_monitor --doctor
 #   docker compose up
 #
