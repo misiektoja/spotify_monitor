@@ -1,3 +1,4 @@
+import io
 import os
 import subprocess
 import sys
@@ -13,6 +14,13 @@ import spotify_monitor as monitor
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
+
+
+# Provides one in-memory stream that behaves like an interactive terminal
+class TTYBuffer(io.StringIO):
+    # Reports interactive terminal capability for progress rendering
+    def isatty(self):
+        return True
 
 
 # Runs an isolated doctor CLI scenario with real network access blocked
@@ -48,6 +56,13 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SONG_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "SONG_ON_LOOP_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_INACTIVE_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_TRACK_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "TRACK_SONGS", False)
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "fake-access-token")
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(target))
@@ -82,6 +97,24 @@ def test_zero_failures_returns_success(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "build_doctor_report", lambda *args, **kwargs: monitor.DoctorReport([monitor.make_doctor_check("Environment", "PASS", "ok")]))
     assert monitor.run_doctor() == 0
     assert "0 failure(s)" in capsys.readouterr().out
+
+
+# Verifies interactive doctor progress is transient while the final report still renders
+def test_doctor_interactive_progress(monkeypatch):
+    stream = TTYBuffer()
+
+    # Emits one progress update before returning a passing report
+    def build_report(*args, **kwargs):
+        kwargs["progress"]("notifications")
+        return monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", "ok")])
+
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "build_doctor_report", build_report)
+    assert monitor.run_doctor() == 0
+    output = stream.getvalue()
+    assert "* Checking notifications ..." in output
+    assert "Doctor\n" in output
+    assert "0 failure(s)" in output
 
 
 # Verifies warnings alone preserve a zero exit code

@@ -130,6 +130,12 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Or enter the Spotify cookie through a hidden prompt
   python3 spotify_monitor.py --set-sp-dc
 
+  # Store a Discord-compatible webhook URL through a hidden prompt
+  python3 spotify_monitor.py --set-webhook-url
+
+  # Send one test webhook without starting monitoring
+  python3 spotify_monitor.py --send-test-webhook
+
   # Monitor one Spotify user
   # A spotify:user URI or profile URL is also accepted
   python3 spotify_monitor.py <spotify_user_id>

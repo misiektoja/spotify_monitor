@@ -32,6 +32,14 @@ def configure_summary(monkeypatch):
         "SONG_NOTIFICATION": False,
         "SONG_ON_LOOP_NOTIFICATION": False,
         "ERROR_NOTIFICATION": False,
+        "WEBHOOK_ENABLED": False,
+        "WEBHOOK_URL": "known-webhook-secret",
+        "WEBHOOK_ACTIVE_NOTIFICATION": False,
+        "WEBHOOK_INACTIVE_NOTIFICATION": False,
+        "WEBHOOK_TRACK_NOTIFICATION": False,
+        "WEBHOOK_SONG_NOTIFICATION": False,
+        "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": False,
+        "WEBHOOK_ERROR_NOTIFICATION": False,
         "TRACK_SONGS": False,
         "LIVENESS_CHECK_INTERVAL": 0,
         "CSV_FILE": "",
@@ -128,6 +136,8 @@ def test_help_banner_once_and_raw_epilog():
     assert "Examples:\n  # Guided setup, recommended for the first run\n  python3 spotify_monitor.py --setup" in result.stdout
     assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
     assert "python3 spotify_monitor.py --set-sp-dc" in result.stdout
+    assert "python3 spotify_monitor.py --set-webhook-url" in result.stdout
+    assert "python3 spotify_monitor.py --send-test-webhook" in result.stdout
     assert "\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  python3 spotify_monitor.py <spotify_user_id>" in result.stdout
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
@@ -210,6 +220,18 @@ def test_concise_summary_shows_enabled_optional_settings(monkeypatch):
     output = emit_to_string(summary_rows())
     for visible in ("On (active, monitored tracks)", "Spotify playback control", "Liveness output", "/data/tracks.csv", "/data/alerts.txt", "/data/active.flag", "80 chars", "Legacy OAuth cache"):
         assert visible in output
+
+
+# Verifies webhook categories appear without exposing the secret endpoint
+def test_webhook_summary_is_secret_safe(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
+    output = emit_to_string(summary_rows(), show_full=True)
+    assert "Webhook enabled" in output
+    assert "Webhook categories:        active, errors" in output
+    assert "known-webhook-secret" not in output
 
 
 # Verifies client authentication uses the advanced intent label

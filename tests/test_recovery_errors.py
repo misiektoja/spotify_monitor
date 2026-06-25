@@ -19,7 +19,7 @@ def make_http_error(status_code):
 
 # Verifies the published recovery category set remains stable
 def test_recovery_codes_are_stable():
-    assert monitor.RECOVERY_CODES == frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "file.unreadable", "file.unwritable", "unknown"})
+    assert monitor.RECOVERY_CODES == frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
 
 
 # Verifies HTTP status classification uses explicit Spotify context
@@ -80,6 +80,15 @@ def test_smtp_recovery_categories():
     assert monitor.classify_recovery_error(requests.ConnectionError("connection refused"), "smtp").code == "smtp.connection"
 
 
+# Verifies webhook failures stay distinct from Spotify rate-limit categories
+def test_webhook_recovery_categories():
+    assert monitor.classify_recovery_error(context="webhook_config").code == "webhook.invalid"
+    assert monitor.classify_recovery_error(make_http_error(404), "webhook").code == "webhook.rejected"
+    assert monitor.classify_recovery_error(make_http_error(429), "webhook").code == "webhook.rate_limited"
+    assert monitor.classify_recovery_error(make_http_error(503), "webhook").code == "webhook.connection"
+    assert monitor.classify_recovery_error(make_http_error(429), "runtime").code == "spotify.rate_limited"
+
+
 # Verifies file access contexts map to read and write categories
 def test_file_recovery_categories():
     assert monitor.classify_recovery_error(PermissionError("denied"), "file_read").code == "file.unreadable"
@@ -116,6 +125,15 @@ def test_secret_redaction_covers_values_and_serialized_forms(monkeypatch):
     for value in (secret, "bearer-value", "cookie-value", "access-value", "refresh-value", "client-value"):
         assert value not in sanitized
     assert sanitized.count("<redacted>") >= 6
+
+
+# Verifies webhook URL secrets are redacted from assignments and request errors
+def test_webhook_secret_redaction(monkeypatch):
+    secret = "https://discord.com/api/webhooks/123/private-token"
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", secret)
+    sanitized = monitor.sanitize_error_text(f"WEBHOOK_URL={secret}\nrequest failed for {secret}")
+    assert secret not in sanitized
+    assert sanitized.count("<redacted>") >= 2
 
 
 # Verifies normal and debug recovery rendering never exposes a configured secret
