@@ -99,3 +99,11 @@ def test_readme_documents_default_container_playback_limitation():
     assert "Host Spotify auto-play is unavailable by default inside a container" in readme
     assert "TRACK_SONGS" in readme
     assert "--track-in-spotify" in readme
+
+
+# Verifies the generic webhook setup links target an existing README anchor
+def test_readme_webhook_setup_anchor_is_consistent():
+    readme = read_asset("README.md")
+    assert '<a id="webhook-settings"></a>' in readme
+    assert "](#webhook-settings)" in readme
+    assert "discord-webhook-notifications" not in readme
