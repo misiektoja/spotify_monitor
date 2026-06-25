@@ -148,28 +148,29 @@ ERROR_NOTIFICATION = True
 
 # ---------------------------------------------------------------------
 
-# Discord-compatible webhook settings
-# Store WEBHOOK_URL in an environment variable or dotenv file because the URL contains a secret token
+# Discord-compatible webhook alerts
+# In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL
+# Store WEBHOOK_URL in an environment variable or dotenv file because this private link can send messages through the service
 WEBHOOK_ENABLED = False
-WEBHOOK_URL = "your_discord_webhook_url"
+WEBHOOK_URL = "your_webhook_url"
 WEBHOOK_USERNAME = "Spotify Monitor"
 
-# Whether to send a webhook when the user becomes active
+# Whether to send a webhook alert when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False
 
-# Whether to send a webhook when the user goes inactive
+# Whether to send a webhook alert when the user goes inactive
 WEBHOOK_INACTIVE_NOTIFICATION = False
 
-# Whether to send a webhook when a monitored track, playlist or album plays
+# Whether to send a webhook alert when a monitored track, playlist or album plays
 WEBHOOK_TRACK_NOTIFICATION = False
 
-# Whether to send a webhook on every song change
+# Whether to send a webhook alert on every song change
 WEBHOOK_SONG_NOTIFICATION = False
 
-# Whether to send a webhook when the user plays a song on loop
+# Whether to send a webhook alert when the user plays a song on loop
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send a webhook on monitoring errors
+# Whether to send a webhook alert on monitoring errors
 WEBHOOK_ERROR_NOTIFICATION = True
 
 # How often to check for user activity; in seconds
@@ -973,10 +974,10 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "set_webhook_url":
         if "interactive terminal" in message:
-            return make_recovery_advice("webhook.invalid", "--set-webhook-url requires an interactive terminal", "Run --set-webhook-url from an interactive shell so the URL can be entered through a hidden prompt", False, safe_detail)
+            return make_recovery_advice("webhook.invalid", "--set-webhook-url needs an interactive terminal", "Run --set-webhook-url in a terminal window so the webhook URL stays hidden while you paste it", False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
-            return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
-        return make_recovery_advice("webhook.invalid", "WEBHOOK_URL was not changed", recovery_fix_with_guide("Enter a complete HTTPS Discord-compatible webhook URL then retry", WEBHOOK_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the webhook URL in the private settings file", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "The webhook URL was not changed", recovery_fix_with_guide("Copy a fresh Discord-compatible webhook URL then run --set-webhook-url again", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context == "config_missing":
         summary = "The requested configuration file was not found"
@@ -1003,20 +1004,20 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
-        return make_recovery_advice("webhook.invalid", "The webhook configuration is incomplete or invalid", recovery_fix_with_guide("Set a complete HTTPS WEBHOOK_URL then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "Webhook alerts are on but the saved URL is missing or invalid", recovery_fix_with_guide("Run --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
-            return make_recovery_advice("webhook.rate_limited", "The webhook endpoint is rate limiting notifications", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify polling continues independently", WEBHOOK_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("webhook.rate_limited", "The webhook service is temporarily limiting new messages", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify monitoring continues normally", WEBHOOK_GUIDE_URL), True, safe_detail)
         if status is not None and 400 <= status <= 499:
-            return make_recovery_advice("webhook.rejected", "The webhook endpoint rejected the notification", recovery_fix_with_guide("Verify that WEBHOOK_URL is current then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("webhook.rejected", "The webhook service did not accept the alert", recovery_fix_with_guide("Check that the URL accepts Discord-compatible webhooks, save it with --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
         if status is not None and 500 <= status <= 599:
-            return make_recovery_advice("webhook.connection", "The webhook endpoint is temporarily unavailable", recovery_fix_with_guide("Wait briefly then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("webhook.connection", "The webhook service is temporarily unavailable", recovery_fix_with_guide("Wait briefly then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
         if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
-            return make_recovery_advice("webhook.connection", "The webhook request timed out", recovery_fix_with_guide("Check network access then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("webhook.connection", "The webhook service took too long to respond", recovery_fix_with_guide("Check your internet connection then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
         if isinstance(error, (req.RequestException, ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
-            return make_recovery_advice("webhook.connection", "The webhook endpoint could not be reached", recovery_fix_with_guide("Check DNS, internet access and firewall rules then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
-        return make_recovery_advice("webhook.connection", "The webhook notification could not be delivered", recovery_fix_with_guide("Run --send-test-webhook and retry with --debug if the failure continues", WEBHOOK_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("webhook.connection", "Spotify Monitor could not reach the webhook service", recovery_fix_with_guide("Check your internet connection and firewall then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
+        return make_recovery_advice("webhook.connection", "The webhook alert could not be sent", recovery_fix_with_guide("Run --send-test-webhook. If it still fails, retry with --debug", WEBHOOK_GUIDE_URL), True, safe_detail)
 
     if isinstance(error, smtplib.SMTPAuthenticationError) or status == 535:
         return make_recovery_advice("smtp.authentication", "SMTP authentication was rejected", recovery_fix_with_guide("Verify SMTP_USER and SMTP_PASSWORD. Providers such as Gmail may require an app password then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
@@ -1361,7 +1362,7 @@ class BrowserCookieImportError(Exception):
     pass
 
 
-# Raised when a webhook secret cannot be validated or persisted safely
+# Raised when a private webhook URL cannot be checked or saved safely
 class WebhookConfigurationError(Exception):
     pass
 
@@ -1812,7 +1813,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     return str(destination)
 
 
-# Validates and atomically stores one privately entered webhook URL
+# Checks and safely stores one privately entered webhook URL
 def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
     try:
         destination = resolve_import_env_path(env_file)
@@ -1820,7 +1821,7 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
         raise WebhookConfigurationError(str(exc).replace("Browser cookie import", "Webhook setup")) from None
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
     if not terminal_is_interactive:
-        raise WebhookConfigurationError("--set-webhook-url requires an interactive terminal. Run it from an interactive shell so the URL can be entered through a hidden prompt.")
+        raise WebhookConfigurationError("--set-webhook-url requires an interactive terminal. Run it in a terminal window so the webhook URL stays hidden while you paste it.")
     prompt = input if input_func is None else input_func
     try:
         existing_assignment = _dotenv_contains_key(destination, "WEBHOOK_URL")
@@ -1828,29 +1829,29 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
         raise WebhookConfigurationError(str(exc)) from None
     if existing_assignment:
         try:
-            confirmed = prompt(f"Replace WEBHOOK_URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = prompt(f"Replace the saved webhook URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
-            raise WebhookConfigurationError("WEBHOOK_URL replacement was cancelled. The dotenv file was not changed.")
+            raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        webhook_url = hidden_prompt("Enter webhook URL privately: ").strip()
+        webhook_url = hidden_prompt("Paste the Discord-compatible webhook URL (input hidden): ").strip()
     except (EOFError, KeyboardInterrupt):
-        raise WebhookConfigurationError("WEBHOOK_URL entry was cancelled. The dotenv file was not changed.") from None
+        raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.") from None
     if not validate_webhook_url(webhook_url):
-        raise WebhookConfigurationError("The entered webhook URL is incomplete or is not HTTPS. The dotenv file was not changed.")
+        raise WebhookConfigurationError("That does not look like a complete HTTPS webhook URL. The private settings file was not changed.")
     try:
         update_dotenv_file(destination, {"WEBHOOK_URL": webhook_url})
     except Exception:
-        raise WebhookConfigurationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
+        raise WebhookConfigurationError(f"Could not save the webhook URL in '{destination}'. Check file permissions or choose another path with --env-file.") from None
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
     test_command = _wizard_action_command(method, "--send-test-webhook", selected_config, destination)
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
-    print("* WEBHOOK_URL format validation succeeded")
-    print(f"* Updated dotenv: {destination}")
-    _wizard_print_command("Send a test notification:", test_command)
+    print("* Webhook URL looks valid")
+    print(f"* Updated private settings file: {destination}")
+    _wizard_print_command("Send a test webhook:", test_command)
     _wizard_print_command("Check the complete setup:", doctor_command)
     return str(destination)
 
@@ -2219,7 +2220,7 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
     return 0
 
 
-# Returns whether a webhook URL is a complete HTTPS endpoint without embedded credentials
+# Returns whether a webhook URL is a complete private HTTPS link
 def validate_webhook_url(url: Any = None) -> bool:
     selected_url = WEBHOOK_URL if url is None else url
     if not isinstance(selected_url, str) or not selected_url.strip():
@@ -2231,7 +2232,7 @@ def validate_webhook_url(url: Any = None) -> bool:
     return parsed.scheme.casefold() == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and bool(parsed.path.strip("/"))
 
 
-# Returns whether one configured webhook event is enabled independently of email settings
+# Returns whether one configured webhook alert is enabled independently of email settings
 def webhook_event_enabled(notification_type: str) -> bool:
     settings = {
         "active": WEBHOOK_ACTIVE_NOTIFICATION,
@@ -2288,7 +2289,7 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
-        print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must be a complete HTTPS endpoint")
+        print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return 1
     sleep_func = time.sleep if sleeper is None else sleeper
     payload = build_webhook_payload(title, description, notification_type)
@@ -2318,7 +2319,7 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     return 1
 
 
-# Delivers one semantic notification to enabled email and webhook channels independently
+# Sends one alert through the enabled email and webhook channels
 def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None) -> tuple[bool, bool]:
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
@@ -2326,7 +2327,7 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         print(f"Sending email notification to {RECEIVER_EMAIL}")
         send_email(subject, body, body_html, SMTP_SSL)
     if webhook_attempted:
-        print("Sending Discord-compatible webhook notification")
+        print("Sending webhook notification")
         send_webhook(subject, body, notification_type, force=True)
     return email_attempted, webhook_attempted
 
@@ -3812,7 +3813,7 @@ def _startup_notification_categories() -> List[str]:
     return [label for enabled, label in settings if enabled]
 
 
-# Returns enabled webhook notification category names in display order
+# Returns enabled webhook alert names in display order
 def _startup_webhook_notification_categories() -> List[str]:
     settings = (
         (WEBHOOK_ACTIVE_NOTIFICATION, "active"),
@@ -3853,7 +3854,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notify songs on loop", str(SONG_ON_LOOP_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify errors", str(ERROR_NOTIFICATION), concise=False),
         StartupSummaryRow("Webhook enabled", str(WEBHOOK_ENABLED), concise=False),
-        StartupSummaryRow("Webhook categories", ", ".join(enabled_webhooks) if enabled_webhooks else "None", concise=False),
+        StartupSummaryRow("Webhook alerts", ", ".join(enabled_webhooks) if enabled_webhooks else "None", concise=False),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
@@ -4658,7 +4659,7 @@ def email_notifications_enabled() -> bool:
     return bool(event_notifications or (ERROR_NOTIFICATION and configured_host))
 
 
-# Determines whether Discord-compatible webhook notifications are effectively enabled
+# Returns whether at least one webhook alert is enabled
 def webhook_notifications_enabled() -> bool:
     event_notifications = any((WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION))
     return bool(WEBHOOK_ENABLED and event_notifications)
@@ -4690,17 +4691,17 @@ def doctor_check_notifications() -> List[DoctorCheck]:
                 pass
 
 
-# Validates webhook settings locally without contacting the endpoint
+# Checks webhook alert settings without sending a message
 def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not WEBHOOK_ENABLED:
-        return [make_doctor_check("Notifications", "PASS", "Webhook notifications are disabled", "No webhook request was attempted")]
+        return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled", "No webhook was sent")]
     if not validate_webhook_url():
-        advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must be a complete HTTPS endpoint")
+        advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not webhook_notifications_enabled():
-        advice = make_recovery_advice("webhook.invalid", "Webhook delivery is enabled but no event categories are selected", "Enable at least one WEBHOOK_*_NOTIFICATION setting or disable WEBHOOK_ENABLED", False)
-        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook request was attempted", advice)]
-    return [make_doctor_check("Notifications", "PASS", "Webhook URL format and event settings are valid", "The secret URL was not displayed and no webhook request was attempted")]
+        advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", "Turn on at least one webhook alert in spotify_monitor.conf or set WEBHOOK_ENABLED to False", False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent", advice)]
+    return [make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed and no webhook was sent")]
 
 
 # Builds all independent and dependent doctor checks before rendering
@@ -4732,7 +4733,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = ["Doctor", "", "Read-only preflight. No email or webhook will be sent and no files will be written."]
+    lines = ["Doctor", "", "Read-only check. No email or webhook alerts will be sent and no files will be written."]
     sections = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
     for section in sections:
         lines.extend(("", section))
@@ -4917,7 +4918,7 @@ def _build_help_epilog() -> str:
         ))
     webhook_env = Path.cwd() / ".env" if method in ("docker", "compose") else None
     sections.extend((
-        "  # Store a Discord-compatible webhook URL through a hidden prompt",
+        "  # Save a Discord-compatible webhook URL through a hidden prompt",
         f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
         "",
         "  # Send one test webhook without starting monitoring",
@@ -5147,37 +5148,39 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     return [labels[name] for name in notification_names if selected[name]]
 
 
-# Collects one hidden webhook secret and independent event settings without making a request
+# Collects one hidden webhook URL and the alert choices without sending a message
 def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
-    if not _wizard_ask_yes_no("Configure Discord-compatible webhook notifications?", default=False):
+    if not _wizard_ask_yes_no("Set up webhook alerts?", default=False):
         config_values["WEBHOOK_ENABLED"] = False
         config_values.update({name: False for name in notification_names})
         return []
-    existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_discord_webhook_url",))
+    print("  In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL.")
+    print("  Other services must accept Discord-compatible webhook messages.")
+    existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_webhook_url", "your_discord_webhook_url"))
     replace_webhook = True
     if existing_webhook:
-        choice = _wizard_ask_choice("How should the webhook secret be configured?", [("Retain the existing WEBHOOK_URL", "Keeps the non-placeholder value without displaying or rewriting it."), ("Enter a replacement privately", "Uses a hidden prompt and saves only after local format validation.")])
+        choice = _wizard_ask_choice("Which webhook URL should be used?", [("Keep the saved URL", "Keeps the private value without displaying or changing it."), ("Paste a new URL", "Uses a hidden prompt then saves the new private value in .env.")])
         replace_webhook = choice == 1
     if replace_webhook:
         while True:
-            webhook_url = _wizard_ask_secret("Discord-compatible webhook URL")
+            webhook_url = _wizard_ask_secret("Paste the Discord-compatible webhook URL")
             if validate_webhook_url(webhook_url):
                 break
-            print("  Enter a complete HTTPS webhook URL.")
+            print("  That does not look like a complete HTTPS webhook URL. Copy it from the webhook service and try again.")
         if existing_webhook:
             secret_updates["WEBHOOK_URL"] = webhook_url
         else:
             _wizard_queue_secret(secret_updates, env_path, "WEBHOOK_URL", webhook_url)
     config_values["WEBHOOK_ENABLED"] = True
     config_values["WEBHOOK_USERNAME"] = "Spotify Monitor"
-    preset = _wizard_ask_choice("Which webhook notifications should be enabled?", [("Status and errors, recommended", "Active, inactive and error notifications."), ("Every supported event", "Enables all webhook notification types."), ("Custom", "Choose each webhook notification type separately.")])
+    preset = _wizard_ask_choice("Which webhook alerts should be sent?", [("Status and errors, recommended", "Alerts when the user becomes active, becomes inactive or monitoring has a problem."), ("Every supported alert", "Also sends tracked-song, every-song and loop alerts."), ("Custom", "Choose each webhook alert separately.")])
     if preset == 0:
         selected = {"WEBHOOK_ACTIVE_NOTIFICATION": True, "WEBHOOK_INACTIVE_NOTIFICATION": True, "WEBHOOK_TRACK_NOTIFICATION": False, "WEBHOOK_SONG_NOTIFICATION": False, "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": False, "WEBHOOK_ERROR_NOTIFICATION": True}
     elif preset == 1:
         selected = {name: True for name in notification_names}
     else:
-        questions = (("WEBHOOK_ACTIVE_NOTIFICATION", "Webhook when the user becomes active?"), ("WEBHOOK_INACTIVE_NOTIFICATION", "Webhook when the user becomes inactive?"), ("WEBHOOK_TRACK_NOTIFICATION", "Webhook when a tracked song plays?"), ("WEBHOOK_SONG_NOTIFICATION", "Webhook for every song change?"), ("WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "Webhook when a song loops?"), ("WEBHOOK_ERROR_NOTIFICATION", "Webhook on monitoring errors?"))
+        questions = (("WEBHOOK_ACTIVE_NOTIFICATION", "Send a webhook alert when the user becomes active?"), ("WEBHOOK_INACTIVE_NOTIFICATION", "Send a webhook alert when the user becomes inactive?"), ("WEBHOOK_TRACK_NOTIFICATION", "Send a webhook alert when a tracked song plays?"), ("WEBHOOK_SONG_NOTIFICATION", "Send a webhook alert for every song change?"), ("WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "Send a webhook alert when a song loops?"), ("WEBHOOK_ERROR_NOTIFICATION", "Send a webhook alert when monitoring has a problem?"))
         selected = {name: _wizard_ask_yes_no(question, default=False) for name, question in questions}
     config_values.update(selected)
     labels = {"WEBHOOK_ACTIVE_NOTIFICATION": "active", "WEBHOOK_INACTIVE_NOTIFICATION": "inactive", "WEBHOOK_TRACK_NOTIFICATION": "tracked song", "WEBHOOK_SONG_NOTIFICATION": "every song", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": "loop detection", "WEBHOOK_ERROR_NOTIFICATION": "errors"}
@@ -5396,7 +5399,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"  Email: {'enabled' if enabled_notifications else 'disabled'}")
     print(f"  Email notifications: {', '.join(enabled_notifications) if enabled_notifications else 'none'}")
     print(f"  Webhook: {'enabled' if enabled_webhooks else 'disabled'}")
-    print(f"  Webhook notifications: {', '.join(enabled_webhooks) if enabled_webhooks else 'none'}")
+    print(f"  Webhook alerts: {', '.join(enabled_webhooks) if enabled_webhooks else 'none'}")
     print(f"  Config destination: {config_path}")
     print(f"  Dotenv destination: {env_path}")
     print(f"  Install method: {method}")
@@ -6431,7 +6434,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
-        description=("Monitor a Spotify friend's activity and send customizable email or webhook alerts [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
+        description=("Monitor a Spotify friend's activity and send alerts by email or webhook [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
         epilog=_build_help_epilog()
     )
 
@@ -6468,7 +6471,7 @@ def main():
         "--set-webhook-url",
         dest="set_webhook_url",
         action="store_true",
-        help="Privately validate and save WEBHOOK_URL through a hidden prompt",
+        help="Save a Discord-compatible webhook URL through a hidden prompt",
     )
     conf.add_argument(
         "--config-file",
@@ -6621,63 +6624,63 @@ def main():
         help="Send test email to verify SMTP settings"
     )
 
-    webhook_notify = parser.add_argument_group("Discord-compatible webhooks")
+    webhook_notify = parser.add_argument_group("Webhook notifications")
     webhook_toggle = webhook_notify.add_mutually_exclusive_group()
     webhook_toggle.add_argument(
         "--webhook",
         dest="webhook_enabled",
         action="store_true",
         default=None,
-        help="Enable configured webhook notifications"
+        help="Enable the configured webhook alerts"
     )
     webhook_toggle.add_argument(
         "--no-webhook",
         dest="webhook_enabled",
         action="store_false",
         default=None,
-        help="Disable configured webhook notifications"
+        help="Disable the configured webhook alerts"
     )
     webhook_notify.add_argument(
         "--webhook-active",
         dest="webhook_active",
         action="store_true",
         default=None,
-        help="Send a webhook when the user becomes active"
+        help="Send a webhook alert when the user becomes active"
     )
     webhook_notify.add_argument(
         "--webhook-inactive",
         dest="webhook_inactive",
         action="store_true",
         default=None,
-        help="Send a webhook when the user goes inactive"
+        help="Send a webhook alert when the user goes inactive"
     )
     webhook_notify.add_argument(
         "--webhook-track",
         dest="webhook_track",
         action="store_true",
         default=None,
-        help="Send a webhook when a monitored track, playlist or album plays"
+        help="Send a webhook alert when a monitored track, playlist or album plays"
     )
     webhook_notify.add_argument(
         "--webhook-song-changes",
         dest="webhook_song_changes",
         action="store_true",
         default=None,
-        help="Send a webhook on every song change"
+        help="Send a webhook alert on every song change"
     )
     webhook_notify.add_argument(
         "--webhook-loop",
         dest="webhook_loop",
         action="store_true",
         default=None,
-        help="Send a webhook when the user plays a song on loop"
+        help="Send a webhook alert when the user plays a song on loop"
     )
     webhook_notify.add_argument(
         "--no-webhook-error-notify",
         dest="webhook_errors",
         action="store_false",
         default=None,
-        help="Disable webhook notifications on errors"
+        help="Disable webhook alerts when monitoring has a problem"
     )
     webhook_notify.add_argument(
         "--send-test-webhook",
@@ -7165,9 +7168,9 @@ def main():
         sys.exit(run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks))
 
     if args.send_test_webhook:
-        print("* Sending test webhook notification ...\n")
-        if send_webhook("spotify_monitor: test webhook", "This is a test webhook. Your Discord-compatible webhook settings appear to be correct.", "song", force=True) == 0:
-            print("* Webhook sent successfully !")
+        print("* Sending a test webhook ...\n")
+        if send_webhook("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True) == 0:
+            print("* Test webhook sent successfully !")
         else:
             sys.exit(1)
         sys.exit(0)
