@@ -263,6 +263,24 @@ def test_cookie_network_failure(monkeypatch):
     assert require_advice(monitor.doctor_check_authentication(report)[-1]).code == "network.unavailable"
 
 
+# Verifies invalid web-player TOTP parameters fail the configuration check in cookie mode
+def test_invalid_totp_config_fails(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "TOTP_SECRET_CIPHER_BYTES", ())
+    checks = monitor.doctor_check_configuration()
+    totp_check = next(check for check in checks if "TOTP" in check.label)
+    assert totp_check.status == "FAIL"
+    assert require_advice(totp_check).code == "config.invalid"
+
+
+# Verifies valid web-player TOTP parameters pass the configuration check in cookie mode
+def test_valid_totp_config_passes(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    checks = monitor.doctor_check_configuration()
+    totp_check = next(check for check in checks if "TOTP" in check.label)
+    assert totp_check.status == "PASS"
+
+
 # Configures the minimum valid client-mode values
 def configure_client_mode(monkeypatch):
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "client")
