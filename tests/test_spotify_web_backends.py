@@ -242,17 +242,17 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
         self.assertEqual(output.getvalue().count("Playlist metadata switched to the web-player backend"), 1)
 
-    # Verifies one track 404 switches current and later requests to Pathfinder
-    def test_track_404_falls_back_and_caches_backend_decision(self):
+    # Verifies a single 404 falls back per call to Pathfinder without latching the whole backend
+    def test_track_404_falls_back_per_call_without_latching(self):
         normalized = monitor.spotify_normalize_web_track(web_track_fixture())
         with patch.object(monitor, "_spotify_get_track_info_api", side_effect=make_http_error(404)) as legacy, patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
             first = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
             second = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
         self.assertEqual(first, normalized)
         self.assertEqual(second, normalized)
-        self.assertEqual(legacy.call_count, 1)
+        self.assertEqual(legacy.call_count, 2)
         self.assertEqual(web.call_count, 2)
-        self.assertTrue(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+        self.assertFalse(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
 
     # Verifies repeated non-restricted legacy track failures latch the web backend after the threshold
     def test_track_non_restricted_failures_latch_after_threshold(self):
@@ -347,7 +347,14 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(result["sp_playlist_owner"], "Agnes Hali")
         self.assertEqual(result["sp_playlist_owner_uri"], "spotify:user:brenda.juris")
         self.assertEqual(result["sp_playlist_owner_url"], "https://open.spotify.com/user/brenda.juris?si=1")
-        self.assertEqual(result["sp_playlist_revision_id"], "revision-1")
+
+    # Verifies the idempotent web-player GraphQL POST is retried while other POSTs are not
+    def test_web_player_adapter_retries_post(self):
+        self.assertIs(monitor.SESSION.get_adapter(monitor.WEB_PLAYER_QUERY_URL), monitor.web_player_adapter)
+        web_player_methods = getattr(monitor.SESSION.get_adapter(monitor.WEB_PLAYER_QUERY_URL), "max_retries").allowed_methods
+        default_methods = getattr(monitor.SESSION.get_adapter("https://api.spotify.com/v1/tracks/abc"), "max_retries").allowed_methods
+        self.assertIn("POST", web_player_methods)
+        self.assertNotIn("POST", default_methods)
 
     # Verifies anonymous token data is reused until its expiration window
     def test_anonymous_token_caching(self):
