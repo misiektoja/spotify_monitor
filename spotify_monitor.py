@@ -1905,6 +1905,22 @@ adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://", adapter)
 SESSION.mount("http://", adapter)
 
+# The web-player GraphQL endpoint is queried through idempotent read-only POSTs, so it gets a dedicated
+# adapter that also retries POST on transient failures (other POSTs use the bare requests module, not SESSION)
+web_player_retry = CappedRetry(
+    total=5,
+    connect=3,
+    read=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET", "HEAD", "OPTIONS", "POST"],
+    raise_on_status=False,
+    respect_retry_after_header=True
+)
+
+web_player_adapter = HTTPAdapter(max_retries=web_player_retry, pool_connections=100, pool_maxsize=100)
+SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
+
 
 # Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
 def truncate_string_per_line(message, truncate_width, tabsize=8):
@@ -4144,7 +4160,7 @@ def spotify_normalize_web_playlist(playlist):
         raise ValueError("Spotify web-player playlist owner data is missing or malformed")
     owner_uri = owner_data.get("uri", "")
     playlist_uri = playlist.get("uri", "")
-    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri), "sp_playlist_revision_id": playlist.get("revisionId", "")}
+    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri)}
 
 
 # Returns normalized public playlist metadata through Spotify's web-player service
@@ -4159,7 +4175,10 @@ def spotify_get_error_status_code(error):
 
 # Decides whether to latch the web-player backend after a legacy Web API failure
 def spotify_should_latch_web_backend(error, consecutive_failures):
-    if spotify_get_error_status_code(error) in {403, 404}:
+    # A 403 signals an app-level restriction (the whole legacy path is unavailable) so latch immediately; an
+    # individual missing or restricted entity (404) must not switch the backend for every lookup, so it only
+    # contributes to the consecutive-failure threshold below
+    if spotify_get_error_status_code(error) == 403:
         return True
     return consecutive_failures >= METADATA_API_FAILURE_LATCH_THRESHOLD
 
