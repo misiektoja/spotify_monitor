@@ -408,6 +408,27 @@ TOKEN_MAX_RETRIES = 3
 # Interval between access token retry attempts; in seconds
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 
+# ----------------------------------------------
+# Advanced options for 'cookie' token source
+# Modifying the values below is NOT recommended!
+# ----------------------------------------------
+
+# TOTP parameters used to sign Spotify web-player access token requests
+#
+# The web player derives a time-based one-time password from a versioned secret embedded in its JavaScript
+# bundle and sends it with every token request. Version 3.0 ships the v61 secret that the web player has
+# selected since January 2026, so no external secret dictionary is downloaded at runtime.
+#
+# You only need to change these if Spotify rotates the secret and cookie-based auth starts failing (for
+# example 'Bad credentials' or repeated token refresh errors) even though your sp_dc cookie is still valid.
+# To refresh them:
+#   - Run debug/spotify_monitor_secret_grabber.py to extract the current version and cipher bytes from the
+#     live web-player bundle (see the "Debugging Tools" section of the README)
+#   - Set TOTP_VERSION to the extracted version identifier (a positive integer)
+#   - Set TOTP_SECRET_CIPHER_BYTES to the extracted cipher bytes (a non-empty sequence of integers)
+TOTP_VERSION = 61
+TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78)
+
 # ---------------------------------------------------------------------
 
 # The section below is used when the token source is set to 'client'
@@ -638,6 +659,8 @@ ENABLE_DEEZER_URL = False
 ENABLE_TIDAL_URL = False
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
+TOTP_VERSION = 0
+TOTP_SECRET_CIPHER_BYTES: tuple[int, ...] = ()
 FLAG_FILE = ""
 TRUNCATE_CHARS = 0
 SPOTIFY_SUFFIX = ""
@@ -687,12 +710,15 @@ SP_CACHED_TRACK_QUERY_HASH = ""
 SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
 SP_WEB_TRACK_BACKEND_PREFERRED = False
 
+# Counts consecutive legacy Web API failures per metadata type before latching the web backend
+SP_WEB_PLAYLIST_API_FAILURES = 0
+SP_WEB_TRACK_API_FAILURES = 0
+
+# Number of consecutive non-restricted legacy Web API failures tolerated before preferring the web backend
+METADATA_API_FAILURE_LATCH_THRESHOLD = 3
+
 # URL of the Spotify Web Player endpoint to get access token
 TOKEN_URL = "https://open.spotify.com/api/token"
-
-# TOTP version and cipher bytes currently selected by the Spotify web player
-TOTP_VERSION = 61
-TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78)
 
 # URLs and user agent used by the public web-player metadata backend
 WEB_PLAYER_URL = "https://open.spotify.com/"
@@ -2916,11 +2942,17 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
     return int(parsedate_to_datetime(date_hdr).timestamp())
 
 
-# Creates a TOTP object using the fixed web-player v61 cipher bytes
+# Builds a pyotp TOTP object from the configured web-player cipher bytes
 def generate_totp():
     import pyotp
 
-    transformed = [value ^ ((index % 33) + 9) for index, value in enumerate(TOTP_SECRET_CIPHER_BYTES)]
+    cipher_bytes = TOTP_SECRET_CIPHER_BYTES
+    if not cipher_bytes or not all(isinstance(value, int) and not isinstance(value, bool) for value in cipher_bytes):
+        raise ValueError("TOTP_SECRET_CIPHER_BYTES must be a non-empty sequence of integers; refresh it with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
+    if not isinstance(TOTP_VERSION, int) or isinstance(TOTP_VERSION, bool) or TOTP_VERSION <= 0:
+        raise ValueError("TOTP_VERSION must be a positive integer; refresh it with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
+
+    transformed = [value ^ ((index % 33) + 9) for index, value in enumerate(cipher_bytes)]
     joined = "".join(str(num) for num in transformed)
     hex_str = joined.encode().hex()
     secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
@@ -3004,9 +3036,13 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     if not init or not data or "accessToken" not in data:
         raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
 
+    expires_at_ms = data.get("accessTokenExpirationTimestampMs")
+    if not isinstance(expires_at_ms, (int, float)) or isinstance(expires_at_ms, bool):
+        raise Exception("refresh_access_token_from_sp_dc(): Unsuccessful token request: token response missing expiry")
+
     return {
         "access_token": token,
-        "expires_at": data["accessTokenExpirationTimestampMs"] // 1000,
+        "expires_at": int(expires_at_ms) // 1000,
         "client_id": data.get("clientId", ""),
         "length": len(token)
     }
@@ -4121,6 +4157,13 @@ def spotify_get_error_status_code(error):
     return error.response.status_code if isinstance(error, req.HTTPError) and error.response is not None else None
 
 
+# Decides whether to latch the web-player backend after a legacy Web API failure
+def spotify_should_latch_web_backend(error, consecutive_failures):
+    if spotify_get_error_status_code(error) in {403, 404}:
+        return True
+    return consecutive_failures >= METADATA_API_FAILURE_LATCH_THRESHOLD
+
+
 # Returns playlist owner metadata through the legacy Spotify Web API path
 def _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app=False):
     if TOKEN_SOURCE in {"cookie", "client"} and not oauth_app:
@@ -4148,21 +4191,24 @@ def _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app=False)
 
 # Selects the legacy or web-player playlist owner backend and falls back automatically
 def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
-    global SP_WEB_PLAYLIST_BACKEND_PREFERRED
+    global SP_WEB_PLAYLIST_BACKEND_PREFERRED, SP_WEB_PLAYLIST_API_FAILURES
 
     api_error = None
     api_available = bool(oauth_app and access_token) or spotify_has_oauth_app_credentials()
     if api_available and not SP_WEB_PLAYLIST_BACKEND_PREFERRED:
         try:
-            return _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app)
+            owner = _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app)
+            SP_WEB_PLAYLIST_API_FAILURES = 0
+            return owner
         except Exception as error:
             api_error = error
-            if spotify_get_error_status_code(error) in {403, 404}:
+            SP_WEB_PLAYLIST_API_FAILURES += 1
+            if spotify_should_latch_web_backend(error, SP_WEB_PLAYLIST_API_FAILURES):
                 SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
-                debug_print("spotify_get_playlist_owner(): restricted Web API response, preferring the web-player backend for remaining playlists")
-                verbose_print("Playlist metadata switched to the web-player backend after a restricted legacy API response")
+                debug_print(f"spotify_get_playlist_owner(): legacy Web API unavailable (failures={SP_WEB_PLAYLIST_API_FAILURES}, status={spotify_get_error_status_code(error)}), preferring the web-player backend for remaining playlists")
+                verbose_print("Playlist metadata switched to the web-player backend after legacy API failures")
             else:
-                debug_print(f"spotify_get_playlist_owner(): legacy Web API backend failed for uri={playlist_uri}: {error}")
+                debug_print(f"spotify_get_playlist_owner(): legacy Web API backend failed for uri={playlist_uri} (failures={SP_WEB_PLAYLIST_API_FAILURES}): {error}")
 
     try:
         return spotify_get_playlist_info_web(playlist_uri)["sp_playlist_owner"]
@@ -4207,21 +4253,24 @@ def _spotify_get_track_info_api(access_token, track_uri, oauth_app=False):
 
 # Selects the legacy or web-player track backend and falls back automatically
 def spotify_get_track_info(access_token, track_uri, oauth_app=False):
-    global SP_WEB_TRACK_BACKEND_PREFERRED
+    global SP_WEB_TRACK_BACKEND_PREFERRED, SP_WEB_TRACK_API_FAILURES
 
     api_error = None
     api_available = bool(oauth_app and access_token) or spotify_has_oauth_app_credentials()
     if api_available and not SP_WEB_TRACK_BACKEND_PREFERRED:
         try:
-            return _spotify_get_track_info_api(access_token, track_uri, oauth_app)
+            info = _spotify_get_track_info_api(access_token, track_uri, oauth_app)
+            SP_WEB_TRACK_API_FAILURES = 0
+            return info
         except Exception as error:
             api_error = error
-            if spotify_get_error_status_code(error) == 403:
+            SP_WEB_TRACK_API_FAILURES += 1
+            if spotify_should_latch_web_backend(error, SP_WEB_TRACK_API_FAILURES):
                 SP_WEB_TRACK_BACKEND_PREFERRED = True
-                debug_print("spotify_get_track_info(): Web API returned 403, preferring the web-player backend for remaining tracks")
-                verbose_print("Track metadata switched to the web-player backend after a restricted legacy API response")
+                debug_print(f"spotify_get_track_info(): legacy Web API unavailable (failures={SP_WEB_TRACK_API_FAILURES}, status={spotify_get_error_status_code(error)}), preferring the web-player backend for remaining tracks")
+                verbose_print("Track metadata switched to the web-player backend after legacy API failures")
             else:
-                debug_print(f"spotify_get_track_info(): legacy Web API backend failed for uri={track_uri}: {error}")
+                debug_print(f"spotify_get_track_info(): legacy Web API backend failed for uri={track_uri} (failures={SP_WEB_TRACK_API_FAILURES}): {error}")
 
     try:
         return spotify_get_track_info_web(track_uri)
@@ -4495,6 +4544,15 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
         checks.append(make_doctor_check("Configuration", "FAIL", "TOKEN_SOURCE is invalid", advice.detail, advice))
     else:
         checks.append(make_doctor_check("Configuration", "PASS", f"TOKEN_SOURCE is {TOKEN_SOURCE}"))
+
+    if TOKEN_SOURCE == "cookie":
+        totp_bytes_valid = bool(TOTP_SECRET_CIPHER_BYTES) and all(isinstance(value, int) and not isinstance(value, bool) for value in TOTP_SECRET_CIPHER_BYTES)
+        totp_version_valid = isinstance(TOTP_VERSION, int) and not isinstance(TOTP_VERSION, bool) and TOTP_VERSION > 0
+        if totp_bytes_valid and totp_version_valid:
+            checks.append(make_doctor_check("Configuration", "PASS", f"Web-player TOTP parameters are valid (v{TOTP_VERSION})"))
+        else:
+            advice = classify_recovery_error(context="config_invalid", detail="TOTP_VERSION must be a positive integer plus TOTP_SECRET_CIPHER_BYTES a non-empty sequence of integers; refresh them with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
+            checks.append(make_doctor_check("Configuration", "FAIL", "Web-player TOTP parameters are invalid", advice.detail, advice))
 
     numeric_values = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL, 1, None), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL, 0, None), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK, 0, None), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL, 0, None), ("SMTP_PORT", SMTP_PORT, 1, 65535))
     invalid_numeric = []
