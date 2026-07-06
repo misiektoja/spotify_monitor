@@ -573,7 +573,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix).
 
-> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. You can still use [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to verify the current bundle values or prepare an update if Spotify resumes rotation.
+> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to extract the current bundle values then update those two options.
 
 <a id="spotify-desktop-client"></a>
 #### Spotify Desktop Client
@@ -1212,7 +1212,7 @@ This will save all files into your current directory on any system (macOS, Linux
 
 ---
 
-You can use the generated `secretDict.json` with `spotify_monitor_totp_test`. `spotify_monitor` v3.0 and `spotify_profile_monitor` v3.5 embed v61 directly and no longer depend on an external dictionary. If Spotify selects a new TOTP version later then the embedded version and cipher bytes must be updated after checking the current web-player bundle.
+You can use the generated `secretDict.json` with `spotify_monitor_totp_test`. `spotify_monitor` v3.0 and `spotify_profile_monitor` v3.5 embed v61 directly and no longer depend on an external dictionary. If Spotify selects a new TOTP version later then update the `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` config options with the values from the current web-player bundle. No code change is required.
 
 <a id="change-log"></a>
 ## Change Log
