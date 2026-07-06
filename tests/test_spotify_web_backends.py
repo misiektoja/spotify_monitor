@@ -86,6 +86,8 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_CACHED_TRACK_QUERY_HASH = ""
         monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
         monitor.SP_WEB_TRACK_BACKEND_PREFERRED = False
+        monitor.SP_WEB_PLAYLIST_API_FAILURES = 0
+        monitor.SP_WEB_TRACK_API_FAILURES = 0
         monitor.SP_CACHED_OAUTH_APP_TOKEN = None
         monitor.SPOTIPY_AVAILABLE = None
         monitor.SPOTIPY_IMPORT_WARNING_SHOWN = False
@@ -239,6 +241,81 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(web.call_count, 2)
         self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
         self.assertEqual(output.getvalue().count("Playlist metadata switched to the web-player backend"), 1)
+
+    # Verifies one track 404 switches current and later requests to Pathfinder
+    def test_track_404_falls_back_and_caches_backend_decision(self):
+        normalized = monitor.spotify_normalize_web_track(web_track_fixture())
+        with patch.object(monitor, "_spotify_get_track_info_api", side_effect=make_http_error(404)) as legacy, patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            first = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            second = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+        self.assertEqual(first, normalized)
+        self.assertEqual(second, normalized)
+        self.assertEqual(legacy.call_count, 1)
+        self.assertEqual(web.call_count, 2)
+        self.assertTrue(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+
+    # Verifies repeated non-restricted legacy track failures latch the web backend after the threshold
+    def test_track_non_restricted_failures_latch_after_threshold(self):
+        normalized = monitor.spotify_normalize_web_track(web_track_fixture())
+        with patch.object(monitor, "_spotify_get_track_info_api", side_effect=make_http_error(401)) as legacy, patch.object(monitor, "spotify_get_track_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            for _ in range(monitor.METADATA_API_FAILURE_LATCH_THRESHOLD - 1):
+                monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            self.assertFalse(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            self.assertTrue(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+        self.assertEqual(legacy.call_count, monitor.METADATA_API_FAILURE_LATCH_THRESHOLD)
+        self.assertEqual(web.call_count, monitor.METADATA_API_FAILURE_LATCH_THRESHOLD + 1)
+
+    # Verifies a successful legacy track request resets the consecutive-failure counter
+    def test_track_success_resets_failure_counter(self):
+        normalized = monitor.spotify_normalize_web_track(web_track_fixture())
+        legacy_result = {"sp_track_name": "My Love"}
+        side_effects = [make_http_error(500), legacy_result, make_http_error(500), make_http_error(500)]
+        with patch.object(monitor, "_spotify_get_track_info_api", side_effect=side_effects), patch.object(monitor, "spotify_get_track_info_web", return_value=normalized), redirect_stdout(io.StringIO()):
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            self.assertEqual(monitor.SP_WEB_TRACK_API_FAILURES, 0)
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+            monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
+        self.assertFalse(monitor.SP_WEB_TRACK_BACKEND_PREFERRED)
+        self.assertEqual(monitor.SP_WEB_TRACK_API_FAILURES, 2)
+
+    # Verifies repeated non-restricted legacy playlist failures latch the web backend after the threshold
+    def test_playlist_non_restricted_failures_latch_after_threshold(self):
+        normalized = monitor.spotify_normalize_web_playlist(web_playlist_fixture())
+        with patch.object(monitor, "_spotify_get_playlist_owner_api", side_effect=make_http_error(401)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            for _ in range(monitor.METADATA_API_FAILURE_LATCH_THRESHOLD - 1):
+                monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+            self.assertFalse(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
+            monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+            self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
+        self.assertEqual(legacy.call_count, monitor.METADATA_API_FAILURE_LATCH_THRESHOLD)
+
+    # Verifies a token response without an expiry field reports an actionable error instead of KeyError
+    def test_token_refresh_missing_expiry_is_actionable(self):
+        response = Mock(status_code=200)
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"accessToken": "anonymous-token", "clientId": "web-client"}
+        session = Mock()
+        session.get.return_value = response
+        with patch.object(monitor.req, "Session", return_value=session), patch.object(monitor, "fetch_server_time", return_value=1700000000):
+            with self.assertRaises(Exception) as caught:
+                monitor.refresh_access_token_from_sp_dc("")
+        self.assertNotIsInstance(caught.exception, KeyError)
+        self.assertIn("missing expiry", str(caught.exception))
+
+    # Verifies invalid configured TOTP parameters raise an actionable error
+    def test_generate_totp_rejects_invalid_config(self):
+        with patch.object(monitor, "TOTP_SECRET_CIPHER_BYTES", ()):
+            with self.assertRaises(ValueError):
+                monitor.generate_totp()
+        with patch.object(monitor, "TOTP_SECRET_CIPHER_BYTES", ("bad", 55)):
+            with self.assertRaises(ValueError):
+                monitor.generate_totp()
+        with patch.object(monitor, "TOTP_VERSION", 0):
+            with self.assertRaises(ValueError):
+                monitor.generate_totp()
 
     # Verifies cookie mode without app credentials goes directly to the web backend
     def test_missing_oauth_credentials_uses_web_backend(self):
