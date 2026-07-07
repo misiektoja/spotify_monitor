@@ -148,11 +148,14 @@ ERROR_NOTIFICATION = True
 
 # ---------------------------------------------------------------------
 
-# Discord-compatible webhook alerts
-# In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL
+# Webhook alerts through Discord or ntfy
+# Available providers: discord, ntfy
+# Discord URL: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL
+# ntfy URL: complete topic URL such as https://ntfy.sh/your-private-topic
 # Store WEBHOOK_URL in an environment variable or dotenv file because this private link can send messages through the service
 WEBHOOK_ENABLED = False
 WEBHOOK_URL = "your_webhook_url"
+WEBHOOK_PROVIDER = "discord"
 WEBHOOK_USERNAME = "Spotify Monitor"
 
 # Whether to send a webhook alert when the user becomes active
@@ -602,6 +605,7 @@ SONG_ON_LOOP_NOTIFICATION = False
 ERROR_NOTIFICATION = False
 WEBHOOK_ENABLED = False
 WEBHOOK_URL = ""
+WEBHOOK_PROVIDER = ""
 WEBHOOK_USERNAME = ""
 WEBHOOK_ACTIVE_NOTIFICATION = False
 WEBHOOK_INACTIVE_NOTIFICATION = False
@@ -807,6 +811,7 @@ WEBHOOK_FALLBACK_RETRY_SECONDS = 1.0
 WEBHOOK_TIMEOUT_SECONDS = 10
 WEBHOOK_EMBED_TITLE_LIMIT = 256
 WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
+NTFY_MESSAGE_LIMIT_BYTES = 4096
 
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
@@ -1003,7 +1008,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             return make_recovery_advice("webhook.invalid", "--set-webhook-url needs an interactive terminal", "Run --set-webhook-url in a terminal window so the webhook URL stays hidden while you paste it", False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
             return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the webhook URL in the private settings file", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
-        return make_recovery_advice("webhook.invalid", "The webhook URL was not changed", recovery_fix_with_guide("Copy a fresh Discord-compatible webhook URL then run --set-webhook-url again", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "The webhook URL was not changed", recovery_fix_with_guide("Copy a fresh Discord or ntfy webhook URL then run --set-webhook-url again", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context == "config_missing":
         summary = "The requested configuration file was not found"
@@ -1030,13 +1035,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
-        return make_recovery_advice("webhook.invalid", "Webhook alerts are on but the saved URL is missing or invalid", recovery_fix_with_guide("Run --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "Webhook alerts are on but the provider or saved URL is invalid", recovery_fix_with_guide("Set WEBHOOK_PROVIDER to discord or ntfy, run --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
             return make_recovery_advice("webhook.rate_limited", "The webhook service is temporarily limiting new messages", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify monitoring continues normally", WEBHOOK_GUIDE_URL), True, safe_detail)
         if status is not None and 400 <= status <= 499:
-            return make_recovery_advice("webhook.rejected", "The webhook service did not accept the alert", recovery_fix_with_guide("Check that the URL accepts Discord-compatible webhooks, save it with --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("webhook.rejected", "The webhook service did not accept the alert", recovery_fix_with_guide("Check that WEBHOOK_PROVIDER matches the saved Discord or ntfy URL then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
         if status is not None and 500 <= status <= 599:
             return make_recovery_advice("webhook.connection", "The webhook service is temporarily unavailable", recovery_fix_with_guide("Wait briefly then run --send-test-webhook", WEBHOOK_GUIDE_URL), True, safe_detail)
         if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
@@ -1862,7 +1867,7 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
             raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        webhook_url = hidden_prompt("Paste the Discord-compatible webhook URL (input hidden): ").strip()
+        webhook_url = hidden_prompt("Paste the Discord or ntfy webhook URL (input hidden): ").strip()
     except (EOFError, KeyboardInterrupt):
         raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.") from None
     if not validate_webhook_url(webhook_url):
@@ -2274,6 +2279,15 @@ def validate_webhook_url(url: Any = None) -> bool:
     return parsed.scheme.casefold() == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and bool(parsed.path.strip("/"))
 
 
+# Returns the normalized configured webhook provider or an empty string when unsupported
+def normalized_webhook_provider(provider: Any = None) -> str:
+    selected_provider = WEBHOOK_PROVIDER if provider is None else provider
+    if not isinstance(selected_provider, str):
+        return ""
+    normalized = selected_provider.strip().casefold()
+    return normalized if normalized in ("discord", "ntfy") else ""
+
+
 # Returns whether one configured webhook alert is enabled independently of email settings
 def webhook_event_enabled(notification_type: str) -> bool:
     settings = {
@@ -2326,6 +2340,21 @@ def build_webhook_payload(title: str, description: str, notification_type: str) 
     return payload
 
 
+# Truncates text to a UTF-8 byte limit without returning a partial character
+def truncate_utf8_bytes(text: str, max_bytes: int) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+# Builds one bounded ntfy title and message pair
+def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
+    safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
+    safe_message = truncate_utf8_bytes(sanitize_error_text(description), NTFY_MESSAGE_LIMIT_BYTES)
+    return safe_title, safe_message
+
+
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
 def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None) -> int:
     if not force and not webhook_event_enabled(notification_type):
@@ -2333,12 +2362,20 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if not validate_webhook_url():
         print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return 1
+    provider = normalized_webhook_provider()
+    if not provider:
+        print_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
+        return 1
     sleep_func = time.sleep if sleeper is None else sleeper
-    payload = build_webhook_payload(title, description, notification_type)
+    discord_payload = build_webhook_payload(title, description, notification_type) if provider == "discord" else None
+    ntfy_title, ntfy_message = build_ntfy_webhook_message(title, description) if provider == "ntfy" else ("", "")
     last_error: Any = None
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
-            response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=payload, headers={"User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+            if provider == "ntfy":
+                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers={"Content-Type": "text/plain; charset=utf-8", "User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+            else:
+                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers={"User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
                 return 0
             last_error = response
@@ -3906,6 +3943,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notify songs on loop", str(SONG_ON_LOOP_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify errors", str(ERROR_NOTIFICATION), concise=False),
         StartupSummaryRow("Webhook enabled", str(WEBHOOK_ENABLED), concise=False),
+        StartupSummaryRow("Webhook provider", normalized_webhook_provider() or "Invalid", concise=False),
         StartupSummaryRow("Webhook alerts", ", ".join(enabled_webhooks) if enabled_webhooks else "None", concise=False),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
@@ -4772,6 +4810,9 @@ def doctor_check_notifications() -> List[DoctorCheck]:
 def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not WEBHOOK_ENABLED:
         return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled", "No webhook was sent")]
+    if not normalized_webhook_provider():
+        advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not validate_webhook_url():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
@@ -4995,7 +5036,7 @@ def _build_help_epilog() -> str:
         ))
     webhook_env = Path.cwd() / ".env" if method in ("docker", "compose") else None
     sections.extend((
-        "  # Save a Discord-compatible webhook URL through a hidden prompt",
+        "  # Save a Discord or ntfy webhook URL through a hidden prompt",
         f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
         "",
         "  # Send one test webhook without starting monitoring",
@@ -5232,8 +5273,13 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
         config_values["WEBHOOK_ENABLED"] = False
         config_values.update({name: False for name in notification_names})
         return []
-    print("  In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL.")
-    print("  Other services must accept Discord-compatible webhook messages.")
+    provider_choice = _wizard_ask_choice("Which webhook service should receive alerts?", [("Discord", "Sends a Discord embed to one channel webhook."), ("ntfy", "Sends a native notification to one ntfy topic URL.")])
+    provider = "discord" if provider_choice == 0 else "ntfy"
+    config_values["WEBHOOK_PROVIDER"] = provider
+    if provider == "discord":
+        print("  In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL.")
+    else:
+        print("  In ntfy: choose a hard-to-guess topic then use its complete HTTPS URL, such as https://ntfy.sh/your-private-topic.")
     existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_webhook_url", "your_discord_webhook_url"))
     replace_webhook = True
     if existing_webhook:
@@ -5241,7 +5287,7 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
         replace_webhook = choice == 1
     if replace_webhook:
         while True:
-            webhook_url = _wizard_ask_secret("Paste the Discord-compatible webhook URL")
+            webhook_url = _wizard_ask_secret("Paste the Discord webhook URL" if provider == "discord" else "Paste the ntfy topic URL")
             if validate_webhook_url(webhook_url):
                 break
             print("  That does not look like a complete HTTPS webhook URL. Copy it from the webhook service and try again.")
@@ -6548,7 +6594,7 @@ def main():
         "--set-webhook-url",
         dest="set_webhook_url",
         action="store_true",
-        help="Save a Discord-compatible webhook URL through a hidden prompt",
+        help="Save a Discord or ntfy webhook URL through a hidden prompt",
     )
     conf.add_argument(
         "--config-file",
