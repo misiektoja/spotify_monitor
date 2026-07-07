@@ -693,9 +693,11 @@ spotify_monitor --send-test-email
 <a id="webhook-settings"></a>
 ### Webhook Settings
 
-Spotify Monitor can send activity alerts through a Discord-compatible webhook. You can use webhooks instead of email or use both. The easiest option is to run `spotify_monitor --setup` then choose webhook alerts when asked.
+Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). You can use webhook alerts instead of email or use both. The easiest option is to run `spotify_monitor --setup`, choose webhook alerts then select Discord or ntfy.
 
-Discord works directly. Other services can be used if they accept Discord-compatible webhook messages. Services that require a different JSON format need an adapter or a future payload option.
+`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working.
+
+#### Discord
 
 If you are new to Discord, follow these steps to get your private webhook URL:
 
@@ -710,10 +712,39 @@ spotify_monitor --set-webhook-url
 
 Paste the copied link at the hidden prompt. Spotify Monitor saves it in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
 
+Keep the default provider in `spotify_monitor.conf`:
+
+```ini
+WEBHOOK_PROVIDER = "discord"
+```
+
+#### ntfy
+
+For ntfy.sh or a self-hosted ntfy server:
+
+1. Choose a hard-to-guess topic such as `spotify-monitor-long-random-value`.
+2. Use the complete topic URL such as `https://ntfy.sh/spotify-monitor-long-random-value`.
+3. Set the provider in `spotify_monitor.conf`:
+
+```ini
+WEBHOOK_PROVIDER = "ntfy"
+```
+
+4. Save the topic URL privately:
+
+```sh
+spotify_monitor --set-webhook-url
+```
+
+Spotify Monitor sends the alert body as a native UTF-8 ntfy message and sends the alert subject as its title. Query parameters already present in the topic URL are preserved. This allows the ntfy [`auth` query parameter](https://docs.ntfy.sh/publish/#authentication) when a protected topic needs authentication.
+
+Topics on the public ntfy.sh service are public unless protected through an account reservation. Treat an unprotected topic name like a password and do not reuse the example topic above.
+
 If you used the setup wizard, it saves your alert choices automatically. For the recommended alerts, the saved settings look like this:
 
 ```ini
 WEBHOOK_ENABLED = True
+WEBHOOK_PROVIDER = "discord"  # Use "ntfy" for an ntfy topic URL
 WEBHOOK_ACTIVE_NOTIFICATION = True
 WEBHOOK_INACTIVE_NOTIFICATION = True
 WEBHOOK_ERROR_NOTIFICATION = True
@@ -727,7 +758,7 @@ Send one test webhook without starting monitoring:
 spotify_monitor --send-test-webhook
 ```
 
-Email and webhooks work separately. If one fails, Spotify Monitor can still send the other. Discord-compatible messages cannot trigger `@everyone` or `@here` mentions.
+Email and webhooks work separately. If one fails, Spotify Monitor can still send the other. Discord messages cannot trigger `@everyone` or `@here` mentions.
 
 If the webhook service temporarily refuses a message, Spotify Monitor tries once more and waits at most five seconds. Spotify monitoring continues normally and its retry behavior is unchanged.
 
