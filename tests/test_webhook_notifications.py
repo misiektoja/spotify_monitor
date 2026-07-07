@@ -38,6 +38,7 @@ class FakeResponse:
 def configure_webhook(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/private-token")
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
     monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", True)
 
 
@@ -122,6 +123,40 @@ def test_successful_webhook_uses_isolated_session(monkeypatch):
     spotify_post.assert_not_called()
 
 
+# Verifies ntfy receives a native UTF-8 topic message with its title in query parameters
+def test_successful_ntfy_webhook_uses_native_topic_api(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.sh/private-topic?auth=private-auth-value")
+    webhook_post = Mock(return_value=FakeResponse(200))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Spotify title za\u017c\u00f3\u0142\u0107", "Playing: Bj\u00f6rk", "song") == 0
+    request = webhook_post.call_args
+    assert request.args == ("https://ntfy.sh/private-topic?auth=private-auth-value",)
+    assert request.kwargs["data"] == "Playing: Bj\u00f6rk".encode("utf-8")
+    assert request.kwargs["params"] == {"title": "Spotify title za\u017c\u00f3\u0142\u0107"}
+    assert request.kwargs["headers"]["Content-Type"] == "text/plain; charset=utf-8"
+    assert "json" not in request.kwargs
+
+
+# Verifies ntfy message truncation respects its UTF-8 byte limit without splitting a character
+def test_ntfy_message_is_bounded_by_utf8_bytes():
+    title, message = monitor.build_ntfy_webhook_message("Title", ("a" * (monitor.NTFY_MESSAGE_LIMIT_BYTES - 1)) + "\U0001f3b5")
+    assert title == "Title"
+    assert len(message.encode("utf-8")) == monitor.NTFY_MESSAGE_LIMIT_BYTES - 1
+    assert not message.endswith("\U0001f3b5")
+
+
+# Verifies unsupported webhook providers fail before any request is attempted
+def test_invalid_webhook_provider_is_rejected(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "unsupported")
+    webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 1
+    webhook_post.assert_not_called()
+
+
 # Verifies an aggressive Retry-After value is capped and retried only once
 def test_webhook_429_timer_is_capped_and_bounded(monkeypatch):
     configure_webhook(monkeypatch)
@@ -176,9 +211,30 @@ def test_webhook_wizard_preset_is_hidden_and_offline(monkeypatch):
         assert enabled == ["active", "inactive", "errors"]
         assert secret_updates == {"WEBHOOK_URL": "https://discord.com/api/webhooks/123/private-token"}
         assert config_values["WEBHOOK_ENABLED"] is True
+        assert config_values["WEBHOOK_PROVIDER"] == "discord"
         assert config_values["WEBHOOK_TRACK_NOTIFICATION"] is False
         assert config_values["WEBHOOK_SONG_NOTIFICATION"] is False
         assert config_values["WEBHOOK_SONG_ON_LOOP_NOTIFICATION"] is False
+        post.assert_not_called()
+
+
+# Verifies the wizard stores an ntfy topic URL and provider without contacting the service
+def test_webhook_wizard_supports_ntfy(monkeypatch):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        choices = iter([1, 0])
+        post = Mock(side_effect=AssertionError("webhook request attempted"))
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
+        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "https://ntfy.sh/private-topic")
+        monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
+        monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
+        config_values = {}
+        secret_updates = {}
+        enabled = monitor._wizard_collect_webhook(config_values, secret_updates, destination)
+        assert enabled == ["active", "inactive", "errors"]
+        assert secret_updates == {"WEBHOOK_URL": "https://ntfy.sh/private-topic"}
+        assert config_values["WEBHOOK_ENABLED"] is True
+        assert config_values["WEBHOOK_PROVIDER"] == "ntfy"
         post.assert_not_called()
 
 
@@ -203,6 +259,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         assert error.value.code == 0
         config = config_path.read_text(encoding="utf-8")
         assert "WEBHOOK_ENABLED = True" in config
+        assert 'WEBHOOK_PROVIDER = "discord"' in config
         assert "WEBHOOK_ACTIVE_NOTIFICATION = True" in config
         assert "WEBHOOK_INACTIVE_NOTIFICATION = True" in config
         assert "WEBHOOK_ERROR_NOTIFICATION = True" in config
@@ -236,6 +293,18 @@ def test_doctor_webhook_check_is_read_only(monkeypatch):
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
     checks = monitor.doctor_check_webhook_notifications()
     assert checks == [monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed and no webhook was sent")]
+    post.assert_not_called()
+
+
+# Verifies doctor rejects an unsupported provider without sending a message
+def test_doctor_rejects_invalid_webhook_provider(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "unsupported")
+    post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
+    checks = monitor.doctor_check_webhook_notifications()
+    assert checks[0].status == "FAIL"
+    assert "WEBHOOK_PROVIDER must be discord or ntfy" in checks[0].detail
     post.assert_not_called()
 
 
