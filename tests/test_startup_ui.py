@@ -230,6 +230,7 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
     output = emit_to_string(summary_rows(), show_full=True)
     assert "Webhook enabled" in output
+    assert "Webhook provider:          discord" in output
     assert "Webhook alerts:            active, errors" in output
     assert "known-webhook-secret" not in output
 
