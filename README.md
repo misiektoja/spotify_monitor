@@ -13,6 +13,7 @@
 
 Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
 
+<a id="-quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
 Python from PyPI
@@ -518,6 +519,7 @@ Firefox browser import is the recommended onboarding path for local PyPI and dow
 
 Before importing, open [Spotify Web Player](https://open.spotify.com/) in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.
 
+<a id="which-browsers-are-supported"></a>
 ##### Which browsers are supported
 
 The `--browser` flag accepts these values:
@@ -697,6 +699,7 @@ Spotify Monitor can send activity alerts through Discord or the native [ntfy pub
 
 `WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working.
 
+<a id="discord"></a>
 #### Discord
 
 If you are new to Discord, follow these steps to get your private webhook URL:
@@ -718,6 +721,7 @@ Keep the default provider in `spotify_monitor.conf`:
 WEBHOOK_PROVIDER = "discord"
 ```
 
+<a id="ntfy"></a>
 #### ntfy
 
 For ntfy.sh or a self-hosted ntfy server:
