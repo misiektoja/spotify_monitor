@@ -2,6 +2,71 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.0 (TBD)
+
+**Features and Improvements**:
+
+- **NEW:** Added automatic public track metadata and playlist metadata backends for Spotify's restricted Development Mode apps
+- **NEW:** Added anonymous web-player token caching and dynamic persisted-query discovery for the current Spotify web-player bundle
+- **IMPROVE:** Preserved the legacy Web API path for working existing app credentials and switched each restricted metadata type automatically after repeated legacy failures
+- **IMPROVE:** Removed the OAuth app credential requirement from `cookie` and `client` modes
+- **IMPROVE:** Added token refresh after HTTP 401 and persisted-query rediscovery after stale hash errors
+- **IMPROVE:** Retried transient failures (HTTP 429 / 5xx) on the idempotent web-player GraphQL read requests through a dedicated adapter
+- **IMPROVE:** Embedded the web player's unchanged v61 TOTP cipher and removed remote secret-dictionary fetching. `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` are now configurable so a future rotation can be patched from the config file without a code release
+- **IMPROVE:** Separated the primary token source from the configured metadata backend in startup output
+- **IMPROVE:** Raised the minimum supported Python version to 3.9 and declared support through Python 3.14
+- **IMPROVE:** Made Spotipy optional through the `legacy-oauth` extra so `cookie` and `client` modes run without legacy OAuth dependencies
+- **IMPROVE:** Added Python 3.9 through 3.14 CI plus offline regression coverage for packaging, CLI behavior and metadata backend selection
+- **IMPROVE:** Updated `spotify_monitor_secret_grabber` to v1.3 so it extracts current inline object-literal TOTP secrets while retaining the original runtime hook for older bundle formats
+- **NEW:** Accepted raw Spotify user IDs, `spotify:user` URIs and profile URLs as monitoring targets through one offline normalization path
+- **NEW:** Added `TARGET_USER_URI_ID` config support with positional command-line target precedence
+- **IMPROVE:** Rendered current non-secret config values while retaining template values for every secret key
+- **NEW:** Added atomic config writing with timestamped recoverable backups plus an allowlisted atomic dotenv update helper
+- **NEW:** Added a tracked `.env.example` for supported secret values
+- **IMPROVE:** Added actionable UTF-8, syntax and runtime error messages for config loading
+- **NEW:** Added built-in Firefox `sp_dc` import on macOS, Linux and Windows with no optional dependency
+- **NEW:** Added optional Chrome, Brave and Chromium cookie import on macOS and Linux through the `browser` extra
+- **IMPROVE:** Added unified browser profile selection, Spotify authentication validation and safe atomic dotenv persistence
+- **IMPROVE:** Expanded offline tests with synthetic browser databases plus mocked decryption and Spotify validation paths
+- **NEW:** Added structured recovery errors with stable categories and actionable `To fix:` hints at important CLI and monitoring boundaries
+- **NEW:** Added a read-only `--doctor` preflight covering environment, configuration, Spotify authentication, connectivity, target visibility and SMTP login without sending email
+- **IMPROVE:** Added secret-safe normal and debug error rendering for cookies, access tokens, refresh tokens, client tokens, authorization headers and SMTP passwords
+- **IMPROVE:** Suppressed repeated recovery hints during uninterrupted equivalent monitoring failures while allowing hints after success or a category change
+- **IMPROVE:** Expanded offline tests for recovery classification, redaction, doctor behavior, target checks and SMTP preflight behavior
+- **NEW:** Added an interactive `--setup` wizard with target validation, install-method detection and safe cancellation before persistence
+- **NEW:** Integrated browser-based cookie onboarding plus private dotenv-only secret entry while retaining advanced Spotify Desktop client Protobuf mode
+- **IMPROVE:** Added optional post-setup doctor checks and immediate local monitoring startup without secrets in process arguments
+- **NEW:** Added a Python 3.9 non-root main application Dockerfile and Docker Compose quick start with Docker-aware wizard commands
+- **NEW:** Added a test-gated multi-architecture Docker Hub workflow for `misiektoja/spotify-monitor` on `linux/amd64` and `linux/arm64`
+- **IMPROVE:** Added reusable CI container smoke checks plus offline wizard, install-method and container asset tests
+- **NEW:** Added a pure ASCII equalizer startup banner for user-facing commands while preserving clean machine output for `--version` and `--generate-config`
+- **IMPROVE:** Refined the title-case `Spotify` banner lettering, aligned the version with the `Monitor` body and matched the sibling project's spaced quick-start presentation
+- **IMPROVE:** Added install-aware `--help` examples for PyPI, downloaded script, Docker and Docker Compose launches
+- **IMPROVE:** Added clear setup summary, saved-file and next-step sections plus direct links to relevant README guidance in onboarding and recovery output
+- **IMPROVE:** Replaced the terminal configuration dump with a concise startup summary led by target, authentication, polling, notifications and active output paths
+- **IMPROVE:** Added one complete non-secret startup summary to the log and extended `--verbose` with rate-limited token, backend, transient-failure, visibility and liveness events
+- **IMPROVE:** Expanded startup UI, Logger routing, help output and container command regression tests
+- **NEW:** Added `--set-sp-dc` for hidden interactive cookie entry with pre-write Spotify validation, confirmed replacement and atomic dotenv-only persistence
+- **IMPROVE:** Made hidden manual `sp_dc` entry the recommended Docker and Docker Compose onboarding path while retaining Firefox host-profile mounts as an advanced option
+- **IMPROVE:** Added one-time container playback warnings plus a non-failing doctor warning when `TRACK_SONGS` or `--track-in-spotify` is enabled
+- **IMPROVE:** Extended reusable CI smoke coverage to run Docker Compose with the locally built image and verify bind-mounted file writing without Docker Hub access
+- **NEW:** Added Discord-compatible webhook notifications for active, inactive, tracked-song, every-song, loop and error events. Email and webhooks work independently
+- **NEW:** Added private `--set-webhook-url` entry, simple setup wizard choices and `--send-test-webhook`. The private webhook URL is saved in `.env`
+- **IMPROVE:** Added webhook setup checks to `--doctor`, startup summaries that hide the private URL and live check progress without sending an alert
+- **IMPROVE:** Kept webhook retries separate from Spotify requests. A failed webhook is tried once more with waits capped at five seconds
+- **IMPROVE:** Expanded offline tests for webhook messages, email independence, private value protection, setup flows and short waits when a webhook service is busy
+
+**Bug fixes**:
+
+- **BUGFIX:** Restored track duration, artist, album, URI and external URL metadata when `GET /tracks/{id}` is restricted
+- **BUGFIX:** Restored playlist owner lookup in `--list` mode when `GET /playlists/{id}` is restricted
+- **BUGFIX:** Stopped forcing OAuth app token creation in friend activity loops and restored cookie or client tokens for user removal requests
+- **BUGFIX:** Avoided authenticated validity probes for anonymous web-player tokens
+- **BUGFIX:** Removed misleading secret-update requests after unrelated token refresh failures
+- **BUGFIX:** Latched the web-player metadata backend immediately on an app-level HTTP 403 and otherwise only after repeated legacy Web API failures, so misconfigured OAuth app credentials no longer trigger a failed legacy request for every lookup while a single missing or restricted entity (404) falls back per-call without switching the whole backend
+- **BUGFIX:** Guarded a missing token expiry field in `refresh_access_token_from_sp_dc` so a malformed token response reports an actionable error instead of raising `KeyError`
+- **IMPROVE:** Added a `--doctor` configuration check that validates the web-player TOTP parameters in `cookie` mode
+
 # Changes in 2.9.2 (27 Apr 2026)
 
 **Bug fixes**:
