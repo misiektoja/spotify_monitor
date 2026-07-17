@@ -80,13 +80,13 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 # ---------------------------------------------------------------------
 
 # The optional section below enables the legacy Web API path for track and playlist metadata
-# Restricted apps fall back automatically to the anonymous Spotify web-player backend
+# Do not create a new Spotify app only for this tool because new apps normally lack the required legacy endpoint access
+# Configure these values only for an existing app that you have verified still supports the legacy endpoints
+# Restricted or incomplete apps fall back automatically to the anonymous Spotify web-player backend
 #
-# To obtain the credentials:
+# To use a working existing app:
 #   - Log in to Spotify Developer dashboard: https://developer.spotify.com/dashboard
-#   - Create a new app
-#   - For 'Redirect URL', use: http://127.0.0.1:1234
-#   - Select 'Web API' as the intended API
+#   - Open the existing app with verified legacy endpoint access
 #   - Copy the 'Client ID' and 'Client Secret'
 #
 # Provide the SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET secrets using one of the following methods:
@@ -95,7 +95,7 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 #   - Add it to ".env" file (SP_APP_CLIENT_ID=... and SP_APP_CLIENT_SECRET=...) for persistent use
 #   - Fallback: hard-code it in the code or config file
 #
-# The tool automatically refreshes the access token, so it remains valid indefinitely
+# The tool automatically refreshes and caches the OAuth app access token when these credentials are configured
 SP_APP_CLIENT_ID = "your_spotify_app_client_id"
 SP_APP_CLIENT_SECRET = "your_spotify_app_client_secret"
 
@@ -157,6 +157,11 @@ WEBHOOK_ENABLED = False
 WEBHOOK_URL = "your_webhook_url"
 WEBHOOK_PROVIDER = "discord"
 WEBHOOK_USERNAME = "Spotify Monitor"
+
+# Optional static request headers for advanced webhook integrations
+# Prefer NTFY_ACCESS_TOKEN in an environment variable or dotenv file for ntfy Bearer authentication
+WEBHOOK_HEADERS = {}
+NTFY_ACCESS_TOKEN = ""
 
 # Whether to send a webhook alert when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False
@@ -607,6 +612,8 @@ WEBHOOK_ENABLED = False
 WEBHOOK_URL = ""
 WEBHOOK_PROVIDER = ""
 WEBHOOK_USERNAME = ""
+WEBHOOK_HEADERS = {}
+NTFY_ACCESS_TOKEN = ""
 WEBHOOK_ACTIVE_NOTIFICATION = False
 WEBHOOK_INACTIVE_NOTIFICATION = False
 WEBHOOK_TRACK_NOTIFICATION = False
@@ -675,7 +682,10 @@ exec(CONFIG_BLOCK, globals())
 DEFAULT_CONFIG_FILENAME = "spotify_monitor.conf"
 
 # List of secret keys to load from env/config
-SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL")
+SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN")
+
+# Config values that must retain safe template defaults during generated output
+SENSITIVE_CONFIG_KEYS = frozenset((*SECRET_KEYS, "WEBHOOK_HEADERS"))
 
 # Strings removed from track names for generating proper Genius search URLs
 re_search_str = r'remaster|extended|original mix|remix|original soundtrack|radio( |-)edit|\(feat\.|( \(.*version\))|( - .*version)'
@@ -911,6 +921,11 @@ def known_secret_values(extra_values: Sequence[Any] = ()) -> List[str]:
         value = globals().get(key)
         if isinstance(value, str) and value and not value.startswith("your_"):
             values.append(value)
+    webhook_headers = globals().get("WEBHOOK_HEADERS")
+    if isinstance(webhook_headers, dict):
+        for key, value in webhook_headers.items():
+            if isinstance(key, str) and key.casefold() == "authorization" and isinstance(value, str) and value:
+                values.append(value)
     for key in ("SP_CACHED_ACCESS_TOKEN", "SP_CACHED_REFRESH_TOKEN", "SP_CACHED_CLIENT_TOKEN", "SP_CACHED_OAUTH_APP_TOKEN", "SP_CACHED_WEB_ACCESS_TOKEN"):
         value = globals().get(key)
         if isinstance(value, str) and value:
@@ -927,11 +942,11 @@ def sanitize_error_text(value: Any, extra_secrets: Sequence[Any] = ()) -> str:
     for secret in known_secret_values(extra_secrets):
         text = text.replace(secret, "<redacted>")
     patterns = (
-        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD|WEBHOOK_URL)\b\s*=\s*).*$", r"\1<redacted>"),
+        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD|WEBHOOK_URL|NTFY_ACCESS_TOKEN)\b\s*=\s*).*$", r"\1<redacted>"),
         (r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?bearer\s+)[^\s,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(cookie\s*[:=][^\r\n]*?sp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(\bsp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
-        (r"(?i)(['\"]?(?:access_token|refresh_token|client-token|client_token|smtp_password|webhook_url)['\"]?\s*[:=]\s*['\"]?)[^\s,;'\"}]+", r"\1<redacted>"),
+        (r"(?i)(['\"]?(?:access_token|refresh_token|client-token|client_token|smtp_password|webhook_url|ntfy_access_token)['\"]?\s*[:=]\s*['\"]?)[^\s,;'\"}]+", r"\1<redacted>"),
     )
     for pattern, replacement in patterns:
         text = re.sub(pattern, replacement, text)
@@ -1035,7 +1050,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
-        return make_recovery_advice("webhook.invalid", "Webhook alerts are on but the provider or saved URL is invalid", recovery_fix_with_guide("Set WEBHOOK_PROVIDER to discord or ntfy, run --set-webhook-url then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check WEBHOOK_PROVIDER, WEBHOOK_URL, WEBHOOK_HEADERS and NTFY_ACCESS_TOKEN then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
@@ -1259,7 +1274,7 @@ def generate_config_with_current_values(values=None) -> str:
         except SyntaxError:
             output_lines.append(line)
             continue
-        if variable in SECRET_KEYS or variable not in current_values:
+        if variable in SENSITIVE_CONFIG_KEYS or variable not in current_values:
             output_lines.append(line)
             continue
 
@@ -1813,6 +1828,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
         if not confirmed:
             raise BrowserCookieImportError("SP_DC_COOKIE replacement was cancelled. The dotenv file was not changed.")
 
+    print(f"* Need help finding sp_dc? {COOKIE_GUIDE_URL}")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         sp_dc = hidden_prompt("Enter sp_dc privately: ")
@@ -2355,6 +2371,52 @@ def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     return safe_title, safe_message
 
 
+# Returns a safe configuration error for custom webhook headers or ntfy access tokens
+def validate_webhook_headers(provider: Any = None) -> Optional[str]:
+    selected_provider = normalized_webhook_provider(provider)
+    if not isinstance(WEBHOOK_HEADERS, dict):
+        return "WEBHOOK_HEADERS must be a dictionary of string header names and values"
+    normalized_names = set()
+    for name, value in WEBHOOK_HEADERS.items():
+        if not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name):
+            return "WEBHOOK_HEADERS contains an invalid HTTP header name"
+        normalized_name = name.casefold()
+        if normalized_name in normalized_names:
+            return "WEBHOOK_HEADERS contains duplicate case-insensitive header names"
+        normalized_names.add(normalized_name)
+        if not isinstance(value, str):
+            return f"WEBHOOK_HEADERS value for {name} must be a string"
+        if "\r" in value or "\n" in value:
+            return f"WEBHOOK_HEADERS value for {name} must not contain line breaks"
+    if selected_provider == "ntfy":
+        if not isinstance(NTFY_ACCESS_TOKEN, str):
+            return "NTFY_ACCESS_TOKEN must be a string"
+        token = NTFY_ACCESS_TOKEN.strip()
+        if "\r" in token or "\n" in token:
+            return "NTFY_ACCESS_TOKEN must not contain line breaks"
+        if token.casefold().startswith(("bearer ", "basic ")):
+            return "NTFY_ACCESS_TOKEN must contain only the access token without an Authorization scheme"
+    return None
+
+
+# Builds provider-specific headers while applying safe defaults and private ntfy authentication
+def build_webhook_headers(provider: str) -> dict:
+    validation_error = validate_webhook_headers(provider)
+    if validation_error is not None:
+        raise ValueError(validation_error)
+    headers = dict(WEBHOOK_HEADERS)
+    if not any(name.casefold() == "user-agent" for name in headers):
+        headers["User-Agent"] = f"SpotifyMonitor/{VERSION}"
+    if provider == "ntfy":
+        headers = {name: value for name, value in headers.items() if name.casefold() != "content-type"}
+        headers["Content-Type"] = "text/plain; charset=utf-8"
+        token = NTFY_ACCESS_TOKEN.strip()
+        if token:
+            headers = {name: value for name, value in headers.items() if name.casefold() != "authorization"}
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
 def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None) -> int:
     if not force and not webhook_event_enabled(notification_type):
@@ -2366,6 +2428,11 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if not provider:
         print_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
         return 1
+    header_error = validate_webhook_headers(provider)
+    if header_error is not None:
+        print_recovery_error(context="webhook_config", detail=header_error)
+        return 1
+    request_headers = build_webhook_headers(provider)
     sleep_func = time.sleep if sleeper is None else sleeper
     discord_payload = build_webhook_payload(title, description, notification_type) if provider == "discord" else None
     ntfy_title, ntfy_message = build_ntfy_webhook_message(title, description) if provider == "ntfy" else ("", "")
@@ -2373,9 +2440,9 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
             if provider == "ntfy":
-                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers={"Content-Type": "text/plain; charset=utf-8", "User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
-                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers={"User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
                 return 0
             last_error = response
@@ -4816,6 +4883,10 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not validate_webhook_url():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    header_error = validate_webhook_headers(normalized_webhook_provider())
+    if header_error is not None:
+        advice = classify_recovery_error(context="webhook_config", detail=header_error)
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not webhook_notifications_enabled():
         advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", "Turn on at least one webhook alert in spotify_monitor.conf or set WEBHOOK_ENABLED to False", False)
         return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent", advice)]
@@ -5210,7 +5281,7 @@ def _wizard_queue_secret(updates: dict, env_path: Path, key: str, value: str) ->
 def _wizard_target(initial_target: Optional[str] = None) -> str:
     default = initial_target or ""
     while True:
-        raw_target = _wizard_ask_text("Spotify user to monitor", default=default, required=True)
+        raw_target = _wizard_ask_text("Spotify profile URL or user ID to monitor", default=default, required=True)
         try:
             return normalize_spotify_user_id(raw_target)
         except ValueError:
@@ -5266,7 +5337,32 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     return [labels[name] for name in notification_names if selected[name]]
 
 
-# Collects one hidden webhook URL and the alert choices without sending a message
+# Collects an optional ntfy access token without displaying or contacting the service
+def _wizard_collect_ntfy_access_token(secret_updates: dict, env_path: Path) -> None:
+    existing_token = _wizard_existing_secret("NTFY_ACCESS_TOKEN", env_path)
+    if existing_token:
+        choice = _wizard_ask_choice("Which ntfy authentication should be used?", [("Keep the saved access token", "Keeps the private value without displaying or changing it."), ("Paste a new access token", "Uses a hidden prompt then saves the replacement in .env."), ("Do not use an access token", "Disables the saved token. Authentication in the topic URL still works.")])
+        if choice == 0:
+            return
+        if choice == 2:
+            secret_updates["NTFY_ACCESS_TOKEN"] = ""
+            print("  The saved ntfy access token will be disabled without being displayed.")
+            return
+    elif not _wizard_ask_yes_no("Authenticate this ntfy topic with a separate access token?", default=False):
+        print("  No separate access token selected. Authentication already present in the topic URL still works.")
+        return
+    while True:
+        token = _wizard_ask_secret("Paste the ntfy access token only").strip()
+        if token and "\r" not in token and "\n" not in token and not token.casefold().startswith(("bearer ", "basic ")):
+            break
+        print("  Paste only the access token without a Bearer or Basic prefix.")
+    if existing_token:
+        secret_updates["NTFY_ACCESS_TOKEN"] = token
+    else:
+        _wizard_queue_secret(secret_updates, env_path, "NTFY_ACCESS_TOKEN", token)
+
+
+# Collects hidden webhook secrets and alert choices without sending a message
 def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
     if not _wizard_ask_yes_no("Set up webhook alerts?", default=False):
@@ -5295,6 +5391,8 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
             secret_updates["WEBHOOK_URL"] = webhook_url
         else:
             _wizard_queue_secret(secret_updates, env_path, "WEBHOOK_URL", webhook_url)
+    if provider == "ntfy":
+        _wizard_collect_ntfy_access_token(secret_updates, env_path)
     config_values["WEBHOOK_ENABLED"] = True
     config_values["WEBHOOK_USERNAME"] = "Spotify Monitor"
     preset = _wizard_ask_choice("Which webhook alerts should be sent?", [("Status and errors, recommended", "Alerts when the user becomes active, becomes inactive or monitoring has a problem."), ("Every supported alert", "Also sends tracked-song, every-song and loop alerts."), ("Custom", "Choose each webhook alert separately.")])
@@ -5349,6 +5447,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 return result
             continue
         if action == "manual":
+            print(f"  Find the sp_dc cookie first: {COOKIE_GUIDE_URL}")
             cookie = _wizard_ask_secret("Existing sp_dc value")
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
             result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
@@ -5485,6 +5584,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print("Press Enter to accept the shown default. Ctrl+C cancels.\n")
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
     print("Cookie mode is recommended. Client mode is advanced.\n")
+    print("The monitoring account must follow the target. The target must also share listening activity.")
+    print(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n")
     print(f"Detected install method: {method}")
     print(f"Configuration:          {config_path}")
     print(f"Dotenv:                 {env_path}\n")
