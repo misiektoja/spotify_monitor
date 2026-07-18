@@ -163,6 +163,9 @@ WEBHOOK_USERNAME = "Spotify Monitor"
 WEBHOOK_HEADERS = {}
 NTFY_ACCESS_TOKEN = ""
 
+# Add playlist and album images to respective NTFY messages
+NTFY_IMAGES = False
+
 # Whether to send a webhook alert when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False
 
@@ -614,6 +617,7 @@ WEBHOOK_PROVIDER = ""
 WEBHOOK_USERNAME = ""
 WEBHOOK_HEADERS = {}
 NTFY_ACCESS_TOKEN = ""
+NTFY_IMAGES = False
 WEBHOOK_ACTIVE_NOTIFICATION = False
 WEBHOOK_INACTIVE_NOTIFICATION = False
 WEBHOOK_TRACK_NOTIFICATION = False
@@ -823,6 +827,15 @@ WEBHOOK_EMBED_TITLE_LIMIT = 256
 WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
 NTFY_MESSAGE_LIMIT_BYTES = 4096
 
+# Check imports needed for images within NTFY notifications
+try:
+    import uuid
+    from io import StringIO, BytesIO
+    from PIL import Image
+    NTFY_IMAGES_AVAILABLE = True
+except ImportError:
+    NTFY_IMAGES_AVAILABLE = False
+    
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
 CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
@@ -2065,6 +2078,8 @@ def clear_screen(enabled=True):
 
 # Debug print helper - only prints when DEBUG_MODE is enabled
 def debug_print(message):
+    if message.startswith("HTTP "):
+        return
     if DEBUG_MODE:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[DEBUG {timestamp}] {sanitize_error_text(message)}")
@@ -2416,9 +2431,52 @@ def build_webhook_headers(provider: str) -> dict:
             headers["Authorization"] = f"Bearer {token}"
     return headers
 
+# Builds image for NTFY webhook
+def build_ntfy_image(image_url: str = "") -> str:
+    attach_url = ""
+    
+    if NTFY_IMAGES and image_url:
+        try:
+            # Download the image
+            debug_print(f"NTFY Downloading image... {image_url}")
+            response = req.get(image_url)
+            response.raise_for_status()
+            
+            # Resize and center within black box
+            content_fit = (160, 160)
+            original_img = Image.open(BytesIO(response.content))
+            debug_print(f"NTFY Original image dimensions: {original_img.size}")
+            resized_img = original_img.copy()
+            resized_img.thumbnail(content_fit, Image.LANCZOS)
+            debug_print(f"NTFY Resized image dimensions: {resized_img.size}")
+            
+            target_size=(400, 160)
+            background_color=(27, 32, 35)
+            canvas = Image.new("RGB", target_size, background_color)
+            
+            paste_x = (target_size[0] - resized_img.size[0]) // 2
+            paste_y = (target_size[1] - resized_img.size[1]) // 2
+            
+            canvas.paste(resized_img, (paste_x, paste_y))
+
+            # Save the image with a unique filename
+            # ** misiektoja ** The unique filename was for when I was web hosting.
+            # ** misiektoja ** This could be adjusted to a specific filename.
+            # ** misiektoja ** Which avoids needing the UUID import.
+            unique_filename = f"{uuid.uuid4().hex}.jpg"
+            full_local_path = os.path.expanduser(unique_filename)
+            debug_print(f"NTFY Saving resized image to: {full_local_path}")
+            canvas.save(full_local_path, format='JPEG')          
+            attach_url = full_local_path
+            
+        except Exception as e:
+            debug_print(f"NTFY Image generation error: {e}")
+
+    return attach_url
+
 
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None) -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "") -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
@@ -2440,7 +2498,32 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
             if provider == "ntfy":
-                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                if NTFY_IMAGES and image_url:
+                    img_filepath = build_ntfy_image(image_url)
+                    attachment_path = Path(img_filepath)
+                    debug_print(f"NTFY Full attachment path: {attachment_path}")
+
+                    if os.path.exists(img_filepath):
+                        with open(attachment_path, "rb") as img_file:
+                            # attaching an image needs to be done via 'data', moving message into 'params'
+                            response = WEBHOOK_SESSION.post(
+                                str(WEBHOOK_URL).strip(),
+                                data=img_file,
+                                params={
+                                    "title": ntfy_title,
+                                    "message": ntfy_message.encode("utf-8"),
+                                },
+                                headers={
+                                    **request_headers,
+                                    "X-Filename": attachment_path.name,
+                                },
+                                timeout=WEBHOOK_TIMEOUT_SECONDS,
+                            )
+                        debug_print("NTFY message was sent successfully")
+                        os.remove(img_filepath)
+                        debug_print("NTFY image file was deleted successfully")
+                else:
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
                 response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
@@ -2466,7 +2549,7 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None) -> tuple[bool, bool]:
+def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "") -> tuple[bool, bool]:
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     if email_attempted:
@@ -2474,7 +2557,7 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         send_email(subject, body, body_html, SMTP_SSL)
     if webhook_attempted:
         print("Sending webhook notification")
-        send_webhook(subject, body, notification_type, force=True)
+        send_webhook(subject, body, notification_type, force=True, image_url=image_url)
     return email_attempted, webhook_attempted
 
 
@@ -3874,8 +3957,9 @@ def spotify_list_friends(friend_activity, access_token):
         sp_track_uri = friend["track"].get("uri")
 
         sp_playlist_owner = ""
+        sp_playlist_image_url = ""
         if 'spotify:playlist:' in sp_playlist_uri:
-            sp_playlist_owner = spotify_get_playlist_owner(access_token, sp_playlist_uri)
+            sp_playlist_owner, sp_playlist_image_url  = spotify_get_playlist_owner_and_image(access_token, sp_playlist_uri)
         playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
         print("─" * HORIZONTAL_LINE)
@@ -4238,7 +4322,12 @@ def spotify_normalize_web_track(track):
     track_uri = track.get("uri", "")
     artist_uri = artist.get("uri", "")
     album_uri = album.get("uri", "")
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name")}
+    
+    coverart = album.get("coverArt") or {}
+    sources = coverart.get("sources") or [{}]
+    album_image_url = max(sources, key=lambda s: s.get("width", 0)).get("url", "")
+    
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Fetches and normalizes public track metadata from the Spotify web-player service
@@ -4265,7 +4354,18 @@ def spotify_normalize_web_playlist(playlist):
         raise ValueError("Spotify web-player playlist owner data is missing or malformed")
     owner_uri = owner_data.get("uri", "")
     playlist_uri = playlist.get("uri", "")
-    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri)}
+
+    images = playlist.get("images") or {}
+    images_items = images.get("items") or []
+    sources = []
+    if images_items and isinstance(images_items[0], dict):
+        sources = images_items[0].get("sources") or []
+    if not sources:
+        playlist_image_url = ""
+    else:
+        playlist_image_url = max(sources, key=lambda s: s.get("width", 0)).get("url", "")
+
+    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri), "sp_playlist_url": playlist_image_url}
 
 
 # Returns normalized public playlist metadata through Spotify's web-player service
@@ -4289,7 +4389,7 @@ def spotify_should_latch_web_backend(error, consecutive_failures):
 
 
 # Returns playlist owner metadata through the legacy Spotify Web API path
-def _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app=False):
+def _spotify_get_playlist_owner_and_image_api(access_token, playlist_uri, oauth_app=False):
     if TOKEN_SOURCE in {"cookie", "client"} and not oauth_app:
         access_token = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET)
         oauth_app = True
@@ -4297,7 +4397,7 @@ def _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app=False)
         raise Exception("_spotify_get_playlist_owner_api(): OAuth app token is empty")
 
     playlist_id = playlist_uri.split(':', 2)[2]
-    url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner"
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,images"
     headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
     if TOKEN_SOURCE == "cookie" and not oauth_app:
         headers["Client-Id"] = SP_CACHED_CLIENT_ID
@@ -4308,36 +4408,42 @@ def _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app=False)
     response.raise_for_status()
     json_response = response.json()
     owner_data = json_response.get("owner")
+    images = json_response.get("images") or [{}]
+    playlist_image_url = max(images, key=lambda i: i.get("width", 0)).get("url", "")
     if not isinstance(owner_data, dict):
         raise ValueError("Playlist owner data is missing or malformed")
-    return owner_data.get("display_name", "")
+    return owner_data.get("display_name", ""), playlist_image_url
 
 
 # Selects the legacy or web-player playlist owner backend and falls back automatically
-def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
+def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=False):
     global SP_WEB_PLAYLIST_BACKEND_PREFERRED, SP_WEB_PLAYLIST_API_FAILURES
 
     api_error = None
     api_available = bool(oauth_app and access_token) or spotify_has_oauth_app_credentials()
     if api_available and not SP_WEB_PLAYLIST_BACKEND_PREFERRED:
         try:
-            owner = _spotify_get_playlist_owner_api(access_token, playlist_uri, oauth_app)
+            owner, playlist_image_url = _spotify_get_playlist_owner_and_image_api(access_token, playlist_uri, oauth_app)
             SP_WEB_PLAYLIST_API_FAILURES = 0
-            return owner
+            debug_print(f"Playlist Image URL: {playlist_image_url}")
+            return owner, playlist_image_url
         except Exception as error:
             api_error = error
             SP_WEB_PLAYLIST_API_FAILURES += 1
             if spotify_should_latch_web_backend(error, SP_WEB_PLAYLIST_API_FAILURES):
                 SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
-                debug_print(f"spotify_get_playlist_owner(): legacy Web API unavailable (failures={SP_WEB_PLAYLIST_API_FAILURES}, status={spotify_get_error_status_code(error)}), preferring the web-player backend for remaining playlists")
+                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API unavailable (failures={SP_WEB_PLAYLIST_API_FAILURES}, status={spotify_get_error_status_code(error)}), preferring the web-player backend for remaining playlists")
                 verbose_print("Playlist metadata switched to the web-player backend after legacy API failures")
             else:
-                debug_print(f"spotify_get_playlist_owner(): legacy Web API backend failed for uri={playlist_uri} (failures={SP_WEB_PLAYLIST_API_FAILURES}): {error}")
+                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API backend failed for uri={playlist_uri} (failures={SP_WEB_PLAYLIST_API_FAILURES}): {error}")
 
     try:
-        return spotify_get_playlist_info_web(playlist_uri)["sp_playlist_owner"]
+        info_web = spotify_get_playlist_info_web(playlist_uri)
+        playlist_image_url = info_web["sp_playlist_url"]
+        debug_print(f"Playlist Image URL: {playlist_image_url}")
+        return info_web["sp_playlist_owner"], playlist_image_url
     except Exception as web_error:
-        debug_print(f"spotify_get_playlist_owner(): web-player backend failed for uri={playlist_uri}: {web_error}")
+        debug_print(f"spotify_get_playlist_owner_and_image(): web-player backend failed for uri={playlist_uri}: {web_error}")
         if api_error is not None:
             raise RuntimeError(f"Both Spotify playlist metadata backends failed for {playlist_uri}: Web API: {api_error}. Web player: {web_error}")
         raise
@@ -4372,7 +4478,10 @@ def _spotify_get_track_info_api(access_token, track_uri, oauth_app=False):
     track_uri_value = json_response.get("uri", track_uri)
     artist_uri = artist.get("uri", "")
     album_uri = album.get("uri", "")
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name")}
+    images = album.get("images") or [{}]
+    album_image_url = max(images, key=lambda i: i.get("width", 0)).get("url", "")
+
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Selects the legacy or web-player track backend and falls back automatically
@@ -5818,6 +5927,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         played_for_m_body_html = ""
         is_playlist = False
         sp_playlist_owner = ""
+        sp_playlist_image_url = ""
+        sp_album_image_url = ""
         playlist_suffix = ""
 
         # User is found in the Spotify's friend list just after starting the tool
@@ -5832,9 +5943,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_playlist_data = {}
             try:
                 sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
+                sp_album_image_url = sp_track_data["sp_album_image_url"]
+                debug_print(f"Album Image URL: {sp_album_image_url}")
                 is_playlist = 'spotify:playlist:' in sp_playlist_uri
                 if is_playlist:
-                    sp_playlist_owner = spotify_get_playlist_owner(sp_accessToken, sp_playlist_uri)
+                    sp_playlist_owner, sp_playlist_image_url = spotify_get_playlist_owner_and_image(sp_accessToken, sp_playlist_uri)
                     playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
             except Exception as e:
@@ -5965,7 +6078,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                    send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
+                    send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
 
                 if TRACK_SONGS and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
@@ -6020,6 +6133,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             transient_request_failure_active = False
                         recovery_hint_tracker.reset()
                         email_sent = False
+                        webhook_sent = False
                         if platform.system() != 'Windows':
                             signal.alarm(0)
                         break
@@ -6160,10 +6274,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_playlist_uri = sp_data["sp_playlist_uri"]
                     try:
                         sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
+                        sp_album_image_url = sp_track_data["sp_album_image_url"]
+                        debug_print(f"Album Image URL: {sp_album_image_url}")
                         is_playlist = 'spotify:playlist:' in sp_playlist_uri
                         if is_playlist:
-                            sp_playlist_owner = spotify_get_playlist_owner(sp_accessToken, sp_playlist_uri)
+                            sp_playlist_owner, sp_playlist_image_url = spotify_get_playlist_owner_and_image(sp_accessToken, sp_playlist_uri)
                             playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
+                        else:
+                            sp_playlist_image_url = ""
                     except Exception as e:
                         print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
                         print_cur_ts("Timestamp:\t\t\t")
@@ -6378,7 +6496,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
 
                         if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
-                            email_attempted, webhook_attempted = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
+                            email_attempted, webhook_attempted = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
                             email_sent = email_sent or email_attempted
                             webhook_sent = webhook_sent or webhook_attempted
 
@@ -6412,7 +6530,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                        email_attempted, webhook_attempted = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent)
+                        email_attempted, webhook_attempted = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent, image_url=sp_album_image_url)
                         email_sent = email_sent or email_attempted
                         webhook_sent = webhook_sent or webhook_attempted
 
@@ -6443,7 +6561,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         notification_type = "track" if on_the_list and ((TRACK_NOTIFICATION and email_song_enabled) or webhook_event_enabled("track")) else "song"
-                        email_attempted, webhook_attempted = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled)
+                        email_attempted, webhook_attempted = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled, image_url=sp_album_image_url)
                         email_sent = email_sent or email_attempted
                         webhook_sent = webhook_sent or webhook_attempted
 
@@ -6560,7 +6678,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                            email_attempted, webhook_attempted = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION)
+                            email_attempted, webhook_attempted = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
                             email_sent = email_sent or email_attempted
                             webhook_sent = webhook_sent or webhook_attempted
                         sp_active_ts_start_old = sp_active_ts_start
@@ -6620,7 +6738,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -7708,6 +7826,14 @@ def main():
     playback_warning = container_playback_warning()
     if playback_warning is not None:
         print(f"* Warning: {playback_warning}\n")
+
+    if NTFY_IMAGES and not NTFY_IMAGES_AVAILABLE:
+        print("*" * HORIZONTAL_LINE)
+        print("* WARNING: NTFY images are enabled, but at least one needed library is missing!")
+        print("* To fix this, please run: pip install uuid io PIL")
+        print("* Disabling images in NTFY alerts...")
+        print("*" * HORIZONTAL_LINE + "\n")
+        NTFY_IMAGES = False
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
     if platform.system() != 'Windows':
