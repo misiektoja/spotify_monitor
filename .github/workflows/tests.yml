@@ -51,6 +51,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Build local smoke image
         run: docker build --tag spotify-monitor:ci .
       - name: Confirm Python 3.9 runtime
