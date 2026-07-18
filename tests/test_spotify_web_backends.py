@@ -70,7 +70,18 @@ def web_track_fixture():
 
 # Returns representative current Pathfinder playlist metadata
 def web_playlist_fixture():
-    return {"uri": PLAYLIST_URI, "name": "Cordas", "revisionId": "revision-1", "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"}, "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}}}
+    return {"uri": PLAYLIST_URI, "name": "Cordas", "revisionId": "revision-1", "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"}, "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}},
+        "images": {
+            "items": [
+                {
+                    "sources": [
+                        {"url": "https://i.scdn.co/image/small.jpg", "width": 64, "height": 64},
+                        {"url": "https://i.scdn.co/image/large.jpg", "width": 640, "height": 640},
+                    ]
+                }
+            ]
+        },
+    }
 
 
 class SpotifyWebBackendTests(unittest.TestCase):
@@ -206,14 +217,19 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
         track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}}})
-        playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"}})
+        playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"},
+            "images": [
+                {"url": "https://i.scdn.co/image/small.jpg", "width": 64, "height": 64},
+                {"url": "https://i.scdn.co/image/large.jpg", "width": 640, "height": 640},
+            ],
+        })
         with patch.object(monitor.SESSION, "get", side_effect=[track_response, playlist_response]):
             track = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
             owner, owner_image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
-        print(f"owner_image: {owner_image!r}")
         self.assertEqual(track["sp_track_duration"], 259)
         self.assertEqual(track["sp_artist_name"], "Route 94")
         self.assertEqual(owner, "Agnes Hali")
+        self.assertEqual(owner_image, "https://i.scdn.co/image/large.jpg")
 
     # Verifies one track 403 switches current and later requests to Pathfinder
     def test_track_403_falls_back_and_caches_backend_decision(self):
@@ -238,9 +254,8 @@ class SpotifyWebBackendTests(unittest.TestCase):
             second, second_image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(first, "Agnes Hali")
         self.assertEqual(second, "Agnes Hali")
-        print(f"first: {first!r}, first_image: {first_image!r}")
-        print(f"second: {second!r}, second_image: {second_image!r}")
-        print(f"captured stdout: {output.getvalue()!r}")
+        self.assertEqual(first_image, "https://i.scdn.co/image/large.jpg")
+        self.assertEqual(second_image, "https://i.scdn.co/image/large.jpg")
         self.assertEqual(legacy.call_count, 1)
         self.assertEqual(web.call_count, 2)
         self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
@@ -351,6 +366,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(result["sp_playlist_owner"], "Agnes Hali")
         self.assertEqual(result["sp_playlist_owner_uri"], "spotify:user:brenda.juris")
         self.assertEqual(result["sp_playlist_owner_url"], "https://open.spotify.com/user/brenda.juris?si=1")
+        self.assertEqual(result["sp_playlist_image_url"], "https://i.scdn.co/image/large.jpg")
 
     # Verifies the idempotent web-player GraphQL POST is retried while other POSTs are not
     def test_web_player_adapter_retries_post(self):
