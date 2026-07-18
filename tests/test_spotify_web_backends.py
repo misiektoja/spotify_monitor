@@ -209,7 +209,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"}})
         with patch.object(monitor.SESSION, "get", side_effect=[track_response, playlist_response]):
             track = monitor.spotify_get_track_info("legacy-token", TRACK_URI, oauth_app=True)
-            owner = monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+            owner, image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(track["sp_track_duration"], 259)
         self.assertEqual(track["sp_artist_name"], "Route 94")
         self.assertEqual(owner, "Agnes Hali")
@@ -232,9 +232,9 @@ class SpotifyWebBackendTests(unittest.TestCase):
     def test_playlist_403_falls_back_and_caches_backend_decision(self):
         normalized = monitor.spotify_normalize_web_playlist(web_playlist_fixture())
         output = io.StringIO()
-        with patch.object(monitor, "_spotify_get_playlist_owner_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
-            first = monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
-            second = monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+        with patch.object(monitor, "_spotify_get_playlist_owner_and_image_api", side_effect=make_http_error(403)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
+            first = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
+            second, image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(first, "Agnes Hali")
         self.assertEqual(second, "Agnes Hali")
         self.assertEqual(legacy.call_count, 1)
@@ -284,11 +284,11 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies repeated non-restricted legacy playlist failures latch the web backend after the threshold
     def test_playlist_non_restricted_failures_latch_after_threshold(self):
         normalized = monitor.spotify_normalize_web_playlist(web_playlist_fixture())
-        with patch.object(monitor, "_spotify_get_playlist_owner_api", side_effect=make_http_error(401)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+        with patch.object(monitor, "_spotify_get_playlist_owner_and_image_api", side_effect=make_http_error(401)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
             for _ in range(monitor.METADATA_API_FAILURE_LATCH_THRESHOLD - 1):
-                monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+                monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
             self.assertFalse(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
-            monitor.spotify_get_playlist_owner("legacy-token", PLAYLIST_URI, oauth_app=True)
+            monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
             self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
         self.assertEqual(legacy.call_count, monitor.METADATA_API_FAILURE_LATCH_THRESHOLD)
 
