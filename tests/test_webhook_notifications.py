@@ -193,7 +193,7 @@ def test_notification_channels_are_independent(monkeypatch):
     email.reset_mock()
     assert monitor.send_notification_channels("song", "Title", "Body", email_enabled=False, webhook_enabled=True) == (False, True)
     email.assert_not_called()
-    webhook.assert_called_once_with("Title", "Body", "song", force=True)
+    webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url='')
 
 
 # Verifies the recommended wizard preset stores the URL privately without contacting it

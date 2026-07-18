@@ -4365,7 +4365,7 @@ def spotify_normalize_web_playlist(playlist):
     else:
         playlist_image_url = max(sources, key=lambda s: s.get("width", 0)).get("url", "")
 
-    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri), "sp_playlist_url": playlist_image_url}
+    return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri), "sp_playlist_image_url": playlist_image_url}
 
 
 # Returns normalized public playlist metadata through Spotify's web-player service
@@ -4439,7 +4439,7 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
 
     try:
         info_web = spotify_get_playlist_info_web(playlist_uri)
-        playlist_image_url = info_web["sp_playlist_url"]
+        playlist_image_url = info_web["sp_playlist_image_url"]
         debug_print(f"Playlist Image URL: {playlist_image_url}")
         return info_web["sp_playlist_owner"], playlist_image_url
     except Exception as web_error:
