@@ -225,14 +225,18 @@ def test_webhook_wizard_supports_ntfy(monkeypatch):
         choices = iter([1, 0])
         post = Mock(side_effect=AssertionError("webhook request attempted"))
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
-        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "https://ntfy.sh/private-topic")
+        secrets = iter(["https://ntfy.sh/private-topic", "my-access-token"])
+        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: next(secrets))
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
         monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
         config_values = {}
         secret_updates = {}
         enabled = monitor._wizard_collect_webhook(config_values, secret_updates, destination)
         assert enabled == ["active", "inactive", "errors"]
-        assert secret_updates == {"WEBHOOK_URL": "https://ntfy.sh/private-topic"}
+        assert secret_updates == {
+            "WEBHOOK_URL": "https://ntfy.sh/private-topic",
+            "NTFY_ACCESS_TOKEN": "my-access-token",
+        }
         assert config_values["WEBHOOK_ENABLED"] is True
         assert config_values["WEBHOOK_PROVIDER"] == "ntfy"
         post.assert_not_called()
