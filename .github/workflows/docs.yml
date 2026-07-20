@@ -1,0 +1,27 @@
+name: Update GitHub Pages Documentation
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Install docs dependencies
+        run: pip install -r docs/requirements.txt
+      - name: Build and deploy to GitHub Pages
+        run: mkdocs gh-deploy --force --strict
