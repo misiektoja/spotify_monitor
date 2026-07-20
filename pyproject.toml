@@ -18,6 +18,7 @@ dependencies = [
   "pyotp>=2.9.0",
   "python-dotenv>=0.19",
   "wcwidth>=0.2.7",
+  "Pillow>=10.0",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",

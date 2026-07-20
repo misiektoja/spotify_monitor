@@ -68,7 +68,7 @@ jobs:
       - name: Build local smoke image
         run: docker build --tag spotify-monitor:ci .
       - name: Confirm Python 3.9 runtime
-        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | rg '^Python 3\.9\.'
+        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | grep -E '^Python 3\.9\.'
       - name: Run application version and help
         run: |
           docker run --rm spotify-monitor:ci --version
@@ -80,13 +80,13 @@ jobs:
             echo "Noninteractive setup unexpectedly succeeded"
             exit 1
           fi
-          rg "interactive terminal" local/container-smoke/setup-output.txt
+          grep -E "interactive terminal" local/container-smoke/setup-output.txt
       - name: Generate a config through the container
         run: |
           mkdir -p local/container-smoke
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data:z" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
           test -s local/container-smoke/spotify_monitor.conf
-          if rg 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
+          if grep -E 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
             echo "Generated config contains a test secret marker"
             exit 1
           fi

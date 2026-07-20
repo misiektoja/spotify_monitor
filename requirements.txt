@@ -4,6 +4,7 @@ urllib3
 pyotp
 python-dotenv
 wcwidth
+Pillow>=10.0
 
 # Optional for configured legacy OAuth app credentials
 # spotipy>=2.24.0

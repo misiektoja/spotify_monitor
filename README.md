@@ -145,7 +145,7 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 ## Requirements
 
 * Python 3.9 or higher
-* Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
+* Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `Pillow`
 * Optional legacy OAuth library: `spotipy`
 * Optional Chromium cookie import library: `pycookiecheat`
 
@@ -175,7 +175,7 @@ Download the *[spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/
 Install dependencies via pip:
 
 ```sh
-pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth
+pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth Pillow
 ```
 
 Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt)*:
@@ -812,6 +812,14 @@ spotify_monitor --set-webhook-url
 
 Spotify Monitor sends the alert body as a native UTF-8 ntfy message and sends the alert subject as its title. Query parameters already present in the topic URL are preserved. This allows the ntfy [`auth` query parameter](https://docs.ntfy.sh/publish/#authentication) when a protected topic needs authentication.
 
+To attach playlist or album artwork to supported ntfy alerts, enable images in `spotify_monitor.conf`:
+
+```ini
+NTFY_IMAGES = True
+```
+
+Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Error alerts and `--send-test-webhook` remain text-only. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. PyPI, requirements-file and Docker installs include Pillow. Manual single-file users who install dependencies individually must include Pillow. If image preparation fails, the alert is sent as text. If the attachment upload fails, the alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.
+
 For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in `.env` without displaying it. For manual setup, add the token to `.env`:
 
 ```ini
@@ -828,7 +836,7 @@ WEBHOOK_HEADERS = {
 }
 ```
 
-The dictionary applies to Discord and ntfy requests. For ntfy, Spotify Monitor always sets the required plain-text `Content-Type`. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header. Header names and values are validated before any request is sent.
+The dictionary applies to Discord and ntfy requests. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header. Header names and values are validated before any request is sent.
 
 Topics on the public ntfy.sh service are public unless protected through an account reservation. Treat an unprotected topic name like a password and do not reuse the example topic above.
 
