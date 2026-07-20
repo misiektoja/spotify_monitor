@@ -39,6 +39,8 @@ def configure_webhook(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/private-token")
     monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {})
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "")
     monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", True)
 
 
@@ -123,6 +125,22 @@ def test_successful_webhook_uses_isolated_session(monkeypatch):
     spotify_post.assert_not_called()
 
 
+# Verifies Instagram-style static headers are copied to webhook requests
+def test_custom_webhook_headers_match_instagram_monitor_configuration(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.example.test/private-topic")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"Authorization": "Basic shared-private-value", "X-Monitor": "spotify"})
+    webhook_post = Mock(return_value=FakeResponse(200))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 0
+    headers = webhook_post.call_args.kwargs["headers"]
+    assert headers["Authorization"] == "Basic shared-private-value"
+    assert headers["X-Monitor"] == "spotify"
+    assert headers["User-Agent"] == f"SpotifyMonitor/{monitor.VERSION}"
+    assert headers["Content-Type"] == "text/plain; charset=utf-8"
+
+
 # Verifies ntfy receives a native UTF-8 topic message with its title in query parameters
 def test_successful_ntfy_webhook_uses_native_topic_api(monkeypatch):
     configure_webhook(monkeypatch)
@@ -137,6 +155,35 @@ def test_successful_ntfy_webhook_uses_native_topic_api(monkeypatch):
     assert request.kwargs["params"] == {"title": "Spotify title za\u017c\u00f3\u0142\u0107"}
     assert request.kwargs["headers"]["Content-Type"] == "text/plain; charset=utf-8"
     assert "json" not in request.kwargs
+
+
+# Verifies the private ntfy token overrides custom auth while retaining safe custom headers
+def test_ntfy_access_token_uses_bearer_authentication(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.example.test/private-topic")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"authorization": "Basic older-value", "Content-Type": "application/json", "X-Priority": "high"})
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "tk_private_access_token")
+    webhook_post = Mock(return_value=FakeResponse(200))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 0
+    headers = webhook_post.call_args.kwargs["headers"]
+    assert headers["Authorization"] == "Bearer tk_private_access_token"
+    assert "authorization" not in headers
+    assert headers["Content-Type"] == "text/plain; charset=utf-8"
+    assert headers["X-Priority"] == "high"
+    assert "tk_private_access_token" not in monitor.sanitize_error_text("NTFY_ACCESS_TOKEN=tk_private_access_token")
+
+
+# Verifies malformed custom headers fail before a webhook request is attempted
+@pytest.mark.parametrize("headers", [[("Authorization", "Bearer value")], {"Bad Header": "value"}, {"X-Test": 3}, {"X-Test": "first\nsecond"}, {"Authorization": "Bearer first", "authorization": "Bearer second"}])
+def test_invalid_webhook_headers_are_rejected(monkeypatch, headers):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", headers)
+    webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 1
+    webhook_post.assert_not_called()
 
 
 # Verifies ntfy message truncation respects its UTF-8 byte limit without splitting a character
@@ -222,9 +269,10 @@ def test_webhook_wizard_preset_is_hidden_and_offline(monkeypatch):
 def test_webhook_wizard_supports_ntfy(monkeypatch):
     with make_test_directory() as directory_name:
         destination = Path(directory_name) / ".env"
+        answers = iter([True, False])
         choices = iter([1, 0])
         post = Mock(side_effect=AssertionError("webhook request attempted"))
-        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "https://ntfy.sh/private-topic")
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
         monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
@@ -235,6 +283,27 @@ def test_webhook_wizard_supports_ntfy(monkeypatch):
         assert secret_updates == {"WEBHOOK_URL": "https://ntfy.sh/private-topic"}
         assert config_values["WEBHOOK_ENABLED"] is True
         assert config_values["WEBHOOK_PROVIDER"] == "ntfy"
+        post.assert_not_called()
+
+
+# Verifies the ntfy wizard collects an access token privately for dotenv persistence
+def test_webhook_wizard_collects_ntfy_access_token(monkeypatch):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        answers = iter([True, True])
+        choices = iter([1, 0])
+        secrets = iter(["https://ntfy.example.test/private-topic", "tk_private_access_token"])
+        post = Mock(side_effect=AssertionError("webhook request attempted"))
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
+        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: next(secrets))
+        monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
+        monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
+        config_values = {}
+        secret_updates = {}
+        enabled = monitor._wizard_collect_webhook(config_values, secret_updates, destination)
+        assert enabled == ["active", "inactive", "errors"]
+        assert secret_updates == {"WEBHOOK_URL": "https://ntfy.example.test/private-topic", "NTFY_ACCESS_TOKEN": "tk_private_access_token"}
+        assert "tk_private_access_token" not in str(config_values)
         post.assert_not_called()
 
 
@@ -266,6 +335,40 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         assert secret not in config
         assert dotenv_values(env_path, interpolate=False)["WEBHOOK_URL"] == secret
         assert secret not in capsys.readouterr().out
+
+
+# Verifies full setup persists ntfy URL and token only in the dotenv file
+def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        env_path = directory / ".env"
+        topic_url = "https://ntfy.example.test/private-topic"
+        token = "tk_private_access_token"
+        answers = iter([True, False, True, True, True, False])
+        choices = iter([0, 1, 0])
+        secrets = iter([topic_url, token])
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "target.user")
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
+        monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
+        monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
+        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: next(secrets))
+        monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
+        assert error.value.code == 0
+        config = config_path.read_text(encoding="utf-8")
+        dotenv = dotenv_values(env_path, interpolate=False)
+        assert 'WEBHOOK_PROVIDER = "ntfy"' in config
+        assert topic_url not in config
+        assert token not in config
+        assert dotenv["WEBHOOK_URL"] == topic_url
+        assert dotenv["NTFY_ACCESS_TOKEN"] == token
+        output = capsys.readouterr().out
+        assert topic_url not in output
+        assert token not in output
 
 
 # Verifies the standalone test action skips every Spotify connectivity path
@@ -305,6 +408,18 @@ def test_doctor_rejects_invalid_webhook_provider(monkeypatch):
     checks = monitor.doctor_check_webhook_notifications()
     assert checks[0].status == "FAIL"
     assert "WEBHOOK_PROVIDER must be discord or ntfy" in checks[0].detail
+    post.assert_not_called()
+
+
+# Verifies the doctor validates custom headers without contacting the webhook service
+def test_doctor_rejects_invalid_webhook_headers(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"Bad Header": "private-value"})
+    post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
+    checks = monitor.doctor_check_webhook_notifications()
+    assert checks[0].status == "FAIL"
+    assert "invalid HTTP header name" in checks[0].detail
     post.assert_not_called()
 
 
