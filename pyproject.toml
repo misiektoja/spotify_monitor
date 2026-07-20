@@ -42,6 +42,7 @@ browser = ["pycookiecheat>=0.8"]
 
 [project.urls]
 Homepage = "https://github.com/misiektoja/spotify_monitor"
+Documentation = "https://misiektoja.github.io/spotify_monitor/"
 Source   = "https://github.com/misiektoja/spotify_monitor"
 Changelog= "https://github.com/misiektoja/spotify_monitor/blob/main/RELEASE_NOTES.md"
 
