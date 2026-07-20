@@ -89,9 +89,9 @@ def test_webhook_recovery_categories():
     assert monitor.classify_recovery_error(make_http_error(429), "runtime").code == "spotify.rate_limited"
 
 
-# Verifies webhook recovery uses the generic README setup anchor
+# Verifies webhook recovery uses the published configuration guide
 def test_webhook_recovery_guide_uses_generic_anchor():
-    assert monitor.WEBHOOK_GUIDE_URL == monitor.PROJECT_URL + "#webhook-settings"
+    assert monitor.WEBHOOK_GUIDE_URL == monitor.DOCUMENTATION_URL + "/configuration/#webhook-settings"
     assert monitor.WEBHOOK_GUIDE_URL in monitor.classify_recovery_error(context="webhook_config").fix
 
 
