@@ -5020,7 +5020,7 @@ def doctor_check_notifications() -> List[DoctorCheck]:
             smtp_object.quit()
         finally:
             smtp_object = None
-        return [make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded", "No email was sent")]
+        return [make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded", "No email was sent during this passive check")]
     except Exception as exc:
         advice = classify_recovery_error(exc, "smtp")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
@@ -5048,8 +5048,63 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not webhook_notifications_enabled():
         advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", "Turn on at least one webhook alert in spotify_monitor.conf or set WEBHOOK_ENABLED to False", False)
-        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent", advice)]
-    return [make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed and no webhook was sent")]
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent during this passive check", advice)]
+    return [make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed. No webhook was sent during this passive check")]
+
+
+# Prompts for explicit doctor delivery consent and defaults safely to no
+def _doctor_ask_yes_no(question: str) -> bool:
+    while True:
+        try:
+            value = input(f"{question} [y/N]: ").strip().casefold()
+        except (EOFError, KeyboardInterrupt):
+            print("\nDelivery test skipped.")
+            return False
+        if not value or value in ("n", "no"):
+            return False
+        if value in ("y", "yes"):
+            return True
+        print("  Please answer 'y' or 'n'.")
+
+
+# Returns whether one exact doctor check passed
+def _doctor_report_has_pass(report: DoctorReport, label: str) -> bool:
+    return any(check.status == "PASS" and check.label == label for check in report.checks)
+
+
+# Offers separate real delivery tests only after interactive confirmation
+def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return []
+    email_ready = _doctor_report_has_pass(report, "SMTP connection and login succeeded")
+    webhook_ready = _doctor_report_has_pass(report, "Webhook URL and alert choices look valid")
+    if not email_ready and not webhook_ready:
+        return []
+    print("\nOptional delivery tests\n")
+    print("Doctor will not write files. Each approved test sends one real message.\n")
+    results: List[DoctorCheck] = []
+    if email_ready:
+        if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
+            result = send_email("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5)
+            check = make_doctor_check("Notifications", "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered")
+            results.append(check)
+            print(f"[{check.status}] {check.label}")
+        else:
+            print("[SKIP] Test email was not sent")
+    if webhook_ready:
+        provider = normalized_webhook_provider()
+        if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
+            result = send_webhook("Spotify Monitor doctor test", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
+            check = make_doctor_check("Notifications", "PASS" if result == 0 else "FAIL", "Doctor test webhook delivered" if result == 0 else "Doctor test webhook delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered")
+            results.append(check)
+            print(f"[{check.status}] {check.label}")
+        else:
+            print("[SKIP] Test webhook was not sent")
+    if results:
+        failures = sum(check.status == "FAIL" for check in results)
+        print(f"\nDelivery test summary: {failures} failure(s)")
+    print()
+    return results
 
 
 # Builds all independent and dependent doctor checks before rendering
@@ -5081,7 +5136,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = ["Doctor", "", "Read-only check. No email or webhook alerts will be sent and no files will be written."]
+    lines = ["Doctor", "", "No files will be written. In an interactive terminal, real email and webhook tests are offered separately and run only after approval."]
     sections = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
     for section in sections:
         lines.extend(("", section))
@@ -5114,7 +5169,7 @@ def _doctor_progress_clear() -> None:
         sys.stdout.flush()
 
 
-# Runs the read-only doctor preflight and returns zero unless at least one check fails
+# Runs doctor preflight plus approved delivery tests and returns zero unless one check fails
 def run_doctor(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = ()) -> int:
     progress = _doctor_progress if sys.stdout.isatty() else None
     try:
@@ -5122,7 +5177,8 @@ def run_doctor(target_value=None, config_path=None, env_path=None, startup_check
     finally:
         _doctor_progress_clear()
     print(render_doctor_report(report))
-    return 1 if any(check.status == "FAIL" for check in report.checks) else 0
+    delivery_checks = _doctor_offer_notification_tests(report)
+    return 1 if any(check.status == "FAIL" for check in (*report.checks, *delivery_checks)) else 0
 
 
 # Resolves an executable path by checking if it's a valid file or searching in $PATH
@@ -6034,7 +6090,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     doctor_failed = False
     doctor_ran = False
     print()
-    if _wizard_ask_yes_no("Run the read-only doctor now?", default=True):
+    if _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
         doctor_ran = True
         if _wizard_load_effective_setup(config_path, env_path):
             try:
@@ -6045,6 +6101,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             doctor_failed = any(check.status == "FAIL" for check in report.checks)
             if not doctor_failed:
                 auth["validated"] = True
+            delivery_checks = _doctor_offer_notification_tests(report)
+            doctor_failed = doctor_failed or any(check.status == "FAIL" for check in delivery_checks)
         else:
             doctor_failed = True
     doctor_target = None if persist_target else target
@@ -7111,7 +7169,7 @@ def main():
         "--doctor",
         dest="doctor",
         action="store_true",
-        help="Run read-only preflight checks then exit",
+        help="Run preflight checks with separately approved delivery tests then exit",
     )
 
     # Token source
