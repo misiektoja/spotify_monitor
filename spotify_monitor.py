@@ -163,7 +163,7 @@ WEBHOOK_USERNAME = "Spotify Monitor"
 WEBHOOK_HEADERS = {}
 NTFY_ACCESS_TOKEN = ""
 
-# Add playlist and album images to respective NTFY messages
+# Add playlist and album images to ntfy messages
 NTFY_IMAGES = False
 
 # Whether to send a webhook alert when the user becomes active
@@ -799,8 +799,9 @@ import shutil
 import shlex
 import tempfile
 import socket
+from io import BytesIO
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import secrets
 from typing import Any, Callable, List, Optional, Sequence, cast
 from email.utils import parseaddr, parsedate_to_datetime
@@ -826,16 +827,20 @@ WEBHOOK_TIMEOUT_SECONDS = 10
 WEBHOOK_EMBED_TITLE_LIMIT = 256
 WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
 NTFY_MESSAGE_LIMIT_BYTES = 4096
+NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES = 5 * 1024 * 1024
+NTFY_IMAGE_DOWNLOAD_CHUNK_BYTES = 64 * 1024
+NTFY_IMAGE_PIXEL_LIMIT = 25_000_000
+NTFY_IMAGE_FILENAME = "spotify-cover.jpg"
+NTFY_IMAGE_ALLOWED_HOST_SUFFIXES = ("scdn.co", "spotifycdn.com")
 
-# Check imports needed for images within NTFY notifications
+PILImage: Any = None
 try:
-    import uuid
-    from io import StringIO, BytesIO
-    from PIL import Image
-    NTFY_IMAGES_AVAILABLE = True
+    from PIL import Image as PILImageModule
+    PILImage = PILImageModule
 except ImportError:
-    NTFY_IMAGES_AVAILABLE = False
-    
+    pass
+NTFY_IMAGES_AVAILABLE = PILImage is not None
+
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
 CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
@@ -995,8 +1000,8 @@ def cookie_auth_recovery_fix() -> str:
     if not is_container_environment():
         return COOKIE_IMPORT_FIX
     method = _wizard_install_method()
-    private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
-    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env")
+    private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env", exact=True)
+    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env", exact=True)
     return f"Run the hidden private entry command: {private_command}\n  Advanced Firefox alternative with a read-only host profile mount: {firefox_command}"
 
 
@@ -2078,8 +2083,6 @@ def clear_screen(enabled=True):
 
 # Debug print helper - only prints when DEBUG_MODE is enabled
 def debug_print(message):
-    if message.startswith("HTTP "):
-        return
     if DEBUG_MODE:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[DEBUG {timestamp}] {sanitize_error_text(message)}")
@@ -2431,48 +2434,67 @@ def build_webhook_headers(provider: str) -> dict:
             headers["Authorization"] = f"Bearer {token}"
     return headers
 
-# Builds image for NTFY webhook
-def build_ntfy_image(image_url: str = "") -> str:
-    attach_url = ""
-    
-    if NTFY_IMAGES and image_url:
-        try:
-            # Download the image
-            debug_print(f"NTFY Downloading image... {image_url}")
-            response = req.get(image_url)
+
+# Returns whether one image URL is a complete HTTPS URL on a Spotify CDN host
+def spotify_image_url_is_allowed(image_url: str) -> bool:
+    try:
+        parsed_url = urlsplit(image_url)
+    except ValueError:
+        return False
+    hostname = parsed_url.hostname.casefold() if parsed_url.hostname else ""
+    return parsed_url.scheme.casefold() == "https" and any(hostname == suffix or hostname.endswith(f".{suffix}") for suffix in NTFY_IMAGE_ALLOWED_HOST_SUFFIXES)
+
+
+# Builds one bounded in-memory JPEG for an ntfy attachment
+def build_ntfy_image(image_url: str = "") -> Optional[bytes]:
+    if not NTFY_IMAGES or not image_url or PILImage is None:
+        return None
+    try:
+        if not spotify_image_url_is_allowed(image_url):
+            raise ValueError("ntfy image URL must use a Spotify HTTPS CDN host")
+        debug_print(f"NTFY downloading image from {image_url}")
+        response = WEBHOOK_SESSION.get(image_url, headers={"User-Agent": f"SpotifyMonitor/{VERSION}"}, timeout=WEBHOOK_TIMEOUT_SECONDS, verify=VERIFY_SSL, stream=True, allow_redirects=False)
+        with response:
             response.raise_for_status()
-            
-            # Resize and center within black box
-            content_fit = (160, 160)
-            original_img = Image.open(BytesIO(response.content))
-            debug_print(f"NTFY Original image dimensions: {original_img.size}")
-            resized_img = original_img.copy()
-            resized_img.thumbnail(content_fit, Image.LANCZOS)
-            debug_print(f"NTFY Resized image dimensions: {resized_img.size}")
-            
-            target_size=(400, 160)
-            background_color=(27, 32, 35)
-            canvas = Image.new("RGB", target_size, background_color)
-            
-            paste_x = (target_size[0] - resized_img.size[0]) // 2
-            paste_y = (target_size[1] - resized_img.size[1]) // 2
-            
-            canvas.paste(resized_img, (paste_x, paste_y))
-
-            # Save the image with a unique filename
-            # ** misiektoja ** The unique filename was for when I was web hosting.
-            # ** misiektoja ** This could be adjusted to a specific filename.
-            # ** misiektoja ** Which avoids needing the UUID import.
-            unique_filename = f"{uuid.uuid4().hex}.jpg"
-            full_local_path = os.path.expanduser(unique_filename)
-            debug_print(f"NTFY Saving resized image to: {full_local_path}")
-            canvas.save(full_local_path, format='JPEG')          
-            attach_url = full_local_path
-            
-        except Exception as e:
-            debug_print(f"NTFY Image generation error: {e}")
-
-    return attach_url
+            content_type = str((response.headers or {}).get("Content-Type", "")).split(";", 1)[0].strip().casefold()
+            if content_type and not content_type.startswith("image/"):
+                raise ValueError(f"ntfy image response has unsupported content type {content_type}")
+            content_length = (response.headers or {}).get("Content-Length")
+            if content_length is not None and int(content_length) > NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES:
+                raise ValueError(f"ntfy image exceeds {NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES} bytes")
+            image_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=NTFY_IMAGE_DOWNLOAD_CHUNK_BYTES):
+                if not chunk:
+                    continue
+                image_bytes.extend(chunk)
+                if len(image_bytes) > NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES:
+                    raise ValueError(f"ntfy image exceeds {NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES} bytes")
+        if not image_bytes:
+            raise ValueError("ntfy image response was empty")
+        with PILImage.open(BytesIO(bytes(image_bytes))) as original_img:
+            if original_img.width * original_img.height > NTFY_IMAGE_PIXEL_LIMIT:
+                raise ValueError(f"ntfy image exceeds {NTFY_IMAGE_PIXEL_LIMIT} pixels")
+            original_img.load()
+            debug_print(f"NTFY original image dimensions: {original_img.size}")
+            resized_img = original_img.convert("RGB")
+        try:
+            resized_img.thumbnail((160, 160), PILImage.Resampling.LANCZOS)
+            debug_print(f"NTFY resized image dimensions: {resized_img.size}")
+            canvas = PILImage.new("RGB", (400, 160), (27, 32, 35))
+            try:
+                paste_x = (canvas.size[0] - resized_img.size[0]) // 2
+                paste_y = (canvas.size[1] - resized_img.size[1]) // 2
+                canvas.paste(resized_img, (paste_x, paste_y))
+                output = BytesIO()
+                canvas.save(output, format="JPEG", quality=85, optimize=True)
+                return output.getvalue()
+            finally:
+                canvas.close()
+        finally:
+            resized_img.close()
+    except Exception as error:
+        debug_print(f"NTFY image generation failed, sending text only: {error}")
+        return None
 
 
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
@@ -2494,34 +2516,14 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     sleep_func = time.sleep if sleeper is None else sleeper
     discord_payload = build_webhook_payload(title, description, notification_type) if provider == "discord" else None
     ntfy_title, ntfy_message = build_ntfy_webhook_message(title, description) if provider == "ntfy" else ("", "")
+    ntfy_image = build_ntfy_image(image_url) if provider == "ntfy" and NTFY_IMAGES and image_url else None
+    use_ntfy_image = ntfy_image is not None
     last_error: Any = None
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
             if provider == "ntfy":
-                if NTFY_IMAGES and image_url:
-                    img_filepath = build_ntfy_image(image_url)
-                    attachment_path = Path(img_filepath)
-                    debug_print(f"NTFY Full attachment path: {attachment_path}")
-
-                    if os.path.exists(img_filepath):
-                        with open(attachment_path, "rb") as img_file:
-                            # attaching an image needs to be done via 'data', moving message into 'params'
-                            response = WEBHOOK_SESSION.post(
-                                str(WEBHOOK_URL).strip(),
-                                data=img_file,
-                                params={
-                                    "title": ntfy_title,
-                                    "message": ntfy_message.encode("utf-8"),
-                                },
-                                headers={
-                                    **request_headers,
-                                    "X-Filename": attachment_path.name,
-                                },
-                                timeout=WEBHOOK_TIMEOUT_SECONDS,
-                            )
-                        debug_print("NTFY message was sent successfully")
-                        os.remove(img_filepath)
-                        debug_print("NTFY image file was deleted successfully")
+                if use_ntfy_image:
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_image, params={"title": ntfy_title, "message": ntfy_message}, headers={**request_headers, "Content-Type": "image/jpeg", "X-Filename": NTFY_IMAGE_FILENAME}, timeout=WEBHOOK_TIMEOUT_SECONDS)
                 else:
                     response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
@@ -2530,6 +2532,13 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
                 return 0
             last_error = response
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599
+            if use_ntfy_image and attempt < WEBHOOK_MAX_ATTEMPTS - 1:
+                use_ntfy_image = False
+                delay = webhook_retry_after_seconds(response) if response.status_code == 429 else WEBHOOK_FALLBACK_RETRY_SECONDS if response.status_code >= 500 else 0.0
+                debug_print(f"NTFY attachment returned HTTP {response.status_code}. Falling back to a text-only alert")
+                if delay:
+                    sleep_func(delay)
+                continue
             if not retryable or attempt == WEBHOOK_MAX_ATTEMPTS - 1:
                 detail = f"HTTP {response.status_code}: {sanitize_error_text(getattr(response, 'text', ''))[:200]}"
                 print_recovery_error(response, "webhook", detail=detail)
@@ -2539,6 +2548,11 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
             sleep_func(delay)
         except req.RequestException as exc:
             last_error = exc
+            if use_ntfy_image and attempt < WEBHOOK_MAX_ATTEMPTS - 1:
+                use_ntfy_image = False
+                debug_print(f"NTFY attachment delivery failed. Falling back to a text-only alert: {sanitize_error_text(exc)}")
+                sleep_func(WEBHOOK_FALLBACK_RETRY_SECONDS)
+                continue
             if attempt == WEBHOOK_MAX_ATTEMPTS - 1:
                 print_recovery_error(exc, "webhook")
                 return 1
@@ -3957,9 +3971,8 @@ def spotify_list_friends(friend_activity, access_token):
         sp_track_uri = friend["track"].get("uri")
 
         sp_playlist_owner = ""
-        sp_playlist_image_url = ""
         if 'spotify:playlist:' in sp_playlist_uri:
-            sp_playlist_owner, sp_playlist_image_url  = spotify_get_playlist_owner_and_image(access_token, sp_playlist_uri)
+            sp_playlist_owner = spotify_get_playlist_owner(access_token, sp_playlist_uri)
         playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
         print("─" * HORIZONTAL_LINE)
@@ -4302,6 +4315,25 @@ def spotify_get_web_entity_url(entity, uri):
     return share_url or spotify_convert_uri_to_url(uri)
 
 
+# Returns the largest valid image URL from one Spotify image source list
+def spotify_select_largest_image_url(sources: Any) -> str:
+    if not isinstance(sources, list):
+        return ""
+    candidates = [source for source in sources if isinstance(source, dict) and isinstance(source.get("url"), str) and source.get("url")]
+    if not candidates:
+        return ""
+    selected = candidates[0]
+    selected_width_value = selected.get("width")
+    selected_width = float(selected_width_value) if isinstance(selected_width_value, (int, float)) else -1.0
+    for candidate in candidates[1:]:
+        candidate_width_value = candidate.get("width")
+        candidate_width = float(candidate_width_value) if isinstance(candidate_width_value, (int, float)) else -1.0
+        if candidate_width > selected_width:
+            selected = candidate
+            selected_width = candidate_width
+    return str(selected["url"])
+
+
 # Normalizes Spotify web-player track metadata to the existing monitoring shape
 def spotify_normalize_web_track(track):
     if not isinstance(track, dict) or track.get("__typename") != "Track":
@@ -4322,11 +4354,10 @@ def spotify_normalize_web_track(track):
     track_uri = track.get("uri", "")
     artist_uri = artist.get("uri", "")
     album_uri = album.get("uri", "")
-    
     coverart = album.get("coverArt") or {}
-    sources = coverart.get("sources") or [{}]
-    album_image_url = max(sources, key=lambda s: s.get("width", 0)).get("url", "")
-    
+    sources = coverart.get("sources") if isinstance(coverart, dict) else []
+    album_image_url = spotify_select_largest_image_url(sources)
+
     return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
@@ -4356,14 +4387,11 @@ def spotify_normalize_web_playlist(playlist):
     playlist_uri = playlist.get("uri", "")
 
     images = playlist.get("images") or {}
-    images_items = images.get("items") or []
+    images_items = (images.get("items") or []) if isinstance(images, dict) else []
     sources = []
     if images_items and isinstance(images_items[0], dict):
         sources = images_items[0].get("sources") or []
-    if not sources:
-        playlist_image_url = ""
-    else:
-        playlist_image_url = max(sources, key=lambda s: s.get("width", 0)).get("url", "")
+    playlist_image_url = spotify_select_largest_image_url(sources)
 
     return {"sp_playlist_name": playlist.get("name", ""), "sp_playlist_owner": owner_data.get("name", "") or owner_data.get("username", ""), "sp_playlist_owner_uri": owner_uri, "sp_playlist_owner_url": spotify_get_web_entity_url(owner_data, owner_uri), "sp_playlist_url": spotify_get_web_entity_url(playlist, playlist_uri), "sp_playlist_image_url": playlist_image_url}
 
@@ -4394,7 +4422,7 @@ def _spotify_get_playlist_owner_and_image_api(access_token, playlist_uri, oauth_
         access_token = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET)
         oauth_app = True
     if not access_token:
-        raise Exception("_spotify_get_playlist_owner_api(): OAuth app token is empty")
+        raise Exception("_spotify_get_playlist_owner_and_image_api(): OAuth app token is empty")
 
     playlist_id = playlist_uri.split(':', 2)[2]
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name,owner,images"
@@ -4408,8 +4436,7 @@ def _spotify_get_playlist_owner_and_image_api(access_token, playlist_uri, oauth_
     response.raise_for_status()
     json_response = response.json()
     owner_data = json_response.get("owner")
-    images = json_response.get("images") or [{}]
-    playlist_image_url = max(images, key=lambda i: i.get("width", 0)).get("url", "")
+    playlist_image_url = spotify_select_largest_image_url(json_response.get("images"))
     if not isinstance(owner_data, dict):
         raise ValueError("Playlist owner data is missing or malformed")
     return owner_data.get("display_name", ""), playlist_image_url
@@ -4439,7 +4466,7 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
 
     try:
         info_web = spotify_get_playlist_info_web(playlist_uri)
-        playlist_image_url = info_web["sp_playlist_image_url"]
+        playlist_image_url = info_web.get("sp_playlist_image_url", "")
         debug_print(f"Playlist Image URL: {playlist_image_url}")
         return info_web["sp_playlist_owner"], playlist_image_url
     except Exception as web_error:
@@ -4447,6 +4474,12 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
         if api_error is not None:
             raise RuntimeError(f"Both Spotify playlist metadata backends failed for {playlist_uri}: Web API: {api_error}. Web player: {web_error}")
         raise
+
+
+# Returns only the playlist owner for callers using the previous helper contract
+def spotify_get_playlist_owner(access_token, playlist_uri, oauth_app=False):
+    owner, _ = spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app)
+    return owner
 
 
 # Returns track metadata through the legacy Spotify Web API path
@@ -4478,8 +4511,7 @@ def _spotify_get_track_info_api(access_token, track_uri, oauth_app=False):
     track_uri_value = json_response.get("uri", track_uri)
     artist_uri = artist.get("uri", "")
     album_uri = album.get("uri", "")
-    images = album.get("images") or [{}]
-    album_image_url = max(images, key=lambda i: i.get("width", 0)).get("url", "")
+    album_image_url = spotify_select_largest_image_url(album.get("images"))
 
     return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
@@ -5105,15 +5137,40 @@ def _wizard_install_method() -> str:
     return "manual" if os.path.basename(sys.argv[0] or "").endswith(".py") else "pip"
 
 
+# Returns local command arguments using friendly names or exact runtime paths
+def _wizard_local_command_args(method: str, exact: bool = False) -> List[str]:
+    if exact:
+        executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
+        if method == "pip":
+            return [executable, "-m", "spotify_monitor"]
+        return [executable, str(Path(__file__).resolve())]
+    path_class = PureWindowsPath if platform.system() == "Windows" else Path
+    executable_name = path_class(sys.executable).name or ("python" if platform.system() == "Windows" else "python3")
+    if platform.system() == "Windows" and executable_name.casefold().endswith(".exe"):
+        executable_name = executable_name[:-4]
+    script_name = path_class(__file__).name
+    return [executable_name, script_name] if method == "manual" else ["spotify_monitor"]
+
+
+# Renders command arguments for the active host shell
+def _wizard_render_command(arguments: Sequence[str]) -> str:
+    values = [str(argument) for argument in arguments]
+    return subprocess.list2cmdline(values) if platform.system() == "Windows" else shlex.join(values)
+
+
+# Quotes one command argument for the active host shell
+def _wizard_quote_argument(value: Any) -> str:
+    return _wizard_render_command([str(value)])
+
+
 # Returns the portable command prefix for one supported installation method
-def _wizard_cmd_prefix(method: str) -> str:
+def _wizard_cmd_prefix(method: str, exact: bool = False) -> str:
     if method == "compose":
         return "docker compose run --rm spotify_monitor"
     if method == "docker":
-        return 'docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor'
-    if method == "manual":
-        return "python3 spotify_monitor.py"
-    return "spotify_monitor"
+        user_flag = f" --user {os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") and hasattr(os, "getgid") else ""
+        return f'docker run --rm -it --init{user_flag} -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
 
 
 # Prints one labelled command with sibling-style indentation and spacing
@@ -5134,23 +5191,23 @@ def _wizard_container_path(path) -> str:
 
 # Builds a Spotify Monitor action command using install-aware paths and an optional target
 def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None) -> str:
-    parts = [_wizard_cmd_prefix(method)]
+    parts = [_wizard_cmd_prefix(method, exact=True)]
     if action:
         parts.append(action)
     if target:
-        parts.append(shlex.quote(target))
+        parts.append(_wizard_quote_argument(target))
     if config_path is not None:
         selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
-        parts.extend(("--config-file", shlex.quote(selected_config)))
+        parts.extend(("--config-file", _wizard_quote_argument(selected_config)))
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        parts.extend(("--env-file", shlex.quote(selected_env)))
+        parts.extend(("--env-file", _wizard_quote_argument(selected_env)))
     return " ".join(parts)
 
 
 # Returns the Firefox import command with a read-only Linux host profile mount for containers
-def _wizard_firefox_import_cmd(method: str, env_path=None) -> str:
-    prefix = _wizard_cmd_prefix(method)
+def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False) -> str:
+    prefix = _wizard_cmd_prefix(method, exact=exact)
     if method == "docker":
         prefix = prefix.replace("misiektoja/spotify-monitor", '-v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor')
     elif method == "compose":
@@ -5158,25 +5215,25 @@ def _wizard_firefox_import_cmd(method: str, env_path=None) -> str:
     command = f"{prefix} --import-browser-cookie --browser firefox"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {shlex.quote(selected_env)}"
+        command += f" --env-file {_wizard_quote_argument(selected_env)}"
     return command
 
 
 # Returns the hidden manual sp_dc entry command for one installation method
-def _wizard_set_sp_dc_cmd(method: str, env_path=None) -> str:
-    command = f"{_wizard_cmd_prefix(method)} --set-sp-dc"
+def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False) -> str:
+    command = f"{_wizard_cmd_prefix(method, exact=exact)} --set-sp-dc"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {shlex.quote(selected_env)}"
+        command += f" --env-file {_wizard_quote_argument(selected_env)}"
     return command
 
 
 # Returns the hidden webhook URL entry command for one installation method
-def _wizard_set_webhook_url_cmd(method: str, env_path=None) -> str:
-    command = f"{_wizard_cmd_prefix(method)} --set-webhook-url"
+def _wizard_set_webhook_url_cmd(method: str, env_path=None, exact: bool = False) -> str:
+    command = f"{_wizard_cmd_prefix(method, exact=exact)} --set-webhook-url"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {shlex.quote(selected_env)}"
+        command += f" --env-file {_wizard_quote_argument(selected_env)}"
     return command
 
 
@@ -5254,7 +5311,34 @@ def _wizard_import_browsers(method: str) -> List[str]:
 def _wizard_browser_description(browser: str) -> str:
     if browser == "firefox":
         return "Built-in reader for macOS, Linux and Windows with no extra package."
-    return f"{browser_label(browser)} needs the browser extra and works on macOS or Linux only."
+    return f"Import from the signed-in {browser_label(browser)} profile."
+
+
+# Returns whether Chromium browser import support is available in the active Python environment
+def _wizard_chromium_dependency_available() -> bool:
+    try:
+        return importlib.util.find_spec("pycookiecheat") is not None
+    except (AttributeError, ImportError, ValueError):
+        return False
+
+
+# Installs Chromium browser import support into the active Python environment
+def _wizard_install_chromium_dependency(method: str) -> bool:
+    requirement = "spotify_monitor[browser]" if method == "pip" else "pycookiecheat>=0.8"
+    executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
+    command = [executable, "-m", "pip", "install", requirement]
+    print(f"Installing Chromium browser support with:\n    {_wizard_render_command(command)}\n")
+    try:
+        result = subprocess.run(command, check=False)
+    except OSError as exc:
+        print(f"  Installation could not start: {exc}")
+        return False
+    importlib.invalidate_caches()
+    if result.returncode == 0 and _wizard_chromium_dependency_available():
+        print("\nChromium browser support was installed successfully.")
+        return True
+    print("\nChromium browser support could not be installed. Choose Firefox or another authentication method.")
+    return False
 
 
 # Reads one setup line and exits cleanly when Ctrl+C or Ctrl+D cancels input
@@ -5294,6 +5378,7 @@ def _wizard_ask_yes_no(question: str, default: bool = True) -> bool:
 
 # Displays numbered choices and returns the selected zero-based index
 def _wizard_ask_choice(question: str, options, default_index: int = 0) -> int:
+    print()
     print(question)
     for index, option in enumerate(options, start=1):
         label, description = option
@@ -5420,7 +5505,7 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
         smtp_values = {
             "SMTP_HOST": _wizard_ask_text("SMTP host", required=True),
             "SMTP_PORT": _wizard_ask_positive_int("SMTP port", 587),
-            "SMTP_SSL": _wizard_ask_yes_no("Use STARTTLS?", default=True),
+            "SMTP_SSL": _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=True),
             "SMTP_USER": _wizard_ask_text("SMTP username", required=True),
             "SENDER_EMAIL": _wizard_ask_text("Sender email", required=True),
             "RECEIVER_EMAIL": _wizard_ask_text("Receiver email", required=True),
@@ -5439,6 +5524,7 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     elif preset == 1:
         selected = {name: True for name in notification_names}
     else:
+        print()
         questions = (("ACTIVE_NOTIFICATION", "Email when the user becomes active?"), ("INACTIVE_NOTIFICATION", "Email when the user becomes inactive?"), ("TRACK_NOTIFICATION", "Email when a tracked song plays?"), ("SONG_NOTIFICATION", "Email for every song change?"), ("SONG_ON_LOOP_NOTIFICATION", "Email when a song loops?"), ("ERROR_NOTIFICATION", "Email on monitoring errors?"))
         selected = {name: _wizard_ask_yes_no(question, default=False) for name, question in questions}
     config_values.update(selected)
@@ -5474,7 +5560,7 @@ def _wizard_collect_ntfy_access_token(secret_updates: dict, env_path: Path) -> N
 # Collects hidden webhook secrets and alert choices without sending a message
 def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
-    if not _wizard_ask_yes_no("Set up webhook alerts?", default=False):
+    if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=False):
         config_values["WEBHOOK_ENABLED"] = False
         config_values.update({name: False for name in notification_names})
         return []
@@ -5510,6 +5596,7 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
     elif preset == 1:
         selected = {name: True for name in notification_names}
     else:
+        print()
         questions = (("WEBHOOK_ACTIVE_NOTIFICATION", "Send a webhook alert when the user becomes active?"), ("WEBHOOK_INACTIVE_NOTIFICATION", "Send a webhook alert when the user becomes inactive?"), ("WEBHOOK_TRACK_NOTIFICATION", "Send a webhook alert when a tracked song plays?"), ("WEBHOOK_SONG_NOTIFICATION", "Send a webhook alert for every song change?"), ("WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "Send a webhook alert when a song loops?"), ("WEBHOOK_ERROR_NOTIFICATION", "Send a webhook alert when monitoring has a problem?"))
         selected = {name: _wizard_ask_yes_no(question, default=False) for name, question in questions}
     config_values.update(selected)
@@ -5522,6 +5609,8 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
     result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
     container_method = method in ("docker", "compose")
     existing_cookie = _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",))
+    import_browsers = _wizard_import_browsers(method)
+    chromium_browsers = [browser for browser in import_browsers if browser in CHROMIUM_IMPORT_BROWSERS]
     while True:
         if container_method:
             if existing_cookie:
@@ -5531,16 +5620,30 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 options = [("Enter sp_dc privately (recommended for Docker)", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Import from Firefox (advanced)", "Requires the host Firefox profile mounted read-only into this container."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
                 actions = ("manual", "browser", "finish")
         else:
-            options = [("Import from a browser, recommended", "Sign in at https://open.spotify.com/ in that browser first. Firefox is the default. Chromium-family imports need the browser extra."), ("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")]
-            actions = ("browser", "existing", "manual", "finish")
+            options = [("Import from Firefox, recommended", "Uses Firefox directly with no additional package.")]
+            actions = ["firefox"]
+            if chromium_browsers:
+                chromium_description = "Import from a signed-in Chrome, Brave or Chromium profile." if _wizard_chromium_dependency_available() else "Setup can install the required pycookiecheat package now."
+                options.append(("Import from Chrome, Brave or Chromium", chromium_description))
+                actions.append("chromium")
+            options.extend((("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")))
+            actions.extend(("existing", "manual", "finish"))
         action = actions[_wizard_ask_choice("How should cookie authentication be configured?", options)]
-        if action == "browser":
-            browsers = _wizard_import_browsers(method)
-            browser_index = 0
-            if len(browsers) > 1:
-                browser_index = _wizard_ask_choice("Which browser should be imported?", [(browser_label(browser), _wizard_browser_description(browser)) for browser in browsers])
-            result.update({"browser": browsers[browser_index], "source": f"browser import ({browser_label(browsers[browser_index])})"})
-            browser_location = f"{browser_label(browsers[browser_index])} on the host" if method in ("docker", "compose") else browser_label(browsers[browser_index])
+        if action in ("browser", "firefox", "chromium"):
+            selected_browser = "firefox"
+            if action == "chromium":
+                if not _wizard_chromium_dependency_available():
+                    print()
+                    if not _wizard_ask_yes_no("Chromium browser import requires pycookiecheat. Install it now?", default=True):
+                        print("  Chromium import was not selected. Choose Firefox or another authentication method.")
+                        continue
+                    if not _wizard_install_chromium_dependency(method):
+                        continue
+                browser_index = _wizard_ask_choice("Which Chromium browser should be imported?", [(browser_label(browser), _wizard_browser_description(browser)) for browser in chromium_browsers])
+                selected_browser = chromium_browsers[browser_index]
+            result.update({"browser": selected_browser, "source": f"browser import ({browser_label(selected_browser)})"})
+            browser_location = f"{browser_label(selected_browser)} on the host" if method in ("docker", "compose") else browser_label(selected_browser)
+            print()
             print(f"  Before import, open {SPOTIFY_WEB_LOGIN_URL} in {browser_location} and sign in to the Spotify account used for monitoring.")
             if method in ("docker", "compose"):
                 result.update({"source": "advanced Firefox import pending a read-only host profile mount", "mount_required": True})
@@ -5551,12 +5654,14 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
             if not existing_cookie:
                 print("  No non-placeholder SP_DC_COOKIE was found.")
                 continue
+            print()
             if _wizard_ask_yes_no("Retain the existing SP_DC_COOKIE without displaying or rewriting it?", default=True):
                 result.update({"complete": True, "source": "existing SP_DC_COOKIE"})
                 return result
             continue
         if action == "manual":
             print(f"  Find the sp_dc cookie first: {COOKIE_GUIDE_URL}")
+            print()
             cookie = _wizard_ask_secret("Existing sp_dc value")
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
             result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
@@ -5660,6 +5765,168 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path) -> dict:
         return auth
 
 
+# Config values reset before one setup section is collected again
+WIZARD_AUTH_CONFIG_KEYS = ("TOKEN_SOURCE", "LOGIN_REQUEST_BODY_FILE", "CLIENTTOKEN_REQUEST_BODY_FILE", "DEVICE_ID", "SYSTEM_ID", "USER_URI_ID", "APP_VERSION", "CPU_ARCH", "OS_BUILD", "PLATFORM", "OS_MAJOR", "OS_MINOR", "CLIENT_MODEL")
+WIZARD_EMAIL_CONFIG_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL", "ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+WIZARD_WEBHOOK_CONFIG_KEYS = ("WEBHOOK_ENABLED", "WEBHOOK_PROVIDER", "WEBHOOK_USERNAME", "WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
+
+
+# Holds editable setup answers until the user explicitly saves them
+@dataclass
+class WizardSetupState:
+    config_path: Path
+    env_path: Path
+    baseline_values: dict
+    config_values: dict
+    secret_updates: dict
+    target: str
+    persist_target: bool
+    auth: dict
+    enabled_notifications: List[str]
+    enabled_webhooks: List[str]
+
+
+# Restores one editable section to its setup-start values and drops pending secrets
+def _wizard_reset_section(state: WizardSetupState, config_keys: Sequence[str], secret_keys: Sequence[str]) -> None:
+    for key in config_keys:
+        if key in state.baseline_values:
+            state.config_values[key] = state.baseline_values[key]
+        else:
+            state.config_values.pop(key, None)
+    for key in secret_keys:
+        state.secret_updates.pop(key, None)
+
+
+# Collects the monitored target and whether it should be persisted
+def _wizard_collect_target_section(state: WizardSetupState, initial_target: Optional[str] = None) -> None:
+    state.target = _wizard_target(initial_target or state.target or None)
+    state.persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=state.persist_target)
+    state.config_values["TARGET_USER_URI_ID"] = state.target if state.persist_target else ""
+
+
+# Collects one authentication mode after clearing pending answers from that section
+def _wizard_collect_auth_section(state: WizardSetupState, method: str) -> None:
+    _wizard_reset_section(state, WIZARD_AUTH_CONFIG_KEYS, ("SP_DC_COOKIE", "REFRESH_TOKEN"))
+    cookie_onboarding = "Private hidden sp_dc entry is recommended for Docker and Docker Compose." if method in ("docker", "compose") else "Browser import is the recommended local onboarding path and Firefox is the easiest source."
+    auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", cookie_onboarding), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
+    if auth_mode == 0:
+        state.config_values["TOKEN_SOURCE"] = "cookie"
+        state.auth = _wizard_collect_cookie_auth(method, state.env_path, state.secret_updates)
+    else:
+        print()
+        state.config_values["TOKEN_SOURCE"] = "client"
+        state.auth = _wizard_collect_client_auth(state.config_values, state.env_path, state.secret_updates)
+
+
+# Collects the polling interval using the current answer as its default
+def _wizard_collect_polling_section(state: WizardSetupState) -> None:
+    current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
+    state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", current_interval)
+
+
+# Collects email settings after clearing pending answers from that section
+def _wizard_collect_email_section(state: WizardSetupState) -> None:
+    _wizard_reset_section(state, WIZARD_EMAIL_CONFIG_KEYS, ("SMTP_PASSWORD",))
+    state.enabled_notifications = _wizard_collect_email(state.config_values, state.secret_updates, state.env_path)
+
+
+# Collects webhook settings after clearing pending answers from that section
+def _wizard_collect_webhook_section(state: WizardSetupState) -> None:
+    _wizard_reset_section(state, WIZARD_WEBHOOK_CONFIG_KEYS, ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN"))
+    state.enabled_webhooks = _wizard_collect_webhook(state.config_values, state.secret_updates, state.env_path)
+
+
+# Lets the user change output files and recollects sections tied to a changed dotenv file
+def _wizard_collect_destination_section(state: WizardSetupState, method: str) -> None:
+    config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
+    selected_config = Path(config_text).expanduser().resolve()
+    if selected_config != state.config_path:
+        state.config_path = _wizard_choose_config_destination(selected_config)
+    while True:
+        env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True)
+        if env_text.casefold() != "none":
+            break
+        print("  Setup needs a writable dotenv file and cannot use 'none'.")
+    selected_env = Path(env_text).expanduser().resolve()
+    if selected_env == state.env_path:
+        return
+    state.env_path = selected_env
+    print("  The dotenv destination changed. Re-enter authentication and notification settings that may contain secrets.")
+    _wizard_collect_auth_section(state, method)
+    print()
+    _wizard_collect_email_section(state)
+    print()
+    _wizard_collect_webhook_section(state)
+
+
+# Prints the current editable setup answers without exposing secrets
+def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
+    print("\nSetup summary\n")
+    print(f"  Target: {state.target}")
+    print(f"  Persist target: {'yes' if state.persist_target else 'no'}")
+    print(f"  Token source: {state.auth['source']}")
+    print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
+    if state.auth.get("mount_required"):
+        print("  Required action: mount the host Firefox profile read-only and run the separate import command shown below")
+    if state.auth.get("browser"):
+        print(f"  Browser: {browser_label(state.auth['browser'])}")
+    print(f"  Polling interval: {state.config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
+    print(f"  Email: {'enabled' if state.enabled_notifications else 'disabled'}")
+    print(f"  Email notifications: {', '.join(state.enabled_notifications) if state.enabled_notifications else 'none'}")
+    print(f"  Webhook: {'enabled' if state.enabled_webhooks else 'disabled'}")
+    print(f"  Webhook alerts: {', '.join(state.enabled_webhooks) if state.enabled_webhooks else 'none'}")
+    print(f"  Config destination: {state.config_path}")
+    print(f"  Dotenv destination: {state.env_path}")
+    print(f"  Install method: {method}")
+
+
+# Opens one selected setup section then returns to the summary
+def _wizard_edit_setup_section(state: WizardSetupState, method: str) -> None:
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Polling interval", "Change how often Spotify is checked."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    if section == 0:
+        print()
+        _wizard_collect_target_section(state, state.target)
+    elif section == 1:
+        _wizard_collect_auth_section(state, method)
+    elif section == 2:
+        print()
+        _wizard_collect_polling_section(state)
+    elif section == 3:
+        print()
+        _wizard_collect_email_section(state)
+    elif section == 4:
+        print()
+        _wizard_collect_webhook_section(state)
+    elif section == 5:
+        print()
+        _wizard_collect_destination_section(state, method)
+
+
+# Reviews editable answers until the user saves or confirms a discard
+def _wizard_review_setup(state: WizardSetupState, method: str) -> bool:
+    while True:
+        _wizard_print_setup_summary(state, method)
+        action = _wizard_ask_choice("What would you like to do?", [("Save settings", "Write the displayed settings to the selected files."), ("Review or change settings", "Edit one section without losing the other answers."), ("Discard answers and exit", "Leave the destination files unchanged.")])
+        if action == 0:
+            return True
+        if action == 1:
+            _wizard_edit_setup_section(state, method)
+            continue
+        print()
+        if _wizard_ask_yes_no("Discard all entered answers and exit?", default=False):
+            return False
+        print("  Setup answers retained.")
+
+
+# Starts monitoring with a Windows-safe child process or a POSIX process replacement
+def _wizard_launch_monitor(arguments: Sequence[str]) -> int:
+    command = [str(argument) for argument in arguments]
+    if platform.system() == "Windows":
+        return subprocess.run(command, check=False).returncode
+    os.execv(command[0], command)
+    return 0
+
+
 # Prints a short no-argument welcome and optionally launches guided setup
 def _wizard_welcome() -> None:
     method = _wizard_install_method()
@@ -5699,46 +5966,27 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"Configuration:          {config_path}")
     print(f"Dotenv:                 {env_path}\n")
     config_path = _wizard_choose_config_destination(config_path)
-    target = _wizard_target(initial_target)
-    persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=True)
-    config_values = dict(globals())
-    config_values["TARGET_USER_URI_ID"] = target if persist_target else ""
-    secret_updates = {}
+    baseline_values = dict(globals())
+    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+    state = WizardSetupState(config_path, env_path, baseline_values, dict(baseline_values), {}, "", True, initial_auth, [], [])
+    _wizard_collect_target_section(state, initial_target)
+    _wizard_collect_auth_section(state, method)
     print()
-    cookie_onboarding = "Private hidden sp_dc entry is recommended for Docker and Docker Compose." if method in ("docker", "compose") else "Browser import is the recommended local onboarding path and Firefox is the easiest source."
-    auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", cookie_onboarding), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
-    if auth_mode == 0:
-        config_values["TOKEN_SOURCE"] = "cookie"
-        auth = _wizard_collect_cookie_auth(method, env_path, secret_updates)
-    else:
-        config_values["TOKEN_SOURCE"] = "client"
-        auth = _wizard_collect_client_auth(config_values, env_path, secret_updates)
+    _wizard_collect_polling_section(state)
     print()
-    config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", SPOTIFY_CHECK_INTERVAL)
+    _wizard_collect_email_section(state)
     print()
-    enabled_notifications = _wizard_collect_email(config_values, secret_updates, env_path)
-    print()
-    enabled_webhooks = _wizard_collect_webhook(config_values, secret_updates, env_path)
-    print("\nSetup summary\n")
-    print(f"  Target: {target}")
-    print(f"  Persist target: {'yes' if persist_target else 'no'}")
-    print(f"  Token source: {auth['source']}")
-    print(f"  Authentication status: {'complete' if auth['complete'] else 'incomplete'}")
-    if auth.get("mount_required"):
-        print("  Required action: mount the host Firefox profile read-only and run the separate import command shown below")
-    if auth.get("browser"):
-        print(f"  Browser: {browser_label(auth['browser'])}")
-    print(f"  Polling interval: {config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
-    print(f"  Email: {'enabled' if enabled_notifications else 'disabled'}")
-    print(f"  Email notifications: {', '.join(enabled_notifications) if enabled_notifications else 'none'}")
-    print(f"  Webhook: {'enabled' if enabled_webhooks else 'disabled'}")
-    print(f"  Webhook alerts: {', '.join(enabled_webhooks) if enabled_webhooks else 'none'}")
-    print(f"  Config destination: {config_path}")
-    print(f"  Dotenv destination: {env_path}")
-    print(f"  Install method: {method}")
-    if not _wizard_ask_yes_no("Write these settings now?", default=True):
+    _wizard_collect_webhook_section(state)
+    if not _wizard_review_setup(state, method):
         print("Setup cancelled. Destination files were not changed.")
         raise SystemExit(1)
+    config_path = state.config_path
+    env_path = state.env_path
+    target = state.target
+    persist_target = state.persist_target
+    config_values = state.config_values
+    secret_updates = state.secret_updates
+    auth = state.auth
     config_content = generate_config_with_current_values(config_values)
     try:
         write_status = write_config_file(config_path, config_content)
@@ -5784,11 +6032,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if not auth["complete"]:
         print("Setup was saved but authentication is incomplete.")
         if method in ("docker", "compose"):
-            _wizard_print_command("Enter sp_dc privately (recommended for Docker):", _wizard_set_sp_dc_cmd(method, env_path))
-            _wizard_print_command("Advanced Firefox alternative with a read-only Linux host profile mount:", _wizard_firefox_import_cmd(method, env_path))
+            _wizard_print_command("Enter sp_dc privately (recommended for Docker):", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
+            _wizard_print_command("Advanced Firefox alternative with a read-only Linux host profile mount:", _wizard_firefox_import_cmd(method, env_path, exact=True))
         else:
-            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path))
-            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path))
+            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
+            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
         print(f"Cookie guide: {COOKIE_GUIDE_URL}\n")
     if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
         _wizard_print_command("Start monitoring:", "docker compose up")
@@ -5800,13 +6048,13 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print(f"    {monitor_command}\n")
     print(f"Guide: {QUICK_START_GUIDE_URL}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
-    if local_ready and _wizard_ask_yes_no("Start monitoring now?", default=True):
-        exec_args = [sys.executable, str(Path(__file__).resolve())]
+    if local_ready and _wizard_ask_yes_no("Start monitoring now? Monitoring will continue until Ctrl+C.", default=True):
+        exec_args = _wizard_local_command_args(method, exact=True)
         if not persist_target:
             exec_args.append(target)
         exec_args.extend(("--config-file", str(config_path), "--env-file", str(env_path)))
         sys.stdout.flush()
-        os.execv(sys.executable, exec_args)
+        raise SystemExit(_wizard_launch_monitor(exec_args))
     elif method in ("manual", "pip") and auth["complete"] and not auth["validated"]:
         print("Monitoring was not offered because authentication has not been validated. Run the doctor command first.")
     if doctor_failed:
@@ -5943,7 +6191,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_playlist_data = {}
             try:
                 sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
-                sp_album_image_url = sp_track_data["sp_album_image_url"]
+                sp_album_image_url = sp_track_data.get("sp_album_image_url", "")
                 debug_print(f"Album Image URL: {sp_album_image_url}")
                 is_playlist = 'spotify:playlist:' in sp_playlist_uri
                 if is_playlist:
@@ -6274,7 +6522,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_playlist_uri = sp_data["sp_playlist_uri"]
                     try:
                         sp_track_data = spotify_get_track_info(sp_accessToken, sp_track_uri)
-                        sp_album_image_url = sp_track_data["sp_album_image_url"]
+                        sp_album_image_url = sp_track_data.get("sp_album_image_url", "")
                         debug_print(f"Album Image URL: {sp_album_image_url}")
                         is_playlist = 'spotify:playlist:' in sp_playlist_uri
                         if is_playlist:
@@ -7138,10 +7386,6 @@ def main():
 
     args = parser.parse_args()
 
-    if len(sys.argv) == 1:
-        _wizard_welcome()
-        sys.exit(0 if sys.stdin.isatty() else 1)
-
     if args.set_sp_dc:
         set_sp_dc_conflicts = []
         conflict_values = (
@@ -7324,6 +7568,10 @@ def main():
                     doctor_startup_checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice))
             else:
                 sys.exit(1)
+
+    if len(sys.argv) == 1 and not TARGET_USER_URI_ID:
+        _wizard_welcome()
+        sys.exit(0 if sys.stdin.isatty() else 1)
 
     if args.import_browser_cookie:
         if args.token_source:
@@ -7829,9 +8077,9 @@ def main():
 
     if NTFY_IMAGES and not NTFY_IMAGES_AVAILABLE:
         print("*" * HORIZONTAL_LINE)
-        print("* WARNING: NTFY images are enabled, but at least one needed library is missing!")
-        print("* To fix this, please run: pip install uuid io PIL")
-        print("* Disabling images in NTFY alerts...")
+        print("* WARNING: ntfy images are enabled but Pillow is not installed")
+        print("* To fix this, install the project dependencies or run: python -m pip install Pillow")
+        print("* Disabling images in ntfy alerts...")
         print("*" * HORIZONTAL_LINE + "\n")
         NTFY_IMAGES = False
 

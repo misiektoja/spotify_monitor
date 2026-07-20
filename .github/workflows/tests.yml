@@ -45,18 +45,30 @@ jobs:
       - name: Verify installed dependencies
         run: python -m pip check
 
+  windows-setup-smoke:
+    name: Windows setup and startup smoke checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install project test dependencies
+        run: python -m pip install ".[test]"
+      - name: Run setup and startup tests
+        run: python -m pytest tests/test_setup_wizard.py tests/test_install_method_commands.py tests/test_startup_ui.py tests/test_config_and_inputs.py
+
   container-smoke:
     name: Main container smoke checks
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Build local smoke image
         run: docker build --tag spotify-monitor:ci .
       - name: Confirm Python 3.9 runtime
-        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | rg '^Python 3\.9\.'
+        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | grep -E '^Python 3\.9\.'
       - name: Run application version and help
         run: |
           docker run --rm spotify-monitor:ci --version
@@ -68,13 +80,13 @@ jobs:
             echo "Noninteractive setup unexpectedly succeeded"
             exit 1
           fi
-          rg "interactive terminal" local/container-smoke/setup-output.txt
+          grep -E "interactive terminal" local/container-smoke/setup-output.txt
       - name: Generate a config through the container
         run: |
           mkdir -p local/container-smoke
-          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data:z" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
           test -s local/container-smoke/spotify_monitor.conf
-          if rg 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
+          if grep -E 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
             echo "Generated config contains a test secret marker"
             exit 1
           fi

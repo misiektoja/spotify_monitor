@@ -23,5 +23,6 @@ services:
     environment:
       SPOTIFY_MONITOR_COMPOSE: "1"
     volumes:
-      - ./:/data
+      # The shared SELinux label is ignored on hosts that do not use SELinux.
+      - ./:/data:z
     command: ["--config-file", "/data/spotify_monitor.conf"]

@@ -40,11 +40,34 @@ def test_install_method_detects_docker_and_compose(monkeypatch):
 
 
 # Verifies every installation method has the requested portable command prefix
-def test_install_method_command_prefixes():
+def test_install_method_command_prefixes(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor.os, "getuid", lambda: 1234)
+    monkeypatch.setattr(monitor.os, "getgid", lambda: 5678)
     assert monitor._wizard_cmd_prefix("manual") == "python3 spotify_monitor.py"
     assert monitor._wizard_cmd_prefix("pip") == "spotify_monitor"
-    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user 1234:5678 -v "$PWD:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
+
+
+# Verifies Windows help uses python while exact commands safely quote every spaced path
+def test_windows_manual_commands_are_friendly_and_space_safe(tmp_path, monkeypatch):
+    script_path = tmp_path / "Project Space" / "spotify_monitor.py"
+    config_path = tmp_path / "Config Space" / "spotify_monitor.conf"
+    env_path = tmp_path / "Config Space" / ".env"
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(monitor.sys, "executable", r"C:\Python Tools\python.exe")
+    monkeypatch.setattr(monitor.sys, "argv", [str(script_path)])
+    monkeypatch.setattr(monitor, "__file__", str(script_path))
+    assert monitor._wizard_cmd_prefix("manual") == "python spotify_monitor.py"
+    command = monitor._wizard_action_command("manual", "--doctor", config_path, env_path)
+    assert '"C:\\Python Tools\\python.exe"' in command
+    assert f'"{script_path}"' in command
+    assert f'"{config_path}"' in command
+    assert f'"{env_path}"' in command
+    assert monitor._wizard_cmd_prefix("pip", exact=True) == '"C:\\Python Tools\\python.exe" -m spotify_monitor'
 
 
 # Verifies container doctor and monitoring commands use /data paths and preserve a non-persisted target
@@ -119,6 +142,8 @@ def test_noninteractive_welcome_does_not_prompt(monkeypatch, capsys):
 # Verifies manual help examples preserve exact comments, indentation and portable commands
 def test_manual_help_epilog_exact_raw_text(monkeypatch):
     force_install_environment(monkeypatch, argv0="spotify_monitor.py")
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
     assert monitor._build_help_epilog() == """Examples:
   # Guided setup, recommended for the first run
   python3 spotify_monitor.py --setup

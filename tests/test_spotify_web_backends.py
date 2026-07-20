@@ -65,7 +65,7 @@ def make_http_error(status_code):
 
 # Returns representative current Pathfinder track metadata
 def web_track_fixture():
-    return {"__typename": "Track", "uri": TRACK_URI, "name": "My Love", "duration": {"totalMilliseconds": 259933}, "sharingInfo": {"shareUrl": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU?si=track"}, "firstArtist": {"items": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "profile": {"name": "Route 94"}}]}, "albumOfTrack": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "sharingInfo": {"shareUrl": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4?si=album"}}}
+    return {"__typename": "Track", "uri": TRACK_URI, "name": "My Love", "duration": {"totalMilliseconds": 259933}, "sharingInfo": {"shareUrl": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU?si=track"}, "firstArtist": {"items": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "profile": {"name": "Route 94"}}]}, "albumOfTrack": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "sharingInfo": {"shareUrl": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4?si=album"}, "coverArt": {"sources": [{"url": "https://i.scdn.co/image/track-small.jpg", "width": 64, "height": 64}, {"url": "https://i.scdn.co/image/track-large.jpg", "width": 640, "height": 640}]}}}
 
 
 # Returns representative current Pathfinder playlist metadata
@@ -216,7 +216,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
 
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
-        track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}}})
+        track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}, "images": [{"url": "https://i.scdn.co/image/track-small.jpg", "width": 64}, {"url": "https://i.scdn.co/image/track-large.jpg", "width": 640}]}})
         playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"},
             "images": [
                 {"url": "https://i.scdn.co/image/small.jpg", "width": 64, "height": 64},
@@ -228,6 +228,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
             owner, owner_image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(track["sp_track_duration"], 259)
         self.assertEqual(track["sp_artist_name"], "Route 94")
+        self.assertEqual(track["sp_album_image_url"], "https://i.scdn.co/image/track-large.jpg")
         self.assertEqual(owner, "Agnes Hali")
         self.assertEqual(owner_image, "https://i.scdn.co/image/large.jpg")
 
@@ -356,6 +357,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(result["sp_artist_url"], "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6?si=1")
         self.assertEqual(result["sp_album_name"], "My Love")
         self.assertEqual(result["sp_album_uri"], "spotify:album:4ZD1KnBqghtSAEyqrZAkU4")
+        self.assertEqual(result["sp_album_image_url"], "https://i.scdn.co/image/track-large.jpg")
         self.assertIn("open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU", result["sp_track_url"])
         self.assertIn("open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4", result["sp_album_url"])
 
@@ -367,6 +369,27 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(result["sp_playlist_owner_uri"], "spotify:user:brenda.juris")
         self.assertEqual(result["sp_playlist_owner_url"], "https://open.spotify.com/user/brenda.juris?si=1")
         self.assertEqual(result["sp_playlist_image_url"], "https://i.scdn.co/image/large.jpg")
+
+    # Verifies malformed image metadata cannot break otherwise usable Spotify metadata
+    def test_malformed_image_metadata_falls_back_to_empty_url(self):
+        track = web_track_fixture()
+        track["albumOfTrack"]["coverArt"] = {"sources": ["bad", {"url": 7, "width": "wide"}, {"width": 640}]}
+        playlist = web_playlist_fixture()
+        playlist["images"] = {"items": [{"sources": [None, {"url": [], "width": 640}]}]}
+        self.assertEqual(monitor.spotify_normalize_web_track(track)["sp_album_image_url"], "")
+        self.assertEqual(monitor.spotify_normalize_web_playlist(playlist)["sp_playlist_image_url"], "")
+
+    # Verifies valid image URLs remain usable when width metadata is absent or malformed
+    def test_image_selection_tolerates_missing_widths(self):
+        sources = [{"url": "https://i.scdn.co/image/no-width.jpg"}, {"url": "https://i.scdn.co/image/bad-width.jpg", "width": "large"}, {"url": "https://i.scdn.co/image/large.jpg", "width": 640}]
+        self.assertEqual(monitor.spotify_select_largest_image_url(sources), "https://i.scdn.co/image/large.jpg")
+
+    # Verifies the previous owner-only helper remains compatible with existing callers
+    def test_playlist_owner_compatibility_wrapper(self):
+        with patch.object(monitor, "spotify_get_playlist_owner_and_image", return_value=("Agnes Hali", "https://i.scdn.co/image/large.jpg")) as owner_and_image:
+            result = monitor.spotify_get_playlist_owner("token", PLAYLIST_URI, oauth_app=True)
+        self.assertEqual(result, "Agnes Hali")
+        owner_and_image.assert_called_once_with("token", PLAYLIST_URI, True)
 
     # Verifies the idempotent web-player GraphQL POST is retried while other POSTs are not
     def test_web_player_adapter_retries_post(self):

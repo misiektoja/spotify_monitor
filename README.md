@@ -5,7 +5,6 @@
   <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=teal" alt="PyPI Version" />
   <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=magenta" alt="GitHub Stars" />
   <img src="https://img.shields.io/badge/python-3.9+-blueviolet?style=flat-square" alt="Python Versions" />
-  <img src="https://img.shields.io/docker/pulls/misiektoja/spotify-monitor?style=flat-square&logo=docker" alt="Docker Pulls" />
   <img src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="License" />
   <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
   <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
@@ -25,20 +24,32 @@ spotify_monitor --setup
 
 Docker Compose
 
-On Linux the bind mount may reject writes from the image user `10001:10001`. If that happens, set `SPOTIFY_MONITOR_UID` and `SPOTIFY_MONITOR_GID` to your host IDs before the first setup command as shown in the [Docker section](#main-application-docker-image).
+On Linux, set the container user to your host user before the first setup command. This lets Spotify Monitor create its configuration and private `.env` file in the current directory. Docker Desktop users on macOS or Windows can skip the two `export` commands.
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
+export SPOTIFY_MONITOR_UID="$(id -u)"
+export SPOTIFY_MONITOR_GID="$(id -g)"
 docker compose run --rm spotify_monitor --setup
 docker compose up
 ```
 
 Docker run
 
+On macOS or Windows with Docker Desktop:
+
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+```
+
+On Linux, pass your host user and group so the container can write to the current directory:
+
+```sh
+docker pull misiektoja/spotify-monitor:latest
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
 ```
 
 <p align="center">
@@ -64,7 +75,7 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
 - **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 
 ### 🔔 Smart Notifications
-- **Multi-Channel**: Instant alerts via **Email** and **Webhooks** (**Discord** etc.).
+- **Multi-Channel**: Instant alerts via **Email** and **Webhooks** (**Discord**, **ntfy** etc.).
 - **Detailed Alerts**: Choose activity, tracked-song, every-song, loop and error alerts.
 - **Session Summaries**: Receive detailed reports when a friend finishes a session.
 - **Error Reporting**: Be notified if the monitoring process hits a snag.
@@ -92,13 +103,20 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
 2. [Installation](#installation)
    * [Install from PyPI](#install-from-pypi)
    * [Manual Installation](#manual-installation)
-   * [Main Application Docker Image](#main-application-docker-image)
    * [Upgrading](#upgrading)
 3. [Quick Start](#quick-start)
-4. [Configuration](#configuration)
+   * [Before You Start](#before-you-start)
+   * [New Here? Run the Setup Wizard](#new-here-run-the-setup-wizard)
+   * [Manual Commands](#manual-commands)
+4. [Terminal Output](#terminal-output)
+5. [Docker](#main-application-docker-image)
+6. [Doctor Preflight](#doctor-preflight)
+7. [Configuration](#configuration)
    * [Configuration File](#configuration-file)
    * [Spotify access token source](#spotify-access-token-source)
       * [Spotify sp_dc Cookie](#spotify-sp_dc-cookie)
+         * [Which Browsers Are Supported](#which-browsers-are-supported)
+         * [Manual Cookie Extraction](#manual-cookie-extraction)
       * [Spotify Desktop Client](#spotify-desktop-client)
    * [Spotify OAuth App](#spotify-oauth-app)
    * [Following the Monitored User](#following-the-monitored-user)
@@ -106,7 +124,7 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
    * [SMTP Settings](#smtp-settings)
    * [Webhook Settings](#webhook-settings)
    * [Storing Secrets](#storing-secrets)
-5. [Usage](#usage)
+8. [Usage](#usage)
    * [Monitoring Mode](#monitoring-mode)
    * [Listing Mode](#listing-mode)
    * [Email Notifications](#email-notifications)
@@ -116,12 +134,12 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-f
    * [Check Intervals](#check-intervals)
    * [Signal Controls (macOS/Linux/Unix)](#signal-controls-macoslinuxunix)
    * [Coloring Log Output with GRC](#coloring-log-output-with-grc)
-6. [Debugging Tools](#debugging-tools)
+9. [Debugging Tools](#debugging-tools)
    * [Access Token Retrieval via sp_dc Cookie and TOTP](#access-token-retrieval-via-sp_dc-cookie-and-totp)
    * [Secret Key Extraction from Spotify Web Player Bundles](#secret-key-extraction-from-spotify-web-player-bundles)
-7. [Change Log](#change-log)
-8. [Maintainers](#maintainers)
-9. [License](#license)
+10. [Change Log](#change-log)
+11. [Maintainers](#maintainers)
+12. [License](#license)
 
 <a id="requirements"></a>
 ## Requirements
@@ -200,10 +218,24 @@ If you installed manually, download the newest *[spotify_monitor.py](https://raw
 <a id="quick-start"></a>
 ## Quick Start
 
+<a id="before-you-start"></a>
+### Before you start
+
+Spotify only shows a person's listening activity when both of these conditions are met:
+
+1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
+2. That person has enabled listening activity sharing in Spotify.
+
+Open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](#following-the-monitored-user) if the doctor later reports that the person is not visible.
+
+For a local installation, the easiest login method is automatic Firefox import. For Docker or Docker Compose, you will normally enter the `sp_dc` Spotify login cookie manually. The [manual extraction steps](#manual-cookie-extraction) explain exactly where to find it.
+
 <a id="new-here-run-the-setup-wizard"></a>
 ### New here? Run the setup wizard
 
-The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. Discarding all answers requires a separate confirmation. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+
+Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown in the [Docker section](#main-application-docker-image).
 
 Use the command that matches how you run the tool:
 
@@ -211,18 +243,26 @@ Use the command that matches how you run the tool:
 # PyPI install
 spotify_monitor --setup
 
-# Manual Python script
+# Manual Python script on macOS or Linux
 python3 spotify_monitor.py --setup
+
+# Manual Python script on Windows
+python spotify_monitor.py --setup
 
 # Docker Compose (skip curl if you cloned the repository)
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
 docker compose run --rm spotify_monitor --setup
 
-# Docker image
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
+# Docker image on macOS or Windows
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+
+# Docker image on Linux
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
 ```
 
-The wizard asks for one Spotify target, recommends browser-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation.
+The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate authentication path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation. Local next-step commands use the current Python interpreter and quote paths for the active operating system.
+
+When the discovered configuration contains a persisted `TARGET_USER_URI_ID`, running Spotify Monitor without a positional target starts that saved target. If no target has been saved, no-argument startup shows the quick-start guidance and offers the setup wizard in an interactive terminal.
 
 For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
 
@@ -244,6 +284,8 @@ For a local PyPI or downloaded-script installation, Firefox browser import remai
 <a id="manual-commands"></a>
 ### Manual commands
 
+Manual script examples use `python3` on macOS and Linux. On Windows use `python` in place of `python3`. Commands printed by Spotify Monitor detect the current interpreter automatically.
+
 If you prefer to configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account you will use for monitoring. Then return to the terminal and import that browser login:
 
 ```sh
@@ -264,8 +306,11 @@ python3 spotify_monitor.py --set-sp-dc
 # Docker Compose
 docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 
-# Docker image
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+# Docker image on macOS or Windows
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+
+# Docker image on Linux
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
 ```
 
 `--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
@@ -282,8 +327,11 @@ python3 spotify_monitor.py --set-webhook-url
 # Docker Compose
 docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 
-# Docker image
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+# Docker image on macOS or Windows
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+
+# Docker image on Linux
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
 ```
 
 The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`. This command only saves the link. It does not turn on webhook alerts or send a message. See [Webhook Settings](#webhook-settings) to choose your alerts then run `spotify_monitor --send-test-webhook` to test them.
@@ -352,7 +400,7 @@ Stop and remove the Compose container with:
 docker compose down
 ```
 
-Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
+Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. The shared `:z` label lets SELinux hosts access the bind mount and has no effect on hosts without SELinux. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
 
 The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:
 
@@ -394,16 +442,18 @@ Docker Desktop on macOS and Windows normally handles bind-mount ownership withou
 For a direct Docker run on Linux, pass the host identity explicitly when needed:
 
 ```sh
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
 ```
 
 To build locally, comment out `image:` in `docker-compose.yml` and uncomment `build: .`. You can also build and run directly:
 
 ```sh
 docker build --tag spotify-monitor:local .
-docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --setup
-docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --setup
+docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --config-file /data/spotify_monitor.conf
 ```
+
+The two local-image run commands above are for Docker Desktop. On Linux add `--user "$(id -u):$(id -g)"` immediately after `--init` in both commands.
 
 <a id="doctor-preflight"></a>
 ## Doctor Preflight
@@ -569,7 +619,27 @@ Chromium profiles support `Default` and `Profile *` directories plus friendly na
 <a id="manual-cookie-extraction"></a>
 ##### Manual cookie extraction
 
-Manual extraction is an advanced fallback for local installations and the recommended default-container path. Log in to [Spotify Web Player](https://open.spotify.com/) then locate `sp_dc` through browser developer tools or a trusted cookie editor. Run `--set-sp-dc` for your installation and paste the value at its hidden prompt. The command validates it before changing the selected dotenv file. You can still pass it with `-u` or `--spotify-dc-cookie`, but command-line secrets may be exposed through shell history or process listings.
+Manual extraction is a fallback for local installations and the recommended default-container path. Treat `sp_dc` like a password. Anyone who has it may be able to use your Spotify login session.
+
+Follow these steps:
+
+1. Open [Spotify Web Player](https://open.spotify.com/) and sign in to the Spotify account that follows the person you want to monitor.
+2. Open your browser's developer tools. Press `F12` or `Ctrl+Shift+I` on Windows and Linux. Press `Command+Option+I` on macOS.
+3. In Firefox, open **Storage** > **Cookies** > `https://open.spotify.com`.
+4. In Chrome, Brave or Chromium, open **Application** > **Storage** > **Cookies** > `https://open.spotify.com`.
+5. Find the cookie named `sp_dc` and copy only its **Value**. Do not copy the cookie name or the complete table row.
+6. Run the `--set-sp-dc` command for your installation and paste the value at the hidden prompt. The value will not appear on the screen.
+
+As an alternative, [Cookie-Editor by cgagnier](https://cookie-editor.com/) can display the `sp_dc` value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.
+
+The recommended `--set-sp-dc` command validates the cookie with Spotify before changing `.env`. Existing cookie replacement requires confirmation. See the [copy-paste commands](#manual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
+
+You can also provide `SP_DC_COOKIE` in these ways:
+
+* Set it as an [environment variable](#storing-secrets), for example `export SP_DC_COOKIE="your_sp_dc_cookie_value"`.
+* Add `SP_DC_COOKIE="your_sp_dc_cookie_value"` to a [dotenv file](#storing-secrets) for persistent use.
+* Pass it for one run with `-u` or `--spotify-dc-cookie`. This is not recommended because the value may appear in shell history or process listings.
+* Store it in the configuration file or source code as a last resort. This is not recommended because it is easier to expose or commit accidentally.
 
 If your `sp_dc` cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new `sp_dc` cookie value.
 
@@ -742,6 +812,32 @@ spotify_monitor --set-webhook-url
 
 Spotify Monitor sends the alert body as a native UTF-8 ntfy message and sends the alert subject as its title. Query parameters already present in the topic URL are preserved. This allows the ntfy [`auth` query parameter](https://docs.ntfy.sh/publish/#authentication) when a protected topic needs authentication.
 
+To attach playlist or album artwork to supported ntfy alerts, enable images in `spotify_monitor.conf`:
+
+```ini
+NTFY_IMAGES = True
+```
+
+Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. Normal package and Docker installs include Pillow. If image preparation or upload fails, the same alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.
+
+For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in `.env` without displaying it. For manual setup, add the token to `.env`:
+
+```ini
+NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
+```
+
+Spotify Monitor sends this value as `Authorization: Bearer <token>`. `NTFY_ACCESS_TOKEN` takes precedence over an `Authorization` entry in `WEBHOOK_HEADERS`.
+
+For compatibility with other advanced webhook integrations, static custom headers are also supported in `spotify_monitor.conf`:
+
+```ini
+WEBHOOK_HEADERS = {
+    "Authorization": "Bearer tk_your_ntfy_access_token",
+}
+```
+
+The dictionary applies to Discord and ntfy requests. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header. Header names and values are validated before any request is sent.
+
 Topics on the public ntfy.sh service are public unless protected through an account reservation. Treat an unprotected topic name like a password and do not reuse the example topic above.
 
 If you used the setup wizard, it saves your alert choices automatically. For the recommended alerts, the saved settings look like this:
@@ -769,7 +865,7 @@ If the webhook service temporarily refuses a message, Spotify Monitor tries once
 <a id="storing-secrets"></a>
 ### Storing Secrets
 
-Keep private values in an environment variable or a dotenv file. This includes `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD` and `WEBHOOK_URL`.
+Keep private values in an environment variable or a dotenv file. This includes `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN`.
 
 Set the needed environment variables using `export` on **Linux/Unix/macOS/WSL** systems:
 
@@ -780,17 +876,22 @@ export SP_APP_CLIENT_ID="your_spotify_app_client_id"
 export SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 export SMTP_PASSWORD="your_smtp_password"
 export WEBHOOK_URL="https://discord.com/api/webhooks/your_id/your_token"
+export NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 ```
 
 On **Windows Command Prompt** use `set` instead of `export` and on **Windows PowerShell** use `$env`.
 
-Alternatively store them persistently in a dotenv file (recommended):
+Alternatively store them persistently in a dotenv file (recommended).
 
-Browser import or `--set-sp-dc` can create or update `.env` with a validated `SP_DC_COOKIE`. If you prefer manual file editing copy the tracked `.env.example` file to `.env` then fill in only the secrets you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
+Browser import, `--set-sp-dc` or the setup wizard can create or update `.env` for you. This is the easiest option.
+
+If you cloned the repository, you can copy the included example then fill in only the secrets you use:
 
 ```sh
-cp .env.example .env
+test -e .env || cp .env.example .env
 ```
+
+If you installed from PyPI or downloaded only `spotify_monitor.py`, `.env.example` will not be in your current directory. Create a plain text file named `.env` in the directory where you run Spotify Monitor then add only the values you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
 
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
@@ -799,6 +900,7 @@ SP_APP_CLIENT_ID="your_spotify_app_client_id"
 SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
 SMTP_PASSWORD="your_smtp_password"
 WEBHOOK_URL="https://discord.com/api/webhooks/your_id/your_token"
+NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 ```
 
 By default the tool will auto-search for dotenv file named `.env` in current directory and then upward from it.
@@ -1130,7 +1232,12 @@ You should get a valid Spotify access token, example output:
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_totp_test.png" alt="spotify_monitor_totp_test" width="100%"/>
 </p>
 
-> **NOTE:** Spotify still requires TOTP but continues to select v61. You can run [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to extract the current bundle values or use the `--fetch-secrets` and `--download-secrets` options provided by `spotify_monitor_totp_test`.
+> **NOTE:** Spotify still requires TOTP but continues to select v61. If the embedded values stop working, `spotify_monitor_totp_test` offers two recovery methods. `--fetch-secrets` launches a headless browser and extracts current values from Spotify Web Player. It requires Playwright plus its browser files. `--download-secrets` reads `SECRET_CIPHER_DICT_URL`, which may point to a remote URL or a local `file:` URL. The default remote source is [xyloflake/spot-secrets-go](https://github.com/xyloflake/spot-secrets-go). These options affect only the test utility during that run. Spotify Monitor v3.0 uses `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` instead.
+
+```sh
+python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --fetch-secrets
+python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --download-secrets
+```
 
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ### Secret Key Extraction from Spotify Web Player Bundles

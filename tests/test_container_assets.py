@@ -42,7 +42,7 @@ def test_compose_contract():
     assert "stdin_open: true" in compose
     assert "tty: true" in compose
     assert 'SPOTIFY_MONITOR_COMPOSE: "1"' in compose
-    assert "- ./:/data" in compose
+    assert "- ./:/data:z" in compose
     assert '["--config-file", "/data/spotify_monitor.conf"]' in compose
     assert "env_file:" not in compose
     assert "ports:" not in compose
@@ -82,6 +82,7 @@ def test_reusable_test_workflow_has_container_gate():
     assert "spotify-monitor:ci --help" in workflow
     assert "spotify-monitor:ci --setup" in workflow
     assert "--generate-config /data/spotify_monitor.conf" in workflow
+    assert ':/data:z"' in workflow
     assert "docker compose -f docker-compose.yml config" in workflow
     assert "docker tag spotify-monitor:ci misiektoja/spotify-monitor:latest" in workflow
     assert "docker compose -f docker-compose.yml run --rm spotify_monitor --version" in workflow
@@ -99,6 +100,13 @@ def test_readme_documents_default_container_playback_limitation():
     assert "Host Spotify auto-play is unavailable by default inside a container" in readme
     assert "TRACK_SONGS" in readme
     assert "--track-in-spotify" in readme
+
+
+# Verifies Docker guidance labels data mounts and protects an existing dotenv file
+def test_readme_documents_portable_mounts_and_safe_dotenv_copy():
+    readme = read_asset("README.md")
+    assert '-v "$PWD:/data:z"' in readme
+    assert "test -e .env || cp .env.example .env" in readme
 
 
 # Verifies the generic webhook setup links target an existing README anchor
