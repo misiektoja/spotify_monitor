@@ -14,6 +14,7 @@ urllib3
 pyotp (needed for web-player token generation)
 python-dotenv (optional)
 wcwidth (optional, needed by TRUNCATE_CHARS feature)
+Pillow (needed for ntfy artwork attachments)
 spotipy (optional, used when legacy OAuth app credentials are configured)
 pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
@@ -164,8 +165,9 @@ WEBHOOK_HEADERS = {}
 NTFY_ACCESS_TOKEN = ""
 
 # Attach playlist or album artwork to supported ntfy alerts
+# Set to False to keep ntfy alerts text-only
 # Image preparation or delivery failures fall back to text
-NTFY_IMAGES = False
+NTFY_IMAGES = True
 
 # Whether to send a webhook alert when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False

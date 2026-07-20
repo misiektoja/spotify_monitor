@@ -812,10 +812,10 @@ spotify_monitor --set-webhook-url
 
 Spotify Monitor sends the alert body as a native UTF-8 ntfy message and sends the alert subject as its title. Query parameters already present in the topic URL are preserved. This allows the ntfy [`auth` query parameter](https://docs.ntfy.sh/publish/#authentication) when a protected topic needs authentication.
 
-To attach playlist or album artwork to supported ntfy alerts, enable images in `spotify_monitor.conf`:
+Playlist and album artwork is enabled by default for supported ntfy alerts. To keep ntfy alerts text-only, disable images in `spotify_monitor.conf`:
 
 ```ini
-NTFY_IMAGES = True
+NTFY_IMAGES = False
 ```
 
 Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Error alerts and `--send-test-webhook` remain text-only. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. PyPI, requirements-file and Docker installs include Pillow. Manual single-file users who install dependencies individually must include Pillow. If image preparation fails, the alert is sent as text. If the attachment upload fails, the alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.

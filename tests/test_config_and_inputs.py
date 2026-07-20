@@ -157,6 +157,7 @@ def test_rendered_config_compiles_and_uses_current_non_secret_values(monkeypatch
     exec(compile(rendered, "<rendered-config>", "exec"), namespace)
     assert namespace["TARGET_USER_URI_ID"] == 'path\\with"quote#hash'
     assert namespace["SPOTIFY_CHECK_INTERVAL"] == 123
+    assert namespace["NTFY_IMAGES"] is True
     assert "# Select the method used to obtain the Spotify access token" in rendered
     assert "Do not create a new Spotify app only for this tool" in rendered
     assert "Create a new app" not in rendered
