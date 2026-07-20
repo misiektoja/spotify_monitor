@@ -855,6 +855,7 @@ CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
 def is_container_environment() -> bool:
     return os.path.exists("/.dockerenv") or bool(os.environ.get("SPOTIFY_MONITOR_DOCKER"))
 
+
 # Chromium user-data directories
 CHROMIUM_USER_DATA_DIRS = {
     "Darwin": {
