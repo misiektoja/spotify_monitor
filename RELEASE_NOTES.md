@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 3.0 (TBD)
+# Changes in 3.0 (21 Jul 2026)
 
 Version **3.0** focuses on making Spotify Monitor easier to set up, safer to configure and easier to recover when something goes wrong. It adds guided onboarding, simpler Spotify login, Docker Compose, clearer terminal output and Discord + ntfy webhook alerts while keeping advanced client mode available for experienced users.
 
