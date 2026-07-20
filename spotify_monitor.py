@@ -2453,7 +2453,7 @@ def spotify_image_url_is_allowed(image_url: str) -> bool:
 
 # Builds one bounded in-memory JPEG for an ntfy attachment
 def build_ntfy_image(image_url: str = "") -> Optional[bytes]:
-    if not NTFY_IMAGES or not image_url or PILImage is None:
+    if not NTFY_IMAGES or not image_url or not NTFY_IMAGES_AVAILABLE:
         return None
     try:
         if not spotify_image_url_is_allowed(image_url):

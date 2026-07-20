@@ -223,6 +223,16 @@ def test_ntfy_image_rejects_oversized_download(monkeypatch):
     response.iter_content.assert_not_called()
 
 
+# Verifies the shared image builder respects the canonical Pillow availability flag
+def test_ntfy_image_respects_pillow_availability_flag(monkeypatch):
+    image_get = Mock(side_effect=AssertionError("image download was attempted without Pillow"))
+    monkeypatch.setattr(monitor, "NTFY_IMAGES", True)
+    monkeypatch.setattr(monitor, "NTFY_IMAGES_AVAILABLE", False)
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "get", image_get)
+    assert monitor.build_ntfy_image("https://i.scdn.co/image/cover.jpg") is None
+    image_get.assert_not_called()
+
+
 # Verifies image downloads cannot target arbitrary hosts through Spotify metadata
 def test_ntfy_image_rejects_non_spotify_hosts(monkeypatch):
     image_get = Mock(side_effect=AssertionError("untrusted image host was contacted"))
