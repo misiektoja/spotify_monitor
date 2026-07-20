@@ -45,6 +45,20 @@ jobs:
       - name: Verify installed dependencies
         run: python -m pip check
 
+  windows-setup-smoke:
+    name: Windows setup and startup smoke checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install project test dependencies
+        run: python -m pip install ".[test]"
+      - name: Run setup and startup tests
+        run: python -m pytest tests/test_setup_wizard.py tests/test_install_method_commands.py tests/test_startup_ui.py tests/test_config_and_inputs.py
+
   container-smoke:
     name: Main container smoke checks
     runs-on: ubuntu-latest
