@@ -44,9 +44,11 @@ def test_install_method_command_prefixes(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor.os, "getuid", lambda: 1234)
+    monkeypatch.setattr(monitor.os, "getgid", lambda: 5678)
     assert monitor._wizard_cmd_prefix("manual") == "python3 spotify_monitor.py"
     assert monitor._wizard_cmd_prefix("pip") == "spotify_monitor"
-    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user 1234:5678 -v "$PWD:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
 
 
