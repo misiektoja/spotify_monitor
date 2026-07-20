@@ -84,7 +84,7 @@ jobs:
       - name: Generate a config through the container
         run: |
           mkdir -p local/container-smoke
-          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data:z" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
           test -s local/container-smoke/spotify_monitor.conf
           if rg 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
             echo "Generated config contains a test secret marker"
