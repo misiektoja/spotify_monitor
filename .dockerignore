@@ -11,6 +11,9 @@ local/
 tests/
 debug/
 assets/
+docs/
+site/
+mkdocs.yml
 grc/
 __pycache__/
 *.py[cod]
