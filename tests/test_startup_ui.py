@@ -149,9 +149,10 @@ def test_no_argument_welcome_uses_spaced_quick_start_blocks():
     prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 1
     assert "Welcome to Spotify Monitor" not in result.stdout
-    assert f"Quickest start (already configured):\n    {prefix} <spotify_user_id>\n" in result.stdout
+    assert "For <spotify_target>, use a Spotify user ID or complete profile URL.\n" in result.stdout
+    assert f"Quickest start (already configured):\n    {prefix} <spotify_target>\n" in result.stdout
     assert f"Easiest start (guided setup wizard):\n    {prefix} --setup\n" in result.stdout
-    assert f"Check setup before monitoring:\n    {prefix} --doctor <spotify_user_id>\n" in result.stdout
+    assert f"Check setup before monitoring:\n    {prefix} --doctor <spotify_target>\n" in result.stdout
     assert f"Full options: {prefix} --help" in result.stdout
     assert f"Guide:        {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
