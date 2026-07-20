@@ -6013,6 +6013,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
     if auth.get("browser") and method not in ("docker", "compose"):
+        print()
         auth = _wizard_finish_browser_import(auth, env_path)
     doctor_failed = False
     doctor_ran = False
