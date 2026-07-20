@@ -163,7 +163,8 @@ WEBHOOK_USERNAME = "Spotify Monitor"
 WEBHOOK_HEADERS = {}
 NTFY_ACCESS_TOKEN = ""
 
-# Add playlist and album images to ntfy messages
+# Attach playlist or album artwork to supported ntfy alerts
+# Image preparation or delivery failures fall back to text
 NTFY_IMAGES = False
 
 # Whether to send a webhook alert when the user becomes active

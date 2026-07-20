@@ -145,7 +145,7 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 ## Requirements
 
 * Python 3.9 or higher
-* Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`
+* Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `Pillow`
 * Optional legacy OAuth library: `spotipy`
 * Optional Chromium cookie import library: `pycookiecheat`
 
@@ -175,7 +175,7 @@ Download the *[spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/
 Install dependencies via pip:
 
 ```sh
-pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth
+pip install requests python-dateutil urllib3 pyotp python-dotenv wcwidth Pillow
 ```
 
 Alternatively, from the downloaded *[requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt)*:
@@ -818,7 +818,7 @@ To attach playlist or album artwork to supported ntfy alerts, enable images in `
 NTFY_IMAGES = True
 ```
 
-Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. Normal package and Docker installs include Pillow. If image preparation or upload fails, the same alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.
+Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Error alerts and `--send-test-webhook` remain text-only. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. PyPI, requirements-file and Docker installs include Pillow. Manual single-file users who install dependencies individually must include Pillow. If image preparation fails, the alert is sent as text. If the attachment upload fails, the alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.
 
 For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in `.env` without displaying it. For manual setup, add the token to `.env`:
 
