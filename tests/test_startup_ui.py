@@ -130,27 +130,29 @@ def test_banner_version_alignment():
 # Verifies help exits cleanly with one banner and exact raw example layout
 def test_help_banner_once_and_raw_epilog():
     result = run_cli("--help")
+    prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 0
     assert result.stdout.count(" .---------------.") == 1
     assert "Show rare operational events plus the complete startup summary" in result.stdout
-    assert "Examples:\n  # Guided setup, recommended for the first run\n  python3 spotify_monitor.py --setup" in result.stdout
+    assert f"Examples:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
     assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
-    assert "python3 spotify_monitor.py --set-sp-dc" in result.stdout
-    assert "python3 spotify_monitor.py --set-webhook-url" in result.stdout
-    assert "python3 spotify_monitor.py --send-test-webhook" in result.stdout
-    assert "\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  python3 spotify_monitor.py <spotify_user_id>" in result.stdout
+    assert f"{prefix} --set-sp-dc" in result.stdout
+    assert f"{prefix} --set-webhook-url" in result.stdout
+    assert f"{prefix} --send-test-webhook" in result.stdout
+    assert f"\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
 
 # Verifies no-argument output matches the sibling-style quick-start hierarchy
 def test_no_argument_welcome_uses_spaced_quick_start_blocks():
     result = run_cli()
+    prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 1
     assert "Welcome to Spotify Monitor" not in result.stdout
-    assert "Quickest start (already configured):\n    python3 spotify_monitor.py <spotify_user_id>\n" in result.stdout
-    assert "Easiest start (guided setup wizard):\n    python3 spotify_monitor.py --setup\n" in result.stdout
-    assert "Check setup before monitoring:\n    python3 spotify_monitor.py --doctor <spotify_user_id>\n" in result.stdout
-    assert "Full options: python3 spotify_monitor.py --help" in result.stdout
+    assert f"Quickest start (already configured):\n    {prefix} <spotify_user_id>\n" in result.stdout
+    assert f"Easiest start (guided setup wizard):\n    {prefix} --setup\n" in result.stdout
+    assert f"Check setup before monitoring:\n    {prefix} --doctor <spotify_user_id>\n" in result.stdout
+    assert f"Full options: {prefix} --help" in result.stdout
     assert f"Guide:        {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
 
