@@ -40,16 +40,16 @@ On macOS or Windows with Docker Desktop:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
 ```
 
 On Linux, pass your host user and group so the container can write to the current directory:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
 ```
 
 <p align="center">
@@ -254,10 +254,10 @@ curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/he
 docker compose run --rm spotify_monitor --setup
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
 ```
 
 The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate authentication path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation. Local next-step commands use the current Python interpreter and quote paths for the active operating system.
@@ -307,10 +307,10 @@ python3 spotify_monitor.py --set-sp-dc
 docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
 ```
 
 `--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
@@ -328,10 +328,10 @@ python3 spotify_monitor.py --set-webhook-url
 docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
 ```
 
 The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`. This command only saves the link. It does not turn on webhook alerts or send a message. See [Webhook Settings](#webhook-settings) to choose your alerts then run `spotify_monitor --send-test-webhook` to test them.
@@ -400,7 +400,7 @@ Stop and remove the Compose container with:
 docker compose down
 ```
 
-Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
+Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. The shared `:z` label lets SELinux hosts access the bind mount and has no effect on hosts without SELinux. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
 
 The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:
 
@@ -442,15 +442,15 @@ Docker Desktop on macOS and Windows normally handles bind-mount ownership withou
 For a direct Docker run on Linux, pass the host identity explicitly when needed:
 
 ```sh
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
 ```
 
 To build locally, comment out `image:` in `docker-compose.yml` and uncomment `build: .`. You can also build and run directly:
 
 ```sh
 docker build --tag spotify-monitor:local .
-docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --setup
-docker run --rm -it --init -v "$PWD:/data" spotify-monitor:local --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --setup
+docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --config-file /data/spotify_monitor.conf
 ```
 
 The two local-image run commands above are for Docker Desktop. On Linux add `--user "$(id -u):$(id -g)"` immediately after `--init` in both commands.
@@ -880,7 +880,7 @@ Browser import, `--set-sp-dc` or the setup wizard can create or update `.env` fo
 If you cloned the repository, you can copy the included example then fill in only the secrets you use:
 
 ```sh
-cp .env.example .env
+test -e .env || cp .env.example .env
 ```
 
 If you installed from PyPI or downloaded only `spotify_monitor.py`, `.env.example` will not be in your current directory. Create a plain text file named `.env` in the directory where you run Spotify Monitor then add only the values you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
