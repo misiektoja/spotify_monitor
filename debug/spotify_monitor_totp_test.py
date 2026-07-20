@@ -4,7 +4,7 @@ Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
 v2.2
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
-https://github.com/misiektoja/spotify_monitor#debugging-tools
+https://misiektoja.github.io/spotify_monitor/debugging/
 
 Python pip3 requirements:
 
