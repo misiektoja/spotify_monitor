@@ -408,7 +408,7 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 # example 'Bad credentials' or repeated token refresh errors) even though your sp_dc cookie is still valid.
 # To refresh them:
 #   - Run debug/spotify_monitor_secret_grabber.py to extract the current version and cipher bytes from the
-#     live web-player bundle (see the "Debugging Tools" section of the README)
+#     live web-player bundle (see https://misiektoja.github.io/spotify_monitor/debugging/)
 #   - Set TOTP_VERSION to the extracted version identifier (a positive integer)
 #   - Set TOTP_SECRET_CIPHER_BYTES to the extracted cipher bytes (a non-empty sequence of integers)
 TOTP_VERSION = 61
@@ -735,19 +735,20 @@ CLI_CONFIG_PATH = None
 nl_ch = "\n"
 
 PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
-QUICK_START_GUIDE_URL = PROJECT_URL + "#quick-start"
-INSTALLATION_GUIDE_URL = PROJECT_URL + "#installation"
-CONFIG_GUIDE_URL = PROJECT_URL + "#configuration"
-COOKIE_GUIDE_URL = PROJECT_URL + "#spotify-sp_dc-cookie"
-CLIENT_GUIDE_URL = PROJECT_URL + "#spotify-desktop-client"
-TARGET_GUIDE_URL = PROJECT_URL + "#how-to-get-a-friends-user-uri-id"
-FOLLOWING_GUIDE_URL = PROJECT_URL + "#following-the-monitored-user"
-SMTP_GUIDE_URL = PROJECT_URL + "#smtp-settings"
-WEBHOOK_GUIDE_URL = PROJECT_URL + "#webhook-settings"
-SECRETS_GUIDE_URL = PROJECT_URL + "#storing-secrets"
-INTERVALS_GUIDE_URL = PROJECT_URL + "#check-intervals"
-DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
-OAUTH_GUIDE_URL = PROJECT_URL + "#spotify-oauth-app"
+DOCUMENTATION_URL = "https://misiektoja.github.io/spotify_monitor"
+QUICK_START_GUIDE_URL = DOCUMENTATION_URL + "/quick-start/"
+INSTALLATION_GUIDE_URL = DOCUMENTATION_URL + "/installation/"
+CONFIG_GUIDE_URL = DOCUMENTATION_URL + "/configuration/"
+COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-sp_dc-cookie"
+CLIENT_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-desktop-client"
+TARGET_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#how-to-get-a-friends-user-uri-id"
+FOLLOWING_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#following-the-monitored-user"
+SMTP_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#smtp-settings"
+WEBHOOK_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#webhook-settings"
+SECRETS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#storing-secrets"
+INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
+DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
+OAUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-oauth-app"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
 COOKIE_IMPORT_FIX = f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: spotify_monitor --import-browser-cookie --browser firefox"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
