@@ -12,7 +12,7 @@ Version **3.0** focuses on making Spotify Monitor easier to set up, safer to con
 - **IMPROVE:** Made **Spotify OAuth app credentials optional** in cookie and client modes. Existing complete `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` configurations remain supported and are tried first. If the legacy Web API is restricted, track and playlist metadata switch independently to the web-player backend. Startup output now shows the login token source and metadata backend separately
 - **NEW:** Added **webhook notifications for Discord and ntfy** for active, inactive, tracked-song, every-song, loop and error events. Choose the service in the setup wizard or with `WEBHOOK_PROVIDER`, store the private URL with `--set-webhook-url` and test it with `--send-test-webhook`. Discord remains the default while ntfy uses its native topic API. Email and webhook delivery work independently
 - **NEW:** Added **authentication for protected ntfy topics** via `NTFY_ACCESS_TOKEN` support with Bearer authentication and custom `Authorization` headers in `WEBHOOK_HEADERS`
-- **NEW:** Added **playlist and album artwork in ntfy alerts**, enabled by default and configurable through `NTFY_IMAGES`. Set it to `False` to keep ntfy alerts text-only. Active and inactive alerts prefer playlist artwork then fall back to album artwork, while tracked-song, every-song and loop alerts use album artwork. Images are accepted only from Spotify HTTPS CDN hosts, downloaded with byte and decoded-pixel limits then prepared as in-memory JPEG attachments. Image preparation or delivery failures fall back to the same alert as text so artwork cannot suppress a notification (thanks [@tomballgithub](https://github.com/tomballgithub), [#39](https://github.com/misiektoja/spotify_monitor/pull/39))
+- **NEW:** Added **playlist and album artwork in ntfy alerts**, enabled by default and configurable through `NTFY_IMAGES`. Set it to `False` to keep ntfy alerts text-only. Active and inactive alerts prefer playlist artwork then fall back to album artwork, while tracked-song, every-song and loop alerts use album artwork (thanks [@tomballgithub](https://github.com/tomballgithub), [#39](https://github.com/misiektoja/spotify_monitor/pull/39))
 - **NEW:** Added an **interactive setup wizard** for first-time setup. Run `--setup` or launch the tool with no arguments and accept the prompt. The wizard detects PyPI, downloaded-script, Docker and Docker Compose installs, writes a ready-to-run `spotify_monitor.conf`, keeps private values in `.env` and can check or start local monitoring immediately
 - **NEW:** Added **browser-based `sp_dc` import** from **Firefox, Chrome, Brave and Chromium** with profile selection. Firefox needs no extra dependency and works on macOS, Linux and Windows. Chromium-based import is optional on macOS and Linux, while Windows users are guided to Firefox
 - **IMPROVE:** Made **targets and configuration easier to use**. Targets can be raw Spotify user IDs, `spotify:user` URIs or profile URLs and can be saved as `TARGET_USER_URI_ID`. Broken config files report the offending line, config writes create recoverable backups and private values stay hidden from normal or debug output
@@ -22,6 +22,13 @@ Version **3.0** focuses on making Spotify Monitor easier to set up, safer to con
 - **IMPROVE:** Updated `spotify_monitor_secret_grabber` to v1.3 so it extracts current inline object-literal TOTP secrets while retaining the original runtime hook for older bundle formats
 - **NEW:** Added a **non-root Docker image**, **Docker Compose quick start** and a copyable **`.env.example`**. Setup commands adapt to containers and the release workflow supports `linux/amd64` plus `linux/arm64` images
 - **IMPROVE:** Added a friendlier **terminal experience** with a pure ASCII equalizer banner, a short no-arguments welcome, a concise startup summary and install-aware examples in `--help`. Use `--verbose` for the complete non-secret summary plus occasional operational details
+- **NEW:** Published a **documentation site** at [misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/), built with MkDocs Material and deployed through GitHub Actions. The README is now a concise landing page while installation, configuration, usage, troubleshooting and debugging have dedicated guides
+- **IMPROVE:** Added an editable setup summary so answers can be reviewed before saving
+- **IMPROVE:** Simplified browser onboarding with separate Firefox and Chromium choices plus optional `pycookiecheat` installation
+- **IMPROVE:** Made generated commands portable across Python installations and custom config paths
+- **IMPROVE:** Added confirmation, backups and validation when replacing configuration files
+- **BUGFIX:** No-argument launches now honor saved targets
+- **BUGFIX:** Improved Docker and Compose support for Linux user mappings, persistent sessions and saved interface choices
 - **IMPROVE:** Updated support to **Python 3.9 through 3.14** and made Spotipy optional. It is now needed only for the advanced legacy OAuth metadata path
 
 # Changes in 2.9.2 (27 Apr 2026)
@@ -106,7 +113,7 @@ Version **3.0** focuses on making Spotify Monitor easier to set up, safer to con
 - **IMPROVE:** Added support for loading TOTP secrets from local files via file:// URLs
 - **IMPROVE:** Updated remote URL in SECRET_CIPHER_DICT_URL
 - **IMPROVE:** Updated  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to dump secrets in different formats. Choose what you need with the `--secret`,` --secretbytes` and `--secretdict` CLI flags, or go all out with the `--all` mode to write all secret formats to files like `secrets.json`, `secretBytes.json` and `secretDict.json` (thanks [@tomballgithub](https://github.com/tomballgithub))
-- **IMPROVE:** Added multi-arch Docker image build and compose support for  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) - more info at [🐳 Secret Key Extraction via Docker](https://github.com/misiektoja/spotify_monitor#-secret-key-extraction-via-docker-recommended-easiest-way)
+- **IMPROVE:** Added multi-arch Docker image build and compose support for  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) - more info at [Secret Key Extraction via Docker](https://misiektoja.github.io/spotify_monitor/debugging/#-secret-key-extraction-via-docker-recommended-easiest-way)
 - **IMPROVE:** Added deletion of flag_file at launch if specified via .conf file. Previously only done when flag_file was specified on command line
 - **IMPROVE:** Added info to console output when TOTP secrets are fetched from a remote URL or local file
 
@@ -131,7 +138,7 @@ Version **3.0** focuses on making Spotify Monitor easier to set up, safer to con
 - **IMPROVE:** Updated secret cipher bytes used by web-player access token endpoint (`cookie` mode) to v11 & v12
 - **IMPROVE:** Moved secret cipher bytes for web-player endpoint to configuration section
 - **IMPROVE:** Implemented auto-selection of highest cipher version when `TOTP_VER` is set to 0
-- **NEW:** Added tool to extract secret keys used for TOTP generation in Spotify Web Player JavaScript bundles (see [Debugging Tools](https://github.com/misiektoja/spotify_monitor#debugging-tools) for more info)
+- **NEW:** Added tool to extract secret keys used for TOTP generation in Spotify Web Player JavaScript bundles (see [Debugging Tools](https://misiektoja.github.io/spotify_monitor/debugging/) for more info)
 
 **Bug fixes**:
 
@@ -192,7 +199,7 @@ Version **3.0** focuses on making Spotify Monitor easier to set up, safer to con
 
 **Features and Improvements**:
 
-- **NEW:** Added support for a new method to obtain the Spotify access token. This method uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It is intended for advanced users who want an indefinitely valid token with the widest scope. Check the [Spotify Desktop Client](https://github.com/misiektoja/spotify_monitor/blob/main/README.md#spotify-desktop-client) for more info.
+- **NEW:** Added support for a new method to obtain the Spotify access token. This method uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It is intended for advanced users who want an indefinitely valid token with the widest scope. Check the [Spotify Desktop Client](https://misiektoja.github.io/spotify_monitor/configuration/#spotify-desktop-client) for more info.
 
 # Changes in 2.0 (21 May 2025)
 
