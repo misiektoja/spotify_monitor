@@ -145,6 +145,8 @@ def test_rendered_config_compiles_and_uses_current_non_secret_values(monkeypatch
     assert namespace["TARGET_USER_URI_ID"] == 'path\\with"quote#hash'
     assert namespace["SPOTIFY_CHECK_INTERVAL"] == 123
     assert "# Select the method used to obtain the Spotify access token" in rendered
+    assert "Do not create a new Spotify app only for this tool" in rendered
+    assert "Create a new app" not in rendered
     assert "\n\n#" in rendered
 
 
@@ -161,6 +163,17 @@ def test_rendered_config_never_substitutes_secret_values(monkeypatch):
     for key, value in secret_values.items():
         assert value not in rendered
         assert namespace[key] != value
+
+
+# Verifies generated config never renders a potentially private custom header dictionary
+def test_rendered_config_never_substitutes_webhook_headers(monkeypatch):
+    secret = "Bearer private-header-value"
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"Authorization": secret, "X-Monitor": "spotify"})
+    rendered = monitor.generate_config_with_current_values()
+    namespace = {}
+    exec(rendered, namespace)
+    assert secret not in rendered
+    assert namespace["WEBHOOK_HEADERS"] == {}
 
 
 # Verifies multiline template structures remain unchanged when rendering current values
