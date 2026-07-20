@@ -5027,7 +5027,8 @@ def _wizard_cmd_prefix(method: str, exact: bool = False) -> str:
     if method == "compose":
         return "docker compose run --rm spotify_monitor"
     if method == "docker":
-        return 'docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor'
+        user_flag = f" --user {os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") and hasattr(os, "getgid") else ""
+        return f'docker run --rm -it --init{user_flag} -v "$PWD:/data:z" misiektoja/spotify-monitor'
     return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
 
 
