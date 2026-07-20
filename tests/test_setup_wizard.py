@@ -208,6 +208,8 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert "\nSaved files\n\n  Configuration:" in output
         assert "\nNext steps\n\nCheck setup again:" in output
         assert monitor.QUICK_START_GUIDE_URL in output
+        assert monitor.FOLLOWING_GUIDE_URL in output
+        assert monitor.COOKIE_GUIDE_URL in output
 
 
 # Verifies declining final confirmation leaves both setup destinations unchanged
