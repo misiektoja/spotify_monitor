@@ -345,8 +345,8 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
         env_path = directory / ".env"
         topic_url = "https://ntfy.example.test/private-topic"
         token = "tk_private_access_token"
-        answers = iter([True, False, True, True, True, False])
-        choices = iter([0, 1, 0])
+        answers = iter([True, False, True, True, False])
+        choices = iter([0, 1, 0, 0])
         secrets = iter([topic_url, token])
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
