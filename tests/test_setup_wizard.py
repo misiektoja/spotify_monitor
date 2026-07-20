@@ -318,7 +318,13 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "", "n", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
-        import_mock = Mock(side_effect=lambda **kwargs: monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"}))
+
+        # Prints representative import guidance before saving one private test cookie
+        def import_cookie(**kwargs):
+            print("* Browser prerequisite: test guidance")
+            return monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"})
+
+        import_mock = Mock(side_effect=import_cookie)
         monkeypatch.setattr(monitor, "run_browser_cookie_import", import_mock)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
@@ -327,6 +333,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert import_mock.call_args.kwargs["browser"] == "firefox"
         output = capsys.readouterr().out
         assert monitor.SPOTIFY_WEB_LOGIN_URL in output
+        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n\n* Browser prerequisite: test guidance" in output
         assert "browser-private-value" not in output
 
 
