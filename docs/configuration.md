@@ -293,14 +293,14 @@ WEBHOOK_PROVIDER = "discord"
 For ntfy.sh or a self-hosted ntfy server:
 
 1. Choose a hard-to-guess topic such as `spotify-monitor-long-random-value`.
-2. Use the complete topic URL such as `https://ntfy.sh/spotify-monitor-long-random-value`.
+2. In the setup wizard, paste either the bare ntfy.sh topic name or its complete topic URL such as `https://ntfy.sh/spotify-monitor-long-random-value`. A bare topic name is expanded to an ntfy.sh URL. For a self-hosted server, use the complete HTTPS topic URL.
 3. Set the provider in `spotify_monitor.conf`:
 
 ```ini
 WEBHOOK_PROVIDER = "ntfy"
 ```
 
-4. Save the topic URL privately:
+4. When configuring without the setup wizard, save the complete topic URL privately:
 
 ```sh
 spotify_monitor --set-webhook-url
