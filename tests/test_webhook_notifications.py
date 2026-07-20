@@ -468,6 +468,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
         monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: secret)
+        monkeypatch.setattr(monitor, "_doctor_ask_yes_no", lambda question: False)
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -541,7 +542,7 @@ def test_doctor_webhook_check_is_read_only(monkeypatch):
     post = Mock(side_effect=AssertionError("webhook request attempted"))
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
     checks = monitor.doctor_check_webhook_notifications()
-    assert checks == [monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed and no webhook was sent")]
+    assert checks == [monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid", "The private link was not displayed. No webhook was sent during this passive check")]
     post.assert_not_called()
 
 
