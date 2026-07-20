@@ -233,7 +233,7 @@ For a local installation, the easiest login method is automatic Firefox import. 
 <a id="new-here-run-the-setup-wizard"></a>
 ### New here? Run the setup wizard
 
-The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. Discarding all answers requires a separate confirmation. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
 
 Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown in the [Docker section](#main-application-docker-image).
 
@@ -243,8 +243,11 @@ Use the command that matches how you run the tool:
 # PyPI install
 spotify_monitor --setup
 
-# Manual Python script
+# Manual Python script on macOS or Linux
 python3 spotify_monitor.py --setup
+
+# Manual Python script on Windows
+python spotify_monitor.py --setup
 
 # Docker Compose (skip curl if you cloned the repository)
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
@@ -257,7 +260,9 @@ docker run --rm -it --init -v "$PWD:/data" misiektoja/spotify-monitor --setup
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data" misiektoja/spotify-monitor --setup
 ```
 
-The wizard asks for one Spotify target, recommends browser-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation.
+The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate authentication path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation. Local next-step commands use the current Python interpreter and quote paths for the active operating system.
+
+When the discovered configuration contains a persisted `TARGET_USER_URI_ID`, running Spotify Monitor without a positional target starts that saved target. If no target has been saved, no-argument startup shows the quick-start guidance and offers the setup wizard in an interactive terminal.
 
 For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
 
@@ -278,6 +283,8 @@ For a local PyPI or downloaded-script installation, Firefox browser import remai
 
 <a id="manual-commands"></a>
 ### Manual commands
+
+Manual script examples use `python3` on macOS and Linux. On Windows use `python` in place of `python3`. Commands printed by Spotify Monitor detect the current interpreter automatically.
 
 If you prefer to configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account you will use for monitoring. Then return to the terminal and import that browser login:
 
