@@ -80,6 +80,12 @@ def test_webhook_url_validation(url, expected):
     assert monitor.validate_webhook_url(url) is expected
 
 
+# Verifies ntfy input normalization preserves HTTPS URLs and expands only valid bare topics
+@pytest.mark.parametrize("value,expected", [("https://ntfy.example.test/private-topic?auth=value", "https://ntfy.example.test/private-topic?auth=value"), (" private_Topic-123 ", "https://ntfy.sh/private_Topic-123"), ("a" * 64, f"https://ntfy.sh/{'a' * 64}"), ("a" * 65, ""), ("ntfy.sh/private-topic", ""), ("http://ntfy.sh/private-topic", ""), ("private.topic", ""), ("private/topic", ""), (None, "")])
+def test_ntfy_topic_url_normalization(value, expected):
+    assert monitor.normalize_ntfy_topic_url(value) == expected
+
+
 # Verifies private webhook entry requires a TTY and a writable dotenv destination
 def test_set_webhook_url_requires_safe_persistence():
     with pytest.raises(monitor.WebhookConfigurationError, match="interactive terminal"):
@@ -404,22 +410,23 @@ def test_webhook_wizard_preset_is_hidden_and_offline(monkeypatch):
         post.assert_not_called()
 
 
-# Verifies the wizard stores an ntfy topic URL and provider without contacting the service
-def test_webhook_wizard_supports_ntfy(monkeypatch):
+# Verifies the wizard preserves ntfy URLs and expands bare ntfy.sh topics without contacting the service
+@pytest.mark.parametrize("entered_value,saved_url", [("https://ntfy.sh/private-topic", "https://ntfy.sh/private-topic"), ("private-topic", "https://ntfy.sh/private-topic")])
+def test_webhook_wizard_supports_ntfy(monkeypatch, entered_value, saved_url):
     with make_test_directory() as directory_name:
         destination = Path(directory_name) / ".env"
         answers = iter([True, False])
         choices = iter([1, 0])
         post = Mock(side_effect=AssertionError("webhook request attempted"))
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
-        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "https://ntfy.sh/private-topic")
+        monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: entered_value)
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
         monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
         config_values = {}
         secret_updates = {}
         enabled = monitor._wizard_collect_webhook(config_values, secret_updates, destination)
         assert enabled == ["active", "inactive", "errors"]
-        assert secret_updates == {"WEBHOOK_URL": "https://ntfy.sh/private-topic"}
+        assert secret_updates == {"WEBHOOK_URL": saved_url}
         assert config_values["WEBHOOK_ENABLED"] is True
         assert config_values["WEBHOOK_PROVIDER"] == "ntfy"
         post.assert_not_called()
