@@ -28,7 +28,7 @@ def test_dockerfile_runtime_contract():
 # Verifies the Docker build context excludes secret-bearing and development artifacts
 def test_dockerignore_excludes_secrets_and_local_artifacts():
     dockerignore = read_asset(".dockerignore").splitlines()
-    required = {".git", ".github", ".env", ".env*", "*.conf", "local/", "tests/", "debug/", "assets/", "__pycache__/", "*.log", "dist/", "*.egg-info/"}
+    required = {".git", ".github", ".env", ".env*", "*.conf", "local/", "tests/", "debug/", "assets/", "docs/", "site/", "mkdocs.yml", "__pycache__/", "*.log", "dist/", "*.egg-info/"}
     assert required.issubset(set(dockerignore))
 
 
@@ -94,24 +94,38 @@ def test_reusable_test_workflow_has_container_gate():
     assert "docker push" not in workflow
 
 
-# Verifies the README states the default container host playback limitation
-def test_readme_documents_default_container_playback_limitation():
+# Verifies the usage guide states the default container host playback limitation
+def test_usage_docs_describe_default_container_playback_limitation():
+    usage = read_asset("docs/usage.md")
+    assert "Host Spotify auto-play is unavailable by default inside a container" in usage
+    assert "TRACK_SONGS" in usage
+    assert "--track-in-spotify" in usage
+
+
+# Verifies the usage and configuration guides cover portable mounts and safe dotenv copying
+def test_docs_describe_portable_mounts_and_safe_dotenv_copy():
+    usage = read_asset("docs/usage.md")
+    configuration = read_asset("docs/configuration.md")
+    assert '-v "$PWD:/data:z"' in usage
+    assert "test -e .env || cp .env.example .env" in configuration
+
+
+# Verifies webhook guidance targets the configuration page and its stable anchor
+def test_webhook_setup_anchor_is_consistent():
     readme = read_asset("README.md")
-    assert "Host Spotify auto-play is unavailable by default inside a container" in readme
-    assert "TRACK_SONGS" in readme
-    assert "--track-in-spotify" in readme
-
-
-# Verifies Docker guidance labels data mounts and protects an existing dotenv file
-def test_readme_documents_portable_mounts_and_safe_dotenv_copy():
-    readme = read_asset("README.md")
-    assert '-v "$PWD:/data:z"' in readme
-    assert "test -e .env || cp .env.example .env" in readme
-
-
-# Verifies the generic webhook setup links target an existing README anchor
-def test_readme_webhook_setup_anchor_is_consistent():
-    readme = read_asset("README.md")
-    assert '<a id="webhook-settings"></a>' in readme
-    assert "](#webhook-settings)" in readme
+    configuration = read_asset("docs/configuration.md")
+    assert '<a id="webhook-settings"></a>' in configuration
+    assert "https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings" in readme
     assert "discord-webhook-notifications" not in readme
+
+
+# Verifies the MkDocs navigation and GitHub Pages deployment contract
+def test_documentation_site_contract():
+    mkdocs = read_asset("mkdocs.yml")
+    workflow = read_asset(".github/workflows/docs.yml")
+    assert "site_url: https://misiektoja.github.io/spotify_monitor/" in mkdocs
+    for page in ("index.md", "installation.md", "quick-start.md", "configuration.md", "usage.md", "troubleshooting.md", "debugging.md", "testing.md", "about.md"):
+        assert f": {page}" in mkdocs
+        assert (PROJECT_ROOT / "docs" / page).is_file()
+    assert 'workflows: ["Publish to PyPI"]' in workflow
+    assert "mkdocs gh-deploy --force --strict" in workflow
