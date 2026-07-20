@@ -88,6 +88,7 @@ def test_report_markers_and_sections(monkeypatch):
         assert section in rendered
     assert "[PASS]" in rendered
     assert "0 failure(s)" in rendered
+    assert "run only after approval" in rendered
     assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
 
 
@@ -131,6 +132,79 @@ def test_any_failure_returns_nonzero(monkeypatch):
     report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "FAIL", "bad config", advice=advice)])
     monkeypatch.setattr(monitor, "build_doctor_report", lambda *args, **kwargs: report)
     assert monitor.run_doctor() != 0
+
+
+# Verifies interactive doctor delivery tests require separate default-no approvals
+def test_doctor_delivery_tests_can_be_declined_independently(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded"), monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid")])
+    consent = Mock(side_effect=[False, False])
+    email = Mock(side_effect=AssertionError("email sent without approval"))
+    webhook = Mock(side_effect=AssertionError("webhook sent without approval"))
+    stream = TTYBuffer()
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", consent)
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", webhook)
+    assert monitor._doctor_offer_notification_tests(report) == []
+    assert consent.call_count == 2
+    email.assert_not_called()
+    webhook.assert_not_called()
+    output = stream.getvalue()
+    assert "[SKIP] Test email was not sent" in output
+    assert "[SKIP] Test webhook was not sent" in output
+
+
+# Verifies an empty doctor delivery answer defaults safely to no
+def test_doctor_delivery_consent_defaults_to_no(monkeypatch):
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: (prompts.append(prompt) or ""))
+    assert monitor._doctor_ask_yes_no("Send one test") is False
+    assert prompts == ["Send one test [y/N]: "]
+
+
+# Verifies separately approved doctor tests deliver one email and one webhook
+def test_doctor_delivery_tests_send_approved_messages(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded"), monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid")])
+    consent = Mock(side_effect=[True, True])
+    email = Mock(return_value=0)
+    webhook = Mock(return_value=0)
+    stream = TTYBuffer()
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", consent)
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", webhook)
+    results = monitor._doctor_offer_notification_tests(report)
+    assert [check.status for check in results] == ["PASS", "PASS"]
+    email.assert_called_once_with("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5)
+    webhook.assert_called_once_with("Spotify Monitor doctor test", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
+    assert "Delivery test summary: 0 failure(s)" in stream.getvalue()
+
+
+# Verifies noninteractive doctor runs never offer or send delivery tests
+def test_noninteractive_doctor_never_offers_delivery_tests(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded"), monitor.make_doctor_check("Notifications", "PASS", "Webhook URL and alert choices look valid")])
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", Mock(isatty=lambda: False))
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", Mock(side_effect=AssertionError("consent prompt attempted")))
+    monkeypatch.setattr(monitor, "send_email", Mock(side_effect=AssertionError("email attempted")))
+    monkeypatch.setattr(monitor, "send_webhook", Mock(side_effect=AssertionError("webhook attempted")))
+    assert monitor._doctor_offer_notification_tests(report) == []
+
+
+# Verifies an approved delivery failure makes the doctor command fail
+def test_doctor_returns_nonzero_after_approved_delivery_failure(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", "SMTP connection and login succeeded")])
+    stream = TTYBuffer()
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "build_doctor_report", lambda *args, **kwargs: report)
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "send_email", Mock(return_value=1))
+    assert monitor.run_doctor() == 1
+    assert "[FAIL] Doctor test email delivery failed" in stream.getvalue()
 
 
 # Verifies independent notification checks continue after authentication failure
@@ -409,10 +483,10 @@ class FakeSMTP:
     def quit(self):
         self.quit_calls += 1
 
-    # Fails if the doctor ever attempts to send mail
+    # Fails if the passive doctor check attempts to send mail
     def sendmail(self, *args):
         self.sendmail_calls += 1
-        raise AssertionError("doctor must not send email")
+        raise AssertionError("passive doctor check must not send email")
 
 
 # Configures complete enabled SMTP settings
