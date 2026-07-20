@@ -54,7 +54,7 @@ The prompt does not echo `sp_dc`. Spotify validation completes before the existi
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.
 
-Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it can check your email login but it still sends no alerts.
+Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it first performs passive checks. It then offers separate default-No prompts for one real test email and one real webhook notification when those channels are ready.
 
 If the wizard does not persist the target, `docker compose up` cannot supply it. Use the direct command printed by setup, which follows this form:
 
