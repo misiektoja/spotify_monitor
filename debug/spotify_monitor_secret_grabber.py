@@ -4,7 +4,7 @@ Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
 v1.3
 
 Automatic extractor for secret keys used for TOTP generation in Spotify Web Player JavaScript bundles
-https://github.com/misiektoja/spotify_monitor#debugging-tools
+https://misiektoja.github.io/spotify_monitor/debugging/
 
 Python pip3 requirements:
 
