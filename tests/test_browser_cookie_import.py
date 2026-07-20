@@ -131,6 +131,18 @@ def test_firefox_modern_schema_selects_newest_nonexpired_cookie(tmp_path):
     assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "current-new"
 
 
+# Verifies immutable SQLite access reads a Firefox database held under an exclusive browser-style lock
+def test_firefox_immutable_access_bypasses_exclusive_lock(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "locked-cookie", 5000, 10)])
+
+    with sqlite3.connect(cookie_file) as locking_connection:
+        locking_connection.execute("PRAGMA locking_mode=EXCLUSIVE")
+        locking_connection.execute("BEGIN EXCLUSIVE")
+
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-cookie"
+
+
 # Verifies reduced Firefox schemas using baseDomain remain supported
 def test_firefox_reduced_schema_is_supported(tmp_path):
     cookie_file = tmp_path / "cookies.sqlite"
