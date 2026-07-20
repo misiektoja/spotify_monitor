@@ -21,35 +21,6 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 
 VERSION = "3.0"
 
-PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
-QUICK_START_GUIDE_URL = PROJECT_URL + "#quick-start"
-INSTALLATION_GUIDE_URL = PROJECT_URL + "#installation"
-CONFIG_GUIDE_URL = PROJECT_URL + "#configuration"
-COOKIE_GUIDE_URL = PROJECT_URL + "#spotify-sp_dc-cookie"
-CLIENT_GUIDE_URL = PROJECT_URL + "#spotify-desktop-client"
-TARGET_GUIDE_URL = PROJECT_URL + "#how-to-get-a-friends-user-uri-id"
-FOLLOWING_GUIDE_URL = PROJECT_URL + "#following-the-monitored-user"
-SMTP_GUIDE_URL = PROJECT_URL + "#smtp-settings"
-WEBHOOK_GUIDE_URL = PROJECT_URL + "#webhook-settings"
-SECRETS_GUIDE_URL = PROJECT_URL + "#storing-secrets"
-INTERVALS_GUIDE_URL = PROJECT_URL + "#check-intervals"
-DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
-OAUTH_GUIDE_URL = PROJECT_URL + "#spotify-oauth-app"
-SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
-COOKIE_IMPORT_FIX = f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: spotify_monitor --import-browser-cookie --browser firefox"
-CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
-
-STARTUP_BANNER = r""" .---------------.    ____              _   _  __
-|  |||  |  ||||  |   / ___| _ __   ___ | |_(_)/ _|_   _
-|  ||| ||| ||||| |   \___ \| '_ \ / _ \| __| | |_| | | |
-|  || |||||| ||| |    ___) | |_) | (_) | |_| |  _| |_| |
-|   |  ||||   |  |   |____/| .__/ \___/ \__|_|_|  \__, |
- '---------------'         |_|                    |___/
-                      __  __             _ _
-                     |  \/  | ___  _ __ (_) |_ ___  _ __
-                     | |\/| |/ _ \| '_ \| | __/ _ \| '__|
-                     | |  | | (_) | | | | | || (_) | |
-                     |_|  |_|\___/|_| |_|_|\__\___/|_|"""
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -763,6 +734,36 @@ CLI_CONFIG_PATH = None
 # to solve the issue: 'SyntaxError: f-string expression part cannot include a backslash'
 nl_ch = "\n"
 
+PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
+QUICK_START_GUIDE_URL = PROJECT_URL + "#quick-start"
+INSTALLATION_GUIDE_URL = PROJECT_URL + "#installation"
+CONFIG_GUIDE_URL = PROJECT_URL + "#configuration"
+COOKIE_GUIDE_URL = PROJECT_URL + "#spotify-sp_dc-cookie"
+CLIENT_GUIDE_URL = PROJECT_URL + "#spotify-desktop-client"
+TARGET_GUIDE_URL = PROJECT_URL + "#how-to-get-a-friends-user-uri-id"
+FOLLOWING_GUIDE_URL = PROJECT_URL + "#following-the-monitored-user"
+SMTP_GUIDE_URL = PROJECT_URL + "#smtp-settings"
+WEBHOOK_GUIDE_URL = PROJECT_URL + "#webhook-settings"
+SECRETS_GUIDE_URL = PROJECT_URL + "#storing-secrets"
+INTERVALS_GUIDE_URL = PROJECT_URL + "#check-intervals"
+DOCTOR_GUIDE_URL = PROJECT_URL + "#doctor-preflight"
+OAUTH_GUIDE_URL = PROJECT_URL + "#spotify-oauth-app"
+SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
+COOKIE_IMPORT_FIX = f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: spotify_monitor --import-browser-cookie --browser firefox"
+CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
+
+STARTUP_BANNER = r"""
+ .---------------.    ____              _   _  __
+|  |||  |  ||||  |   / ___| _ __   ___ | |_(_)/ _|_   _
+|  ||| ||| ||||| |   \___ \| '_ \ / _ \| __| | |_| | | |
+|  || |||||| ||| |    ___) | |_) | (_) | |_| |  _| |_| |
+|   |  ||||   |  |   |____/| .__/ \___/ \__|_|_|  \__, |
+ '---------------'         |_|                    |___/
+                      __  __             _ _
+                     |  \/  | ___  _ __ (_) |_ ___  _ __
+                     | |\/| |/ _ \| '_ \| | __/ _ \| '__|
+                     | |  | | (_) | | | | | || (_) | |
+                     |_|  |_|\___/|_| |_|_|\__\___/|_|"""
 
 import sys
 
