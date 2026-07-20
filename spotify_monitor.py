@@ -1572,7 +1572,7 @@ def read_firefox_sp_dc(cookie_file, now=None):
         raise BrowserCookieImportError(f"Firefox cookie database '{cookie_path}' was not found. Pass a valid cookies.sqlite path with --cookie-file.")
 
     try:
-        with sqlite3.connect(cookie_path.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+        with sqlite3.connect(cookie_path.resolve().as_uri() + "?immutable=1", uri=True) as connection:
             columns = connection.execute("PRAGMA table_info(moz_cookies)").fetchall()
             column_names = {str(row[1]).lower(): str(row[1]) for row in columns}
             if "name" not in column_names or "value" not in column_names:
