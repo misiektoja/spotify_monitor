@@ -24,11 +24,11 @@ def make_temp_directory():
 
 
 # Runs an isolated CLI scenario with real network access blocked
-def run_cli(arguments, runtime_setup=""):
+def run_cli(arguments, runtime_setup="", cwd=PROJECT_ROOT):
     source = f"module = runpy.run_path({str(CLI_PATH)!r}, run_name='spotify_monitor_phase1_test'); runtime = module['main'].__globals__; runtime['sys'].argv = {[str(CLI_PATH), *arguments]!r}; runtime['CLEAR_SCREEN'] = False; runtime['signal'].signal = lambda *args, **kwargs: None; {runtime_setup} module['main']()"
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, capture_output=True, text=True, env=environment, timeout=30, check=False)
+    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=cwd, capture_output=True, text=True, env=environment, timeout=30, check=False)
 
 
 # Verifies all accepted target forms normalize to one Spotify user ID
@@ -96,6 +96,19 @@ def test_config_only_monitoring_uses_normalized_target_and_suffix():
     assert result.returncode == 0, result.stderr
     assert "MONITOR_TARGET=config.user" in result.stdout
     assert "FILE_SUFFIX=config.user" in result.stdout
+
+
+# Verifies no-argument startup honors a target persisted in the discovered default config
+def test_no_argument_monitoring_uses_persisted_default_target():
+    with make_temp_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "persisted.user"\nSP_DC_COOKIE = "test-cookie"\nDOTENV_FILE = "none"\nDISABLE_LOGGING = True\n', encoding="utf-8")
+        setup = "runtime['check_internet'] = lambda: True; runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'MONITOR_TARGET={user_id}');"
+        result = run_cli([], setup, cwd=directory)
+    assert result.returncode == 0, result.stderr
+    assert "MONITOR_TARGET=persisted.user" in result.stdout
+    assert "Run the guided setup wizard now?" not in result.stdout
 
 
 # Verifies invalid configured targets fail only when monitoring needs a target
