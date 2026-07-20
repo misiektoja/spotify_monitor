@@ -3,7 +3,7 @@
 <a id="doctor-preflight"></a>
 ## Doctor Preflight
 
-Before starting a long monitoring run, use the read-only preflight command:
+Before starting a long monitoring run, use the doctor preflight command:
 
 ```sh
 spotify_monitor --doctor
@@ -19,9 +19,11 @@ The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers across these sections:
 * Notifications
 * Summary
 
-The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. If email alerts are enabled it can check your email login but it never sends an email. If webhook alerts are enabled it checks the saved link and your alert choices without sending a webhook. It does not create logs, CSV files, flag files, OAuth caches or update config and dotenv files.
+The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.
 
-Warnings do not make the command fail. The doctor exits nonzero only when at least one check has `[FAIL]`. You can run an authentication-only check without a target or verify one specific account:
+In an interactive terminal, each notification channel that passes its passive checks gets a separate optional delivery prompt. Both prompts default to No. Approving the email prompt delivers one real test email. Approving the webhook prompt publishes one real Discord or ntfy notification. Declining either prompt sends nothing. Noninteractive doctor runs never offer or send delivery tests.
+
+Warnings do not make the command fail. The doctor exits nonzero when at least one passive check or approved delivery test fails. You can run an authentication-only check without a target or verify one specific account:
 
 ```sh
 spotify_monitor --doctor
