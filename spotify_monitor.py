@@ -5938,10 +5938,11 @@ def _wizard_welcome() -> None:
     method = _wizard_install_method()
     prefix = _wizard_cmd_prefix(method)
     interactive = sys.stdin.isatty()
-    _wizard_print_command("Quickest start (already configured):", f"{prefix} <spotify_user_id>")
+    print("For <spotify_target>, use a Spotify user ID or complete profile URL.\n")
+    _wizard_print_command("Quickest start (already configured):", f"{prefix} <spotify_target>")
     setup_suffix = "   (or just answer Y below)" if interactive else ""
     _wizard_print_command("Easiest start (guided setup wizard):", f"{prefix} --setup", setup_suffix)
-    _wizard_print_command("Check setup before monitoring:", f"{prefix} --doctor <spotify_user_id>")
+    _wizard_print_command("Check setup before monitoring:", f"{prefix} --doctor <spotify_target>")
     print(f"Full options: {prefix} --help")
     print(f"\nGuide:        {QUICK_START_GUIDE_URL}\n")
     if interactive and _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
