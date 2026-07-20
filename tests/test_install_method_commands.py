@@ -116,11 +116,12 @@ def test_interactive_welcome_declines_setup(monkeypatch, capsys):
     monitor._wizard_welcome()
     output = capsys.readouterr().out
     assert "Welcome to Spotify Monitor" not in output
-    assert "Quickest start (already configured):\n    spotify_monitor <spotify_user_id>\n" in output
+    assert "For <spotify_target>, use a Spotify user ID or complete profile URL.\n" in output
+    assert "Quickest start (already configured):\n    spotify_monitor <spotify_target>\n" in output
     assert "Easiest start (guided setup wizard):\n    spotify_monitor --setup   (or just answer Y below)\n" in output
-    assert "Check setup before monitoring:\n    spotify_monitor --doctor <spotify_user_id>\n" in output
+    assert "Check setup before monitoring:\n    spotify_monitor --doctor <spotify_target>\n" in output
     assert "spotify_monitor --setup" in output
-    assert "spotify_monitor <spotify_user_id>" in output
+    assert "spotify_monitor <spotify_target>" in output
     assert "spotify_monitor --doctor" in output
     assert f"Guide:        {monitor.QUICK_START_GUIDE_URL}" in output
 
