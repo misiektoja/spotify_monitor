@@ -86,6 +86,8 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
 
+> **Spotify OAuth app note:** Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This applies to old and new apps. OAuth app credentials are optional because Spotify Monitor falls back automatically to the web-player metadata backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
 </p>
