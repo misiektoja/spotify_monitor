@@ -16,6 +16,7 @@ import spotify_monitor as monitor
 
 TRACK_URI = "spotify:track:4N1MFKjziFHH4IS3RYYUrU"
 PLAYLIST_URI = "spotify:playlist:1yjvJQztEdo7pKTpIsIdOa"
+OTHER_PLAYLIST_URI = "spotify:playlist:3cEYpjA9oz9GiPac4AsH4n"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import builtins, requests, runpy, socket, sys; _real_import = builtins.__import__; builtins.__import__ = lambda name, *args, **kwargs: (_ for _ in ()).throw(ModuleNotFoundError('blocked Spotipy import')) if name == 'spotipy' or name.startswith('spotipy.') else _real_import(name, *args, **kwargs); requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
@@ -99,6 +100,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_WEB_TRACK_BACKEND_PREFERRED = False
         monitor.SP_WEB_PLAYLIST_API_FAILURES = 0
         monitor.SP_WEB_TRACK_API_FAILURES = 0
+        monitor.SP_WEB_PLAYLIST_URIS.clear()
         monitor.SP_CACHED_OAUTH_APP_TOKEN = None
         monitor.SPOTIPY_AVAILABLE = None
         monitor.SPOTIPY_IMPORT_WARNING_SHOWN = False
@@ -195,6 +197,31 @@ class SpotifyWebBackendTests(unittest.TestCase):
         credentials_factory.assert_called_once()
         auth_manager.get_access_token.assert_called_once_with(as_dict=False)
 
+    # Verifies memory-only OAuth mode ignores a configured cache file
+    def test_oauth_memory_mode_never_constructs_file_cache(self):
+        auth_manager = Mock()
+        auth_manager.get_access_token.return_value = "legacy-token"
+        credentials_factory = Mock(return_value=auth_manager)
+        file_cache_factory = Mock()
+        memory_cache = Mock()
+        memory_cache_factory = Mock(return_value=memory_cache)
+        spotipy_module = types.ModuleType("spotipy")
+        oauth_module = types.ModuleType("spotipy.oauth2")
+        cache_module = types.ModuleType("spotipy.cache_handler")
+        setattr(oauth_module, "SpotifyClientCredentials", credentials_factory)
+        setattr(cache_module, "CacheFileHandler", file_cache_factory)
+        setattr(cache_module, "MemoryCacheHandler", memory_cache_factory)
+        setattr(spotipy_module, "oauth2", oauth_module)
+        setattr(spotipy_module, "cache_handler", cache_module)
+        modules = {"spotipy": spotipy_module, "spotipy.oauth2": oauth_module, "spotipy.cache_handler": cache_module}
+        with patch.object(monitor, "SP_APP_TOKENS_FILE", ".spotify-monitor-oauth-app.json"), patch.dict(sys.modules, modules):
+            result = monitor.spotify_get_access_token_from_oauth_app("legacy-client", "legacy-secret", use_file_cache=False)
+        self.assertEqual(result, "legacy-token")
+        file_cache_factory.assert_not_called()
+        memory_cache_factory.assert_called_once_with()
+        self.assertIs(credentials_factory.call_args.kwargs["cache_handler"], memory_cache)
+
+
     # Verifies help exits successfully without network access or Spotipy
     def test_help_is_offline(self):
         result = run_cli("--help")
@@ -261,6 +288,50 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(web.call_count, 2)
         self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
         self.assertEqual(output.getvalue().count("Playlist metadata switched to the web-player backend"), 1)
+
+    # Verifies a curated-playlist 404 uses web metadata only for that URI and preserves legacy access elsewhere
+    def test_playlist_404_detects_curated_owner_and_caches_only_that_uri(self):
+        curated_fixture = web_playlist_fixture()
+        curated_fixture["ownerV2"]["data"] = {"uri": "spotify:user:spotify", "name": "Spotify", "username": "spotify"}
+        normalized = monitor.spotify_normalize_web_playlist(curated_fixture)
+        legacy_image = "https://i.scdn.co/image/legacy.jpg"
+        with patch.object(monitor, "_spotify_get_playlist_owner_and_image_api", side_effect=[make_http_error(404), ("Agnes Hali", legacy_image)]) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            first = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
+            second = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
+            third = monitor.spotify_get_playlist_owner_and_image("legacy-token", OTHER_PLAYLIST_URI, oauth_app=True)
+        self.assertEqual(first, ("Spotify", "https://i.scdn.co/image/large.jpg"))
+        self.assertEqual(second, first)
+        self.assertEqual(third, ("Agnes Hali", legacy_image))
+        self.assertEqual(legacy.call_args_list, [call("legacy-token", PLAYLIST_URI, True), call("legacy-token", OTHER_PLAYLIST_URI, True)])
+        self.assertEqual(web.call_args_list, [call(PLAYLIST_URI), call(PLAYLIST_URI)])
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_URIS, {PLAYLIST_URI})
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_API_FAILURES, 0)
+        self.assertFalse(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
+
+    # Verifies a normal-playlist 404 identifies an app-wide legacy restriction and latches the web backend
+    def test_playlist_404_for_normal_owner_latches_web_backend(self):
+        normalized = monitor.spotify_normalize_web_playlist(web_playlist_fixture())
+        with patch.object(monitor, "_spotify_get_playlist_owner_and_image_api", side_effect=make_http_error(404)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", return_value=normalized) as web, redirect_stdout(io.StringIO()):
+            first = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
+            second = monitor.spotify_get_playlist_owner_and_image("legacy-token", OTHER_PLAYLIST_URI, oauth_app=True)
+        self.assertEqual(first, ("Agnes Hali", "https://i.scdn.co/image/large.jpg"))
+        self.assertEqual(second, first)
+        legacy.assert_called_once_with("legacy-token", PLAYLIST_URI, True)
+        self.assertEqual(web.call_args_list, [call(PLAYLIST_URI), call(OTHER_PLAYLIST_URI)])
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_URIS, {PLAYLIST_URI})
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_API_FAILURES, 1)
+        self.assertTrue(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
+
+    # Verifies an unresolved playlist 404 remains unclassified and reports both backend failures
+    def test_playlist_404_with_web_failure_does_not_cache_or_latch(self):
+        with patch.object(monitor, "_spotify_get_playlist_owner_and_image_api", side_effect=make_http_error(404)) as legacy, patch.object(monitor, "spotify_get_playlist_info_web", side_effect=RuntimeError("web unavailable")) as web, redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, "Both Spotify playlist metadata backends failed"):
+                monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
+        legacy.assert_called_once_with("legacy-token", PLAYLIST_URI, True)
+        web.assert_called_once_with(PLAYLIST_URI)
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_URIS, set())
+        self.assertEqual(monitor.SP_WEB_PLAYLIST_API_FAILURES, 0)
+        self.assertFalse(monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED)
 
     # Verifies a single 404 falls back per call to Pathfinder without latching the whole backend
     def test_track_404_falls_back_per_call_without_latching(self):
