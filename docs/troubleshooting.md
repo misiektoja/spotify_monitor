@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Examples on this page use the PyPI command `spotify_monitor`. For a manual script or container, use the matching prefix under [Command Format by Installation Method](usage.md#command-format). The setup wizard and `--help` print commands for the detected installation.
+
 <a id="doctor-preflight"></a>
 ## Doctor Preflight
 
