@@ -147,7 +147,7 @@ def test_installation_docs_explain_optional_extra_contents():
 def test_landing_pages_do_not_promote_optional_oauth_requirements():
     for relative_path in ("README.md", "docs/index.md"):
         landing_page = read_asset(relative_path)
-        assert "No Spotify Developer App Required" in landing_page
+        assert "Cookie or Desktop Client access with automatic web-player metadata fallback and optional legacy OAuth app support" in landing_page
         assert "Spotify OAuth app note" not in landing_page
     configuration = read_asset("docs/configuration.md")
     assert '<a id="spotify-oauth-app"></a>' in configuration
