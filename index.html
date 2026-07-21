@@ -772,6 +772,10 @@
 </p>
 
 <p>Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.</p>
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
+</p>
+
 <p><a id="-quick-install-run"></a></p>
 <h3 id="quick-install-run">🚀 Quick Install &amp; Run<a class="headerlink" href="#quick-install-run" title="Permanent link">&para;</a></h3>
 <p>Python from PyPI</p>
@@ -797,10 +801,6 @@
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor<span class="w"> </span>--setup
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf
 </code></pre></div>
-<p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
-</p>
-
 <p><a id="features"></a></p>
 <h2 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h2>
 <h3 id="real-time-tracking">🔍 Real-time Tracking<a class="headerlink" href="#real-time-tracking" title="Permanent link">&para;</a></h3>
@@ -836,7 +836,7 @@
 <li><strong>Signal Control</strong>: Manage the running script via system signals (macOS/Linux).</li>
 </ul>
 <p align="center">
-   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
 </p>
 
 <p>🎵 For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, check out <a href="https://github.com/misiektoja/lastfm_monitor">lastfm_monitor</a> - it is much easier to set up, simply ask your friend to connect Last.fm to Spotify (Last.fm Settings → Applications → Connect Spotify Scrobbling) and you're ready to go!</p>
