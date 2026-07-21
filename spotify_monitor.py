@@ -1016,8 +1016,13 @@ def cookie_auth_recovery_fix() -> str:
     return f"Run the hidden private entry command: {private_command}\n  Advanced Firefox alternative with a read-only host profile mount: {firefox_command}"
 
 
+# Builds a directly usable Spotify profile URL from a normalized user ID
+def spotify_user_profile_url(user_id: str) -> str:
+    return f"https://open.spotify.com/user/{quote(user_id, safe='')}"
+
+
 # Classifies a user-facing failure using typed errors, HTTP status and explicit context
-def classify_recovery_error(error: Any = None, context: str = "runtime", detail: Any = "") -> RecoveryAdvice:
+def classify_recovery_error(error: Any = None, context: str = "runtime", detail: Any = "", target_user_id: Optional[str] = None) -> RecoveryAdvice:
     if isinstance(error, RecoveryError):
         return error.advice
     raw_message = str(detail or error or "").lower()
@@ -1071,7 +1076,10 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "target_invalid":
         return make_recovery_advice("target.invalid", "Invalid Spotify target", recovery_fix_with_guide("Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", TARGET_GUIDE_URL), False, safe_detail)
     if context == "target_not_visible":
-        return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide("Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity", FOLLOWING_GUIDE_URL), False, safe_detail)
+        fix = "Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity"
+        if target_user_id:
+            fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\n  Profile: {spotify_user_profile_url(target_user_id)}\n  The target also needs to share listening activity"
+        return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
         return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
     if context == "file_write":
@@ -4993,7 +5001,7 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         return [make_doctor_check("Target", "FAIL", "The buddy-list response could not be inspected", advice.detail, advice)]
     if found:
         return [make_doctor_check("Target", "PASS", f"Target '{target_id}' can be monitored", "The target is visible in the authenticated buddy list")]
-    advice = classify_recovery_error(context="target_not_visible", detail=f"Target '{target_id}' was absent from the authenticated buddy list")
+    advice = classify_recovery_error(context="target_not_visible", detail=f"Target '{target_id}' was absent from the authenticated buddy list", target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
 
 
@@ -6608,13 +6616,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                            not_visible_advice = classify_recovery_error(context="target_not_visible")
+                            not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                             if recovery_hint_tracker.should_render(not_visible_advice):
                                 print(f"  To fix: {not_visible_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                profile_url = spotify_user_profile_url(user_uri_id)
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nProfile: {profile_url}\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {user_uri_id} (<b>{sp_username}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Profile: <a href=\"{escape(profile_url, quote=True)}\">{escape(profile_url)}</a><br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
@@ -7104,7 +7113,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"  To fix: {not_found_advice.fix}")
                 else:
                     print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                    not_visible_advice = classify_recovery_error(context="target_not_visible")
+                    not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                     if recovery_hint_tracker.should_render(not_visible_advice):
                         print(f"  To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
