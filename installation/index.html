@@ -955,19 +955,25 @@
 <p><a id="requirements"></a></p>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
 <p>Choose one runtime path:</p>
-<p><strong>Python path</strong>:
-  * <a href="https://www.python.org/downloads/">Python</a> 3.9 or higher
-  * Core libraries: <code>requests</code>, <code>python-dateutil</code>, <code>urllib3</code>, <code>pyotp</code>, <code>python-dotenv</code>, <code>wcwidth</code>, <code>Pillow</code>
-  * Optional legacy OAuth library: <code>spotipy</code>
-  * Optional Chromium cookie import library: <code>pycookiecheat</code></p>
-<p><strong>Container path</strong> (Python is not required on the host):
-  * Any Docker-compatible runtime such as:
-    * <a href="https://docs.docker.com/get-started/get-docker/">Docker Desktop</a> (macOS, Windows, Linux)
-    * <a href="https://docs.docker.com/engine/install/">Docker Engine</a> (Linux)
-    * <a href="https://colima.run/docs/installation/">Colima</a> with Docker CLI (macOS)
-    * <a href="https://docs.orbstack.dev/quick-start">OrbStack</a> (macOS)
-    * <a href="https://docs.rancherdesktop.io/getting-started/installation/">Rancher Desktop</a> with Moby or Docker CLI enabled (macOS, Windows, Linux)
-  * The Docker Compose v2 plugin if you choose Docker Compose</p>
+<p><strong>Python path</strong>:</p>
+<ul>
+<li><a href="https://www.python.org/downloads/">Python</a> 3.9 or higher</li>
+<li>Core libraries: <code>requests</code>, <code>python-dateutil</code>, <code>urllib3</code>, <code>pyotp</code>, <code>python-dotenv</code>, <code>wcwidth</code>, <code>Pillow</code></li>
+<li>Optional legacy OAuth library: <code>spotipy</code></li>
+<li>Optional Chromium cookie import library: <code>pycookiecheat</code></li>
+</ul>
+<p><strong>Container path</strong> (Python is not required on the host):</p>
+<ul>
+<li>Any Docker-compatible runtime such as:<ul>
+<li><a href="https://docs.docker.com/get-started/get-docker/">Docker Desktop</a> (macOS, Windows, Linux)</li>
+<li><a href="https://docs.docker.com/engine/install/">Docker Engine</a> (Linux)</li>
+<li><a href="https://colima.run/docs/installation/">Colima</a> with Docker CLI (macOS)</li>
+<li><a href="https://docs.orbstack.dev/quick-start">OrbStack</a> (macOS)</li>
+<li><a href="https://docs.rancherdesktop.io/getting-started/installation/">Rancher Desktop</a> with Moby or Docker CLI enabled (macOS, Windows, Linux)</li>
+</ul>
+</li>
+<li>The Docker Compose v2 plugin if you choose Docker Compose</li>
+</ul>
 <p>The published image already contains Python and all core libraries. You do not need a local Python installation for Docker.</p>
 <p>Container commands use the Docker-compatible <code>docker</code> CLI. Check the runtime with <code>docker --version</code>. If you choose Compose, check the plugin with <code>docker compose version</code>.</p>
 <p>Tested on:</p>
