@@ -36,7 +36,7 @@ The tool uses a **hybrid authentication approach** with automatic metadata backe
 
 For friend activity monitoring, you need to configure either the `cookie` or `client` token source method.
 
-Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403.
+Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.
 
 > **OAuth app guidance:** Spotify restricted new Development Mode apps created on or after February 11, 2026. Some older apps have been observed to retain the legacy endpoint access used by this tool, but creation date alone does not guarantee compatibility. Configure OAuth app credentials only if you already have an app which you have verified still works. If it returns HTTP 403 then remove the credentials and use the automatic web backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
