@@ -118,6 +118,17 @@ def test_doctor_interactive_progress(monkeypatch):
     assert "0 failure(s)" in output
 
 
+# Verifies doctor progress stops at the visible message instead of padding to a fixed terminal column
+def test_doctor_progress_uses_visible_message_width(monkeypatch):
+    stream = TTYBuffer()
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monitor._doctor_progress("authentication")
+    line = "* Checking authentication ..."
+    assert stream.getvalue() == "\r" + line
+    monitor._doctor_progress_clear()
+    assert stream.getvalue() == "\r" + line + "\r" + (" " * len(line)) + "\r"
+
+
 # Verifies warnings alone preserve a zero exit code
 def test_warnings_without_failures_return_success(monkeypatch):
     advice = monitor.classify_recovery_error(context="target_missing")
