@@ -122,6 +122,17 @@ def test_installation_docs_cover_all_delivery_and_upgrade_paths():
     assert "docker build --pull --tag spotify-monitor:local ." in installation
 
 
+# Verifies manual upgrade guidance repeats linked files and direct download commands
+def test_manual_upgrade_docs_are_self_contained():
+    installation = read_asset("docs/installation.md")
+    manual_upgrade = installation.split("### Upgrade a Manual Installation", 1)[1].split("### Upgrade a Docker Compose Installation", 1)[0]
+    assert "[spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py)" in manual_upgrade
+    assert "[requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt)" in manual_upgrade
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py" in manual_upgrade
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt" in manual_upgrade
+    assert "pip install --upgrade -r requirements.txt" in manual_upgrade
+
+
 # Verifies every documented PyPI extra clearly includes the base package
 def test_installation_docs_explain_optional_extra_contents():
     installation = read_asset("docs/installation.md")
