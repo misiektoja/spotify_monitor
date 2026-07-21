@@ -84,7 +84,7 @@ def test_report_markers_and_sections(monkeypatch):
     configure_valid_doctor(monkeypatch)
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
     rendered = monitor.render_doctor_report(report)
-    for section in ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications", "Summary"):
+    for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications", "Summary"):
         assert section in rendered
     assert "[PASS]" in rendered
     assert "0 failure(s)" in rendered
@@ -410,6 +410,52 @@ def test_missing_spotipy_with_optional_credentials(monkeypatch):
     check = monitor.doctor_check_optional_oauth()[0]
     assert check.status == "WARN"
     assert "web-player" in require_advice(check).fix
+
+
+# Verifies doctor checks live legacy metadata with a memory-only OAuth token
+def test_optional_oauth_live_metadata_success_uses_no_file_cache(monkeypatch):
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_ID", "configured-id")
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_SECRET", "configured-secret")
+    monkeypatch.setattr(monitor.importlib.util, "find_spec", lambda name: object())
+    token_request = Mock(return_value="legacy-token")
+    legacy_track = Mock(return_value={"sp_track_name": "Bohemian Rhapsody"})
+    web_track = Mock()
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_oauth_app", token_request)
+    monkeypatch.setattr(monitor, "_spotify_get_track_info_api", legacy_track)
+    monkeypatch.setattr(monitor, "spotify_get_track_info_web", web_track)
+    check = monitor.doctor_check_optional_oauth()[0]
+    assert check.status == "PASS"
+    assert "access succeeded" in check.label.lower()
+    token_request.assert_called_once_with("configured-id", "configured-secret", use_file_cache=False)
+    legacy_track.assert_called_once_with("legacy-token", monitor.OAUTH_APP_VALIDATION_TRACK_URI, oauth_app=True)
+    web_track.assert_not_called()
+
+
+# Verifies doctor warns without failing when automatic web metadata fallback works
+def test_optional_oauth_live_failure_warns_when_web_fallback_succeeds(monkeypatch):
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_ID", "configured-id")
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_SECRET", "configured-secret")
+    monkeypatch.setattr(monitor.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_oauth_app", Mock(return_value="legacy-token"))
+    monkeypatch.setattr(monitor, "_spotify_get_track_info_api", Mock(side_effect=RuntimeError("legacy restricted")))
+    web_track = Mock(return_value={"sp_track_name": "Bohemian Rhapsody"})
+    monkeypatch.setattr(monitor, "spotify_get_track_info_web", web_track)
+    check = monitor.doctor_check_optional_oauth()[0]
+    assert check.status == "WARN"
+    assert "fallback succeeded" in check.detail.lower()
+    web_track.assert_called_once_with(monitor.OAUTH_APP_VALIDATION_TRACK_URI)
+
+
+# Verifies doctor fails only when both live metadata backends fail
+def test_optional_oauth_and_web_metadata_fail_together(monkeypatch):
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_ID", "configured-id")
+    monkeypatch.setattr(monitor, "SP_APP_CLIENT_SECRET", "configured-secret")
+    monkeypatch.setattr(monitor.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_oauth_app", Mock(side_effect=RuntimeError("invalid client")))
+    monkeypatch.setattr(monitor, "spotify_get_track_info_web", Mock(side_effect=RuntimeError("web unavailable")))
+    check = monitor.doctor_check_optional_oauth()[0]
+    assert check.status == "FAIL"
+    assert "both spotify metadata backends" in check.label.lower()
 
 
 # Verifies no target is only a warning for auth-only preflight
