@@ -14,12 +14,13 @@ The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers across these sections:
 * Environment
 * Configuration
 * Authentication
+* Metadata
 * Connectivity
 * Target
 * Notifications
 * Summary
 
-The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.
+The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. When complete legacy OAuth credentials are configured it requests a memory-only token and checks live track metadata access. If that legacy check fails but the automatic web-player fallback succeeds the doctor reports a warning and still exits successfully. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.
 
 In an interactive terminal, each notification channel that passes its passive checks gets a separate optional delivery prompt. Both prompts default to No. Approving the email prompt delivers one real test email. Approving the webhook prompt publishes one real Discord or ntfy notification. Declining either prompt sends nothing. Noninteractive doctor runs never offer or send delivery tests.
 
