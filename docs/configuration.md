@@ -1,5 +1,7 @@
 # Configuration
 
+Examples on this page use the PyPI command `spotify_monitor`. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under [Command Format by Installation Method](usage.md#command-format). Container file paths must point into `/data`.
+
 <a id="configuration-file"></a>
 ## Configuration File
 
@@ -17,7 +19,19 @@ spotify_monitor --generate-config spotify_monitor.conf
 
 > **IMPORTANT**: On **Windows PowerShell**, using redirection (`>`) can cause the file to be encoded in UTF-16, which will lead to "null bytes" errors when running the tool. It is highly recommended to provide the filename directly as an argument to `--generate-config` to ensure UTF-8 encoding.
 
+When you provide a filename, Spotify Monitor checks that the new configuration can be loaded then saves it as UTF-8. If the file already exists, Spotify Monitor creates a timestamped backup before replacing it.
+
 Edit the `spotify_monitor.conf` file and change any desired configuration options (detailed comments are provided for each).
+
+Settings are applied in this order from lowest to highest priority:
+
+1. Built-in defaults
+2. The discovered or explicitly selected configuration file
+3. Secret environment variables
+4. Values from the selected dotenv file
+5. Command-line options
+
+The dotenv layer applies only to supported secret keys such as `SP_DC_COOKIE`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A positional target overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to make both selected files explicit. See [Storing Secrets](#storing-secrets) for dotenv discovery and supported keys.
 
 You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
 
@@ -53,6 +67,8 @@ Uses the `sp_dc` cookie to retrieve a token from the Spotify web endpoint. This 
 Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.
 
 If no method is specified, the tool defaults to the `cookie` method.
+
+Spotify Monitor generates an appropriate request user agent automatically for the selected token source. Advanced users can override it with `USER_AGENT` or `--user-agent`, but normal installations should leave it empty.
 
 **Important**: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API. That said, while I've never encountered any issues on my own accounts, I can't guarantee that Spotify won't impose restrictions in the future - you've been warned.
 
@@ -141,7 +157,7 @@ If your `sp_dc` cookie expires, the tool will notify you via the console and ema
 
 If you store the `SP_DC_COOKIE` in a dotenv file you can update its value and send a `SIGHUP` signal to reload the file with the new `sp_dc` cookie without restarting the tool. More info in [Storing Secrets](#storing-secrets) and [Signal Controls (macOS/Linux/Unix)](usage.md#signal-controls-macoslinuxunix).
 
-> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to extract the current bundle values then update those two options.
+> **NOTE:** Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the `TOTP_VERSION` and `TOTP_SECRET_CIPHER_BYTES` config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) to extract the current bundle values then update those two options.
 
 <a id="spotify-desktop-client"></a>
 ### Spotify Desktop Client
