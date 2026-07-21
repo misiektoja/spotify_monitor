@@ -38,7 +38,7 @@ For friend activity monitoring, you need to configure either the `cookie` or `cl
 
 Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.
 
-> **OAuth app guidance:** Spotify restricted new Development Mode apps created on or after February 11, 2026. Some older apps have been observed to retain the legacy endpoint access used by this tool, but creation date alone does not guarantee compatibility. Configure OAuth app credentials only if you already have an app which you have verified still works. If it returns HTTP 403 then remove the credentials and use the automatic web backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+> **OAuth app guidance:** Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This requirement applies to old and new apps, so creation date does not explain the different results in these tests. Configure OAuth app credentials only when the app owner has Premium and you have verified that its legacy metadata endpoints still work. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this live and reports a warning when web-player fallback succeeds. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
 The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.
 
@@ -196,15 +196,15 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ## Spotify OAuth App
 
-OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
+OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Spotify requires the owner of every Development Mode app to keep an active Premium subscription. Configure the credentials only when that requirement is met and the app has verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
 
-Apps created under the current Development Mode restrictions are not useful for this legacy path. Do not create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
+App creation date does not replace a live compatibility check. A Development Mode app without an active Premium subscription on its owner account will stop working until the owner resubscribes. Do not create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
 
-If you already have a working existing app:
+If you already have a working app:
 
 - Log in to [Spotify Developer dashboard](https://developer.spotify.com/dashboard)
 
-- Open the existing app which still has verified legacy endpoint access
+- Open an app owned by an account with active Spotify Premium and verified legacy endpoint access
 
 - Copy the **Client ID** and **Client Secret**
 
