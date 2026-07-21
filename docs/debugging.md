@@ -10,7 +10,7 @@ The [spotify_monitor_totp_test](https://github.com/misiektoja/spotify_monitor/bl
 Download from [here](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_totp_test.py) or:
 
 ```sh
-wget https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_totp_test.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_totp_test.py
 ```
 
 Install requirements:
@@ -50,7 +50,7 @@ The restored extractor returns v59, v60 and v61 directly from Spotify's current 
 Download from [here](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) or:
 
 ```sh
-wget https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
 ```
 
 Install requirements:
