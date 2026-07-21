@@ -322,9 +322,10 @@ def test_single_profile_is_selected_automatically(tmp_path):
 
 
 # Verifies several profiles can be selected through an interactive prompt
-def test_multiple_profiles_support_interactive_selection(tmp_path):
+def test_multiple_profiles_support_interactive_selection(tmp_path, capsys):
     selected = monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: "2")
     assert selected["name"] == "Work"
+    assert capsys.readouterr().out.startswith("\nMultiple Firefox profiles found:")
 
 
 # Verifies several profiles fail actionably in a noninteractive environment
