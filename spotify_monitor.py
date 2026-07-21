@@ -706,6 +706,9 @@ SP_WEB_TRACK_BACKEND_PREFERRED = False
 SP_WEB_PLAYLIST_API_FAILURES = 0
 SP_WEB_TRACK_API_FAILURES = 0
 
+# Remembers playlist URIs that the legacy Web API hides but the web-player backend can resolve
+SP_WEB_PLAYLIST_URIS = set()
+
 # Number of consecutive non-restricted legacy Web API failures tolerated before preferring the web backend
 METADATA_API_FAILURE_LATCH_THRESHOLD = 3
 
@@ -716,6 +719,7 @@ TOKEN_URL = "https://open.spotify.com/api/token"
 WEB_PLAYER_URL = "https://open.spotify.com/"
 WEB_PLAYER_QUERY_URL = "https://api-partner.spotify.com/pathfinder/v2/query"
 WEB_PLAYER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+OAUTH_APP_VALIDATION_TRACK_URI = "spotify:track:7tFiyTwD0nx5a1eklYtX2J"
 
 # URL of the endpoint to get server time needed to create TOTP object
 SERVER_TIME_URL = "https://open.spotify.com/"
@@ -3023,7 +3027,7 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_musi
 def check_token_validity(access_token: str, client_id: Optional[str] = None, user_agent: Optional[str] = None, oauth_app: Optional[bool] = False) -> bool:
     url1 = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
     # Use a known stable track for validation (Bohemian Rhapsody - Queen)
-    url2 = "https://api.spotify.com/v1/tracks/7tFiyTwD0nx5a1eklYtX2J"
+    url2 = "https://api.spotify.com/v1/tracks/" + OAUTH_APP_VALIDATION_TRACK_URI.rsplit(":", 1)[-1]
 
     url = url2 if oauth_app else url1
     check_mode = "oauth_app" if oauth_app else f"{TOKEN_SOURCE}_token"
@@ -3871,7 +3875,7 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 # --------------------------------------------------------
 
 # Fetches Spotify access token based on provided sp_client_id & sp_client_secret values (Client Credentials OAuth Flow)
-def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
+def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_file_cache=True):
     global SP_CACHED_OAUTH_APP_TOKEN, SPOTIPY_AVAILABLE, SPOTIPY_IMPORT_WARNING_SHOWN
 
     if not sp_client_id or not sp_client_secret:
@@ -3898,7 +3902,7 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret):
         debug_print("Using cached OAuth app access token")
         return SP_CACHED_OAUTH_APP_TOKEN
 
-    if SP_APP_TOKENS_FILE:
+    if SP_APP_TOKENS_FILE and use_file_cache:
         cache_handler = CacheFileHandler(cache_path=SP_APP_TOKENS_FILE)
     else:
         cache_handler = MemoryCacheHandler()
@@ -4426,9 +4430,7 @@ def spotify_get_error_status_code(error):
 
 # Decides whether to latch the web-player backend after a legacy Web API failure
 def spotify_should_latch_web_backend(error, consecutive_failures):
-    # A 403 signals an app-level restriction (the whole legacy path is unavailable) so latch immediately; an
-    # individual missing or restricted entity (404) must not switch the backend for every lookup, so it only
-    # contributes to the consecutive-failure threshold below
+    # A 403 signals an app-level restriction so latch immediately while caller-specific 404 handling can run first
     if spotify_get_error_status_code(error) == 403:
         return True
     return consecutive_failures >= METADATA_API_FAILURE_LATCH_THRESHOLD
@@ -4465,8 +4467,9 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
     global SP_WEB_PLAYLIST_BACKEND_PREFERRED, SP_WEB_PLAYLIST_API_FAILURES
 
     api_error = None
+    api_status = None
     api_available = bool(oauth_app and access_token) or spotify_has_oauth_app_credentials()
-    if api_available and not SP_WEB_PLAYLIST_BACKEND_PREFERRED:
+    if api_available and not SP_WEB_PLAYLIST_BACKEND_PREFERRED and playlist_uri not in SP_WEB_PLAYLIST_URIS:
         try:
             owner, playlist_image_url = _spotify_get_playlist_owner_and_image_api(access_token, playlist_uri, oauth_app)
             SP_WEB_PLAYLIST_API_FAILURES = 0
@@ -4474,19 +4477,37 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
             return owner, playlist_image_url
         except Exception as error:
             api_error = error
-            SP_WEB_PLAYLIST_API_FAILURES += 1
-            if spotify_should_latch_web_backend(error, SP_WEB_PLAYLIST_API_FAILURES):
-                SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
-                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API unavailable (failures={SP_WEB_PLAYLIST_API_FAILURES}, status={spotify_get_error_status_code(error)}), preferring the web-player backend for remaining playlists")
-                verbose_print("Playlist metadata switched to the web-player backend after legacy API failures")
-            else:
-                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API backend failed for uri={playlist_uri} (failures={SP_WEB_PLAYLIST_API_FAILURES}): {error}")
+            api_status = spotify_get_error_status_code(error)
+            if api_status != 404:
+                SP_WEB_PLAYLIST_API_FAILURES += 1
+                if spotify_should_latch_web_backend(error, SP_WEB_PLAYLIST_API_FAILURES):
+                    SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
+                    debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API unavailable (failures={SP_WEB_PLAYLIST_API_FAILURES}, status={api_status}), preferring the web-player backend for remaining playlists")
+                    verbose_print("Playlist metadata switched to the web-player backend after legacy API failures")
+                else:
+                    debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API backend failed for uri={playlist_uri} (failures={SP_WEB_PLAYLIST_API_FAILURES}): {error}")
 
     try:
         info_web = spotify_get_playlist_info_web(playlist_uri)
+        playlist_owner = info_web["sp_playlist_owner"]
         playlist_image_url = info_web.get("sp_playlist_image_url", "")
+        if api_status == 404:
+            SP_WEB_PLAYLIST_URIS.add(playlist_uri)
+            owner_name = str(playlist_owner or "")
+            owner_uri = str(info_web.get("sp_playlist_owner_uri", "") or "")
+            spotify_owned = owner_uri.casefold() == "spotify:user:spotify" or owner_name.casefold() == "spotify"
+            if spotify_owned:
+                SP_WEB_PLAYLIST_API_FAILURES = 0
+                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API hides Spotify-curated playlist uri={playlist_uri}, using the web-player backend for this playlist")
+            elif owner_name or owner_uri:
+                SP_WEB_PLAYLIST_API_FAILURES += 1
+                SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
+                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API returned 404 for non-Spotify playlist uri={playlist_uri}, preferring the web-player backend for remaining playlists")
+                verbose_print("Playlist metadata switched to the web-player backend after a legacy API restriction")
+            else:
+                debug_print(f"spotify_get_playlist_owner_and_image(): legacy Web API returned 404 for playlist uri={playlist_uri}, using the web-player backend for this playlist")
         debug_print(f"Playlist Image URL: {playlist_image_url}")
-        return info_web["sp_playlist_owner"], playlist_image_url
+        return playlist_owner, playlist_image_url
     except Exception as web_error:
         debug_print(f"spotify_get_playlist_owner_and_image(): web-player backend failed for uri={playlist_uri}: {web_error}")
         if api_error is not None:
@@ -4974,23 +4995,38 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
 
 
-# Checks optional OAuth metadata configuration without creating an OAuth cache
+# Checks optional OAuth metadata configuration and live access without creating an OAuth cache
 def doctor_check_optional_oauth() -> List[DoctorCheck]:
     client_present = not is_missing_or_placeholder(SP_APP_CLIENT_ID, ("your_spotify_app_client_id",))
     secret_present = not is_missing_or_placeholder(SP_APP_CLIENT_SECRET, ("your_spotify_app_client_secret",))
     if not client_present and not secret_present:
-        return [make_doctor_check("Authentication", "PASS", "Legacy OAuth metadata credentials are not configured", "The web-player metadata backend remains available")]
+        return [make_doctor_check("Metadata", "PASS", "Legacy OAuth metadata credentials are not configured", "The web-player metadata backend remains available")]
     if client_present != secret_present:
         advice = make_recovery_advice("secret.missing", "Legacy OAuth metadata credentials are incomplete", "Set both SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET or remove both to use the web-player backend", False)
-        return [make_doctor_check("Authentication", "WARN", advice.summary, "The web-player metadata backend remains available", advice)]
+        return [make_doctor_check("Metadata", "WARN", advice.summary, "The web-player metadata backend remains available", advice)]
     try:
         spotipy_present = importlib.util.find_spec("spotipy") is not None
     except (ImportError, ValueError):
         spotipy_present = False
     if not spotipy_present:
         advice = make_recovery_advice("dependency.missing", "Spotipy is missing for configured legacy OAuth metadata credentials", "Install spotify_monitor[legacy-oauth] or remove the optional credentials. The web-player fallback remains available", False)
-        return [make_doctor_check("Authentication", "WARN", advice.summary, advice=advice)]
-    return [make_doctor_check("Authentication", "PASS", "Optional legacy OAuth metadata configuration is complete", "No OAuth token was requested and no cache was written")]
+        return [make_doctor_check("Metadata", "WARN", advice.summary, advice=advice)]
+    try:
+        oauth_token = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, use_file_cache=False)
+        if not oauth_token:
+            raise RuntimeError("Spotify did not provide a legacy OAuth metadata token")
+        _spotify_get_track_info_api(oauth_token, OAUTH_APP_VALIDATION_TRACK_URI, oauth_app=True)
+        return [make_doctor_check("Metadata", "PASS", "Legacy OAuth metadata access succeeded", "A memory-only token and live track metadata request succeeded. No OAuth cache was written")]
+    except Exception as legacy_error:
+        try:
+            spotify_get_track_info_web(OAUTH_APP_VALIDATION_TRACK_URI)
+        except Exception as web_error:
+            detail = f"Legacy Web API: {legacy_error}. Web player: {web_error}"
+            advice = make_recovery_advice("spotify.unavailable", "Both Spotify metadata backends are unavailable", "Check connectivity and Spotify service availability then run --doctor again with --debug", True, detail)
+            return [make_doctor_check("Metadata", "FAIL", advice.summary, advice.detail, advice)]
+        detail = f"Automatic web-player fallback succeeded after the legacy check failed: {legacy_error}"
+        advice = make_recovery_advice("spotify.unavailable", "Legacy OAuth metadata access is unavailable", "Remove incompatible SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET values to use the web-player backend directly or keep them while automatic fallback remains available", False, detail)
+        return [make_doctor_check("Metadata", "WARN", advice.summary, advice.detail, advice)]
 
 
 # Determines whether email notifications are effectively enabled
@@ -5120,6 +5156,8 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
     if progress is not None:
         progress("authentication")
     report.checks.extend(doctor_check_authentication(report))
+    if progress is not None:
+        progress("metadata")
     report.checks.extend(doctor_check_optional_oauth())
     if progress is not None:
         progress("connectivity")
@@ -5137,7 +5175,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
     lines = ["Doctor", "", "No files will be written. In an interactive terminal, real email and webhook tests are offered separately and run only after approval."]
-    sections = ("Environment", "Configuration", "Authentication", "Connectivity", "Target", "Notifications")
+    sections = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications")
     for section in sections:
         lines.extend(("", section))
         for check in (item for item in report.checks if item.section == section):
