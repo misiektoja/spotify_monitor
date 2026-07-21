@@ -56,19 +56,23 @@ pip install spotify_monitor
 spotify_monitor --version
 ```
 
+Each command below that uses square brackets installs the base `spotify_monitor` package plus its named optional dependencies. Use only the command matching your needs. You do not need to run the plain install command first.
+
 Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:
 
 ```sh
 pip install "spotify_monitor[browser]"
 ```
 
-An extra includes the base package so you do not need to run both install commands.
+This installs Spotify Monitor and the optional `pycookiecheat` dependency.
 
-Spotipy is optional. Install the legacy OAuth extra only if you have working Spotify OAuth app credentials and want to try the legacy Web API metadata path before the automatic web-player fallback:
+Spotipy is optional. Install the legacy OAuth extra only if you already have working [Spotify OAuth App](configuration.md#spotify-oauth-app) credentials and want to enable the optional legacy Web API metadata path. The automatic web-player backend works without this extra:
 
 ```sh
 pip install "spotify_monitor[legacy-oauth]"
 ```
+
+This installs Spotify Monitor and the optional Spotipy dependency. It also includes the base package, so this single command is sufficient.
 
 Both extras can be installed together:
 
