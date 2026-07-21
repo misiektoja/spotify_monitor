@@ -1,9 +1,121 @@
 # Usage
 
+<a id="command-format"></a>
+## Command Format by Installation Method
+
+Examples on this page use the PyPI command `spotify_monitor`. Keep the options shown in an example and replace only the command prefix with the form for your installation:
+
+| Installation | Command prefix |
+| --- | --- |
+| PyPI | `spotify_monitor` |
+| Manual script on macOS or Linux | `python3 spotify_monitor.py` |
+| Manual script on Windows | `python spotify_monitor.py` |
+| Docker Compose | `docker compose run --rm spotify_monitor` |
+| Direct Docker on Docker Desktop | `docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest` |
+| Direct Docker on Linux | `docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest` |
+
+For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm spotify_monitor --doctor TARGET` with Compose. A file used by a container must be under the mounted current directory and its command-line path must start with `/data/`.
+
+The Docker Desktop command works in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+
+See [Installation](installation.md) for setup, optional dependencies, image details and upgrade commands.
+
+<a id="monitoring-mode"></a>
+## Monitoring Mode
+
+Pass a [Spotify user target](configuration.md#how-to-get-a-friends-user-uri-id) as a command-line argument. A target can be a raw user ID, a `spotify:user:` URI or a complete profile URL:
+
+```sh
+spotify_monitor spotify_user_uri_id
+spotify_monitor "spotify:user:spotify_user_uri_id"
+spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id"
+```
+
+You can also save any of these forms as `TARGET_USER_URI_ID` in `spotify_monitor.conf`. A positional target takes precedence. With a saved target no positional value is needed:
+
+```sh
+spotify_monitor --config-file spotify_monitor.conf
+```
+
+The setup wizard asks whether to persist its target. This lets local installations start with `spotify_monitor` and lets Docker Compose start with `docker compose up`.
+
+If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fallback supplies it for one run:
+
+```sh
+spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value"
+```
+
+This command can expose the cookie through shell history or process listings. Use browser import locally or hidden `--set-sp-dc` entry in a container instead.
+
+If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use `-r`:
+
+```sh
+spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+```
+
+See [Spotify OAuth App](configuration.md#spotify-oauth-app) for the optional dependency and current compatibility guidance.
+
+By default the tool looks for `spotify_monitor.conf` in this order:
+
+1. The path supplied with `--config-file`
+2. `spotify_monitor.conf` in the current directory
+3. `~/.spotify_monitor.conf` in the home directory
+4. `spotify_monitor.conf` in the script directory
+
+Specify another file explicitly when needed:
+
+```sh
+spotify_monitor spotify_user_uri_id --config-file /path/spotify_monitor_new.conf
+```
+
+The tool runs until interrupted with `Ctrl+C`. Use `tmux` or `screen` for a persistent local run. Docker Compose can run in the background as described below.
+
+You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.
+
+By default, output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable logging with `DISABLE_LOGGING` or `-d`.
+
+Monitoring reports a listened track after the user finishes it because this is how Spotify reports Friend Activity.
+
+<a id="main-application-docker-image"></a>
+## Container Operation
+
+Installation, Linux ownership setup, local image builds and upgrades are documented under [Docker installation](installation.md#docker-compose). This section covers normal container operation after setup.
+
+Compose mounts the current directory at `/data`. The wizard creates `spotify_monitor.conf` and `.env` on the host. Logs and CSV output also persist there. The image contains no user configuration or secrets.
+
+Start the target saved by setup in the foreground:
+
+```sh
+docker compose up
+```
+
+For a background run and live logs:
+
+```sh
+docker compose up -d
+docker compose logs -f
+```
+
+Stop and remove the service container without deleting the bind-mounted files:
+
+```sh
+docker compose down
+```
+
+If the wizard did not persist the target, `docker compose up` cannot supply one. Use the direct Compose command printed by setup:
+
+```sh
+docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+```
+
+The default container authentication path is hidden manual cookie entry. Advanced mounted Firefox import is documented under [Spotify sp_dc Cookie](configuration.md#spotify-sp_dc-cookie).
+
+Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
+
 <a id="terminal-output"></a>
 ## Terminal Output
 
-The `--help` output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with `/data/.env` and retain a read-only Linux host Firefox mount as an advanced alternative.
+The `--help` output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations.
 
 Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
 
@@ -12,135 +124,14 @@ Normal monitoring shows a concise startup summary led by the target, authenticat
 Use `--verbose` to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> --verbose
+spotify_monitor spotify_user_uri_id --verbose
 ```
 
-Spotify Monitor normally polls every 30 seconds, so verbose mode is deliberately event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.
+Spotify Monitor normally polls every 30 seconds so verbose mode is event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.
 
-`--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in the concise terminal summary, complete terminal summary, verbose events, debug output or complete log summary.
+`--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in summaries, verbose events, debug output or the complete log summary.
 
-<a id="main-application-docker-image"></a>
-## Docker
-
-The main application image is [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor). It is separate from the `misiektoja/spotify-secrets-grabber` debugging image documented later. Release publishing builds `linux/amd64` and `linux/arm64` variants. A release tag such as `v3.0` also publishes `3.0`, while published releases update `latest`.
-
-The root `docker-compose.yml` provides the recommended container flow:
-
-On Linux, export your host UID and GID before the first setup command if the current directory is not writable by `10001:10001`. This keeps the image non-root while allowing the `/data` bind mount to receive the generated config, dotenv and output files.
-
-```sh
-export SPOTIFY_MONITOR_UID="$(id -u)"
-export SPOTIFY_MONITOR_GID="$(id -g)"
-docker compose run --rm spotify_monitor --setup
-docker compose run --rm spotify_monitor --doctor
-docker compose up
-```
-
-Stop and remove the Compose container with:
-
-```sh
-docker compose down
-```
-
-Compose mounts the current directory at `/data`. The wizard therefore creates `spotify_monitor.conf` and `.env` on the host. CSV and log output also persist there. The shared `:z` label lets SELinux hosts access the bind mount and has no effect on hosts without SELinux. Compose deliberately does not declare `env_file`, so first-run setup works before `.env` exists and Spotify Monitor discovers `/data/.env` itself. The image contains no user config or dotenv file.
-
-The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:
-
-```sh
-docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
-```
-
-The prompt does not echo `sp_dc`. Spotify validation completes before the existing dotenv file is replaced.
-
-Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.
-
-Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it first performs passive checks. It then offers separate default-No prompts for one real test email and one real webhook notification when those channels are ready.
-
-If the wizard does not persist the target, `docker compose up` cannot supply it. Use the direct command printed by setup, which follows this form:
-
-```sh
-docker compose run --rm spotify_monitor <spotify_user_uri_id> --config-file /data/spotify_monitor.conf --env-file /data/.env
-```
-
-Firefox import is an advanced container alternative. Before importing, open [Spotify Web Player](https://open.spotify.com/) in Firefox on the host and sign in to the Spotify account you will use for monitoring. The container then needs that host Firefox profile mounted read-only. This is the Linux host example:
-
-```sh
-docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox
-```
-
-macOS stores Firefox profiles under the user's `Library/Application Support` directory, so its host mount source differs. Windows users should normally import through Firefox on the host then use the generated dotenv file with Compose. Chrome, Brave and Chromium import is not supported inside the container because the required host keyring is unavailable.
-
-The image runs as the dedicated numeric user and group `10001:10001`. On Linux bind mounts, map the service to your host UID and GID when the current directory is not writable by that numeric user:
-
-```sh
-export SPOTIFY_MONITOR_UID="$(id -u)"
-export SPOTIFY_MONITOR_GID="$(id -g)"
-docker compose run --rm spotify_monitor --setup
-docker compose up
-```
-
-Docker Desktop on macOS and Windows normally handles bind-mount ownership without this override. The image itself remains non-root.
-
-For a direct Docker run on Linux, pass the host identity explicitly when needed:
-
-```sh
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
-```
-
-To build locally, comment out `image:` in `docker-compose.yml` and uncomment `build: .`. You can also build and run directly:
-
-```sh
-docker build --tag spotify-monitor:local .
-docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --setup
-docker run --rm -it --init -v "$PWD:/data:z" spotify-monitor:local --config-file /data/spotify_monitor.conf
-```
-
-The two local-image run commands above are for Docker Desktop. On Linux add `--user "$(id -u):$(id -g)"` immediately after `--init` in both commands.
-
-<a id="monitoring-mode"></a>
-## Monitoring Mode
-
-To monitor specific user activity, pass a [Spotify user target](configuration.md#how-to-get-a-friends-user-uri-id) as a command-line argument. The target may be a raw user ID, Spotify user URI or profile URL:
-
-```sh
-spotify_monitor <spotify_user_uri_id>
-```
-
-If you use the default method to obtain a Spotify access token (`cookie`) and have not set `SP_DC_COOKIE` secret, you can use `-u` flag:
-
-```sh
-spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value"
-```
-
-This manual command-line fallback can expose the cookie through shell history or process listings. Use browser import locally or hidden `--set-sp-dc` entry in a container instead.
-
-**Optional:** If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the `-r` flag:
-
-```sh
-spotify_monitor <spotify_user_uri_id> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
-```
-
-See [Spotify OAuth App](configuration.md#spotify-oauth-app) for detailed setup instructions.
-
-By default, the tool looks for a configuration file named `spotify_monitor.conf` in:
- - current directory
- - home directory (`~`)
- - script directory
-
- If you generated a configuration file as described in [Configuration](configuration.md#configuration), but saved it under a different name or in a different directory, you can specify its location using the `--config-file` flag:
-
-
-```sh
-spotify_monitor <spotify_user_uri_id> --config-file /path/spotify_monitor_new.conf
-```
-
-The tool runs until interrupted (`Ctrl+C`). Use `tmux` or `screen` for persistence.
-
-You can monitor multiple Spotify friends by running multiple copies of the script.
-
-The tool automatically saves its output to `spotify_monitor_<user_uri_id/file_suffix>.log` file. The log file name can be changed via `SP_LOGFILE` configuration option and its suffix via `FILE_SUFFIX` / `-y` flag. Logging can be disabled completely via `DISABLE_LOGGING` / `-d` flag.
-
-Keep in mind that monitoring reports the listened track AFTER the user finishes listening to it. This is how activities are reported by Spotify.
+Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `999` to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with `-d`.
 
 <a id="listing-mode"></a>
 ## Listing Mode
@@ -269,6 +260,17 @@ spotify_monitor <spotify_user_uri_id> -b spotify_tracks_user_uri_id.csv
 
 The file will be automatically created if it does not exist.
 
+<a id="activity-flag-file"></a>
+## Activity Flag File
+
+Set `FLAG_FILE` or use `--flag-file PATH` to expose the monitored user's current activity state to another local tool. Spotify Monitor creates the file while the user is active and deletes it after the user becomes inactive:
+
+```sh
+spotify_monitor TARGET --flag-file /path/spotify_user_active
+```
+
+For a container, place the file under `/data` so it appears in the host directory. Each concurrently monitored user should have a different flag path.
+
 <a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a>
 ## Automatic Playback of Listened Tracks in the Spotify Client
 
@@ -323,6 +325,12 @@ If you want to change the time required to mark the user as inactive (the timer 
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -o 900
+```
+
+If a user disappears from Friend Activity, use `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` to control the delay between visibility checks:
+
+```sh
+spotify_monitor TARGET -m 180
 ```
 
 <a id="signal-controls-macoslinuxunix"></a>
