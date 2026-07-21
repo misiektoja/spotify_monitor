@@ -641,6 +641,7 @@
 
 
 <h1 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h1>
+<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. For a manual script or container, use the matching prefix under <a href="../usage/#command-format">Command Format by Installation Method</a>. The setup wizard and <code>--help</code> print commands for the detected installation.</p>
 <p><a id="doctor-preflight"></a></p>
 <h2 id="doctor-preflight">Doctor Preflight<a class="headerlink" href="#doctor-preflight" title="Permanent link">&para;</a></h2>
 <p>Before starting a long monitoring run, use the doctor preflight command:</p>
@@ -651,12 +652,13 @@
 <li>Environment</li>
 <li>Configuration</li>
 <li>Authentication</li>
+<li>Metadata</li>
 <li>Connectivity</li>
 <li>Target</li>
 <li>Notifications</li>
 <li>Summary</li>
 </ul>
-<p>The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.</p>
+<p>The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. When complete legacy OAuth credentials are configured it requests a memory-only token and checks live track metadata access. If that legacy check fails but the automatic web-player fallback succeeds the doctor reports a warning and still exits successfully. For Development Mode apps the warning reminds you that Spotify requires the app owner to have active Premium. A legacy failure can have other causes, so the doctor does not claim that a 403 proves the subscription has lapsed. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.</p>
 <p>In an interactive terminal, each notification channel that passes its passive checks gets a separate optional delivery prompt. Both prompts default to No. Approving the email prompt delivers one real test email. Approving the webhook prompt publishes one real Discord or ntfy notification. Declining either prompt sends nothing. Noninteractive doctor runs never offer or send delivery tests.</p>
 <p>Warnings do not make the command fail. The doctor exits nonzero when at least one passive check or approved delivery test fails. You can run an authentication-only check without a target or verify one specific account:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--doctor

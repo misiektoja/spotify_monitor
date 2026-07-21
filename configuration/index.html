@@ -941,6 +941,7 @@
 
 
 <h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under <a href="../usage/#command-format">Command Format by Installation Method</a>. Container file paths must point into <code>/data</code>.</p>
 <p><a id="configuration-file"></a></p>
 <h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
 <p>Most settings can be configured via command-line arguments.</p>
@@ -954,7 +955,17 @@
 <blockquote>
 <p><strong>IMPORTANT</strong>: On <strong>Windows PowerShell</strong>, using redirection (<code>&gt;</code>) can cause the file to be encoded in UTF-16, which will lead to "null bytes" errors when running the tool. It is highly recommended to provide the filename directly as an argument to <code>--generate-config</code> to ensure UTF-8 encoding.</p>
 </blockquote>
+<p>When you provide a filename, Spotify Monitor checks that the new configuration can be loaded then saves it as UTF-8. If the file already exists, Spotify Monitor creates a timestamped backup before replacing it.</p>
 <p>Edit the <code>spotify_monitor.conf</code> file and change any desired configuration options (detailed comments are provided for each).</p>
+<p>Settings are applied in this order from lowest to highest priority:</p>
+<ol>
+<li>Built-in defaults</li>
+<li>The discovered or explicitly selected configuration file</li>
+<li>Secret environment variables</li>
+<li>Values from the selected dotenv file</li>
+<li>Command-line options</li>
+</ol>
+<p>The dotenv layer applies only to supported secret keys such as <code>SP_DC_COOKIE</code>, <code>SMTP_PASSWORD</code> and <code>WEBHOOK_URL</code>. A positional target overrides <code>TARGET_USER_URI_ID</code>. Use <code>--config-file PATH</code> and <code>--env-file PATH</code> to make both selected files explicit. See <a href="#storing-secrets">Storing Secrets</a> for dotenv discovery and supported keys.</p>
 <p>You may set <code>TARGET_USER_URI_ID</code> to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
 </code></pre></div>
@@ -964,9 +975,9 @@
 <h2 id="spotify-access-token-source">Spotify access token source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
 <p>The tool uses a <strong>hybrid authentication approach</strong> with automatic metadata backend selection.</p>
 <p>For friend activity monitoring, you need to configure either the <code>cookie</code> or <code>client</code> token source method.</p>
-<p>Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete <a href="#spotify-oauth-app">Spotify OAuth App</a> credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403.</p>
+<p>Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete <a href="#spotify-oauth-app">Spotify OAuth App</a> credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.</p>
 <blockquote>
-<p><strong>OAuth app guidance:</strong> Spotify restricted new Development Mode apps created on or after February 11, 2026. Some older apps have been observed to retain the legacy endpoint access used by this tool, but creation date alone does not guarantee compatibility. Configure OAuth app credentials only if you already have an app which you have verified still works. If it returns HTTP 403 then remove the credentials and use the automatic web backend. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">official migration guide</a>.</p>
+<p><strong>OAuth app guidance:</strong> Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This requirement applies to old and new apps, so creation date does not explain the different results in these tests. Configure OAuth app credentials only when the app owner has Premium and you have verified that its legacy metadata endpoints still work. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this live and reports a warning when web-player fallback succeeds. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">official migration guide</a>.</p>
 </blockquote>
 <p>The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.</p>
 <p>The token source method can be configured via the <code>TOKEN_SOURCE</code> configuration option or the <code>--token-source</code> flag.</p>
@@ -975,6 +986,7 @@
 <p><strong>Alternative: <code>client</code></strong></p>
 <p>Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.</p>
 <p>If no method is specified, the tool defaults to the <code>cookie</code> method.</p>
+<p>Spotify Monitor generates an appropriate request user agent automatically for the selected token source. Advanced users can override it with <code>USER_AGENT</code> or <code>--user-agent</code>, but normal installations should leave it empty.</p>
 <p><strong>Important</strong>: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API. That said, while I've never encountered any issues on my own accounts, I can't guarantee that Spotify won't impose restrictions in the future - you've been warned.</p>
 <p><a id="spotify-sp_dc-cookie"></a></p>
 <h3 id="spotify-sp_dc-cookie">Spotify sp_dc Cookie<a class="headerlink" href="#spotify-sp_dc-cookie" title="Permanent link">&para;</a></h3>
@@ -1057,7 +1069,7 @@
 <p>If your <code>sp_dc</code> cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new <code>sp_dc</code> cookie value.</p>
 <p>If you store the <code>SP_DC_COOKIE</code> in a dotenv file you can update its value and send a <code>SIGHUP</code> signal to reload the file with the new <code>sp_dc</code> cookie without restarting the tool. More info in <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
 <blockquote>
-<p><strong>NOTE:</strong> Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code> config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> to extract the current bundle values then update those two options.</p>
+<p><strong>NOTE:</strong> Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code> config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> to extract the current bundle values then update those two options.</p>
 </blockquote>
 <p><a id="spotify-desktop-client"></a></p>
 <h3 id="spotify-desktop-client">Spotify Desktop Client<a class="headerlink" href="#spotify-desktop-client" title="Permanent link">&para;</a></h3>
@@ -1114,15 +1126,15 @@
 <p>Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.</p>
 <p><a id="spotify-oauth-app"></a></p>
 <h2 id="spotify-oauth-app">Spotify OAuth App<a class="headerlink" href="#spotify-oauth-app" title="Permanent link">&para;</a></h2>
-<p>OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
-<p>Apps created under the current Development Mode restrictions are not useful for this legacy path. Do not create a new app for <code>spotify_monitor</code> because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.</p>
-<p>If you already have a working existing app:</p>
+<p>OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Spotify requires the owner of every Development Mode app to keep an active Premium subscription. Configure the credentials only when that requirement is met and the app has verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
+<p>App creation date does not replace a live compatibility check. A Development Mode app without an active Premium subscription on its owner account will stop working until the owner resubscribes. Do not create a new app for <code>spotify_monitor</code> because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.</p>
+<p>If you already have a working app:</p>
 <ul>
 <li>
 <p>Log in to <a href="https://developer.spotify.com/dashboard">Spotify Developer dashboard</a></p>
 </li>
 <li>
-<p>Open the existing app which still has verified legacy endpoint access</p>
+<p>Open an app owned by an account with active Spotify Premium and verified legacy endpoint access</p>
 </li>
 <li>
 <p>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></p>

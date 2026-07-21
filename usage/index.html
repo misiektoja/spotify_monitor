@@ -430,21 +430,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#terminal-output" class="md-nav__link">
+  <a href="#command-format-by-installation-method" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Terminal Output
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#docker" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker
+        Command Format by Installation Method
       
     </span>
   </a>
@@ -456,6 +445,28 @@
     <span class="md-ellipsis">
       
         Monitoring Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#container-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Container Operation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Output
       
     </span>
   </a>
@@ -500,6 +511,17 @@
     <span class="md-ellipsis">
       
         CSV Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#activity-flag-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Activity Flag File
       
     </span>
   </a>
@@ -693,21 +715,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#terminal-output" class="md-nav__link">
+  <a href="#command-format-by-installation-method" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Terminal Output
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#docker" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker
+        Command Format by Installation Method
       
     </span>
   </a>
@@ -719,6 +730,28 @@
     <span class="md-ellipsis">
       
         Monitoring Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#container-operation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Container Operation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Output
       
     </span>
   </a>
@@ -763,6 +796,17 @@
     <span class="md-ellipsis">
       
         CSV Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#activity-flag-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Activity Flag File
       
     </span>
   </a>
@@ -839,89 +883,114 @@
 
 
 <h1 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h1>
+<p><a id="command-format"></a></p>
+<h2 id="command-format-by-installation-method">Command Format by Installation Method<a class="headerlink" href="#command-format-by-installation-method" title="Permanent link">&para;</a></h2>
+<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. Keep the options shown in an example and replace only the command prefix with the form for your installation:</p>
+<table>
+<thead>
+<tr>
+<th>Installation</th>
+<th>Command prefix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PyPI</td>
+<td><code>spotify_monitor</code></td>
+</tr>
+<tr>
+<td>Manual script on macOS or Linux</td>
+<td><code>python3 spotify_monitor.py</code></td>
+</tr>
+<tr>
+<td>Manual script on Windows</td>
+<td><code>python spotify_monitor.py</code></td>
+</tr>
+<tr>
+<td>Docker Compose</td>
+<td><code>docker compose run --rm spotify_monitor</code></td>
+</tr>
+<tr>
+<td>Direct Docker on Docker Desktop</td>
+<td><code>docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest</code></td>
+</tr>
+<tr>
+<td>Direct Docker on Linux</td>
+<td><code>docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest</code></td>
+</tr>
+</tbody>
+</table>
+<p>For example, <code>spotify_monitor --doctor TARGET</code> becomes <code>docker compose run --rm spotify_monitor --doctor TARGET</code> with Compose. A file used by a container must be under the mounted current directory and its command-line path must start with <code>/data/</code>.</p>
+<p>The Docker Desktop command works in macOS shells and Windows PowerShell. In Windows Command Prompt replace <code>${PWD}</code> with <code>%cd%</code>.</p>
+<p>See <a href="../installation/">Installation</a> for setup, optional dependencies, image details and upgrade commands.</p>
+<p><a id="monitoring-mode"></a></p>
+<h2 id="monitoring-mode">Monitoring Mode<a class="headerlink" href="#monitoring-mode" title="Permanent link">&para;</a></h2>
+<p>Pass a <a href="../configuration/#how-to-get-a-friends-user-uri-id">Spotify user target</a> as a command-line argument. A target can be a raw user ID, a <code>spotify:user:</code> URI or a complete profile URL:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span><span class="s2">&quot;spotify:user:spotify_user_uri_id&quot;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>spotify_monitor<span class="w"> </span><span class="s2">&quot;https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id&quot;</span>
+</code></pre></div>
+<p>You can also save any of these forms as <code>TARGET_USER_URI_ID</code> in <code>spotify_monitor.conf</code>. A positional target takes precedence. With a saved target no positional value is needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
+</code></pre></div>
+<p>The setup wizard asks whether to persist its target. This lets local installations start with <code>spotify_monitor</code> and lets Docker Compose start with <code>docker compose up</code>.</p>
+<p>If you use cookie authentication and have not saved <code>SP_DC_COOKIE</code>, the <code>-u</code> fallback supplies it for one run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
+</code></pre></div>
+<p>This command can expose the cookie through shell history or process listings. Use browser import locally or hidden <code>--set-sp-dc</code> entry in a container instead.</p>
+<p>If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use <code>-r</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
+</code></pre></div>
+<p>See <a href="../configuration/#spotify-oauth-app">Spotify OAuth App</a> for the optional dependency and current compatibility guidance.</p>
+<p>By default the tool looks for <code>spotify_monitor.conf</code> in this order:</p>
+<ol>
+<li>The path supplied with <code>--config-file</code></li>
+<li><code>spotify_monitor.conf</code> in the current directory</li>
+<li><code>~/.spotify_monitor.conf</code> in the home directory</li>
+<li><code>spotify_monitor.conf</code> in the script directory</li>
+</ol>
+<p>Specify another file explicitly when needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>--config-file<span class="w"> </span>/path/spotify_monitor_new.conf
+</code></pre></div>
+<p>The tool runs until interrupted with <code>Ctrl+C</code>. Use <code>tmux</code> or <code>screen</code> for a persistent local run. Docker Compose can run in the background as described below.</p>
+<p>You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.</p>
+<p>By default, output is saved to <code>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log</code>. Change the base path with <code>SP_LOGFILE</code> and the suffix with <code>FILE_SUFFIX</code> or <code>-y</code>. Disable logging with <code>DISABLE_LOGGING</code> or <code>-d</code>.</p>
+<p>Monitoring reports a listened track after the user finishes it because this is how Spotify reports Friend Activity.</p>
+<p><a id="main-application-docker-image"></a></p>
+<h2 id="container-operation">Container Operation<a class="headerlink" href="#container-operation" title="Permanent link">&para;</a></h2>
+<p>Installation, Linux ownership setup, local image builds and upgrades are documented under <a href="../installation/#docker-compose">Docker installation</a>. This section covers normal container operation after setup.</p>
+<p>Compose mounts the current directory at <code>/data</code>. The wizard creates <code>spotify_monitor.conf</code> and <code>.env</code> on the host. Logs and CSV output also persist there. The image contains no user configuration or secrets.</p>
+<p>Start the target saved by setup in the foreground:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
+</code></pre></div>
+<p>For a background run and live logs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f
+</code></pre></div>
+<p>Stop and remove the service container without deleting the bind-mounted files:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
+</code></pre></div>
+<p>If the wizard did not persist the target, <code>docker compose up</code> cannot supply one. Use the direct Compose command printed by setup:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span><span class="s2">&quot;https://open.spotify.com/user/spotify_user_uri_id&quot;</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+</code></pre></div>
+<p>The default container authentication path is hidden manual cookie entry. Advanced mounted Firefox import is documented under <a href="../configuration/#spotify-sp_dc-cookie">Spotify sp_dc Cookie</a>.</p>
+<p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. The tool warns but does not disable the setting so custom host integration remains possible.</p>
 <p><a id="terminal-output"></a></p>
 <h2 id="terminal-output">Terminal Output<a class="headerlink" href="#terminal-output" title="Permanent link">&para;</a></h2>
-<p>The <code>--help</code> output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with <code>/data/.env</code> and retain a read-only Linux host Firefox mount as an advanced alternative.</p>
+<p>The <code>--help</code> output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations.</p>
 <p>Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented <code>--version</code> and <code>--generate-config</code> output intentionally omit it.</p>
 <p>Normal monitoring shows a concise startup summary led by the target, authentication mode, polling interval, notification state, output destination, config path, dotenv path and metadata backend. Enabled optional features appear only when relevant. When logging is enabled a complete non-secret configuration summary is written once to the log while the terminal remains concise.</p>
 <p>Use <code>--verbose</code> to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--verbose
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>--verbose
 </code></pre></div>
-<p>Spotify Monitor normally polls every 30 seconds, so verbose mode is deliberately event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.</p>
-<p><code>--debug</code> retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in the concise terminal summary, complete terminal summary, verbose events, debug output or complete log summary.</p>
-<p><a id="main-application-docker-image"></a></p>
-<h2 id="docker">Docker<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h2>
-<p>The main application image is <a href="https://hub.docker.com/r/misiektoja/spotify-monitor"><code>misiektoja/spotify-monitor</code></a>. It is separate from the <code>misiektoja/spotify-secrets-grabber</code> debugging image documented later. Release publishing builds <code>linux/amd64</code> and <code>linux/arm64</code> variants. A release tag such as <code>v3.0</code> also publishes <code>3.0</code>, while published releases update <code>latest</code>.</p>
-<p>The root <code>docker-compose.yml</code> provides the recommended container flow:</p>
-<p>On Linux, export your host UID and GID before the first setup command if the current directory is not writable by <code>10001:10001</code>. This keeps the image non-root while allowing the <code>/data</code> bind mount to receive the generated config, dotenv and output files.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--doctor
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
-</code></pre></div>
-<p>Stop and remove the Compose container with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
-</code></pre></div>
-<p>Compose mounts the current directory at <code>/data</code>. The wizard therefore creates <code>spotify_monitor.conf</code> and <code>.env</code> on the host. CSV and log output also persist there. The shared <code>:z</code> label lets SELinux hosts access the bind mount and has no effect on hosts without SELinux. Compose deliberately does not declare <code>env_file</code>, so first-run setup works before <code>.env</code> exists and Spotify Monitor discovers <code>/data/.env</code> itself. The image contains no user config or dotenv file.</p>
-<p>The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--set-sp-dc<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
-</code></pre></div>
-<p>The prompt does not echo <code>sp_dc</code>. Spotify validation completes before the existing dotenv file is replaced.</p>
-<p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.</p>
-<p>Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it first performs passive checks. It then offers separate default-No prompts for one real test email and one real webhook notification when those channels are ready.</p>
-<p>If the wizard does not persist the target, <code>docker compose up</code> cannot supply it. Use the direct command printed by setup, which follows this form:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
-</code></pre></div>
-<p>Firefox import is an advanced container alternative. Before importing, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox on the host and sign in to the Spotify account you will use for monitoring. The container then needs that host Firefox profile mounted read-only. This is the Linux host example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
-</code></pre></div>
-<p>macOS stores Firefox profiles under the user's <code>Library/Application Support</code> directory, so its host mount source differs. Windows users should normally import through Firefox on the host then use the generated dotenv file with Compose. Chrome, Brave and Chromium import is not supported inside the container because the required host keyring is unavailable.</p>
-<p>The image runs as the dedicated numeric user and group <code>10001:10001</code>. On Linux bind mounts, map the service to your host UID and GID when the current directory is not writable by that numeric user:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
-</code></pre></div>
-<p>Docker Desktop on macOS and Windows normally handles bind-mount ownership without this override. The image itself remains non-root.</p>
-<p>For a direct Docker run on Linux, pass the host identity explicitly when needed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor<span class="w"> </span>--setup
-</code></pre></div>
-<p>To build locally, comment out <code>image:</code> in <code>docker-compose.yml</code> and uncomment <code>build: .</code>. You can also build and run directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>spotify-monitor:local<span class="w"> </span>--setup
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>spotify-monitor:local<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf
-</code></pre></div>
-<p>The two local-image run commands above are for Docker Desktop. On Linux add <code>--user "$(id -u):$(id -g)"</code> immediately after <code>--init</code> in both commands.</p>
-<p><a id="monitoring-mode"></a></p>
-<h2 id="monitoring-mode">Monitoring Mode<a class="headerlink" href="#monitoring-mode" title="Permanent link">&para;</a></h2>
-<p>To monitor specific user activity, pass a <a href="../configuration/#how-to-get-a-friends-user-uri-id">Spotify user target</a> as a command-line argument. The target may be a raw user ID, Spotify user URI or profile URL:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;
-</code></pre></div>
-<p>If you use the default method to obtain a Spotify access token (<code>cookie</code>) and have not set <code>SP_DC_COOKIE</code> secret, you can use <code>-u</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
-</code></pre></div>
-<p>This manual command-line fallback can expose the cookie through shell history or process listings. Use browser import locally or hidden <code>--set-sp-dc</code> entry in a container instead.</p>
-<p><strong>Optional:</strong> If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the <code>-r</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
-</code></pre></div>
-<p>See <a href="../configuration/#spotify-oauth-app">Spotify OAuth App</a> for detailed setup instructions.</p>
-<p>By default, the tool looks for a configuration file named <code>spotify_monitor.conf</code> in:
- - current directory
- - home directory (<code>~</code>)
- - script directory</p>
-<p>If you generated a configuration file as described in <a href="../configuration/#configuration">Configuration</a>, but saved it under a different name or in a different directory, you can specify its location using the <code>--config-file</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--config-file<span class="w"> </span>/path/spotify_monitor_new.conf
-</code></pre></div>
-<p>The tool runs until interrupted (<code>Ctrl+C</code>). Use <code>tmux</code> or <code>screen</code> for persistence.</p>
-<p>You can monitor multiple Spotify friends by running multiple copies of the script.</p>
-<p>The tool automatically saves its output to <code>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log</code> file. The log file name can be changed via <code>SP_LOGFILE</code> configuration option and its suffix via <code>FILE_SUFFIX</code> / <code>-y</code> flag. Logging can be disabled completely via <code>DISABLE_LOGGING</code> / <code>-d</code> flag.</p>
-<p>Keep in mind that monitoring reports the listened track AFTER the user finishes listening to it. This is how activities are reported by Spotify.</p>
+<p>Spotify Monitor normally polls every 30 seconds so verbose mode is event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.</p>
+<p><code>--debug</code> retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in summaries, verbose events, debug output or the complete log summary.</p>
+<p>Use <code>--truncate N</code> or <code>TRUNCATE_CHARS</code> to limit screen line width. Set it to <code>999</code> to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with <code>-d</code>.</p>
 <p><a id="listing-mode"></a></p>
 <h2 id="listing-mode">Listing Mode<a class="headerlink" href="#listing-mode" title="Permanent link">&para;</a></h2>
 <p>There is also another mode of the tool which displays various requested information.</p>
 <p>If you want to display a list of all the friends you follow with their recently listened tracks (<code>-l</code> flag):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>-l
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>spotify_monitor<span class="w"> </span>-l
 </code></pre></div>
 <p>It also displays your friend's Spotify username (often the user's first and last name) and user URI ID (often a string of random characters). The latter should be used as a tool's command-line argument to monitor the user.</p>
 <p align="center">
@@ -933,42 +1002,42 @@
 <p>To enable email notifications when a user becomes active:
 - set <code>ACTIVE_NOTIFICATION</code> to <code>True</code>
 - or use the <code>-a</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
 </code></pre></div>
 <p>To be informed when a user gets inactive:
 - set <code>INACTIVE_NOTIFICATION</code> to <code>True</code>
 - or use the <code>-i</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
 </code></pre></div>
 <p>Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the <code>INACTIVE_EMAIL_RECENT_SONGS_COUNT</code> configuration option.</p>
 <p>To get email notifications when a monitored track/playlist/album plays:
 - set <code>TRACK_NOTIFICATION</code> to <code>True</code>
 - or use the <code>-t</code> flag</p>
 <p>For that feature you also need to create a file with a list of songs you want to track (one track, album or playlist per line). Specify the file using the <code>MONITOR_LIST_FILE</code> or <code>-s</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
 </code></pre></div>
 <p>Example file <code>spotify_tracks_spotify_user_uri_id</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>we fell in love in october
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Like a Stone
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>Half Believing
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Something Changed
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>I Will Be There
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>we fell in love in october
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>Like a Stone
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>Half Believing
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>Something Changed
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>I Will Be There
 </code></pre></div>
 <p>You can comment out specific lines with # if needed.</p>
 <p>To enable email notifications for every song listened by the user:
 - set <code>SONG_NOTIFICATION</code> to <code>True</code>
 - or use the <code>-j</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
 </code></pre></div>
 <p>To be notified when a user listens to the same song on loop:
 - set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code>
 - or use the <code>-x</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
 </code></pre></div>
 <p>To disable sending an email on errors (enabled by default):
 - set <code>ERROR_NOTIFICATION</code> to <code>False</code>
 - or use the <code>-e</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
 </code></pre></div>
 <p>Make sure you defined your SMTP settings earlier (see <a href="../configuration/#smtp-settings">SMTP settings</a>).</p>
 <p>Example email:</p>
@@ -1022,21 +1091,27 @@
 </tbody>
 </table>
 <p>For example, this sends a webhook alert for every song change during one run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-song-changes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-song-changes
 </code></pre></div>
 <p>Use <code>--webhook</code> or <code>--no-webhook</code> to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.</p>
 <p><a id="csv-export"></a></p>
 <h2 id="csv-export">CSV Export<a class="headerlink" href="#csv-export" title="Permanent link">&para;</a></h2>
 <p>If you want to save all listened songs to a CSV file, set <code>CSV_FILE</code> or use <code>-b</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_user_uri_id.csv
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_user_uri_id.csv
 </code></pre></div>
 <p>The file will be automatically created if it does not exist.</p>
+<p><a id="activity-flag-file"></a></p>
+<h2 id="activity-flag-file">Activity Flag File<a class="headerlink" href="#activity-flag-file" title="Permanent link">&para;</a></h2>
+<p>Set <code>FLAG_FILE</code> or use <code>--flag-file PATH</code> to expose the monitored user's current activity state to another local tool. Spotify Monitor creates the file while the user is active and deletes it after the user becomes inactive:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>--flag-file<span class="w"> </span>/path/spotify_user_active
+</code></pre></div>
+<p>For a container, place the file under <code>/data</code> so it appears in the host directory. Each concurrently monitored user should have a different flag path.</p>
 <p><a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a></p>
 <h2 id="automatic-playback-of-listened-tracks-in-the-spotify-client">Automatic Playback of Listened Tracks in the Spotify Client<a class="headerlink" href="#automatic-playback-of-listened-tracks-in-the-spotify-client" title="Permanent link">&para;</a></h2>
 <p>If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:
 - set <code>TRACK_SONGS</code> to <code>True</code>
 - or use the <code>-g</code> flag</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
 </code></pre></div>
 <p>Your Spotify client needs to be installed and running for this feature to work.</p>
 <p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. A container run prints one warning before monitoring and <code>--doctor</code> reports <code>[WARN]</code>, but the setting is not disabled automatically.</p>
@@ -1060,10 +1135,13 @@
 <p><a id="check-intervals"></a></p>
 <h2 id="check-intervals">Check Intervals<a class="headerlink" href="#check-intervals" title="Permanent link">&para;</a></h2>
 <p>If you want to customize the polling interval, use <code>-c</code> flag (or <code>SPOTIFY_CHECK_INTERVAL</code> configuration option):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">20</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">20</span>
 </code></pre></div>
 <p>If you want to change the time required to mark the user as inactive (the timer starts from the last reported track), use <code>-o</code> flag (or <code>SPOTIFY_INACTIVITY_CHECK</code> configuration option):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
+</code></pre></div>
+<p>If a user disappears from Friend Activity, use <code>-m</code> or <code>SPOTIFY_DISAPPEARED_CHECK_INTERVAL</code> to control the delay between visibility checks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>-m<span class="w"> </span><span class="m">180</span>
 </code></pre></div>
 <p><a id="signal-controls-macoslinuxunix"></a></p>
 <h2 id="signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)<a class="headerlink" href="#signal-controls-macoslinuxunix" title="Permanent link">&para;</a></h2>
@@ -1108,20 +1186,20 @@
 </tbody>
 </table>
 <p>Send signals with <code>kill</code> or <code>pkill</code>, e.g.:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;spotify_monitor &lt;spotify_user_uri_id&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;spotify_monitor &lt;spotify_user_uri_id&gt;&quot;</span>
 </code></pre></div>
 <p>As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.</p>
 <p><a id="coloring-log-output-with-grc"></a></p>
 <h2 id="coloring-log-output-with-grc">Coloring Log Output with GRC<a class="headerlink" href="#coloring-log-output-with-grc" title="Permanent link">&para;</a></h2>
 <p>You can use <a href="https://github.com/garabik/grc">GRC</a> to color logs.</p>
 <p>Add to your GRC config (<code>~/.grc/grc.conf</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a># monitoring log file
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>.*_monitor_.*\.log
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>conf.monitor_logs
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a># monitoring log file
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>.*_monitor_.*\.log
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>conf.monitor_logs
 </code></pre></div>
 <p>Now copy the <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs">conf.monitor_logs</a> to your <code>~/.grc/</code> and log files should be nicely colored when using <code>grc</code> tool.</p>
 <p>Example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
 </code></pre></div>
 
 

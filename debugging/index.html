@@ -685,12 +685,12 @@
 
 
 <h1 id="debugging-tools">Debugging Tools<a class="headerlink" href="#debugging-tools" title="Permanent link">&para;</a></h1>
-<p>To help with troubleshooting and development, two debug utilities are available in the <a href="https://github.com/misiektoja/spotify_monitor/tree/dev/debug">debug</a> directory.</p>
+<p>To help with troubleshooting and development, two debug utilities are available in the <a href="https://github.com/misiektoja/spotify_monitor/tree/main/debug">debug</a> directory.</p>
 <p><a id="access-token-retrieval-via-sp_dc-cookie-and-totp"></a></p>
 <h2 id="access-token-retrieval-via-sp_dc-cookie-and-totp">Access Token Retrieval via sp_dc Cookie and TOTP<a class="headerlink" href="#access-token-retrieval-via-sp_dc-cookie-and-totp" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py">spotify_monitor_totp_test</a> tool retrieves a Spotify access token using a Web Player <code>sp_dc</code> cookie and TOTP parameters.</p>
-<p>Download from <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_totp_test.py">here</a> or:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>wget<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/dev/debug/spotify_monitor_totp_test.py
+<p>The <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_totp_test.py">spotify_monitor_totp_test</a> tool retrieves a Spotify access token using a Web Player <code>sp_dc</code> cookie and TOTP parameters.</p>
+<p>Download from <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_totp_test.py">here</a> or:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>wget<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_totp_test.py
 </code></pre></div>
 <p>Install requirements:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>requests<span class="w"> </span>python-dateutil<span class="w"> </span>pyotp
@@ -711,13 +711,13 @@
 </code></pre></div>
 <p><a id="secret-key-extraction-from-spotify-web-player-bundles"></a></p>
 <h2 id="secret-key-extraction-from-spotify-web-player-bundles">Secret Key Extraction from Spotify Web Player Bundles<a class="headerlink" href="#secret-key-extraction-from-spotify-web-player-bundles" title="Permanent link">&para;</a></h2>
-<p>The <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles. Version 1.3 scans the loaded bundle source for the inline object-literal format used by the current web player and retains the original runtime property hook as a fallback for older formats.</p>
+<p>The <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> tool automatically extracts secret keys used for TOTP generation in Spotify Web Player JavaScript bundles. Version 1.3 scans the loaded bundle source for the inline object-literal format used by the current web player and retains the original runtime property hook as a fallback for older formats.</p>
 <p>The restored extractor returns v59, v60 and v61 directly from Spotify's current web-player bundle even when the original runtime hook reports no captures.</p>
 <blockquote>
 <p>💡 <strong>Quick tip:</strong> The easiest and recommended way to run this tool is via Docker. Jump directly to the <a href="#-secret-key-extraction-via-docker-recommended-easiest-way">Docker usage section below</a>.</p>
 </blockquote>
-<p>Download from <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py">here</a> or:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>wget<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/dev/debug/spotify_monitor_secret_grabber.py
+<p>Download from <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py">here</a> or:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>wget<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
 </code></pre></div>
 <p>Install requirements:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span>playwright
@@ -799,7 +799,7 @@
 </code></pre></div>
 <p><em>For SELinux hosts (Fedora/RHEL), use <code>-v .:/work:Z</code>.</em></p>
 <p><a id="optional-use-docker-compose-one-command-for-all-oss"></a>
-Or optionally use Docker Compose (a preconfigured <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber_docker/compose.yaml">compose.yaml</a> file is included in the repo):</p>
+Or optionally use Docker Compose (a preconfigured <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber_docker/compose.yaml">compose.yaml</a> file is included in the repo):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-secrets-grabber<span class="w"> </span>--all
 </code></pre></div>
 <p>This will save all files into your current directory on any system (macOS, Linux or Windows).</p>
