@@ -110,6 +110,23 @@ def test_docs_describe_portable_mounts_and_safe_dotenv_copy():
     assert "test -e .env || cp .env.example .env" in configuration
 
 
+# Verifies installation guidance covers every supported delivery and upgrade path
+def test_installation_docs_cover_all_delivery_and_upgrade_paths():
+    installation = read_asset("docs/installation.md")
+    for heading in ("### Install from PyPI", "### Install the Manual Script", "### Install with Docker Compose", "### Install from Docker Hub", "### Upgrade a PyPI Installation", "### Upgrade a Manual Installation", "### Upgrade a Docker Compose Installation", "### Upgrade a Direct Docker Installation", "### Upgrade a Locally Built Docker Image"):
+        assert heading in installation
+    assert "The published image already contains Python and all core libraries" in installation
+    assert "pip install --upgrade -r requirements.txt" in installation
+    assert "docker build --pull --tag spotify-monitor:local ." in installation
+
+
+# Verifies monitoring guidance exposes every target form and install-aware command prefixes
+def test_usage_docs_cover_target_forms_and_install_commands():
+    usage = read_asset("docs/usage.md")
+    for value in ("spotify:user:spotify_user_uri_id", "https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id", "TARGET_USER_URI_ID", "python3 spotify_monitor.py", "docker compose run --rm spotify_monitor", "misiektoja/spotify-monitor:latest"):
+        assert value in usage
+
+
 # Verifies webhook guidance targets the configuration page and its stable anchor
 def test_webhook_setup_anchor_is_consistent():
     readme = read_asset("README.md")
