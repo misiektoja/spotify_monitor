@@ -443,6 +443,7 @@ def test_optional_oauth_live_failure_warns_when_web_fallback_succeeds(monkeypatc
     check = monitor.doctor_check_optional_oauth()[0]
     assert check.status == "WARN"
     assert "fallback succeeded" in check.detail.lower()
+    assert "owner has active Spotify Premium" in require_advice(check).fix
     web_track.assert_called_once_with(monitor.OAUTH_APP_VALIDATION_TRACK_URI)
 
 
