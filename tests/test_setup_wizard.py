@@ -17,9 +17,10 @@ ARTIFACT_ROOT = PROJECT_ROOT / "local" / "wizard_test_artifacts"
 COLLECT_WEBHOOK = monitor._wizard_collect_webhook
 
 
-# Keeps existing wizard workflow scenarios focused on their original notification channel
+# Keeps wizard scenarios on deterministic Linux behavior and their original notification channel
 @pytest.fixture(autouse=True)
 def disable_webhook_collection_by_default(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor, "_wizard_collect_webhook", lambda config, secrets, env: [])
 
 

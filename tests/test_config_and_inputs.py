@@ -28,6 +28,7 @@ def run_cli(arguments, runtime_setup="", cwd=PROJECT_ROOT):
     source = f"module = runpy.run_path({str(CLI_PATH)!r}, run_name='spotify_monitor_phase1_test'); runtime = module['main'].__globals__; runtime['sys'].argv = {[str(CLI_PATH), *arguments]!r}; runtime['CLEAR_SCREEN'] = False; runtime['signal'].signal = lambda *args, **kwargs: None; {runtime_setup} module['main']()"
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=cwd, capture_output=True, text=True, env=environment, timeout=30, check=False)
 
 

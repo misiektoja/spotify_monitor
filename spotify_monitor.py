@@ -806,7 +806,7 @@ import tempfile
 import socket
 from io import BytesIO
 from dataclasses import dataclass, field
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import secrets
 from typing import Any, Callable, List, Optional, Sequence, cast
 from email.utils import parseaddr, parsedate_to_datetime
@@ -5260,7 +5260,7 @@ def _wizard_container_path(path) -> str:
         relative = resolved.relative_to(Path.cwd().resolve())
     except ValueError:
         relative = Path(resolved.name)
-    return str(Path("/data") / relative)
+    return str(PurePosixPath("/data", *relative.parts))
 
 
 # Builds a Spotify Monitor action command using install-aware paths and an optional target
