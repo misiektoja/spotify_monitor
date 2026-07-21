@@ -6,6 +6,8 @@ This is a high-level summary of the most important changes.
 
 Version **3.0** focuses on making Spotify Monitor easier to set up, safer to configure and easier to recover when something goes wrong. It adds guided onboarding, simpler Spotify login, Docker Compose, clearer terminal output and Discord + ntfy webhook alerts while keeping advanced client mode available for experienced users.
 
+Special thanks to [@tomballgithub](https://github.com/tomballgithub) for testing this release in real time and providing valuable feedback.
+
 **Features and Improvements**:
 
 - **NEW:** Added an **automatic public web-player metadata backend** for track and public playlist details. Spotify's current Development Mode restrictions can block the required legacy Web API endpoints, so version 3.0 can retrieve the same monitoring data without depending on a new Spotify OAuth app. It refreshes temporary tokens, adapts when Spotify changes web-player queries and retries brief Spotify service failures automatically
