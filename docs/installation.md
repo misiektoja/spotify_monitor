@@ -203,12 +203,16 @@ pip install --upgrade "spotify_monitor[browser,legacy-oauth]"
 
 ### Upgrade a Manual Installation
 
-Replace `spotify_monitor.py` with the newest copy. Download the current `requirements.txt` and refresh the dependencies too because a new release may add a required library:
+Replace [spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py) and [requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt) with the newest copies. You can download them in a browser, use the files from an updated clone or run:
 
 ```sh
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
 pip install --upgrade -r requirements.txt
 python3 spotify_monitor.py --version
 ```
+
+Refresh the dependencies even when `requirements.txt` appears unchanged because a new release may add or change a required library.
 
 Use `python spotify_monitor.py --version` on Windows. If you modified the script itself, save your changes before replacing it and reapply them to the new version.
 
