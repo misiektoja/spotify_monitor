@@ -360,7 +360,7 @@ def test_local_playback_has_no_container_warning():
 
 # Verifies the missing-target hint does not advertise an unavailable setup command
 def test_missing_target_hint_lists_current_options_only():
-    setup = "runtime['check_internet'] = lambda: True;"
+    setup = "runtime['find_config_file'] = lambda *args, **kwargs: None; runtime['check_internet'] = lambda: True;"
     result = run_cli(["--env-file", "none", "--spotify-dc-cookie", "test-cookie"], setup)
     assert result.returncode == 1
     assert "positional user ID" in result.stdout

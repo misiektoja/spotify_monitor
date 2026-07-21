@@ -75,7 +75,8 @@ def emit_to_string(rows, show_full=False):
 
 # Verifies the selected Variant A art remains exact and version independent
 def test_selected_banner_exact_content():
-    assert monitor.STARTUP_BANNER == r""" .---------------.    ____              _   _  __
+    assert monitor.STARTUP_BANNER == r"""
+ .---------------.    ____              _   _  __
 |  |||  |  ||||  |   / ___| _ __   ___ | |_(_)/ _|_   _
 |  ||| ||| ||||| |   \___ \| '_ \ / _ \| __| | |_| | | |
 |  || |||||| ||| |    ___) | |_) | (_) | |_| |  _| |_| |
@@ -90,13 +91,13 @@ def test_selected_banner_exact_content():
 
 # Ensures the lower stroke of the Spotify y stays aligned with its upper stroke
 def test_banner_spotify_y_descender_alignment():
-    spotify_lines = [line[21:] for line in monitor.STARTUP_BANNER.splitlines()[:6]]
+    spotify_lines = [line[21:] for line in monitor.STARTUP_BANNER.splitlines()[1:7]]
     assert spotify_lines[4].index(r"\__,") == spotify_lines[5].index("|___/")
 
 
 # Ensures the visible Spotify top strokes retain the intended one-column curve offset
 def test_banner_spotify_top_stroke_alignment():
-    spotify_lines = [line[21:] for line in monitor.STARTUP_BANNER.splitlines()[:6]]
+    spotify_lines = [line[21:] for line in monitor.STARTUP_BANNER.splitlines()[1:7]]
     assert spotify_lines[0] == r" ____              _   _  __"
     assert spotify_lines[0].index("____") == spotify_lines[1].index("/ ___|") + 1
 
@@ -118,7 +119,7 @@ def test_banner_dynamic_version_line(monkeypatch, capsys):
 
 # Verifies Spotify plus Monitor and the version share the same body column
 def test_banner_version_alignment():
-    banner_lines = monitor.STARTUP_BANNER.splitlines()
+    banner_lines = monitor.STARTUP_BANNER.splitlines()[1:]
     spotify_body_column = banner_lines[1].index("/ ___|")
     monitor_body_line = banner_lines[7]
     monitor_body_indent = len(monitor_body_line) - len(monitor_body_line.lstrip())
@@ -162,7 +163,7 @@ def test_version_output_is_machine_friendly():
     result = run_cli("--version")
     assert result.returncode == 0
     assert result.stdout.splitlines() == ["spotify_monitor.py v3.0"]
-    assert monitor.STARTUP_BANNER.splitlines()[0] not in result.stdout
+    assert monitor.STARTUP_BANNER.splitlines()[1] not in result.stdout
 
 
 # Verifies generated config begins with content and excludes the startup art
@@ -170,7 +171,7 @@ def test_generate_config_output_is_machine_friendly():
     result = run_cli("--generate-config")
     assert result.returncode == 0
     assert result.stdout.startswith("# Select the method used to obtain the Spotify access token")
-    assert monitor.STARTUP_BANNER.splitlines()[0] not in result.stdout
+    assert monitor.STARTUP_BANNER.splitlines()[1] not in result.stdout
     assert "VERBOSE_MODE = False" in result.stdout
 
 

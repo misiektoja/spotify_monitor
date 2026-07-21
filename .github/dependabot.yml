@@ -21,5 +21,9 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+    ignore:
+      # Keep the production base image on Python 3.9 until a deliberate upgrade
+      - dependency-name: "python"
+        versions: [">= 3.10"]
     commit-message:
       prefix: "build"
