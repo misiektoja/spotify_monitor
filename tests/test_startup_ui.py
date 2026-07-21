@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Runs the command-line entry point without allowing a nonzero status to raise
 def run_cli(*arguments):
-    return subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), *arguments], cwd=PROJECT_ROOT, stdin=subprocess.DEVNULL, text=True, capture_output=True, check=False)
+    return subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), *arguments], cwd=PROJECT_ROOT, input="", text=True, capture_output=True, check=False)
 
 
 # Sets deterministic non-secret startup settings plus known secret sentinels
