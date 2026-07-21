@@ -1542,6 +1542,7 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
     if not terminal_is_interactive:
         raise BrowserCookieImportError(f"Multiple {label} profiles found: {choices}. Pass --browser-profile PROFILE to select one in a noninteractive environment.")
 
+    print()
     print(f"Multiple {label} profiles found:")
     for index, profile in enumerate(profiles, start=1):
         print(f"  {index}) {profile['name']} [{profile['dir']}] - {profile['cookie_file']}")
@@ -5197,15 +5198,22 @@ def render_doctor_report(report: DoctorReport) -> str:
 # Shows one transient doctor step only on an interactive terminal
 def _doctor_progress(label: str) -> None:
     if sys.stdout.isatty():
-        sys.stdout.write((f"\r* Checking {label} ...").ljust(79))
+        previous_width = getattr(_doctor_progress, "width", 0)
+        if previous_width:
+            sys.stdout.write("\r" + (" " * previous_width) + "\r")
+        line = f"* Checking {label} ..."
+        _doctor_progress.width = len(line)  # type: ignore[attr-defined]
+        sys.stdout.write("\r" + line)
         sys.stdout.flush()
 
 
 # Clears the transient doctor progress line on an interactive terminal
 def _doctor_progress_clear() -> None:
-    if sys.stdout.isatty():
-        sys.stdout.write("\r" + (" " * 79) + "\r")
+    width = getattr(_doctor_progress, "width", 0)
+    if sys.stdout.isatty() and width:
+        sys.stdout.write("\r" + (" " * width) + "\r")
         sys.stdout.flush()
+        _doctor_progress.width = 0  # type: ignore[attr-defined]
 
 
 # Runs doctor preflight plus approved delivery tests and returns zero unless one check fails
