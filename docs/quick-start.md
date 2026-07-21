@@ -15,9 +15,9 @@ For a local installation, the easiest login method is automatic Firefox import. 
 <a id="new-here-run-the-setup-wizard"></a>
 ## New here? Run the setup wizard
 
-The fastest way to get started is the interactive setup wizard. It asks a few simple questions about who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. Discarding all answers requires a separate confirmation. It then saves a ready-to-run configuration for you while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+First complete one method on the [Installation](installation.md) page. The fastest way to configure that installation is the interactive setup wizard. It asks who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. It then saves a ready-to-run configuration while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
 
-Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown in the [Docker section](usage.md#main-application-docker-image).
+Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown under [Install with Docker Compose](installation.md#docker-compose).
 
 Use the command that matches how you run the tool:
 
@@ -36,11 +36,13 @@ curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/he
 docker compose run --rm spotify_monitor --setup
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
+
+Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
 The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate authentication path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation. Local next-step commands use the current Python interpreter and quote paths for the active operating system.
 
@@ -54,8 +56,9 @@ For a local PyPI or downloaded-script installation, Firefox browser import remai
 | I want to... | Run this |
 | --- | --- |
 | Set up Spotify Monitor for the first time | Use the setup command for your installation above |
-| Start monitoring with existing authentication | `spotify_monitor <spotify_user_uri_id>` |
-| Check authentication, connectivity and one target | `spotify_monitor --doctor <spotify_user_uri_id>` |
+| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
+| Start the target saved in `TARGET_USER_URI_ID` | `spotify_monitor --config-file spotify_monitor.conf` or `docker compose up` |
+| Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
@@ -64,9 +67,9 @@ For a local PyPI or downloaded-script installation, Firefox browser import remai
 | Send a test webhook | Run `spotify_monitor --send-test-webhook` |
 
 <a id="manual-commands"></a>
-## Manual commands
+## Run Individual Commands
 
-Manual script examples use `python3` on macOS and Linux. On Windows use `python` in place of `python3`. Commands printed by Spotify Monitor detect the current interpreter automatically.
+The shorter examples in this section use a PyPI installation. For a manual script replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux and `python spotify_monitor.py` on Windows. Docker and Docker Compose use the command prefixes under [Command Format by Installation Method](usage.md#command-format). Commands printed by Spotify Monitor detect the active installation automatically.
 
 If you prefer to configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account you will use for monitoring. Then return to the terminal and import that browser login:
 
@@ -89,10 +92,10 @@ python3 spotify_monitor.py --set-sp-dc
 docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --set-sp-dc --env-file /data/.env
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --set-sp-dc --env-file /data/.env
 ```
 
 `--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
@@ -110,17 +113,17 @@ python3 spotify_monitor.py --set-webhook-url
 docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --set-webhook-url --env-file /data/.env
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --set-webhook-url --env-file /data/.env
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --set-webhook-url --env-file /data/.env
 ```
 
 The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`. This command only saves the link. It does not turn on webhook alerts or send a message. See [Webhook Settings](configuration.md#webhook-settings) to choose your alerts then run `spotify_monitor --send-test-webhook` to test them.
 
 Before monitoring, [follow the Spotify user](configuration.md#following-the-monitored-user) from the account represented by your configured credentials.
 
-Start monitoring with a raw user ID, Spotify user URI or profile URL. A target saved by the wizard does not need to be repeated:
+Start monitoring with a raw user ID, Spotify user URI or profile URL. These PyPI examples also show how a saved `TARGET_USER_URI_ID` removes the positional target:
 
 ```sh
 spotify_monitor <spotify_user_uri_id>
@@ -128,11 +131,27 @@ spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id"
 spotify_monitor --config-file spotify_monitor.conf
 ```
 
-Or if you installed [manually](installation.md#manual-installation):
+For a [manual script](installation.md#manual-installation):
 
 ```sh
 python3 spotify_monitor.py <spotify_user_uri_id>
 ```
+
+For Docker Compose, use `/data` paths inside the container. If the target was saved by setup use the first command. Otherwise use the second form with any supported target:
+
+```sh
+docker compose up
+docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+```
+
+For a direct Docker image on Docker Desktop:
+
+```sh
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf --env-file /data/.env
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+```
+
+These Docker Desktop commands work in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`. On Linux replace `${PWD}` with `$PWD` and add `--user "$(id -u):$(id -g)"` immediately after `--init`.
 
 To see all supported command-line arguments and flags:
 
