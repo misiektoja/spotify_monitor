@@ -39,20 +39,18 @@ You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile U
 spotify_monitor --config-file spotify_monitor.conf
 ```
 
-**New in v3.0:** Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for `cookie` or `client` mode. New users should not create a Spotify app solely for this tool.
+**New in v3.0:** A Spotify developer app is no longer required. Cookie or client mode authenticates Friend Activity while the anonymous web-player backend supplies track and public playlist metadata. Existing working OAuth app credentials remain supported as an optional legacy metadata path. New users should not create an app solely for this tool.
 
 **New in v2.6:** The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify access token source
 
-The tool uses a **hybrid authentication approach** with automatic metadata backend selection.
+Friend Activity authentication and metadata retrieval are separate.
 
-For friend activity monitoring, you need to configure either the `cookie` or `client` token source method.
+For Friend Activity monitoring, configure either the `cookie` or `client` token source method. A Spotify developer app is not used for core monitoring.
 
-Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.
-
-> **OAuth app guidance:** Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This requirement applies to old and new apps, so creation date does not explain the different results in these tests. Configure OAuth app credentials only when the app owner has Premium and you have verified that its legacy metadata endpoints still work. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this live and reports a warning when web-player fallback succeeds. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+Track metadata and public playlist metadata use the anonymous Spotify web-player backend automatically. If complete [Spotify OAuth App](#spotify-oauth-app) credentials are configured the tool tries that optional legacy Web API path first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.
 
 The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.
 
@@ -212,9 +210,11 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ## Spotify OAuth App
 
-OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Spotify requires the owner of every Development Mode app to keep an active Premium subscription. Configure the credentials only when that requirement is met and the app has verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
+Since v3.0, you do not need a Spotify OAuth app for normal use. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
 
-App creation date does not replace a live compatibility check. A Development Mode app without an active Premium subscription on its owner account will stop working until the owner resubscribes. Do not create a new app for `spotify_monitor` because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.
+Spotify requires the owner of every Development Mode app to keep an active Premium subscription. This applies to old and new apps. A Development Mode app stops working when the owner loses Premium and resumes after the owner resubscribes. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this path live and reports a warning when web-player metadata succeeds. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+
+Do not create a new app for `spotify_monitor` because core monitoring and friend listing do not use it. The automatic web-player backend supplies the required track and public playlist metadata.
 
 If you already have a working app:
 
