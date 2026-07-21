@@ -7,12 +7,13 @@ Choose one installation method and keep using its command format throughout the 
 
 Choose one runtime path:
 
-* **Python path**:
+**Python path**:
   * [Python](https://www.python.org/downloads/) 3.9 or higher
   * Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `Pillow`
   * Optional legacy OAuth library: `spotipy`
   * Optional Chromium cookie import library: `pycookiecheat`
-* **Container path** (Python is not required on the host):
+
+**Container path** (Python is not required on the host):
   * Any Docker-compatible runtime such as:
     * [Docker Desktop](https://docs.docker.com/get-started/get-docker/) (macOS, Windows, Linux)
     * [Docker Engine](https://docs.docker.com/engine/install/) (Linux)
@@ -76,7 +77,16 @@ pip install "spotify_monitor[browser,legacy-oauth]"
 <a id="manual-installation"></a>
 ### Install the Manual Script
 
-Download [spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py) and [requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt) to the same directory. Then install the core dependencies:
+Download the script and dependency list into the same directory:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
+```
+
+You can also download [spotify_monitor.py](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py) and [requirements.txt](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt) in a browser or use the files from a cloned repository.
+
+Install the core dependencies:
 
 ```sh
 pip install -r requirements.txt
@@ -233,9 +243,7 @@ docker build --pull --tag spotify-monitor:local .
 docker run --rm spotify-monitor:local --version
 ```
 
-### Check a 3.0 Upgrade
-
-Version 3.0 accepts existing configuration files. It uses built-in TOTP v61 parameters and no longer reads the old `SECRET_CIPHER_DICT`, `SECRET_CIPHER_DICT_URL` or `TOTP_VER` settings. Existing OAuth app credentials remain optional and the anonymous web-player backend supplies metadata when the legacy API path is unavailable.
+### Check Upgrade
 
 After any upgrade run the doctor command for your installation:
 
