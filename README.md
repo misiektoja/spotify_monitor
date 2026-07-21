@@ -44,17 +44,21 @@ On macOS or Windows with Docker Desktop:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
+
+The Docker Desktop commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
 On Linux, pass your host user and group so the container can write to the current directory:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
+
+For the manual single-file method, optional extras and upgrade commands for every method, see [Installation](https://misiektoja.github.io/spotify_monitor/installation/).
 
 <a id="features"></a>
 ## Features
@@ -85,6 +89,7 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 - **CSV Logging**: Save every listened song with full timestamps to a CSV file.
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
+- **Docker Ready**: Run through Docker Hub, Docker Compose or a local image with persistent configuration, secrets and output.
 
 > **Spotify OAuth app note:** Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This applies to old and new apps. OAuth app credentials are optional because Spotify Monitor falls back automatically to the web-player metadata backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
@@ -103,10 +108,10 @@ For Spotify Web Player token and TOTP utilities, see [Debugging Tools](https://m
 
 Full documentation is available at **[misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/)**:
 
-- [Installation](https://misiektoja.github.io/spotify_monitor/installation/) - PyPI, optional extras and manual installation
+- [Installation](https://misiektoja.github.io/spotify_monitor/installation/) - PyPI, manual script, Docker installation and upgrades
 - [Quick Start](https://misiektoja.github.io/spotify_monitor/quick-start/) - setup wizard, authentication and first run
 - [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) - Spotify login, targets, SMTP, webhooks and secrets
-- [Usage](https://misiektoja.github.io/spotify_monitor/usage/) - Docker, monitoring, notifications, playback and output
+- [Usage](https://misiektoja.github.io/spotify_monitor/usage/) - command formats, monitoring, container operation, notifications, playback and output
 - [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) - the `--doctor` self-check and logging levels
 - [Debugging Tools](https://misiektoja.github.io/spotify_monitor/debugging/) - TOTP token testing and secret extraction
 
@@ -137,10 +142,10 @@ curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/he
 docker compose run --rm spotify_monitor --setup
 
 # Docker image on macOS or Windows
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 
 # Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
 Running the tool with no arguments also offers the wizard when no target has been saved. It detects whether you use PyPI, the downloaded script, Docker or Docker Compose then shows matching commands.
@@ -163,8 +168,9 @@ For local installs, Firefox import is the recommended login path. Docker users s
 | I want to... | Run this |
 | --- | --- |
 | Set up Spotify Monitor for the first time | Use the setup command for your installation above |
-| Start monitoring with existing authentication | `spotify_monitor <spotify_user_uri_id>` |
-| Check authentication, connectivity and one target | `spotify_monitor --doctor <spotify_user_uri_id>` |
+| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
+| Start a target saved as `TARGET_USER_URI_ID` | `spotify_monitor --config-file spotify_monitor.conf` or `docker compose up` |
+| Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
@@ -173,7 +179,7 @@ For local installs, Firefox import is the recommended login path. Docker users s
 <a id="manual-commands"></a>
 ### Manual commands
 
-The examples below use a PyPI install. For a manual script install, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux and `python spotify_monitor.py` on Windows.
+The examples below use a PyPI install. For a manual script install, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux and `python spotify_monitor.py` on Windows. Docker users can copy the complete command prefixes from the [Usage guide](https://misiektoja.github.io/spotify_monitor/usage/#command-format).
 
 Sign in to [Spotify Web Player](https://open.spotify.com/) with Firefox then import that login:
 
