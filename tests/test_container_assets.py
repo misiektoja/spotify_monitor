@@ -116,6 +116,8 @@ def test_installation_docs_cover_all_delivery_and_upgrade_paths():
     for heading in ("### Install from PyPI", "### Install the Manual Script", "### Install with Docker Compose", "### Install from Docker Hub", "### Upgrade a PyPI Installation", "### Upgrade a Manual Installation", "### Upgrade a Docker Compose Installation", "### Upgrade a Direct Docker Installation", "### Upgrade a Locally Built Docker Image"):
         assert heading in installation
     assert "The published image already contains Python and all core libraries" in installation
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py" in installation
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt" in installation
     assert "pip install --upgrade -r requirements.txt" in installation
     assert "docker build --pull --tag spotify-monitor:local ." in installation
 
@@ -125,6 +127,14 @@ def test_usage_docs_cover_target_forms_and_install_commands():
     usage = read_asset("docs/usage.md")
     for value in ("spotify:user:spotify_user_uri_id", "https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id", "TARGET_USER_URI_ID", "python3 spotify_monitor.py", "docker compose run --rm spotify_monitor", "misiektoja/spotify-monitor:latest"):
         assert value in usage
+
+
+# Verifies debugging downloads use the same curl convention as installation
+def test_debugging_docs_use_curl_downloads():
+    debugging = read_asset("docs/debugging.md")
+    assert "wget" not in debugging.casefold()
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_totp_test.py" in debugging
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py" in debugging
 
 
 # Verifies webhook guidance targets the configuration page and its stable anchor
