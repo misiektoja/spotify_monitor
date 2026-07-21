@@ -52,13 +52,14 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 # ---------------------------------------------------------------------
 
 # The optional section below enables the legacy Web API path for track and playlist metadata
-# Do not create a new Spotify app only for this tool because new apps normally lack the required legacy endpoint access
-# Configure these values only for an existing app that you have verified still supports the legacy endpoints
+# Spotify requires the owner of every Development Mode app to keep an active Premium subscription
+# Do not create a new Spotify app only for this tool because the web-player backend already provides the required metadata
+# Configure these values only for an app whose owner has Premium and that you have verified still supports the legacy endpoints
 # Restricted or incomplete apps fall back automatically to the anonymous Spotify web-player backend
 #
-# To use a working existing app:
+# To use a working app:
 #   - Log in to Spotify Developer dashboard: https://developer.spotify.com/dashboard
-#   - Open the existing app with verified legacy endpoint access
+#   - Open an app owned by an account with active Spotify Premium and verified legacy endpoint access
 #   - Copy the 'Client ID' and 'Client Secret'
 #
 # Provide the SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET secrets using one of the following methods:
@@ -1125,7 +1126,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", recovery_fix_with_guide("Re-export the Spotify Desktop Client login request", CLIENT_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected authentication", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if status == 403 and context == "metadata":
-        return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("Remove incompatible legacy OAuth credentials and use the automatic web-player metadata fallback", OAUTH_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove the optional OAuth credentials and use the automatic web-player fallback", OAUTH_GUIDE_URL), False, safe_detail)
     if status == 403:
         if context.startswith("cookie"):
             return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated cookie request", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
@@ -5025,7 +5026,7 @@ def doctor_check_optional_oauth() -> List[DoctorCheck]:
             advice = make_recovery_advice("spotify.unavailable", "Both Spotify metadata backends are unavailable", "Check connectivity and Spotify service availability then run --doctor again with --debug", True, detail)
             return [make_doctor_check("Metadata", "FAIL", advice.summary, advice.detail, advice)]
         detail = f"Automatic web-player fallback succeeded after the legacy check failed: {legacy_error}"
-        advice = make_recovery_advice("spotify.unavailable", "Legacy OAuth metadata access is unavailable", "Remove incompatible SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET values to use the web-player backend directly or keep them while automatic fallback remains available", False, detail)
+        advice = make_recovery_advice("spotify.unavailable", "Legacy OAuth metadata access is unavailable", "For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET to use the web-player backend directly or keep them while automatic fallback remains available", False, detail)
         return [make_doctor_check("Metadata", "WARN", advice.summary, advice.detail, advice)]
 
 
