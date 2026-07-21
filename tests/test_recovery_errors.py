@@ -79,6 +79,13 @@ def test_target_recovery_categories(context, code):
     assert monitor.classify_recovery_error(context=context).code == code
 
 
+# Verifies target visibility guidance includes a directly usable profile link when the ID is known
+def test_target_visibility_recovery_includes_profile_link():
+    advice = monitor.classify_recovery_error(context="target_not_visible", target_user_id="friend.user")
+    assert "Profile: https://open.spotify.com/user/friend.user" in advice.fix
+    assert advice.fix.index("Profile:") < advice.fix.index("Guide:")
+
+
 # Verifies SMTP failures distinguish config authentication and connectivity
 def test_smtp_recovery_categories():
     auth_error = smtplib.SMTPAuthenticationError(535, b"bad credentials")
