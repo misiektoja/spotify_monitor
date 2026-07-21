@@ -44,17 +44,21 @@ On macOS or Windows with Docker Desktop:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
-docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
+
+The Docker Desktop commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
 On Linux, pass your host user and group so the container can write to the current directory:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --setup
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor --config-file /data/spotify_monitor.conf
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
+
+For the manual single-file method, optional extras and upgrade commands for every method, see [Installation](installation.md).
 
 <a id="features"></a>
 ## Features
@@ -85,6 +89,7 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 - **CSV Logging**: Save every listened song with full timestamps to a CSV file.
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
+- **Docker Ready**: Run through Docker Hub, Docker Compose or a local image with persistent configuration, secrets and output.
 
 > **Spotify OAuth app note:** Spotify requires the owner of every Development Mode app to have an active Spotify Premium subscription. This applies to old and new apps. OAuth app credentials are optional because Spotify Monitor falls back automatically to the web-player metadata backend. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
