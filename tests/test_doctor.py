@@ -489,12 +489,15 @@ def test_malformed_target_fails():
     assert require_advice(check).code == "target.invalid"
 
 
-# Verifies a target absent from buddy-list data is not described as deleted
-def test_target_absent_from_buddy_list_is_not_visible():
-    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else")), "friend.user")[0]
+# Verifies an absent target is described as invisible with its normalized profile link
+@pytest.mark.parametrize("target_value", ["friend.user", "spotify:user:friend.user", "https://open.spotify.com/user/friend%2Euser?si=test"])
+def test_target_absent_from_buddy_list_is_not_visible(target_value):
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else")), target_value)[0]
     assert check.status == "FAIL"
     assert require_advice(check).code == "target.not_visible"
-    assert "deleted" not in monitor.render_doctor_report(monitor.DoctorReport([check])).lower()
+    rendered = monitor.render_doctor_report(monitor.DoctorReport([check]))
+    assert "deleted" not in rendered.lower()
+    assert rendered.count("https://open.spotify.com/user/friend.user") == 1
 
 
 # Verifies target checks reuse the authentication buddy-list response
