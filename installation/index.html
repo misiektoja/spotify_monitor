@@ -1022,13 +1022,15 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>spotify_monitor
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span>--version
 </code></pre></div>
+<p>Each command below that uses square brackets installs the base <code>spotify_monitor</code> package plus its named optional dependencies. Use only the command matching your needs. You do not need to run the plain install command first.</p>
 <p>Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser]&quot;</span>
 </code></pre></div>
-<p>An extra includes the base package so you do not need to run both install commands.</p>
-<p>Spotipy is optional. Install the legacy OAuth extra only if you have working Spotify OAuth app credentials and want to try the legacy Web API metadata path before the automatic web-player fallback:</p>
+<p>This installs Spotify Monitor and the optional <code>pycookiecheat</code> dependency.</p>
+<p>Spotipy is optional. Install the legacy OAuth extra only if you already have working <a href="../configuration/#spotify-oauth-app">Spotify OAuth App</a> credentials and want to enable the optional legacy Web API metadata path. The automatic web-player backend works without this extra:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[legacy-oauth]&quot;</span>
 </code></pre></div>
+<p>This installs Spotify Monitor and the optional Spotipy dependency. It also includes the base package, so this single command is sufficient.</p>
 <p>Both extras can be installed together:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser,legacy-oauth]&quot;</span>
 </code></pre></div>
@@ -1100,10 +1102,13 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser,legacy-oauth]&quot;</span>
 </code></pre></div>
 <h3 id="upgrade-a-manual-installation">Upgrade a Manual Installation<a class="headerlink" href="#upgrade-a-manual-installation" title="Permanent link">&para;</a></h3>
-<p>Replace <code>spotify_monitor.py</code> with the newest copy. Download the current <code>requirements.txt</code> and refresh the dependencies too because a new release may add a required library:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
+<p>Replace <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py">spotify_monitor.py</a> and <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt">requirements.txt</a> with the newest copies. You can download them in a browser, use the files from an updated clone or run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
 </code></pre></div>
+<p>Refresh the dependencies even when <code>requirements.txt</code> appears unchanged because a new release may add or change a required library.</p>
 <p>Use <code>python spotify_monitor.py --version</code> on Windows. If you modified the script itself, save your changes before replacing it and reapply them to the new version.</p>
 <h3 id="upgrade-a-docker-compose-installation">Upgrade a Docker Compose Installation<a class="headerlink" href="#upgrade-a-docker-compose-installation" title="Permanent link">&para;</a></h3>
 <p>Stop an attached run with <code>Ctrl+C</code>. From the directory that contains <code>docker-compose.yml</code> run:</p>
