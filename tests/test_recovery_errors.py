@@ -28,6 +28,13 @@ def test_http_status_classification_is_context_sensitive(status, context, code):
     assert monitor.classify_recovery_error(make_http_error(status), context).code == code
 
 
+# Verifies restricted legacy metadata points Development Mode app owners to Premium first
+def test_legacy_metadata_recovery_mentions_app_owner_premium():
+    advice = monitor.classify_recovery_error(make_http_error(403), "metadata")
+    assert "owner has active Spotify Premium" in advice.fix
+    assert "automatic web-player fallback" in advice.fix
+
+
 # Verifies cookie failures recommend the portable Firefox import command
 def test_cookie_recovery_recommends_firefox_import():
     advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
