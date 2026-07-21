@@ -1,0 +1,1328 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time tracker for Spotify friend activity with playback synchronization and instant alerts">
+      
+      
+      
+        <link rel="canonical" href="https://misiektoja.github.io/spotify_monitor/configuration/">
+      
+      
+        <link rel="prev" href="../quick-start/">
+      
+      
+        <link rel="next" href="../usage/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - spotify_monitor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="green">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spotify_monitor" class="md-header__button md-logo" aria-label="spotify_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spotify_monitor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="green"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="green" data-md-color-accent="green"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/misiektoja/spotify_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/spotify_monitor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spotify_monitor" class="md-nav__button md-logo" aria-label="spotify_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spotify_monitor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/misiektoja/spotify_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/spotify_monitor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spotify-access-token-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify access token source
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spotify access token source">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#spotify-sp_dc-cookie" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify sp_dc Cookie
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spotify sp_dc Cookie">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-browsers-are-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which browsers are supported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-cookie-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual cookie extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spotify-desktop-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify Desktop Client
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spotify-oauth-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify OAuth App
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#following-the-monitored-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Following the Monitored User
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-get-a-friends-user-uri-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to Get a Friend's User URI ID
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#smtp-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#discord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ntfy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ntfy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storing-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storing Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debugging Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spotify-access-token-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify access token source
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spotify access token source">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#spotify-sp_dc-cookie" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify sp_dc Cookie
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spotify sp_dc Cookie">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-browsers-are-supported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which browsers are supported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-cookie-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual cookie extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spotify-desktop-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify Desktop Client
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spotify-oauth-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spotify OAuth App
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#following-the-monitored-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Following the Monitored User
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-get-a-friends-user-uri-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to Get a Friend's User URI ID
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#smtp-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP Settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Webhook Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#discord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discord
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ntfy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ntfy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storing-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storing Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/misiektoja/spotify_monitor/edit/main/docs/configuration.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p><a id="configuration-file"></a></p>
+<h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
+<p>Most settings can be configured via command-line arguments.</p>
+<p>If you want to have it stored persistently, generate a default config template and save it to a file named <code>spotify_monitor.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># On macOS, Linux or Windows Command Prompt (cmd.exe)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>&gt;<span class="w"> </span>spotify_monitor.conf
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># On Windows PowerShell (recommended to avoid encoding issues)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>spotify_monitor.conf
+</code></pre></div>
+<blockquote>
+<p><strong>IMPORTANT</strong>: On <strong>Windows PowerShell</strong>, using redirection (<code>&gt;</code>) can cause the file to be encoded in UTF-16, which will lead to "null bytes" errors when running the tool. It is highly recommended to provide the filename directly as an argument to <code>--generate-config</code> to ensure UTF-8 encoding.</p>
+</blockquote>
+<p>Edit the <code>spotify_monitor.conf</code> file and change any desired configuration options (detailed comments are provided for each).</p>
+<p>You may set <code>TARGET_USER_URI_ID</code> to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
+</code></pre></div>
+<p><strong>New in v3.0:</strong> Public track metadata and playlist metadata now fall back automatically to Spotify's anonymous web-player service. Existing OAuth app credentials remain the preferred legacy Web API path when they work but they are no longer required for <code>cookie</code> or <code>client</code> mode. New users should not create a Spotify app solely for this tool.</p>
+<p><strong>New in v2.6:</strong> The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.</p>
+<p><a id="spotify-access-token-source"></a></p>
+<h2 id="spotify-access-token-source">Spotify access token source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
+<p>The tool uses a <strong>hybrid authentication approach</strong> with automatic metadata backend selection.</p>
+<p>For friend activity monitoring, you need to configure either the <code>cookie</code> or <code>client</code> token source method.</p>
+<p>Track metadata and public playlist metadata use the anonymous Spotify web-player backend by default. If complete <a href="#spotify-oauth-app">Spotify OAuth App</a> credentials are configured the tool tries the legacy Web API first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403.</p>
+<blockquote>
+<p><strong>OAuth app guidance:</strong> Spotify restricted new Development Mode apps created on or after February 11, 2026. Some older apps have been observed to retain the legacy endpoint access used by this tool, but creation date alone does not guarantee compatibility. Configure OAuth app credentials only if you already have an app which you have verified still works. If it returns HTTP 403 then remove the credentials and use the automatic web backend. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">official migration guide</a>.</p>
+</blockquote>
+<p>The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.</p>
+<p>The token source method can be configured via the <code>TOKEN_SOURCE</code> configuration option or the <code>--token-source</code> flag.</p>
+<p><strong>Recommended: <code>cookie</code></strong></p>
+<p>Uses the <code>sp_dc</code> cookie to retrieve a token from the Spotify web endpoint. This method is easy to set up and recommended for most users.</p>
+<p><strong>Alternative: <code>client</code></strong></p>
+<p>Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.</p>
+<p>If no method is specified, the tool defaults to the <code>cookie</code> method.</p>
+<p><strong>Important</strong>: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API. That said, while I've never encountered any issues on my own accounts, I can't guarantee that Spotify won't impose restrictions in the future - you've been warned.</p>
+<p><a id="spotify-sp_dc-cookie"></a></p>
+<h3 id="spotify-sp_dc-cookie">Spotify sp_dc Cookie<a class="headerlink" href="#spotify-sp_dc-cookie" title="Permanent link">&para;</a></h3>
+<p>This is the default method used to obtain a Spotify access token.</p>
+<p>Firefox browser import is the recommended onboarding path for local PyPI and downloaded-script installations. It works on macOS, Linux and Windows with no optional dependency. For default Docker and Docker Compose installations, use hidden manual entry with <code>--set-sp-dc</code>. Container Firefox import is advanced because it requires a read-only host profile mount.</p>
+<p>Before importing, open <a href="https://open.spotify.com/">Spotify Web Player</a> in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.</p>
+<p><a id="which-browsers-are-supported"></a></p>
+<h4 id="which-browsers-are-supported">Which browsers are supported<a class="headerlink" href="#which-browsers-are-supported" title="Permanent link">&para;</a></h4>
+<p>The <code>--browser</code> flag accepts these values:</p>
+<table>
+<thead>
+<tr>
+<th><code>--browser</code></th>
+<th>Application it reads</th>
+<th>Platforms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>firefox</code> (default)</td>
+<td>Mozilla Firefox</td>
+<td>macOS, Linux, Windows</td>
+</tr>
+<tr>
+<td><code>chrome</code></td>
+<td>Google Chrome</td>
+<td>macOS, Linux</td>
+</tr>
+<tr>
+<td><code>brave</code></td>
+<td>Brave</td>
+<td>macOS, Linux</td>
+</tr>
+<tr>
+<td><code>chromium</code></td>
+<td>The standalone open-source Chromium browser</td>
+<td>macOS, Linux</td>
+</tr>
+</tbody>
+</table>
+<p><strong>About the <code>chromium</code> option:</strong> Chromium is the unbranded open-source browser that Google Chrome is built on. It is a <strong>separate application</strong> from Chrome with its own profile and cookie store. It is also a common default browser on many Linux distributions. Pick <code>chromium</code> only if you actually run that browser. If you use Google Chrome pick <code>chrome</code>.</p>
+<p><strong>Not currently supported:</strong> Microsoft Edge, Opera, Vivaldi, Arc and other Chromium-based browsers. They share the Chromium engine but each keeps its own separate cookie store. The underlying <a href="https://github.com/n8henrie/pycookiecheat"><code>pycookiecheat</code></a> library handles only the browsers listed above. If you use one of these browsers log in with Firefox or Chrome/Brave/Chromium for the import instead.</p>
+<p>On <strong>Windows</strong> Chromium import is not possible. Chrome's app-bound encryption in Chrome 127 and later blocks external programs from reading its cookies. The tool detects Windows and recommends using Firefox instead.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
+</code></pre></div>
+<p>The importer discovers Firefox profiles from <code>profiles.ini</code> and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--browser-profile<span class="w"> </span><span class="s2">&quot;default-release&quot;</span>
+</code></pre></div>
+<p>The advanced <code>--cookie-file PATH</code> option points directly to a Firefox <code>cookies.sqlite</code> database and takes precedence over profile discovery:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--cookie-file<span class="w"> </span>/path/to/cookies.sqlite
+</code></pre></div>
+<p>By default import writes only <code>SP_DC_COOKIE</code> to <code>.env</code> in the current directory. Use <code>--env-file PATH</code> to choose another dotenv file. Import never modifies a dotenv file found only through parent-directory discovery. <code>--env-file none</code> is invalid for import because persistence is required.</p>
+<p>The cookie is validated through Spotify token acquisition and an authenticated buddy-list request before the dotenv file is changed. Existing comments, blank lines and unrelated settings are preserved. Replacing an existing value requires confirmation in an interactive terminal or <code>--force</code> in a noninteractive run. <code>--force</code> does not skip validation.</p>
+<p>Chrome, Brave and Chromium import is available on macOS and Linux through the optional browser extra:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser]&quot;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>chrome
+</code></pre></div>
+<p>Chromium profiles support <code>Default</code> and <code>Profile *</code> directories plus friendly names from Local State. Both modern <code>&lt;profile&gt;/Network/Cookies</code> and legacy <code>&lt;profile&gt;/Cookies</code> databases are recognized.</p>
+<p><a id="manual-cookie-extraction"></a></p>
+<h4 id="manual-cookie-extraction">Manual cookie extraction<a class="headerlink" href="#manual-cookie-extraction" title="Permanent link">&para;</a></h4>
+<p>Manual extraction is a fallback for local installations and the recommended default-container path. Treat <code>sp_dc</code> like a password. Anyone who has it may be able to use your Spotify login session.</p>
+<p>Follow these steps:</p>
+<ol>
+<li>Open <a href="https://open.spotify.com/">Spotify Web Player</a> and sign in to the Spotify account that follows the person you want to monitor.</li>
+<li>Open your browser's developer tools. Press <code>F12</code> or <code>Ctrl+Shift+I</code> on Windows and Linux. Press <code>Command+Option+I</code> on macOS.</li>
+<li>In Firefox, open <strong>Storage</strong> &gt; <strong>Cookies</strong> &gt; <code>https://open.spotify.com</code>.</li>
+<li>In Chrome, Brave or Chromium, open <strong>Application</strong> &gt; <strong>Storage</strong> &gt; <strong>Cookies</strong> &gt; <code>https://open.spotify.com</code>.</li>
+<li>Find the cookie named <code>sp_dc</code> and copy only its <strong>Value</strong>. Do not copy the cookie name or the complete table row.</li>
+<li>Run the <code>--set-sp-dc</code> command for your installation and paste the value at the hidden prompt. The value will not appear on the screen.</li>
+</ol>
+<p>As an alternative, <a href="https://cookie-editor.com/">Cookie-Editor by cgagnier</a> can display the <code>sp_dc</code> value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.</p>
+<p>The recommended <code>--set-sp-dc</code> command validates the cookie with Spotify before changing <code>.env</code>. Existing cookie replacement requires confirmation. See the <a href="../quick-start/#manual-commands">copy-paste commands</a> for PyPI, downloaded-script, Docker Compose and Docker installations.</p>
+<p>You can also provide <code>SP_DC_COOKIE</code> in these ways:</p>
+<ul>
+<li>Set it as an <a href="#storing-secrets">environment variable</a>, for example <code>export SP_DC_COOKIE="your_sp_dc_cookie_value"</code>.</li>
+<li>Add <code>SP_DC_COOKIE="your_sp_dc_cookie_value"</code> to a <a href="#storing-secrets">dotenv file</a> for persistent use.</li>
+<li>Pass it for one run with <code>-u</code> or <code>--spotify-dc-cookie</code>. This is not recommended because the value may appear in shell history or process listings.</li>
+<li>Store it in the configuration file or source code as a last resort. This is not recommended because it is easier to expose or commit accidentally.</li>
+</ul>
+<p>If your <code>sp_dc</code> cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new <code>sp_dc</code> cookie value.</p>
+<p>If you store the <code>SP_DC_COOKIE</code> in a dotenv file you can update its value and send a <code>SIGHUP</code> signal to reload the file with the new <code>sp_dc</code> cookie without restarting the tool. More info in <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
+<blockquote>
+<p><strong>NOTE:</strong> Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code> config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use <a href="https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> to extract the current bundle values then update those two options.</p>
+</blockquote>
+<p><a id="spotify-desktop-client"></a></p>
+<h3 id="spotify-desktop-client">Spotify Desktop Client<a class="headerlink" href="#spotify-desktop-client" title="Permanent link">&para;</a></h3>
+<p>This is the alternative method used to obtain a Spotify access token which simulates a login from the real Spotify desktop app using credentials intercepted from a real session.</p>
+<ul>
+<li>
+<p>Run an intercepting proxy of your choice (like <a href="https://proxyman.com">Proxyman</a> - the trial version is sufficient)</p>
+</li>
+<li>
+<p>Enable SSL traffic decryption for <code>spotify.com</code> domain</p>
+</li>
+<li>
+<p>in Proxyman: click <strong>Tools → SSL Proxying List → + button → Add Domain → paste <code>*.spotify.com</code> → Add</strong></p>
+</li>
+<li>
+<p>Launch the Spotify desktop client, then switch to your intercepting proxy (like Proxyman) and look for POST requests to <code>https://login5.spotify.com/v3/login</code></p>
+</li>
+<li>
+<p>If you don't see this request, try following steps (stop once it works):</p>
+</li>
+<li>restart the Spotify desktop client</li>
+<li>log out from the Spotify desktop client and log back in</li>
+<li>point Spotify at the intercepting proxy directly in its settings, i.e. in <strong>Spotify → Settings → Proxy Settings</strong>, set:<ul>
+<li><strong>proxy type</strong>: <code>HTTP</code></li>
+<li><strong>host</strong>: <code>127.0.0.1</code> (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)</li>
+<li><strong>port</strong>: <code>9090</code> (port of your proxy, for Proxyman use the port you see at the top bar)</li>
+<li>restart the app; since QUIC (HTTP/3) requires raw UDP and can't tunnel over HTTP CONNECT, Spotify will downgrade to TCP-only HTTP/2 or 1.1, which intercepting proxy can decrypt</li>
+</ul>
+</li>
+<li>block Spotify's UDP port 443 at the OS level with a firewall of your choice - this prevents QUIC (HTTP/3), forcing TLS over TCP and letting intercepting proxy perform MITM</li>
+<li>
+<p>try an older version of the Spotify desktop client</p>
+</li>
+<li>
+<p>Export the login request body (a binary Protobuf payload) to a file (e.g. <strong><em>login-request-body-file</em></strong>)</p>
+</li>
+<li>In Proxyman: <strong>right click the request → Export → Request Body → Save File</strong>.</li>
+</ul>
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/proxyman_export_protobuf.png" alt="proxyman_export_protobuf" width="80%"/>
+</p>
+
+<ul>
+<li>Run the tool with <code>--token-source client -w &lt;path-to-login-request-body-file&gt;</code>:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>--token-source<span class="w"> </span>client<span class="w"> </span>-w<span class="w"> </span>&lt;path-to-login-request-body-file&gt;<span class="w"> </span>&lt;spotify_user_uri_id&gt;
+</code></pre></div>
+<p>If successful, the tool will automatically extract the necessary fields and begin monitoring.</p>
+<p>Instead of using the <code>-w</code> flag each time, you can persist the Protobuf login request file path by setting the <code>LOGIN_REQUEST_BODY_FILE</code> configuration option.</p>
+<p>The same applies to <code>--token-source client</code> flag - you can persist it via <code>TOKEN_SOURCE</code> configuration option set to <code>client</code>.</p>
+<p>The tool will automatically refresh both the access token and client token using the intercepted refresh token.</p>
+<p>If your refresh token expires, the tool will notify you via the console and email. In that case, you'll need to re-export the login request body.</p>
+<p>If you re-export the login request body to the same file name, you can send a <code>SIGHUP</code> signal to reload the file with the new refresh token without restarting the tool. More info in <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
+<p>Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.</p>
+<p><a id="spotify-oauth-app"></a></p>
+<h2 id="spotify-oauth-app">Spotify OAuth App<a class="headerlink" href="#spotify-oauth-app" title="Permanent link">&para;</a></h2>
+<p>OAuth app credentials are optional in v3.0. They enable the legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure them only when you already have an existing app with verified legacy endpoint access. The tool keeps this path first for a working app then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
+<p>Apps created under the current Development Mode restrictions are not useful for this legacy path. Do not create a new app for <code>spotify_monitor</code> because the anonymous web-player backend supplies all metadata fields used by monitoring and friend listing.</p>
+<p>If you already have a working existing app:</p>
+<ul>
+<li>
+<p>Log in to <a href="https://developer.spotify.com/dashboard">Spotify Developer dashboard</a></p>
+</li>
+<li>
+<p>Open the existing app which still has verified legacy endpoint access</p>
+</li>
+<li>
+<p>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></p>
+</li>
+<li>
+<p>Provide the <code>SP_APP_CLIENT_ID</code> and <code>SP_APP_CLIENT_SECRET</code> secrets using one of the following methods:</p>
+</li>
+<li>Pass it at runtime with <code>-r</code> / <code>--oauth-app-creds</code> (use <code>SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET</code> format - note the colon separator)</li>
+<li>Set it as an <a href="#storing-secrets">environment variable</a> (e.g. <code>export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...</code>)</li>
+<li>Add it to <a href="#storing-secrets">.env file</a> (<code>SP_APP_CLIENT_ID=...</code> and <code>SP_APP_CLIENT_SECRET=...</code>) for persistent use</li>
+<li>Fallback: hard-code it in the code or config file</li>
+</ul>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
+</code></pre></div>
+<p>When configured the tool automatically refreshes the OAuth app access token. Tokens are cached in the file specified by <code>SP_APP_TOKENS_FILE</code> configuration option (default: <code>.spotify-monitor-oauth-app.json</code>).</p>
+<p>If you store the <code>SP_APP_CLIENT_ID</code> and <code>SP_APP_CLIENT_SECRET</code> in a dotenv file you can update their values and send a <code>SIGHUP</code> signal to reload the file with the new secret values without restarting the tool. More info in <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
+<p><a id="following-the-monitored-user"></a></p>
+<h2 id="following-the-monitored-user">Following the Monitored User<a class="headerlink" href="#following-the-monitored-user" title="Permanent link">&para;</a></h2>
+<p>To monitor a user's activity, you must follow them from the Spotify account associated with the <code>sp_dc</code> cookie or <code>client</code> credentials.</p>
+<p>Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.</p>
+<p><a id="how-to-get-a-friends-user-uri-id"></a></p>
+<h2 id="how-to-get-a-friends-user-uri-id">How to Get a Friend's User URI ID<a class="headerlink" href="#how-to-get-a-friends-user-uri-id" title="Permanent link">&para;</a></h2>
+<p>The easiest way is via the Spotify desktop or mobile client:
+- go to your friend's profile
+- click the <strong>three dots</strong> (•••) or press the <strong>Share</strong> button
+- copy the link to the profile</p>
+<p>You'll get a URL like: <a href="https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id">https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id</a></p>
+<p>Pass that profile URL directly to the tool. Raw IDs and Spotify user URIs such as <code>spotify:user:spotify_user_uri_id</code> are also accepted.</p>
+<p>As an alternative you can extract the part between <code>/user/</code> and <code>?si=</code> - in this case: <code>spotify_user_uri_id</code> - then pass that raw ID to the tool.</p>
+<p>Alternatively you can list all user URI IDs of accounts you follow by using <a href="../usage/#listing-mode">Listing mode</a>.</p>
+<p><a id="smtp-settings"></a></p>
+<h2 id="smtp-settings">SMTP Settings<a class="headerlink" href="#smtp-settings" title="Permanent link">&para;</a></h2>
+<p>If you want to use email notifications functionality, configure SMTP settings in the <code>spotify_monitor.conf</code> file.</p>
+<p>Verify your SMTP settings by using <code>--send-test-email</code> flag (the tool will try to send a test email notification):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>spotify_monitor<span class="w"> </span>--send-test-email
+</code></pre></div>
+<p><a id="webhook-settings"></a></p>
+<h2 id="webhook-settings">Webhook Settings<a class="headerlink" href="#webhook-settings" title="Permanent link">&para;</a></h2>
+<p>Spotify Monitor can send activity alerts through Discord or the native <a href="https://docs.ntfy.sh/publish/">ntfy publish API</a>. You can use webhook alerts instead of email or use both. The easiest option is to run <code>spotify_monitor --setup</code>, choose webhook alerts then select Discord or ntfy.</p>
+<p><code>WEBHOOK_PROVIDER</code> selects the request format. It defaults to <code>"discord"</code> so existing configurations keep working.</p>
+<p><a id="discord"></a></p>
+<h3 id="discord">Discord<a class="headerlink" href="#discord" title="Permanent link">&para;</a></h3>
+<p>If you are new to Discord, follow these steps to get your private webhook URL:</p>
+<ol>
+<li>Open your Discord server and choose the channel that should receive the alerts.</li>
+<li>Click <strong>Edit Channel</strong> then open <strong>Integrations</strong> &gt; <strong>Webhooks</strong>.</li>
+<li>Click <strong>New Webhook</strong>, choose a name if you want then click <strong>Copy Webhook URL</strong>.</li>
+<li>Return to the terminal and run:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>--set-webhook-url
+</code></pre></div>
+<p>Paste the copied link at the hidden prompt. Spotify Monitor saves it in <code>.env</code> so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.</p>
+<p>Keep the default provider in <code>spotify_monitor.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="na">WEBHOOK_PROVIDER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;discord&quot;</span>
+</code></pre></div>
+<p><a id="ntfy"></a></p>
+<h3 id="ntfy">ntfy<a class="headerlink" href="#ntfy" title="Permanent link">&para;</a></h3>
+<p>For ntfy.sh or a self-hosted ntfy server:</p>
+<ol>
+<li>Choose a hard-to-guess topic such as <code>spotify-monitor-long-random-value</code>.</li>
+<li>In the setup wizard, paste either the bare ntfy.sh topic name or its complete topic URL such as <code>https://ntfy.sh/spotify-monitor-long-random-value</code>. A bare topic name is expanded to an ntfy.sh URL. For a self-hosted server, use the complete HTTPS topic URL.</li>
+<li>Set the provider in <code>spotify_monitor.conf</code>:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="na">WEBHOOK_PROVIDER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;ntfy&quot;</span>
+</code></pre></div>
+<ol>
+<li>When configuring without the setup wizard, save the complete topic URL privately:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>--set-webhook-url
+</code></pre></div>
+<p>Spotify Monitor sends the alert body as a native UTF-8 ntfy message and sends the alert subject as its title. Query parameters already present in the topic URL are preserved. This allows the ntfy <a href="https://docs.ntfy.sh/publish/#authentication"><code>auth</code> query parameter</a> when a protected topic needs authentication.</p>
+<p>Playlist and album artwork is enabled by default for supported ntfy alerts. To keep ntfy alerts text-only, disable images in <code>spotify_monitor.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="na">NTFY_IMAGES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">False</span>
+</code></pre></div>
+<p>Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Error alerts and <code>--send-test-webhook</code> remain text-only. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. PyPI, requirements-file and Docker installs include Pillow. Manual single-file users who install dependencies individually must include Pillow. If image preparation fails, the alert is sent as text. If the attachment upload fails, the alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.</p>
+<p>For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in <code>.env</code> without displaying it. For manual setup, add the token to <code>.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="na">NTFY_ACCESS_TOKEN</span><span class="o">=</span><span class="s">&quot;tk_your_ntfy_access_token&quot;</span>
+</code></pre></div>
+<p>Spotify Monitor sends this value as <code>Authorization: Bearer &lt;token&gt;</code>. <code>NTFY_ACCESS_TOKEN</code> takes precedence over an <code>Authorization</code> entry in <code>WEBHOOK_HEADERS</code>.</p>
+<p>For compatibility with other advanced webhook integrations, static custom headers are also supported in <code>spotify_monitor.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="na">WEBHOOK_HEADERS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="na">&quot;Authorization&quot;</span><span class="o">:</span><span class="w"> </span><span class="s">&quot;Bearer tk_your_ntfy_access_token&quot;</span><span class="na">,</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="na">}</span>
+</code></pre></div>
+<p>The dictionary applies to Discord and ntfy requests. For ntfy, Spotify Monitor sets <code>text/plain</code> for text alerts and <code>image/jpeg</code> for artwork attachments. Prefer <code>NTFY_ACCESS_TOKEN</code> in <code>.env</code> for Bearer authentication because a token inside <code>WEBHOOK_HEADERS</code> is easier to expose or commit accidentally. Basic authentication remains available through a custom <code>Authorization</code> header. Header names and values are validated before any request is sent.</p>
+<p>Topics on the public ntfy.sh service are public unless protected through an account reservation. Treat an unprotected topic name like a password and do not reuse the example topic above.</p>
+<p>If you used the setup wizard, it saves your alert choices automatically. For the recommended alerts, the saved settings look like this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="na">WEBHOOK_ENABLED</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="na">WEBHOOK_PROVIDER</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;discord&quot;</span><span class="w">  </span><span class="c1"># Use &quot;ntfy&quot; for an ntfy topic URL</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="na">WEBHOOK_ACTIVE_NOTIFICATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="na">WEBHOOK_INACTIVE_NOTIFICATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="na">WEBHOOK_ERROR_NOTIFICATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">True</span>
+</code></pre></div>
+<p>This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. See <a href="../usage/#webhook-notifications">Webhook Notifications</a> if you want different alerts.</p>
+<p>Send one test webhook without starting monitoring:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>spotify_monitor<span class="w"> </span>--send-test-webhook
+</code></pre></div>
+<p>Email and webhooks work separately. If one fails, Spotify Monitor can still send the other. Discord messages cannot trigger <code>@everyone</code> or <code>@here</code> mentions.</p>
+<p>If the webhook service temporarily refuses a message, Spotify Monitor tries once more and waits at most five seconds. Spotify monitoring continues normally and its retry behavior is unchanged.</p>
+<p><a id="storing-secrets"></a></p>
+<h2 id="storing-secrets">Storing Secrets<a class="headerlink" href="#storing-secrets" title="Permanent link">&para;</a></h2>
+<p>Keep private values in an environment variable or a dotenv file. This includes <code>SP_DC_COOKIE</code>, <code>REFRESH_TOKEN</code>, <code>SP_APP_CLIENT_ID</code>, <code>SP_APP_CLIENT_SECRET</code>, <code>SMTP_PASSWORD</code>, <code>WEBHOOK_URL</code> and <code>NTFY_ACCESS_TOKEN</code>.</p>
+<p>Set the needed environment variables using <code>export</code> on <strong>Linux/Unix/macOS/WSL</strong> systems:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SP_DC_COOKIE</span><span class="o">=</span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REFRESH_TOKEN</span><span class="o">=</span><span class="s2">&quot;your_spotify_app_refresh_token&quot;</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SP_APP_CLIENT_ID</span><span class="o">=</span><span class="s2">&quot;your_spotify_app_client_id&quot;</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SP_APP_CLIENT_SECRET</span><span class="o">=</span><span class="s2">&quot;your_spotify_app_client_secret&quot;</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SMTP_PASSWORD</span><span class="o">=</span><span class="s2">&quot;your_smtp_password&quot;</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">WEBHOOK_URL</span><span class="o">=</span><span class="s2">&quot;https://discord.com/api/webhooks/your_id/your_token&quot;</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">NTFY_ACCESS_TOKEN</span><span class="o">=</span><span class="s2">&quot;tk_your_ntfy_access_token&quot;</span>
+</code></pre></div>
+<p>On <strong>Windows Command Prompt</strong> use <code>set</code> instead of <code>export</code> and on <strong>Windows PowerShell</strong> use <code>$env</code>.</p>
+<p>Alternatively store them persistently in a dotenv file (recommended).</p>
+<p>Browser import, <code>--set-sp-dc</code> or the setup wizard can create or update <code>.env</code> for you. This is the easiest option.</p>
+<p>If you cloned the repository, you can copy the included example then fill in only the secrets you use:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">test</span><span class="w"> </span>-e<span class="w"> </span>.env<span class="w"> </span><span class="o">||</span><span class="w"> </span>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
+</code></pre></div>
+<p>If you installed from PyPI or downloaded only <code>spotify_monitor.py</code>, <code>.env.example</code> will not be in your current directory. Create a plain text file named <code>.env</code> in the directory where you run Spotify Monitor then add only the values you use. <code>REFRESH_TOKEN</code> is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="na">SP_DC_COOKIE</span><span class="o">=</span><span class="s">&quot;your_sp_dc_cookie_value&quot;</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="na">REFRESH_TOKEN</span><span class="o">=</span><span class="s">&quot;your_spotify_app_refresh_token&quot;</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="na">SP_APP_CLIENT_ID</span><span class="o">=</span><span class="s">&quot;your_spotify_app_client_id&quot;</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="na">SP_APP_CLIENT_SECRET</span><span class="o">=</span><span class="s">&quot;your_spotify_app_client_secret&quot;</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="na">SMTP_PASSWORD</span><span class="o">=</span><span class="s">&quot;your_smtp_password&quot;</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="na">WEBHOOK_URL</span><span class="o">=</span><span class="s">&quot;https://discord.com/api/webhooks/your_id/your_token&quot;</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="na">NTFY_ACCESS_TOKEN</span><span class="o">=</span><span class="s">&quot;tk_your_ntfy_access_token&quot;</span>
+</code></pre></div>
+<p>By default the tool will auto-search for dotenv file named <code>.env</code> in current directory and then upward from it.</p>
+<p>Browser import is intentionally different. Without <code>--env-file</code> it writes to <code>.env</code> in the current directory and does not modify a parent dotenv file.</p>
+<p>You can specify a custom file with <code>DOTENV_FILE</code> or <code>--env-file</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
+</code></pre></div>
+<p>You can also disable <code>.env</code> auto-search with <code>DOTENV_FILE = "none"</code> or <code>--env-file none</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
+</code></pre></div>
+<p>As a fallback, you can also store secrets in the configuration file or source code.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Licensed under GPLv3
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1192 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time tracker for Spotify friend activity with playback synchronization and instant alerts">
+      
+      
+      
+        <link rel="canonical" href="https://misiektoja.github.io/spotify_monitor/usage/">
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../troubleshooting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Usage - spotify_monitor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="green">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#usage" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="spotify_monitor" class="md-header__button md-logo" aria-label="spotify_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            spotify_monitor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Usage
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="green" data-md-color-accent="green"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="green" data-md-color-accent="green"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/misiektoja/spotify_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/spotify_monitor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="spotify_monitor" class="md-nav__button md-logo" aria-label="spotify_monitor" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    spotify_monitor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/misiektoja/spotify_monitor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    misiektoja/spotify_monitor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#email-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Notifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Notifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#csv-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-playback-of-listened-tracks-in-the-spotify-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Playback of Listened Tracks in the Spotify Client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-intervals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Intervals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#signal-controls-macoslinuxunix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signal Controls (macOS/Linux/Unix)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coloring-log-output-with-grc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coloring Log Output with GRC
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../debugging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Debugging Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#terminal-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal Output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#email-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Notifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhook-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Notifications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#csv-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-playback-of-listened-tracks-in-the-spotify-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Playback of Listened Tracks in the Spotify Client
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-intervals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Intervals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#signal-controls-macoslinuxunix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signal Controls (macOS/Linux/Unix)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coloring-log-output-with-grc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coloring Log Output with GRC
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/misiektoja/spotify_monitor/edit/main/docs/usage.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h1>
+<p><a id="terminal-output"></a></p>
+<h2 id="terminal-output">Terminal Output<a class="headerlink" href="#terminal-output" title="Permanent link">&para;</a></h2>
+<p>The <code>--help</code> output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations. Container examples prefer hidden private entry with <code>/data/.env</code> and retain a read-only Linux host Firefox mount as an advanced alternative.</p>
+<p>Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented <code>--version</code> and <code>--generate-config</code> output intentionally omit it.</p>
+<p>Normal monitoring shows a concise startup summary led by the target, authentication mode, polling interval, notification state, output destination, config path, dotenv path and metadata backend. Enabled optional features appear only when relevant. When logging is enabled a complete non-secret configuration summary is written once to the log while the terminal remains concise.</p>
+<p>Use <code>--verbose</code> to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--verbose
+</code></pre></div>
+<p>Spotify Monitor normally polls every 30 seconds, so verbose mode is deliberately event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.</p>
+<p><code>--debug</code> retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in the concise terminal summary, complete terminal summary, verbose events, debug output or complete log summary.</p>
+<p><a id="main-application-docker-image"></a></p>
+<h2 id="docker">Docker<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h2>
+<p>The main application image is <a href="https://hub.docker.com/r/misiektoja/spotify-monitor"><code>misiektoja/spotify-monitor</code></a>. It is separate from the <code>misiektoja/spotify-secrets-grabber</code> debugging image documented later. Release publishing builds <code>linux/amd64</code> and <code>linux/arm64</code> variants. A release tag such as <code>v3.0</code> also publishes <code>3.0</code>, while published releases update <code>latest</code>.</p>
+<p>The root <code>docker-compose.yml</code> provides the recommended container flow:</p>
+<p>On Linux, export your host UID and GID before the first setup command if the current directory is not writable by <code>10001:10001</code>. This keeps the image non-root while allowing the <code>/data</code> bind mount to receive the generated config, dotenv and output files.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--doctor
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
+</code></pre></div>
+<p>Stop and remove the Compose container with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
+</code></pre></div>
+<p>Compose mounts the current directory at <code>/data</code>. The wizard therefore creates <code>spotify_monitor.conf</code> and <code>.env</code> on the host. CSV and log output also persist there. The shared <code>:z</code> label lets SELinux hosts access the bind mount and has no effect on hosts without SELinux. Compose deliberately does not declare <code>env_file</code>, so first-run setup works before <code>.env</code> exists and Spotify Monitor discovers <code>/data/.env</code> itself. The image contains no user config or dotenv file.</p>
+<p>The recommended default container authentication path is hidden manual entry because the container cannot read an unmounted host browser profile:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--set-sp-dc<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+</code></pre></div>
+<p>The prompt does not echo <code>sp_dc</code>. Spotify validation completes before the existing dotenv file is replaced.</p>
+<p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. The tool warns but does not disable the setting, so custom host integration remains possible for advanced users.</p>
+<p>Setup does not send email or webhook alerts while collecting settings. If you choose the post-setup doctor it first performs passive checks. It then offers separate default-No prompts for one real test email and one real webhook notification when those channels are ready.</p>
+<p>If the wizard does not persist the target, <code>docker compose up</code> cannot supply it. Use the direct command printed by setup, which follows this form:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+</code></pre></div>
+<p>Firefox import is an advanced container alternative. Before importing, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox on the host and sign in to the Spotify account you will use for monitoring. The container then needs that host Firefox profile mounted read-only. This is the Linux host example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
+</code></pre></div>
+<p>macOS stores Firefox profiles under the user's <code>Library/Application Support</code> directory, so its host mount source differs. Windows users should normally import through Firefox on the host then use the generated dotenv file with Compose. Chrome, Brave and Chromium import is not supported inside the container because the required host keyring is unavailable.</p>
+<p>The image runs as the dedicated numeric user and group <code>10001:10001</code>. On Linux bind mounts, map the service to your host UID and GID when the current directory is not writable by that numeric user:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>up
+</code></pre></div>
+<p>Docker Desktop on macOS and Windows normally handles bind-mount ownership without this override. The image itself remains non-root.</p>
+<p>For a direct Docker run on Linux, pass the host identity explicitly when needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor<span class="w"> </span>--setup
+</code></pre></div>
+<p>To build locally, comment out <code>image:</code> in <code>docker-compose.yml</code> and uncomment <code>build: .</code>. You can also build and run directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>spotify-monitor:local<span class="w"> </span>--setup
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>spotify-monitor:local<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf
+</code></pre></div>
+<p>The two local-image run commands above are for Docker Desktop. On Linux add <code>--user "$(id -u):$(id -g)"</code> immediately after <code>--init</code> in both commands.</p>
+<p><a id="monitoring-mode"></a></p>
+<h2 id="monitoring-mode">Monitoring Mode<a class="headerlink" href="#monitoring-mode" title="Permanent link">&para;</a></h2>
+<p>To monitor specific user activity, pass a <a href="../configuration/#how-to-get-a-friends-user-uri-id">Spotify user target</a> as a command-line argument. The target may be a raw user ID, Spotify user URI or profile URL:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;
+</code></pre></div>
+<p>If you use the default method to obtain a Spotify access token (<code>cookie</code>) and have not set <code>SP_DC_COOKIE</code> secret, you can use <code>-u</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
+</code></pre></div>
+<p>This manual command-line fallback can expose the cookie through shell history or process listings. Use browser import locally or hidden <code>--set-sp-dc</code> entry in a container instead.</p>
+<p><strong>Optional:</strong> If you have working legacy OAuth app credentials and want the tool to try the Web API first you can use the <code>-r</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
+</code></pre></div>
+<p>See <a href="../configuration/#spotify-oauth-app">Spotify OAuth App</a> for detailed setup instructions.</p>
+<p>By default, the tool looks for a configuration file named <code>spotify_monitor.conf</code> in:
+ - current directory
+ - home directory (<code>~</code>)
+ - script directory</p>
+<p>If you generated a configuration file as described in <a href="../configuration/#configuration">Configuration</a>, but saved it under a different name or in a different directory, you can specify its location using the <code>--config-file</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--config-file<span class="w"> </span>/path/spotify_monitor_new.conf
+</code></pre></div>
+<p>The tool runs until interrupted (<code>Ctrl+C</code>). Use <code>tmux</code> or <code>screen</code> for persistence.</p>
+<p>You can monitor multiple Spotify friends by running multiple copies of the script.</p>
+<p>The tool automatically saves its output to <code>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log</code> file. The log file name can be changed via <code>SP_LOGFILE</code> configuration option and its suffix via <code>FILE_SUFFIX</code> / <code>-y</code> flag. Logging can be disabled completely via <code>DISABLE_LOGGING</code> / <code>-d</code> flag.</p>
+<p>Keep in mind that monitoring reports the listened track AFTER the user finishes listening to it. This is how activities are reported by Spotify.</p>
+<p><a id="listing-mode"></a></p>
+<h2 id="listing-mode">Listing Mode<a class="headerlink" href="#listing-mode" title="Permanent link">&para;</a></h2>
+<p>There is also another mode of the tool which displays various requested information.</p>
+<p>If you want to display a list of all the friends you follow with their recently listened tracks (<code>-l</code> flag):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>-l
+</code></pre></div>
+<p>It also displays your friend's Spotify username (often the user's first and last name) and user URI ID (often a string of random characters). The latter should be used as a tool's command-line argument to monitor the user.</p>
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
+</p>
+
+<p><a id="email-notifications"></a></p>
+<h2 id="email-notifications">Email Notifications<a class="headerlink" href="#email-notifications" title="Permanent link">&para;</a></h2>
+<p>To enable email notifications when a user becomes active:
+- set <code>ACTIVE_NOTIFICATION</code> to <code>True</code>
+- or use the <code>-a</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
+</code></pre></div>
+<p>To be informed when a user gets inactive:
+- set <code>INACTIVE_NOTIFICATION</code> to <code>True</code>
+- or use the <code>-i</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
+</code></pre></div>
+<p>Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the <code>INACTIVE_EMAIL_RECENT_SONGS_COUNT</code> configuration option.</p>
+<p>To get email notifications when a monitored track/playlist/album plays:
+- set <code>TRACK_NOTIFICATION</code> to <code>True</code>
+- or use the <code>-t</code> flag</p>
+<p>For that feature you also need to create a file with a list of songs you want to track (one track, album or playlist per line). Specify the file using the <code>MONITOR_LIST_FILE</code> or <code>-s</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
+</code></pre></div>
+<p>Example file <code>spotify_tracks_spotify_user_uri_id</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>we fell in love in october
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Like a Stone
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>Half Believing
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Something Changed
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>I Will Be There
+</code></pre></div>
+<p>You can comment out specific lines with # if needed.</p>
+<p>To enable email notifications for every song listened by the user:
+- set <code>SONG_NOTIFICATION</code> to <code>True</code>
+- or use the <code>-j</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
+</code></pre></div>
+<p>To be notified when a user listens to the same song on loop:
+- set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code>
+- or use the <code>-x</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
+</code></pre></div>
+<p>To disable sending an email on errors (enabled by default):
+- set <code>ERROR_NOTIFICATION</code> to <code>False</code>
+- or use the <code>-e</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
+</code></pre></div>
+<p>Make sure you defined your SMTP settings earlier (see <a href="../configuration/#smtp-settings">SMTP settings</a>).</p>
+<p>Example email:</p>
+<p align="center">
+   <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_email_notifications.png" alt="spotify_monitor_email_notifications" width="80%"/>
+</p>
+
+<p><a id="webhook-notifications"></a></p>
+<h2 id="webhook-notifications">Webhook Notifications<a class="headerlink" href="#webhook-notifications" title="Permanent link">&para;</a></h2>
+<p>The setup wizard's recommended choice sends active, inactive and error alerts. Choose the custom option in the wizard if you want to decide one by one.</p>
+<p>You can also change the settings yourself in <code>spotify_monitor.conf</code> or use a command-line option for one run:</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Config setting</th>
+<th>CLI override</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User becomes active</td>
+<td><code>WEBHOOK_ACTIVE_NOTIFICATION</code></td>
+<td><code>--webhook-active</code></td>
+</tr>
+<tr>
+<td>User becomes inactive</td>
+<td><code>WEBHOOK_INACTIVE_NOTIFICATION</code></td>
+<td><code>--webhook-inactive</code></td>
+</tr>
+<tr>
+<td>Monitored track, playlist or album plays</td>
+<td><code>WEBHOOK_TRACK_NOTIFICATION</code></td>
+<td><code>--webhook-track</code></td>
+</tr>
+<tr>
+<td>Every song change</td>
+<td><code>WEBHOOK_SONG_NOTIFICATION</code></td>
+<td><code>--webhook-song-changes</code></td>
+</tr>
+<tr>
+<td>Song loop detected</td>
+<td><code>WEBHOOK_SONG_ON_LOOP_NOTIFICATION</code></td>
+<td><code>--webhook-loop</code></td>
+</tr>
+<tr>
+<td>Monitoring error</td>
+<td><code>WEBHOOK_ERROR_NOTIFICATION</code></td>
+<td>Disable with <code>--no-webhook-error-notify</code></td>
+</tr>
+</tbody>
+</table>
+<p>For example, this sends a webhook alert for every song change during one run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-song-changes
+</code></pre></div>
+<p>Use <code>--webhook</code> or <code>--no-webhook</code> to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.</p>
+<p><a id="csv-export"></a></p>
+<h2 id="csv-export">CSV Export<a class="headerlink" href="#csv-export" title="Permanent link">&para;</a></h2>
+<p>If you want to save all listened songs to a CSV file, set <code>CSV_FILE</code> or use <code>-b</code> flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_user_uri_id.csv
+</code></pre></div>
+<p>The file will be automatically created if it does not exist.</p>
+<p><a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a></p>
+<h2 id="automatic-playback-of-listened-tracks-in-the-spotify-client">Automatic Playback of Listened Tracks in the Spotify Client<a class="headerlink" href="#automatic-playback-of-listened-tracks-in-the-spotify-client" title="Permanent link">&para;</a></h2>
+<p>If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:
+- set <code>TRACK_SONGS</code> to <code>True</code>
+- or use the <code>-g</code> flag</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
+</code></pre></div>
+<p>Your Spotify client needs to be installed and running for this feature to work.</p>
+<p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. A container run prints one warning before monitoring and <code>--doctor</code> reports <code>[WARN]</code>, but the setting is not disabled automatically.</p>
+<p>The tool fully supports automatic playback on <strong>Linux</strong> and <strong>macOS</strong>. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the <code>SP_USER_GOT_OFFLINE_TRACK_ID</code> configuration option).</p>
+<p>For <strong>Windows</strong>, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first track will play automatically. However, subsequent tracks will be located in the client, but you will need to press the play button manually.</p>
+<p>You can change the playback method per platform using the corresponding configuration option.</p>
+<p>For <strong>macOS</strong> set <code>SPOTIFY_MACOS_PLAYING_METHOD</code> to one of the following values:
+-  "<strong>apple-script</strong>" (recommended, <strong>default</strong>)
+-  "trigger-url"</p>
+<p>For <strong>Linux</strong> set <code>SPOTIFY_LINUX_PLAYING_METHOD</code> to one of the following values:
+- "<strong>dbus-send</strong>" (most common one, <strong>default</strong>)
+- "qdbus" (try if dbus-send does not work)
+- "trigger-url"</p>
+<p>For <strong>Windows</strong> set <code>SPOTIFY_WINDOWS_PLAYING_METHOD</code> to one of the following values:
+- "<strong>start-uri</strong>" (recommended, <strong>default</strong>)
+- "spotify-cmd"
+- "trigger-url"</p>
+<p>The recommended defaults should work for most people.</p>
+<p>Note: monitoring reports the listened track after the user finishes listening to it. This is how activities are reported by Spotify. It means you will be one song behind the monitored user and if the song currently listened to by the tracked user is longer than the previous one, then the previously listened song might be played in your Spotify client on repeat (and if shorter it might be changed in the middle of the currently played song).</p>
+<p>For real-time playback tracking of a user's music activities, ask your friend to connect their Spotify account with <a href="https://www.last.fm/">Last.fm</a>. Then use my other tool: <a href="https://github.com/misiektoja/lastfm_monitor">lastfm_monitor</a>.</p>
+<p><a id="check-intervals"></a></p>
+<h2 id="check-intervals">Check Intervals<a class="headerlink" href="#check-intervals" title="Permanent link">&para;</a></h2>
+<p>If you want to customize the polling interval, use <code>-c</code> flag (or <code>SPOTIFY_CHECK_INTERVAL</code> configuration option):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">20</span>
+</code></pre></div>
+<p>If you want to change the time required to mark the user as inactive (the timer starts from the last reported track), use <code>-o</code> flag (or <code>SPOTIFY_INACTIVITY_CHECK</code> configuration option):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
+</code></pre></div>
+<p><a id="signal-controls-macoslinuxunix"></a></p>
+<h2 id="signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)<a class="headerlink" href="#signal-controls-macoslinuxunix" title="Permanent link">&para;</a></h2>
+<p>The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new configuration options / flags.</p>
+<p>List of supported signals:</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>USR1</td>
+<td>Toggle email notifications when user gets active/inactive (-a, -i)</td>
+</tr>
+<tr>
+<td>USR2</td>
+<td>Toggle email notifications for every song (-j)</td>
+</tr>
+<tr>
+<td>CONT</td>
+<td>Toggle email notifications for tracked songs (-t)</td>
+</tr>
+<tr>
+<td>PIPE</td>
+<td>Toggle email notifications when user plays song on loop (-x)</td>
+</tr>
+<tr>
+<td>TRAP</td>
+<td>Increase the inactivity check timer (by 30 seconds) (-o)</td>
+</tr>
+<tr>
+<td>ABRT</td>
+<td>Decrease the inactivity check timer (by 30 seconds) (-o)</td>
+</tr>
+<tr>
+<td>HUP</td>
+<td>Reload secrets from .env file and token source credentials from Protobuf files</td>
+</tr>
+</tbody>
+</table>
+<p>Send signals with <code>kill</code> or <code>pkill</code>, e.g.:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;spotify_monitor &lt;spotify_user_uri_id&gt;&quot;</span>
+</code></pre></div>
+<p>As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.</p>
+<p><a id="coloring-log-output-with-grc"></a></p>
+<h2 id="coloring-log-output-with-grc">Coloring Log Output with GRC<a class="headerlink" href="#coloring-log-output-with-grc" title="Permanent link">&para;</a></h2>
+<p>You can use <a href="https://github.com/garabik/grc">GRC</a> to color logs.</p>
+<p>Add to your GRC config (<code>~/.grc/grc.conf</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a># monitoring log file
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>.*_monitor_.*\.log
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>conf.monitor_logs
+</code></pre></div>
+<p>Now copy the <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs">conf.monitor_logs</a> to your <code>~/.grc/</code> and log files should be nicely colored when using <code>grc</code> tool.</p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Licensed under GPLv3
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
