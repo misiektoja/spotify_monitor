@@ -5950,14 +5950,14 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     if report.access_token is None:
         failed_check = next((check for check in checks if check.status == "FAIL"), None)
         detail = failed_check.label if failed_check is not None else "Authentication did not produce an access token"
-        print(f"  Follow status could not be checked: {detail}")
-        print("  No follow request was sent. Run the doctor check below after fixing authentication.")
+        print(f"Follow status could not be checked: {detail}")
+        print("No follow request was sent. Run the doctor check below after fixing authentication.")
         return "unavailable"
     try:
         is_followed = spotify_user_is_followed(report.access_token, target_user_id)
     except Exception as exc:
-        print(f"  Follow status could not be checked: {sanitize_error_text(exc)}")
-        print("  No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
+        print(f"Follow status could not be checked: {sanitize_error_text(exc)}")
+        print("No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
     if is_followed:
         print(f"The monitoring account already follows '{target_user_id}'.")
@@ -5965,7 +5965,7 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     print(f"The monitoring account does not follow '{target_user_id}'.")
     print()
     if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
-        print("  Follow skipped. Spotify Monitor will not change the account.")
+        print("Follow skipped. Spotify Monitor will not change the account.")
         return "declined"
     mutation_error = ""
     mutation_accepted = False
@@ -5976,18 +5976,18 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     try:
         verified = spotify_user_is_followed(report.access_token, target_user_id)
     except Exception as exc:
-        print(f"  Spotify follow verification failed: {sanitize_error_text(exc)}")
+        print(f"Spotify follow verification failed: {sanitize_error_text(exc)}")
         return "follow_failed"
     if verified:
-        print(f"  Follow verified. The monitoring account now follows '{target_user_id}'.")
+        print(f"Follow verified. The monitoring account now follows '{target_user_id}'.")
         return "followed"
     if mutation_error:
-        print(f"  Spotify could not follow the target: {mutation_error}")
+        print(f"Spotify could not follow the target: {mutation_error}")
     elif not mutation_accepted:
-        print("  Spotify did not accept the follow request.")
+        print("Spotify did not accept the follow request.")
     else:
-        print("  Spotify accepted the follow request but verification still reports not followed.")
-    print("  The account was not verified as following the target.")
+        print("Spotify accepted the follow request but verification still reports not followed.")
+    print("The account was not verified as following the target.")
     return "follow_failed"
 
 
@@ -6294,7 +6294,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
                 auth["validated"] = True
         else:
             print("\nFollowing check\n")
-            print("  Follow status could not be checked because the saved setup could not be loaded.")
+            print("Follow status could not be checked because the saved setup could not be loaded.")
     doctor_failed = False
     doctor_ran = False
     print()
