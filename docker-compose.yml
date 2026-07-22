@@ -2,13 +2,12 @@
 #
 # Quick start:
 #   docker compose run --rm spotify_monitor --setup
+#   docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+# Manual authentication fallback:
 #   docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 #   docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 #   docker compose run --rm spotify_monitor --doctor --config-file /data/spotify_monitor.conf --env-file /data/.env
 #   docker compose up --no-log-prefix
-#
-# Advanced Linux Firefox import example with a read-only host profile mount:
-#   docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox
 
 services:
   spotify_monitor:
