@@ -199,10 +199,9 @@ def test_docker_help_epilog_uses_container_commands(monkeypatch):
     prefix = monitor._wizard_cmd_prefix("docker")
     assert f"{prefix} --setup" in epilog
     assert f"{prefix} --set-sp-dc --env-file /data/.env" in epilog
-    assert monitor._wizard_firefox_import_cmd("docker") in epilog
-    assert epilog.index("--set-sp-dc") < epilog.index("--import-browser-cookie")
-    assert "recommended for Docker" in epilog
-    assert "Advanced Linux host example" in epilog
+    assert monitor._wizard_firefox_import_cmd("docker", Path.cwd() / ".env") in epilog
+    assert epilog.index("--import-browser-cookie") < epilog.index("--set-sp-dc")
+    assert "Linux host example" in epilog
     assert "profile read-only" in epilog
     assert "Host Spotify auto-play is unavailable by default" in epilog
     assert f"{prefix} --doctor <spotify_user_id>" in epilog
@@ -216,7 +215,8 @@ def test_compose_help_epilog_uses_service_commands(monkeypatch):
     prefix = monitor._wizard_cmd_prefix("compose")
     assert f"{prefix} --setup" in epilog
     assert f"{prefix} --set-sp-dc --env-file /data/.env" in epilog
-    assert monitor._wizard_firefox_import_cmd("compose") in epilog
+    assert monitor._wizard_firefox_import_cmd("compose", Path.cwd() / ".env") in epilog
+    assert epilog.index("--import-browser-cookie") < epilog.index("--set-sp-dc")
     assert f"{prefix} --list-friends" in epilog
     assert "--login-request-body-file /data/login.protobuf" in epilog
     assert "# Start from the target saved by setup\n  docker compose up --no-log-prefix" in epilog
