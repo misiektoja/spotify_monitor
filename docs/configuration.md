@@ -7,7 +7,11 @@ Examples on this page use the PyPI command `spotify_monitor`. Manual script, Doc
 
 Most settings can be configured via command-line arguments.
 
-If you want to have it stored persistently, generate a default config template and save it to a file named `spotify_monitor.conf`:
+If you want to have it stored persistently, you can store them in a configuration file.
+
+For a guided configuration, it is recommended to use `spotify_monitor --setup`. The setup wizard validates the generated settings before saving them. If you confirm replacement of an existing configuration, it creates a timestamped backup first.
+
+If you want to edit the file manually, generate a default config template and save it to a file named `spotify_monitor.conf`:
 
 ```sh
 # On macOS, Linux or Windows Command Prompt (cmd.exe)
@@ -244,6 +248,12 @@ If you store the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` in a dotenv file 
 ## Following the Monitored User
 
 To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
+
+The setup wizard checks that account's follow state after it saves usable authentication. If the target is not followed the wizard asks whether to follow it. The default answer is no. Spotify Monitor sends no follow request unless you explicitly answer yes. After an approved request the wizard queries Spotify again and reports success only when the target is confirmed as followed.
+
+This works in cookie mode and advanced client mode without a separate user-authorized OAuth token. It uses Spotify's private web-player Pathfinder operations rather than a supported public Web API contract. Spotify can change those operations, thats why Spotify Monitor discovers their current persisted-query hashes from the web-player bundle and retries discovery once when Spotify rejects a cached hash.
+
+If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.
 
 Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
 
