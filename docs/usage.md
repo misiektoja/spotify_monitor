@@ -3,7 +3,7 @@
 <a id="command-format"></a>
 ## Command Format by Installation Method
 
-Examples on this page use the PyPI command `spotify_monitor`. Keep the options shown in an example and replace only the command prefix with the form for your installation:
+Most examples on this page use the PyPI command `spotify_monitor`. If you chose another installation, replace only that command with the prefix in this table. Keep the targets and options that follow it.
 
 | Installation | Command prefix |
 | --- | --- |
@@ -14,7 +14,7 @@ Examples on this page use the PyPI command `spotify_monitor`. Keep the options s
 | Direct Docker on Docker Desktop | `docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest` |
 | Direct Docker on Linux | `docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest` |
 
-For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm spotify_monitor --doctor TARGET` with Compose. A file used by a container must be under the mounted current directory and its command-line path must start with `/data/`.
+For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm spotify_monitor --doctor TARGET` with Compose. The current host directory appears as `/data` inside the container, so container paths to its files must start with `/data/`.
 
 The Docker Desktop command works in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
@@ -37,7 +37,7 @@ You can also save any of these forms as `TARGET_USER_URI_ID` in `spotify_monitor
 spotify_monitor --config-file spotify_monitor.conf
 ```
 
-The setup wizard asks whether to persist its target. This lets local installations start with `spotify_monitor` and lets Docker Compose start with `docker compose up --no-log-prefix`.
+The setup wizard asks whether to save the target. A saved target lets a local installation start with `spotify_monitor` and lets Docker Compose start with `docker compose up --no-log-prefix`.
 
 If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fallback supplies it for one run:
 
@@ -68,20 +68,20 @@ Specify another file explicitly when needed:
 spotify_monitor spotify_user_uri_id --config-file /path/spotify_monitor_new.conf
 ```
 
-The tool runs until interrupted with `Ctrl+C`. Use `tmux` or `screen` for a persistent local run. Docker Compose can run in the background as described below.
+The tool runs until you press `Ctrl+C`. On macOS, Linux or Unix, tools such as `tmux` or `screen` can keep it running after you disconnect from a terminal. Docker Compose can run in the background as described below.
 
 You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.
 
-By default, output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable logging with `DISABLE_LOGGING` or `-d`.
+By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable file logging with `DISABLE_LOGGING` or `-d`.
 
-Monitoring reports a listened track after the user finishes it because this is how Spotify reports Friend Activity.
+Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
 
 <a id="main-application-docker-image"></a>
 ## Container Operation
 
-Installation, Linux ownership setup, local image builds and upgrades are documented under [Docker installation](installation.md#docker-compose). This section covers normal container operation after setup.
+See [Docker installation](installation.md#docker-compose) for installation, Linux file ownership, local image builds and upgrades. This section covers everyday use after setup.
 
-Compose mounts the current directory at `/data`. The wizard creates `spotify_monitor.conf` and `.env` on the host. Logs and CSV output also persist there. The image contains no user configuration or secrets.
+Compose makes the current host directory available as `/data` inside the container. The wizard creates `spotify_monitor.conf` and `.env` in that host directory. Logs and CSV output are also written there. The image does not contain your configuration or private values.
 
 Start the target saved by setup in the foreground:
 
@@ -96,30 +96,32 @@ docker compose up -d
 docker compose logs -f --no-log-prefix
 ```
 
-Stop and remove the service container without deleting the bind-mounted files:
+Stop and remove the service container:
 
 ```sh
 docker compose down
 ```
 
-If the wizard did not persist the target, `docker compose up --no-log-prefix` cannot supply one. Use the direct Compose command printed by setup:
+This command does not delete files in the current directory.
+
+If the wizard did not save the target, `docker compose up --no-log-prefix` cannot supply one. Use the direct Compose command printed by setup:
 
 ```sh
 docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
-The default container authentication path is hidden manual cookie entry. Advanced mounted Firefox import is documented under [Spotify sp_dc Cookie](configuration.md#spotify-sp_dc-cookie).
+The default container authentication method asks for `sp_dc` through a hidden prompt. To import from Firefox instead, mount the browser profile as described under [Spotify sp_dc Cookie](configuration.md#spotify-sp_dc-cookie).
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
 
 <a id="terminal-output"></a>
 ## Terminal Output
 
-The `--help` output provides copy-paste examples for guided setup, private cookie entry, webhook setup, Firefox cookie import, test alerts, normal monitoring, doctor checks and friend listing. Commands adapt automatically to PyPI, downloaded script, Docker and Docker Compose installations.
+The `--help` output includes examples for setup, private cookie entry, webhook setup, Firefox import, test alerts, monitoring, Doctor and friend listing. The examples match the detected installation method.
 
 Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
 
-Normal monitoring shows a concise startup summary led by the target, authentication mode, polling interval, notification state, output destination, config path, dotenv path and metadata backend. Enabled optional features appear only when relevant. When logging is enabled a complete non-secret configuration summary is written once to the log while the terminal remains concise.
+Normal monitoring shows the target, authentication method, polling interval, alert state, output destination, configuration path, `.env` path and metadata source. Optional features appear only when enabled. When file logging is enabled, the log receives a complete summary that excludes private values.
 
 Use `--verbose` to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:
 
@@ -127,7 +129,7 @@ Use `--verbose` to display the complete startup summary plus rare operational ev
 spotify_monitor spotify_user_uri_id --verbose
 ```
 
-Spotify Monitor normally polls every 30 seconds so verbose mode is event-driven rather than check-driven. It reports token refreshes, metadata-backend fallback, the first transient buddy-list miss, recovery from transient visibility or connectivity problems plus a richer summary at the configured liveness interval. It does not print a line for every successful unchanged poll.
+Spotify Monitor normally checks every 30 seconds. Verbose mode reports token refreshes, metadata fallback, the first temporary friend-list miss, recovery from temporary problems and a periodic status summary. It does not print every successful check when nothing changed.
 
 `--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in summaries, verbose events, debug output or the complete log summary.
 
@@ -136,15 +138,13 @@ Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `99
 <a id="listing-mode"></a>
 ## Listing Mode
 
-There is also another mode of the tool which displays various requested information.
-
-If you want to display a list of all the friends you follow with their recently listened tracks (`-l` flag):
+Listing mode shows the Spotify friends visible to the monitoring account and each person's most recently reported track:
 
 ```sh
 spotify_monitor -l
 ```
 
-It also displays your friend's Spotify username (often the user's first and last name) and user URI ID (often a string of random characters). The latter should be used as a tool's command-line argument to monitor the user.
+The output includes each person's display name and user URI ID. Use the user URI ID as a monitoring target.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
@@ -153,7 +153,7 @@ It also displays your friend's Spotify username (often the user's first and last
 <a id="email-notifications"></a>
 ## Email Notifications
 
-To enable email notifications when a user becomes active:
+To send an email when a user becomes active:
 
 - set `ACTIVE_NOTIFICATION` to `True`
 - or use the `-a` flag
@@ -162,7 +162,7 @@ To enable email notifications when a user becomes active:
 spotify_monitor <spotify_user_uri_id> -a
 ```
 
-To be informed when a user gets inactive:
+To send an email when a user becomes inactive:
 
 - set `INACTIVE_NOTIFICATION` to `True`
 - or use the `-i` flag
@@ -173,12 +173,12 @@ spotify_monitor <spotify_user_uri_id> -i
 
 Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
-To get email notifications when a monitored track/playlist/album plays:
+To send an email when a listed track, playlist or album plays:
 
 - set `TRACK_NOTIFICATION` to `True`
 - or use the `-t` flag
 
-For that feature you also need to create a file with a list of songs you want to track (one track, album or playlist per line). Specify the file using the `MONITOR_LIST_FILE` or `-s` flag:
+Create a text file with one track, album or playlist per line. Select it with `MONITOR_LIST_FILE` or `-s`:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -t -s spotify_tracks_spotify_user_uri_id
@@ -194,9 +194,9 @@ Something Changed
 I Will Be There
 ```
 
-You can comment out specific lines with # if needed.
+Start a line with `#` to ignore it.
 
-To enable email notifications for every song listened by the user:
+To send an email for every reported song change:
 
 - set `SONG_NOTIFICATION` to `True`
 - or use the `-j` flag
@@ -205,7 +205,7 @@ To enable email notifications for every song listened by the user:
 spotify_monitor <spotify_user_uri_id> -j
 ```
 
-To be notified when a user listens to the same song on loop:
+To send an email when a user repeats the same song:
 
 - set `SONG_ON_LOOP_NOTIFICATION` to `True`
 - or use the `-x` flag
@@ -214,7 +214,7 @@ To be notified when a user listens to the same song on loop:
 spotify_monitor <spotify_user_uri_id> -x
 ```
 
-To disable sending an email on errors (enabled by default):
+Error emails are enabled by default when SMTP is configured. To disable them:
 
 - set `ERROR_NOTIFICATION` to `False`
 - or use the `-e` flag
@@ -223,7 +223,7 @@ To disable sending an email on errors (enabled by default):
 spotify_monitor <spotify_user_uri_id> -e
 ```
 
-Make sure you defined your SMTP settings earlier (see [SMTP settings](configuration.md#smtp-settings)).
+All email alerts require valid [SMTP settings](configuration.md#smtp-settings).
 
 Example email:
 
@@ -234,7 +234,7 @@ Example email:
 <a id="webhook-notifications"></a>
 ## Webhook Notifications
 
-The setup wizard's recommended choice sends active, inactive and error alerts. Choose the custom option in the wizard if you want to decide one by one.
+The setup wizard recommends webhook alerts for active, inactive and error events. Choose the custom option to select events individually.
 
 You can also change the settings yourself in `spotify_monitor.conf` or use a command-line option for one run:
 
@@ -258,13 +258,13 @@ Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or of
 <a id="csv-export"></a>
 ## CSV Export
 
-If you want to save all listened songs to a CSV file, set `CSV_FILE` or use `-b` flag:
+To save reported songs in a CSV file, set `CSV_FILE` or use `-b`:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -b spotify_tracks_user_uri_id.csv
 ```
 
-The file will be automatically created if it does not exist.
+Spotify Monitor creates the file if it does not exist.
 
 <a id="activity-flag-file"></a>
 ## Activity Flag File
@@ -280,7 +280,7 @@ For a container, place the file under `/data` so it appears in the host director
 <a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a>
 ## Automatic Playback of Listened Tracks in the Spotify Client
 
-If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:
+To play reported tracks in your local Spotify client:
 
 - set `TRACK_SONGS` to `True`
 - or use the `-g` flag
@@ -289,13 +289,13 @@ If you want the tool to automatically play the tracks listened to by the user in
 spotify_monitor <spotify_user_uri_id> -g
 ```
 
-Your Spotify client needs to be installed and running for this feature to work.
+The Spotify client must be installed and running.
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. A container run prints one warning before monitoring and `--doctor` reports `[WARN]`, but the setting is not disabled automatically.
 
-The tool fully supports automatic playback on **Linux** and **macOS**. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the `SP_USER_GOT_OFFLINE_TRACK_ID` configuration option).
+On Linux and macOS, Spotify Monitor can play each reported track. It can also pause playback or play a selected track when the user becomes inactive. See `SP_USER_GOT_OFFLINE_TRACK_ID`.
 
-For **Windows**, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first track will play automatically. However, subsequent tracks will be located in the client, but you will need to press the play button manually.
+On Windows, the first track can start if Spotify is open and currently idle. Later tracks are opened in Spotify but may require you to press Play.
 
 You can change the playback method per platform using the corresponding configuration option.
 
@@ -316,22 +316,22 @@ For **Windows** set `SPOTIFY_WINDOWS_PLAYING_METHOD` to one of the following val
 - "spotify-cmd"
 - "trigger-url"
 
-The recommended defaults should work for most people.
+Keep the default method unless playback does not work on your system.
 
-Note: monitoring reports the listened track after the user finishes listening to it. This is how activities are reported by Spotify. It means you will be one song behind the monitored user and if the song currently listened to by the tracked user is longer than the previous one, then the previously listened song might be played in your Spotify client on repeat (and if shorter it might be changed in the middle of the currently played song).
+Spotify reports each track after the monitored user finishes it. Automatic playback is therefore one track behind. Differences in track length can make your local track repeat or change before it finishes.
 
-For real-time playback tracking of a user's music activities, ask your friend to connect their Spotify account with [Last.fm](https://www.last.fm/). Then use my other tool: [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
+For current-track progress plus pause and resume detection, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
 <a id="check-intervals"></a>
 ## Check Intervals
 
-If you want to customize the polling interval, use `-c` flag (or `SPOTIFY_CHECK_INTERVAL` configuration option):
+The polling interval is the number of seconds between Friend Activity checks. Set it through `SPOTIFY_CHECK_INTERVAL` or `-c`:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -c 20
 ```
 
-If you want to change the time required to mark the user as inactive (the timer starts from the last reported track), use `-o` flag (or `SPOTIFY_INACTIVITY_CHECK` configuration option):
+The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
 ```sh
 spotify_monitor <spotify_user_uri_id> -o 900
@@ -346,32 +346,32 @@ spotify_monitor TARGET -m 180
 <a id="signal-controls-macoslinuxunix"></a>
 ## Signal Controls (macOS/Linux/Unix)
 
-The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new configuration options / flags.
+On macOS, Linux and Unix, operating system signals can change a running process without restarting it.
 
-List of supported signals:
+Supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
-| USR1 | Toggle email notifications when user gets active/inactive (-a, -i) |
-| USR2 | Toggle email notifications for every song (-j) |
-| CONT | Toggle email notifications for tracked songs (-t) |
-| PIPE | Toggle email notifications when user plays song on loop (-x) |
-| TRAP | Increase the inactivity check timer (by 30 seconds) (-o) |
-| ABRT | Decrease the inactivity check timer (by 30 seconds) (-o) |
-| HUP | Reload secrets from .env file and token source credentials from Protobuf files |
+| USR1 | Toggle active and inactive email notifications (`-a`, `-i`) |
+| USR2 | Toggle every-song email notifications (`-j`) |
+| CONT | Toggle tracked-song email notifications (`-t`) |
+| PIPE | Toggle loop email notifications (`-x`) |
+| TRAP | Increase the inactivity timer by 30 seconds (`-o`) |
+| ABRT | Decrease the inactivity timer by 30 seconds (`-o`) |
+| HUP | Reload private values from `.env` and token credentials from Protobuf files |
 
-Send signals with `kill` or `pkill`, e.g.:
+Send a signal with `kill` or `pkill`. For example:
 
 ```sh
 pkill -USR1 -f "spotify_monitor <spotify_user_uri_id>"
 ```
 
-As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
+This feature is not available for a native Windows process because Windows supports only a limited signal set.
 
 <a id="coloring-log-output-with-grc"></a>
 ## Coloring Log Output with GRC
 
-You can use [GRC](https://github.com/garabik/grc) to color logs.
+[GRC](https://github.com/garabik/grc) can color saved log files when you view them in a terminal.
 
 Add to your GRC config (`~/.grc/grc.conf`):
 
@@ -381,9 +381,7 @@ Add to your GRC config (`~/.grc/grc.conf`):
 conf.monitor_logs
 ```
 
-Now copy the [conf.monitor_logs](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs) to your `~/.grc/` and log files should be nicely colored when using `grc` tool.
-
-Example:
+Copy [conf.monitor_logs](https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs) to `~/.grc/`. Then view a log through `grc`:
 
 ```sh
 grc tail -F -n 100 spotify_monitor_<user_uri_id/file_suffix>.log
