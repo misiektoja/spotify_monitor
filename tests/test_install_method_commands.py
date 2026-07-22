@@ -219,7 +219,7 @@ def test_compose_help_epilog_uses_service_commands(monkeypatch):
     assert monitor._wizard_firefox_import_cmd("compose") in epilog
     assert f"{prefix} --list-friends" in epilog
     assert "--login-request-body-file /data/login.protobuf" in epilog
-    assert "# Start from the target saved by setup\n  docker compose up" in epilog
+    assert "# Start from the target saved by setup\n  docker compose up --no-log-prefix" in epilog
 
 
 # Verifies every help epilog avoids command-line secret flags and values
