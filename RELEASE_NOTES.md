@@ -4,6 +4,11 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.0.1 (22 Jul 2026)
 
+**Features and improvements**:
+
+- **IMPROVE:** Made Firefox login import the recommended Docker and Docker Compose authentication path. A one-time read-only host profile mount imports `sp_dc` into the persistent `.env` file, later runs no longer need the browser mount and hidden manual cookie entry remains available as a fallback
+- **IMPROVE:** Updated `spotify_monitor_totp_test --fetch-secrets` to scan current web-player bundles for inline TOTP secret objects while retaining the original runtime hook for older bundle formats
+
 **Bug fixes**:
 
 - **BUGFIX:** Fixed Docker Compose startup after guided setup. The default service command now loads `/data/.env` explicitly, preventing `docker compose up` from reporting a missing `SP_DC_COOKIE` when setup and doctor already saved and validated it
