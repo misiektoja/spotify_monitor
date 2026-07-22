@@ -259,6 +259,7 @@ Additionally, the user must have sharing of listening activity enabled in their 
 ## How to Get a Friend's User URI ID
 
 The easiest way is via the Spotify desktop or mobile client:
+
 - go to your friend's profile
 - click the **three dots** (•••) or press the **Share** button
 - copy the link to the profile
