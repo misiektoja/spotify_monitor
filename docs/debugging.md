@@ -118,7 +118,7 @@ This image works on:
 
 - macOS (Intel & Apple Silicon)
 - Linux (x86_64 and ARM64)
-- Windows (Docker Desktop / WSL2)
+- Windows with a Docker-compatible runtime
 - Raspberry Pi 4/5 (64-bit OS)
 
 Run interactively (default output mode):
