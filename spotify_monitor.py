@@ -5960,9 +5960,10 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print("  No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
     if is_followed:
-        print(f"  The monitoring account already follows '{target_user_id}'.")
+        print(f"The monitoring account already follows '{target_user_id}'.")
         return "already_followed"
-    print(f"  The monitoring account does not follow '{target_user_id}'.")
+    print(f"The monitoring account does not follow '{target_user_id}'.")
+    print()
     if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
         print("  Follow skipped. Spotify Monitor will not change the account.")
         return "declined"
