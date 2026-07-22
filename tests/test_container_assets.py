@@ -43,7 +43,7 @@ def test_compose_contract():
     assert "tty: true" in compose
     assert 'SPOTIFY_MONITOR_COMPOSE: "1"' in compose
     assert "- ./:/data:z" in compose
-    assert '["--config-file", "/data/spotify_monitor.conf"]' in compose
+    assert '["--config-file", "/data/spotify_monitor.conf", "--env-file", "/data/.env"]' in compose
     assert "env_file:" not in compose
     assert "ports:" not in compose
     assert "restart:" not in compose
