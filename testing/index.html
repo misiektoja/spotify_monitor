@@ -552,12 +552,12 @@
 
 
 <h1 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h1>
-<p>The project ships an offline pytest suite under <a href="https://github.com/misiektoja/spotify_monitor/tree/main/tests/">tests/</a>. It covers configuration and target parsing, setup flows, browser cookie import, recovery advice, doctor checks, startup output, webhook delivery, Spotify metadata fallbacks and container assets. Network-facing paths use mocks or local fixtures.</p>
+<p>The <a href="https://github.com/misiektoja/spotify_monitor/tree/main/tests/">tests directory</a> contains an offline pytest suite for contributors. It checks configuration and target parsing, setup, browser cookie import, recovery advice, Doctor, startup output, webhook delivery, metadata fallbacks and container files. Tests replace network requests with local test doubles or fixtures.</p>
 <p>Install the test dependencies and run the suite from the repository root:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[test]&#39;</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest
 </code></pre></div>
-<p>The same suite runs in GitHub Actions across Python 3.9 through 3.14. It also includes Windows setup checks, optional dependency installation and Docker plus Docker Compose smoke checks. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
+<p>GitHub Actions runs the same suite on Python 3.9 through 3.14. It also checks Windows setup, optional dependency installation, Docker and Docker Compose. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
 
 
 

@@ -417,12 +417,12 @@
   <a href="#spotify-access-token-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Spotify access token source
+        Spotify Access Token Source
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Spotify access token source">
+    <nav class="md-nav" aria-label="Spotify Access Token Source">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -758,12 +758,12 @@
   <a href="#spotify-access-token-source" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Spotify access token source
+        Spotify Access Token Source
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Spotify access token source">
+    <nav class="md-nav" aria-label="Spotify Access Token Source">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -944,10 +944,9 @@
 <p>Examples on this page use the PyPI command <code>spotify_monitor</code>. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under <a href="../usage/#command-format">Command Format by Installation Method</a>. Container file paths must point into <code>/data</code>.</p>
 <p><a id="configuration-file"></a></p>
 <h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
-<p>Most settings can be configured via command-line arguments.</p>
-<p>If you want to have it stored persistently, you can store them in a configuration file.</p>
-<p>For a guided configuration, it is recommended to use <code>spotify_monitor --setup</code>. The setup wizard validates the generated settings before saving them. If you confirm replacement of an existing configuration, it creates a timestamped backup first.</p>
-<p>If you want to edit the file manually, generate a default config template and save it to a file named <code>spotify_monitor.conf</code>:</p>
+<p>You can pass most settings as command-line options or save them in a configuration file for later runs.</p>
+<p>The easiest way to create this file is <code>spotify_monitor --setup</code>. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first.</p>
+<p>To edit every available setting yourself, generate a default configuration file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># On macOS, Linux or Windows Command Prompt (cmd.exe)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>&gt;<span class="w"> </span>spotify_monitor.conf
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
@@ -955,42 +954,39 @@
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>spotify_monitor.conf
 </code></pre></div>
 <blockquote>
-<p><strong>IMPORTANT</strong>: On <strong>Windows PowerShell</strong>, using redirection (<code>&gt;</code>) can cause the file to be encoded in UTF-16, which will lead to "null bytes" errors when running the tool. It is highly recommended to provide the filename directly as an argument to <code>--generate-config</code> to ensure UTF-8 encoding.</p>
+<p><strong>Windows PowerShell:</strong> Pass the filename directly to <code>--generate-config</code>. PowerShell redirection can write UTF-16, which Spotify Monitor rejects with a "null bytes" error.</p>
 </blockquote>
 <p>When you provide a filename, Spotify Monitor checks that the new configuration can be loaded then saves it as UTF-8. If the file already exists, Spotify Monitor creates a timestamped backup before replacing it.</p>
-<p>Edit the <code>spotify_monitor.conf</code> file and change any desired configuration options (detailed comments are provided for each).</p>
-<p>Settings are applied in this order from lowest to highest priority:</p>
+<p>Open <code>spotify_monitor.conf</code> in a text editor and change the settings you need. The file contains a short explanation above each setting.</p>
+<p>If the same setting appears in more than one place, the item later in this list wins:</p>
 <ol>
 <li>Built-in defaults</li>
 <li>The discovered or explicitly selected configuration file</li>
 <li>Secret environment variables</li>
-<li>Values from the selected dotenv file</li>
+<li>Values from the selected <code>.env</code> file</li>
 <li>Command-line options</li>
 </ol>
-<p>The dotenv layer applies only to supported secret keys such as <code>SP_DC_COOKIE</code>, <code>SMTP_PASSWORD</code> and <code>WEBHOOK_URL</code>. A positional target overrides <code>TARGET_USER_URI_ID</code>. Use <code>--config-file PATH</code> and <code>--env-file PATH</code> to make both selected files explicit. See <a href="#storing-secrets">Storing Secrets</a> for dotenv discovery and supported keys.</p>
+<p>The <code>.env</code> layer applies only to supported private keys such as <code>SP_DC_COOKIE</code>, <code>SMTP_PASSWORD</code> and <code>WEBHOOK_URL</code>. A target written directly after the command overrides <code>TARGET_USER_URI_ID</code>. Use <code>--config-file PATH</code> and <code>--env-file PATH</code> if you do not want automatic file discovery. See <a href="#storing-secrets">Storing Secrets</a> for the search rules and supported keys.</p>
 <p>You may set <code>TARGET_USER_URI_ID</code> to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
 </code></pre></div>
-<p><strong>New in v3.0:</strong> A Spotify developer app is no longer required. Cookie or client mode authenticates Friend Activity while the anonymous web-player backend supplies track and public playlist metadata. Existing working OAuth app credentials remain supported as an optional legacy metadata path. New users should not create an app solely for this tool.</p>
-<p><strong>New in v2.6:</strong> The configuration file includes options to enable/disable music service URLs (Apple Music, YouTube Music, Amazon Music, Deezer, Tidal) and lyrics service URLs (Genius, AZLyrics, Tekstowo.pl, Musixmatch, Lyrics.com) in console and email outputs. You can also configure crossfade detection thresholds and the number of recent songs to include in inactivity emails.</p>
+<p>A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.</p>
 <p><a id="spotify-access-token-source"></a></p>
-<h2 id="spotify-access-token-source">Spotify access token source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
-<p>Friend Activity authentication and metadata retrieval are separate.</p>
-<p>For Friend Activity monitoring, configure either the <code>cookie</code> or <code>client</code> token source method. A Spotify developer app is not used for core monitoring.</p>
-<p>Track metadata and public playlist metadata use the anonymous Spotify web-player backend automatically. If complete <a href="#spotify-oauth-app">Spotify OAuth App</a> credentials are configured the tool tries that optional legacy Web API path first then switches the affected metadata type to the web-player backend after a restricted response such as HTTP 403. A playlist HTTP 404 is classified after the web-player lookup resolves its owner. Spotify-curated playlists use web metadata only for that playlist while a non-Spotify playlist hidden from the legacy API switches remaining playlist lookups to the web backend.</p>
-<p>The anonymous token and current persisted-query hashes are cached in memory. The tool refreshes an expired token and rediscovers a stale query hash once before reporting an error.</p>
+<h2 id="spotify-access-token-source">Spotify Access Token Source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
+<p>Spotify Monitor uses either the <code>cookie</code> or <code>client</code> token source for Friend Activity.</p>
+<p>Track details and public playlist details normally come from Spotify's anonymous web-player service. If <a href="#spotify-oauth-app">Spotify OAuth App</a> credentials are present, Spotify Monitor tries that optional legacy API first (but it is not mandatory).</p>
 <p>The token source method can be configured via the <code>TOKEN_SOURCE</code> configuration option or the <code>--token-source</code> flag.</p>
 <p><strong>Recommended: <code>cookie</code></strong></p>
-<p>Uses the <code>sp_dc</code> cookie to retrieve a token from the Spotify web endpoint. This method is easy to set up and recommended for most users.</p>
+<p>Uses an <code>sp_dc</code> browser cookie to request a Spotify access token. Use this method unless you specifically need advanced client mode.</p>
 <p><strong>Alternative: <code>client</code></strong></p>
-<p>Uses captured credentials from the Spotify desktop client and a Protobuf-based login flow. It's more complex to set up and intended for advanced users who want a long-lasting token with the broadest possible access.</p>
+<p>Uses login data captured from the Spotify desktop client. Setup requires an intercepting proxy and a saved Protobuf request body. This method is intended for advanced users.</p>
 <p>If no method is specified, the tool defaults to the <code>cookie</code> method.</p>
-<p>Spotify Monitor generates an appropriate request user agent automatically for the selected token source. Advanced users can override it with <code>USER_AGENT</code> or <code>--user-agent</code>, but normal installations should leave it empty.</p>
-<p><strong>Important</strong>: It is strongly recommended to use a separate Spotify account with this tool. It does not rely on the official Spotify Web API for core features (like fetching friend activity), as it is not supported by the public API. That said, while I've never encountered any issues on my own accounts, I can't guarantee that Spotify won't impose restrictions in the future - you've been warned.</p>
+<p>Spotify Monitor creates a suitable user agent automatically for the selected token source. A user agent is text that identifies the application making a request. Leave <code>USER_AGENT</code> empty unless you have a specific reason to override it.</p>
+<p>Friend Activity is not available through Spotify's supported public Web API. Spotify can change or restrict the private endpoints used by this tool. Use a separate Spotify account if losing access to your main account would be unacceptable.</p>
 <p><a id="spotify-sp_dc-cookie"></a></p>
 <h3 id="spotify-sp_dc-cookie">Spotify sp_dc Cookie<a class="headerlink" href="#spotify-sp_dc-cookie" title="Permanent link">&para;</a></h3>
 <p>This is the default method used to obtain a Spotify access token.</p>
-<p>Firefox browser import is the recommended onboarding path for local PyPI and downloaded-script installations. It works on macOS, Linux and Windows with no optional dependency. For default Docker and Docker Compose installations, use hidden manual entry with <code>--set-sp-dc</code>. Container Firefox import is advanced because it requires a read-only host profile mount.</p>
+<p>For a local PyPI or downloaded-script installation, import a Firefox login. This works on macOS, Linux and Windows without an optional package. Docker and Docker Compose also support Firefox import through a one-time read-only host profile mount. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
 <p>Before importing, open <a href="https://open.spotify.com/">Spotify Web Player</a> in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.</p>
 <p><a id="which-browsers-are-supported"></a></p>
 <h4 id="which-browsers-are-supported">Which browsers are supported<a class="headerlink" href="#which-browsers-are-supported" title="Permanent link">&para;</a></h4>
@@ -1026,27 +1022,28 @@
 </tr>
 </tbody>
 </table>
-<p><strong>About the <code>chromium</code> option:</strong> Chromium is the unbranded open-source browser that Google Chrome is built on. It is a <strong>separate application</strong> from Chrome with its own profile and cookie store. It is also a common default browser on many Linux distributions. Pick <code>chromium</code> only if you actually run that browser. If you use Google Chrome pick <code>chrome</code>.</p>
-<p><strong>Not currently supported:</strong> Microsoft Edge, Opera, Vivaldi, Arc and other Chromium-based browsers. They share the Chromium engine but each keeps its own separate cookie store. The underlying <a href="https://github.com/n8henrie/pycookiecheat"><code>pycookiecheat</code></a> library handles only the browsers listed above. If you use one of these browsers log in with Firefox or Chrome/Brave/Chromium for the import instead.</p>
-<p>On <strong>Windows</strong> Chromium import is not possible. Chrome's app-bound encryption in Chrome 127 and later blocks external programs from reading its cookies. The tool detects Windows and recommends using Firefox instead.</p>
+<p><strong>About <code>chromium</code>:</strong> Chromium is a separate browser application from Google Chrome. It has its own profiles and cookies. Choose <code>chromium</code> only if that is the browser you use. Choose <code>chrome</code> for Google Chrome.</p>
+<p><strong>Not currently supported:</strong> Microsoft Edge, Opera, Vivaldi, Arc and other Chromium-based browsers. Each application stores its cookies separately. The <a href="https://github.com/n8henrie/pycookiecheat"><code>pycookiecheat</code></a> library used by Spotify Monitor supports only the browsers in the table. To import a login, use one of those supported browsers.</p>
+<p>On Windows, Chrome 127 and newer prevent external programs from reading these cookies through app-bound encryption. Use Firefox import instead.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
 </code></pre></div>
-<p>The importer discovers Firefox profiles from <code>profiles.ini</code> and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:</p>
+<p>On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads <code>profiles.ini</code> and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--browser-profile<span class="w"> </span><span class="s2">&quot;default-release&quot;</span>
 </code></pre></div>
-<p>The advanced <code>--cookie-file PATH</code> option points directly to a Firefox <code>cookies.sqlite</code> database and takes precedence over profile discovery:</p>
+<p>For a custom Firefox layout, the advanced <code>--cookie-file PATH</code> option points directly to a <code>cookies.sqlite</code> database. It overrides automatic profile selection:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--cookie-file<span class="w"> </span>/path/to/cookies.sqlite
 </code></pre></div>
-<p>By default import writes only <code>SP_DC_COOKIE</code> to <code>.env</code> in the current directory. Use <code>--env-file PATH</code> to choose another dotenv file. Import never modifies a dotenv file found only through parent-directory discovery. <code>--env-file none</code> is invalid for import because persistence is required.</p>
-<p>The cookie is validated through Spotify token acquisition and an authenticated buddy-list request before the dotenv file is changed. Existing comments, blank lines and unrelated settings are preserved. Replacing an existing value requires confirmation in an interactive terminal or <code>--force</code> in a noninteractive run. <code>--force</code> does not skip validation.</p>
+<p>By default, import writes only <code>SP_DC_COOKIE</code> to <code>.env</code> in the current directory. Use <code>--env-file PATH</code> to choose another <code>.env</code> file. Import does not change a file found only in a parent directory. <code>--env-file none</code> is invalid because the imported cookie must be saved.</p>
+<p>Before changing <code>.env</code>, Spotify Monitor uses the cookie to request a token and read the authenticated friend list. It keeps comments, blank lines and unrelated settings. Replacing an existing value requires confirmation in an interactive terminal or <code>--force</code> in a noninteractive run. <code>--force</code> does not skip validation.</p>
 <p>Chrome, Brave and Chromium import is available on macOS and Linux through the optional browser extra:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser]&quot;</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>chrome
 </code></pre></div>
 <p>Chromium profiles support <code>Default</code> and <code>Profile *</code> directories plus friendly names from Local State. Both modern <code>&lt;profile&gt;/Network/Cookies</code> and legacy <code>&lt;profile&gt;/Cookies</code> databases are recognized.</p>
+<p>Chromium-based import does not work inside Docker because the container cannot use the host password service needed to decrypt the cookies. Use Firefox as shown under <a href="../usage/#import-firefox-into-container-authentication">Container Operation</a>. You can also perform a Chromium import with a local PyPI or manual installation.</p>
 <p><a id="manual-cookie-extraction"></a></p>
 <h4 id="manual-cookie-extraction">Manual cookie extraction<a class="headerlink" href="#manual-cookie-extraction" title="Permanent link">&para;</a></h4>
-<p>Manual extraction is a fallback for local installations and the recommended default-container path. Treat <code>sp_dc</code> like a password. Anyone who has it may be able to use your Spotify login session.</p>
+<p>Use manual extraction when browser import is unavailable. In containers it is the fallback when a Firefox host profile cannot be mounted. Treat <code>sp_dc</code> like a password because it represents a Spotify login session.</p>
 <p>Follow these steps:</p>
 <ol>
 <li>Open <a href="https://open.spotify.com/">Spotify Web Player</a> and sign in to the Spotify account that follows the person you want to monitor.</li>
@@ -1061,18 +1058,18 @@
 <p>You can also provide <code>SP_DC_COOKIE</code> in these ways:</p>
 <ul>
 <li>Set it as an <a href="#storing-secrets">environment variable</a>, for example <code>export SP_DC_COOKIE="your_sp_dc_cookie_value"</code>.</li>
-<li>Add <code>SP_DC_COOKIE="your_sp_dc_cookie_value"</code> to a <a href="#storing-secrets">dotenv file</a> for persistent use.</li>
+<li>Add <code>SP_DC_COOKIE="your_sp_dc_cookie_value"</code> to an <a href="#storing-secrets"><code>.env</code> file</a> to keep it for later runs.</li>
 <li>Pass it for one run with <code>-u</code> or <code>--spotify-dc-cookie</code>. This is not recommended because the value may appear in shell history or process listings.</li>
 <li>Store it in the configuration file or source code as a last resort. This is not recommended because it is easier to expose or commit accidentally.</li>
 </ul>
-<p>If your <code>sp_dc</code> cookie expires, the tool will notify you via the console and email. In that case, you'll need to grab the new <code>sp_dc</code> cookie value.</p>
-<p>If you store the <code>SP_DC_COOKIE</code> in a dotenv file you can update its value and send a <code>SIGHUP</code> signal to reload the file with the new <code>sp_dc</code> cookie without restarting the tool. More info in <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
+<p>If <code>sp_dc</code> expires, Spotify Monitor reports the error in the console. It also sends the error through each enabled notification channel: email, Discord or ntfy. Extract a new cookie and replace the saved value.</p>
+<p>If <code>SP_DC_COOKIE</code> is in <code>.env</code>, a running process on macOS, Linux or Unix can reload it after a <code>SIGHUP</code> signal. See <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls</a>.</p>
 <blockquote>
-<p><strong>NOTE:</strong> Spotify still requires TOTP parameters for web-player token requests. The web player continues to select v61 which was first published in January 2026. Version 3.0 embeds v61 directly and no longer downloads a third-party secret dictionary. The version and cipher bytes are exposed as the <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code> config options, so if Spotify resumes rotation you can patch them from the config file without a code release. Use <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> to extract the current bundle values then update those two options.</p>
+<p><strong>TOTP parameters:</strong> Spotify's web-player token request currently uses v61. Spotify Monitor includes those values in <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code>. If Spotify changes them, use <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py">spotify_monitor_secret_grabber</a> to read the current values from the web-player bundle and update both settings.</p>
 </blockquote>
 <p><a id="spotify-desktop-client"></a></p>
 <h3 id="spotify-desktop-client">Spotify Desktop Client<a class="headerlink" href="#spotify-desktop-client" title="Permanent link">&para;</a></h3>
-<p>This is the alternative method used to obtain a Spotify access token which simulates a login from the real Spotify desktop app using credentials intercepted from a real session.</p>
+<p>Client mode reuses login data from a real Spotify desktop session. It is an advanced alternative to the <code>sp_dc</code> cookie method.</p>
 <ul>
 <li>
 <p>Run an intercepting proxy of your choice (like <a href="https://proxyman.com">Proxyman</a> - the trial version is sufficient)</p>
@@ -1095,10 +1092,10 @@
 <li><strong>proxy type</strong>: <code>HTTP</code></li>
 <li><strong>host</strong>: <code>127.0.0.1</code> (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)</li>
 <li><strong>port</strong>: <code>9090</code> (port of your proxy, for Proxyman use the port you see at the top bar)</li>
-<li>restart the app; since QUIC (HTTP/3) requires raw UDP and can't tunnel over HTTP CONNECT, Spotify will downgrade to TCP-only HTTP/2 or 1.1, which intercepting proxy can decrypt</li>
+<li>restart the app. This makes Spotify use a TCP connection that the proxy can inspect instead of QUIC over UDP</li>
 </ul>
 </li>
-<li>block Spotify's UDP port 443 at the OS level with a firewall of your choice - this prevents QUIC (HTTP/3), forcing TLS over TCP and letting intercepting proxy perform MITM</li>
+<li>block Spotify's UDP port 443 with an operating system firewall. This also forces a TCP connection that the proxy can inspect</li>
 <li>
 <p>try an older version of the Spotify desktop client</p>
 </li>
@@ -1116,16 +1113,16 @@
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>--token-source<span class="w"> </span>client<span class="w"> </span>-w<span class="w"> </span>&lt;path-to-login-request-body-file&gt;<span class="w"> </span>&lt;spotify_user_uri_id&gt;
 </code></pre></div>
-<p>If successful, the tool will automatically extract the necessary fields and begin monitoring.</p>
-<p>Instead of using the <code>-w</code> flag each time, you can persist the Protobuf login request file path by setting the <code>LOGIN_REQUEST_BODY_FILE</code> configuration option.</p>
-<p>The same applies to <code>--token-source client</code> flag - you can persist it via <code>TOKEN_SOURCE</code> configuration option set to <code>client</code>.</p>
-<p>The tool will automatically refresh both the access token and client token using the intercepted refresh token.</p>
-<p>If your refresh token expires, the tool will notify you via the console and email. In that case, you'll need to re-export the login request body.</p>
+<p>Spotify Monitor reads the required fields from the saved request and starts monitoring.</p>
+<p>To avoid passing <code>-w</code> each time, save the file path in <code>LOGIN_REQUEST_BODY_FILE</code>.</p>
+<p>Also set <code>TOKEN_SOURCE = "client"</code> so later runs use client mode without the flag.</p>
+<p>Spotify Monitor refreshes the access token and client token with the captured refresh token.</p>
+<p>If the refresh token expires, Spotify Monitor reports the error in the console. It also sends the error through each enabled notification channel: email, Discord or ntfy. Export the login request body again.</p>
 <p>If you re-export the login request body to the same file name, you can send a <code>SIGHUP</code> signal to reload the file with the new refresh token without restarting the tool. More info in <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
-<p>Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.</p>
+<p>The generated configuration file documents other client-mode settings. Keep their defaults unless you know that your captured client data requires different values.</p>
 <p><a id="spotify-oauth-app"></a></p>
 <h2 id="spotify-oauth-app">Spotify OAuth App<a class="headerlink" href="#spotify-oauth-app" title="Permanent link">&para;</a></h2>
-<p>Since v3.0, you do not need a Spotify OAuth app for normal use, so normally you should not follow this section. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
+<p>Normal use does not need a Spotify OAuth app. This optional legacy path uses the Spotify Web API for track details and playlist owner details when Spotipy is installed. Configure it only if you already have a working app with verified access to the legacy endpoints. When this path is unavailable, Spotify Monitor falls back to web-player metadata.</p>
 <p>Spotify requires the owner of every Development Mode app to keep an active Premium subscription. This applies to old and new apps. A Development Mode app stops working when the owner loses Premium and resumes after the owner resubscribes. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this path live and reports a warning when web-player metadata succeeds. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">official migration guide</a>.</p>
 <p>If you already have a working app or want to create a new one:</p>
 <ul>
@@ -1150,17 +1147,17 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
 </code></pre></div>
 <p>When configured the tool automatically refreshes the OAuth app access token. Tokens are cached in the file specified by <code>SP_APP_TOKENS_FILE</code> configuration option (default: <code>.spotify-monitor-oauth-app.json</code>).</p>
-<p>If you store the <code>SP_APP_CLIENT_ID</code> and <code>SP_APP_CLIENT_SECRET</code> in a dotenv file you can update their values and send a <code>SIGHUP</code> signal to reload the file with the new secret values without restarting the tool. More info in <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)</a>.</p>
+<p>If <code>SP_APP_CLIENT_ID</code> and <code>SP_APP_CLIENT_SECRET</code> are in <code>.env</code>, a running process on macOS, Linux or Unix can reload them after a <code>SIGHUP</code> signal. See <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls</a>.</p>
 <p><a id="following-the-monitored-user"></a></p>
 <h2 id="following-the-monitored-user">Following the Monitored User<a class="headerlink" href="#following-the-monitored-user" title="Permanent link">&para;</a></h2>
 <p>To monitor a user's activity, you must follow them from the Spotify account associated with the <code>sp_dc</code> cookie or <code>client</code> credentials.</p>
 <p>The setup wizard checks that account's follow state after it saves usable authentication. If the target is not followed the wizard asks whether to follow it. The default answer is no. Spotify Monitor sends no follow request unless you explicitly answer yes. After an approved request the wizard queries Spotify again and reports success only when the target is confirmed as followed.</p>
-<p>This works in cookie mode and advanced client mode without a separate user-authorized OAuth token. It uses Spotify's private web-player Pathfinder operations rather than a supported public Web API contract. Spotify can change those operations, thats why Spotify Monitor discovers their current persisted-query hashes from the web-player bundle and retries discovery once when Spotify rejects a cached hash.</p>
+<p>This works in cookie mode and advanced client mode without a separate user-authorized OAuth token. It uses private web-player Pathfinder operations rather than a supported public Web API. Spotify can change these operations. Spotify Monitor therefore reads their current identifiers from the web-player bundle and retries discovery once if Spotify rejects a cached identifier.</p>
 <p>If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.</p>
 <p>Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.</p>
 <p><a id="how-to-get-a-friends-user-uri-id"></a></p>
 <h2 id="how-to-get-a-friends-user-uri-id">How to Get a Friend's User URI ID<a class="headerlink" href="#how-to-get-a-friends-user-uri-id" title="Permanent link">&para;</a></h2>
-<p>The easiest way is via the Spotify desktop or mobile client:</p>
+<p>Use the Spotify desktop or mobile app:</p>
 <ul>
 <li>go to your friend's profile</li>
 <li>click the <strong>three dots</strong> (•••) or press the <strong>Share</strong> button</li>
@@ -1172,13 +1169,13 @@
 <p>Alternatively you can list all user URI IDs of accounts you follow by using <a href="../usage/#listing-mode">Listing mode</a>.</p>
 <p><a id="smtp-settings"></a></p>
 <h2 id="smtp-settings">SMTP Settings<a class="headerlink" href="#smtp-settings" title="Permanent link">&para;</a></h2>
-<p>If you want to use email notifications functionality, configure SMTP settings in the <code>spotify_monitor.conf</code> file.</p>
-<p>Verify your SMTP settings by using <code>--send-test-email</code> flag (the tool will try to send a test email notification):</p>
+<p>Email notifications need SMTP server details for the email account that sends the messages. Add them to <code>spotify_monitor.conf</code> or use the setup wizard.</p>
+<p>Send one test message to verify the settings:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>spotify_monitor<span class="w"> </span>--send-test-email
 </code></pre></div>
 <p><a id="webhook-settings"></a></p>
 <h2 id="webhook-settings">Webhook Settings<a class="headerlink" href="#webhook-settings" title="Permanent link">&para;</a></h2>
-<p>Spotify Monitor can send activity alerts through Discord or the native <a href="https://docs.ntfy.sh/publish/">ntfy publish API</a>. You can use webhook alerts instead of email or use both. The easiest option is to run <code>spotify_monitor --setup</code>, choose webhook alerts then select Discord or ntfy.</p>
+<p>Spotify Monitor can send activity alerts through Discord or the native <a href="https://docs.ntfy.sh/publish/">ntfy publish API</a>. Webhook alerts work with or without email. Run <code>spotify_monitor --setup</code>, choose webhook alerts and select Discord or ntfy.</p>
 <p><code>WEBHOOK_PROVIDER</code> selects the request format. It defaults to <code>"discord"</code> so existing configurations keep working.</p>
 <p><a id="discord"></a></p>
 <h3 id="discord">Discord<a class="headerlink" href="#discord" title="Permanent link">&para;</a></h3>
@@ -1241,8 +1238,8 @@
 <p>If the webhook service temporarily refuses a message, Spotify Monitor tries once more and waits at most five seconds. Spotify monitoring continues normally and its retry behavior is unchanged.</p>
 <p><a id="storing-secrets"></a></p>
 <h2 id="storing-secrets">Storing Secrets<a class="headerlink" href="#storing-secrets" title="Permanent link">&para;</a></h2>
-<p>Keep private values in an environment variable or a dotenv file. This includes <code>SP_DC_COOKIE</code>, <code>REFRESH_TOKEN</code>, <code>SP_APP_CLIENT_ID</code>, <code>SP_APP_CLIENT_SECRET</code>, <code>SMTP_PASSWORD</code>, <code>WEBHOOK_URL</code> and <code>NTFY_ACCESS_TOKEN</code>.</p>
-<p>Set the needed environment variables using <code>export</code> on <strong>Linux/Unix/macOS/WSL</strong> systems:</p>
+<p>A <code>.env</code> file is a plain text file that holds private values separately from regular configuration. Store <code>SP_DC_COOKIE</code>, <code>REFRESH_TOKEN</code>, <code>SP_APP_CLIENT_ID</code>, <code>SP_APP_CLIENT_SECRET</code>, <code>SMTP_PASSWORD</code>, <code>WEBHOOK_URL</code> and <code>NTFY_ACCESS_TOKEN</code> there. Do not commit this file or share it.</p>
+<p>You can use operating system environment variables instead of a file. Set them with <code>export</code> on Linux, Unix, macOS or WSL:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SP_DC_COOKIE</span><span class="o">=</span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
 <a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">REFRESH_TOKEN</span><span class="o">=</span><span class="s2">&quot;your_spotify_app_refresh_token&quot;</span>
 <a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SP_APP_CLIENT_ID</span><span class="o">=</span><span class="s2">&quot;your_spotify_app_client_id&quot;</span>
@@ -1252,8 +1249,8 @@
 <a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">NTFY_ACCESS_TOKEN</span><span class="o">=</span><span class="s2">&quot;tk_your_ntfy_access_token&quot;</span>
 </code></pre></div>
 <p>On <strong>Windows Command Prompt</strong> use <code>set</code> instead of <code>export</code> and on <strong>Windows PowerShell</strong> use <code>$env</code>.</p>
-<p>Alternatively store them persistently in a dotenv file (recommended).</p>
-<p>Browser import, <code>--set-sp-dc</code> or the setup wizard can create or update <code>.env</code> for you. This is the easiest option.</p>
+<p>To keep the values between terminal sessions, store them in <code>.env</code>.</p>
+<p>Browser import, <code>--set-sp-dc</code> and the setup wizard can create or update <code>.env</code> for you.</p>
 <p>If you cloned the repository, you can copy the included example then fill in only the secrets you use:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">test</span><span class="w"> </span>-e<span class="w"> </span>.env<span class="w"> </span><span class="o">||</span><span class="w"> </span>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </code></pre></div>
@@ -1266,15 +1263,15 @@
 <a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="na">WEBHOOK_URL</span><span class="o">=</span><span class="s">&quot;https://discord.com/api/webhooks/your_id/your_token&quot;</span>
 <a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="na">NTFY_ACCESS_TOKEN</span><span class="o">=</span><span class="s">&quot;tk_your_ntfy_access_token&quot;</span>
 </code></pre></div>
-<p>By default the tool will auto-search for dotenv file named <code>.env</code> in current directory and then upward from it.</p>
-<p>Browser import is intentionally different. Without <code>--env-file</code> it writes to <code>.env</code> in the current directory and does not modify a parent dotenv file.</p>
+<p>By default, Spotify Monitor looks for <code>.env</code> in the current directory. If it is not there, the search continues in each parent directory.</p>
+<p>Browser import does not use the parent-directory search when choosing where to write. Without <code>--env-file</code>, it writes to <code>.env</code> in the current directory.</p>
 <p>You can specify a custom file with <code>DOTENV_FILE</code> or <code>--env-file</code> flag:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
 </code></pre></div>
-<p>You can also disable <code>.env</code> auto-search with <code>DOTENV_FILE = "none"</code> or <code>--env-file none</code>:</p>
+<p>Disable automatic <code>.env</code> search with <code>DOTENV_FILE = "none"</code> or <code>--env-file none</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
 </code></pre></div>
-<p>As a fallback, you can also store secrets in the configuration file or source code.</p>
+<p>As a last resort, you can store private values in the configuration file or source code. This makes them easier to expose or commit accidentally.</p>
 
 
 

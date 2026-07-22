@@ -641,13 +641,13 @@
 
 
 <h1 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h1>
-<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. For a manual script or container, use the matching prefix under <a href="../usage/#command-format">Command Format by Installation Method</a>. The setup wizard and <code>--help</code> print commands for the detected installation.</p>
+<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. If you chose another installation, replace that command with the matching <a href="../usage/#command-format">command prefix</a>. The setup wizard and <code>--help</code> also print commands for the detected installation.</p>
 <p><a id="doctor-preflight"></a></p>
 <h2 id="doctor-preflight">Doctor Preflight<a class="headerlink" href="#doctor-preflight" title="Permanent link">&para;</a></h2>
-<p>Before starting a long monitoring run, use the doctor preflight command:</p>
+<p>Before a long monitoring run, check the current configuration:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>--doctor
 </code></pre></div>
-<p>The report uses <code>[PASS]</code>, <code>[WARN]</code> and <code>[FAIL]</code> markers across these sections:</p>
+<p>The report uses <code>[PASS]</code>, <code>[WARN]</code> and <code>[FAIL]</code> markers in these sections:</p>
 <ul>
 <li>Environment</li>
 <li>Configuration</li>
@@ -658,13 +658,13 @@
 <li>Notifications</li>
 <li>Summary</li>
 </ul>
-<p>The doctor loads the same settings as a normal run. It checks Spotify login, connectivity and the selected target. When complete legacy OAuth credentials are configured it requests a memory-only token and checks live track metadata access. If that legacy check fails but the automatic web-player fallback succeeds the doctor reports a warning and still exits successfully. For Development Mode apps the warning reminds you that Spotify requires the app owner to have active Premium. A legacy failure can have other causes, so the doctor does not claim that a 403 proves the subscription has lapsed. For enabled email alerts it checks SMTP login without sending. For enabled webhook alerts it checks the provider, saved link, headers and alert choices without publishing. It never creates logs, CSV files, flag files or OAuth caches and it never updates config or dotenv files.</p>
-<p>In an interactive terminal, each notification channel that passes its passive checks gets a separate optional delivery prompt. Both prompts default to No. Approving the email prompt delivers one real test email. Approving the webhook prompt publishes one real Discord or ntfy notification. Declining either prompt sends nothing. Noninteractive doctor runs never offer or send delivery tests.</p>
-<p>Warnings do not make the command fail. The doctor exits nonzero when at least one passive check or approved delivery test fails. You can run an authentication-only check without a target or verify one specific account:</p>
+<p>Doctor loads the same settings as a normal run. It checks the Spotify login, connection and selected target. If complete legacy OAuth credentials are present, it requests a temporary token and checks track metadata. A failed legacy check becomes a warning when the web-player fallback works. Doctor also checks configured email and webhook settings without sending a message. It does not create logs, CSV files, flag files or OAuth caches. It does not change configuration or <code>.env</code> files.</p>
+<p>In an interactive terminal, Doctor can offer one real delivery test for each notification channel that passes its checks. Each prompt defaults to No. Answering Yes to the email prompt sends one test email. Answering Yes to the webhook prompt sends one Discord or ntfy message. Doctor does not offer delivery tests when it runs without an interactive terminal.</p>
+<p>Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--doctor
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;
 </code></pre></div>
-<p>Normal configuration overrides work with the doctor:</p>
+<p>Doctor accepts the normal configuration options:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--token-source<span class="w"> </span>client
@@ -672,14 +672,14 @@
 <p>Each failed check includes a <code>To fix:</code> action. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
 </code></pre></div>
-<p>Inside Docker or Docker Compose, recovery guidance prefers the hidden <code>--set-sp-dc</code> path and also shows the advanced mounted Firefox command.</p>
-<p>For advanced client-mode failures, follow the <a href="../configuration/#spotify-desktop-client">Spotify Desktop Client</a> export instructions again. Add <code>--debug</code> to normal runs or doctor checks for sanitized technical detail. Use <code>--verbose</code> for startup settings plus rare operational state changes without per-poll traces. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.</p>
+<p>Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. It also shows hidden <code>--set-sp-dc</code> entry as a fallback. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
+<p>For advanced client-mode failures, repeat the <a href="../configuration/#spotify-desktop-client">Spotify Desktop Client</a> export steps. Add <code>--debug</code> to Doctor or a normal run for sanitized technical detail. Use <code>--verbose</code> for a complete startup summary plus occasional state changes without output for every poll. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.</p>
 <p><a id="choosing-the-right-logging-level"></a></p>
 <h2 id="choosing-the-right-logging-level">Choosing the Right Logging Level<a class="headerlink" href="#choosing-the-right-logging-level" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Default mode</strong> keeps long-running monitoring quiet and reports activity changes plus important errors</li>
-<li><strong>Verbose mode (<code>--verbose</code>)</strong> adds occasional operational events and a complete non-secret startup summary without printing every polling cycle</li>
-<li><strong>Debug mode (<code>--debug</code>)</strong> adds sanitized request flow, scheduling details and internal diagnostics for deeper troubleshooting</li>
+<li><strong>Default mode</strong> reports activity changes and important errors</li>
+<li><strong>Verbose mode (<code>--verbose</code>)</strong> adds occasional state changes and a complete startup summary without private values</li>
+<li><strong>Debug mode (<code>--debug</code>)</strong> adds sanitized request flow, scheduling details and internal diagnostics</li>
 </ul>
 <p>Start with <code>--doctor</code>. If the suggested fix does not resolve the issue, retry with <code>--debug</code> and include only sanitized output when opening a GitHub issue.</p>
 
