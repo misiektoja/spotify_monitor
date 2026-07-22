@@ -657,7 +657,9 @@ def test_setup_follow_check_reports_already_followed(monkeypatch, capsys):
     assert monitor._wizard_offer_target_follow("target.user") == "already_followed"
     follow.assert_not_called()
     ask.assert_not_called()
-    assert "already follows 'target.user'" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "\nThe monitoring account already follows 'target.user'.\n" in output
+    assert "\n  The monitoring account" not in output
 
 
 # Verifies declining the follow prompt leaves the Spotify account unchanged
@@ -671,7 +673,10 @@ def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     assert monitor._wizard_offer_target_follow("target.user") == "declined"
     ask.assert_called_once_with("Follow 'target.user' now using the configured Spotify account?", default=False)
     follow.assert_not_called()
-    assert "will not change the account" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "\nThe monitoring account does not follow 'target.user'.\n\n" in output
+    assert "\n  The monitoring account" not in output
+    assert "will not change the account" in output
 
 
 # Verifies an approved follow is rechecked before setup reports success
