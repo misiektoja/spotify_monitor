@@ -36,11 +36,20 @@ def test_legacy_metadata_recovery_mentions_app_owner_premium():
 
 
 # Verifies cookie failures recommend the portable Firefox import command
-def test_cookie_recovery_recommends_firefox_import():
+def test_cookie_recovery_recommends_firefox_import(monkeypatch):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
     assert advice.code == "auth.cookie_invalid"
     assert monitor.SPOTIFY_WEB_LOGIN_URL in advice.fix
     assert "spotify_monitor --import-browser-cookie --browser firefox" in advice.fix
+
+
+# Verifies manual script recovery uses the matching portable command
+def test_cookie_recovery_matches_manual_script_install(monkeypatch):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+    advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
+    assert "python3 spotify_monitor.py --import-browser-cookie --browser firefox" in advice.fix
+    assert "spotify_monitor --import-browser-cookie" not in advice.fix
 
 
 # Verifies container cookie recovery prefers hidden entry and retains mounted Firefox guidance
@@ -51,6 +60,7 @@ def test_container_cookie_recovery_prefers_private_entry(monkeypatch):
     assert "docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env" in advice.fix
     assert "Advanced Firefox alternative" in advice.fix
     assert advice.fix.index("--set-sp-dc") < advice.fix.index("--import-browser-cookie")
+    assert monitor.MANUAL_COOKIE_GUIDE_URL in advice.fix
 
 
 # Verifies client refresh failures point back to advanced desktop setup
@@ -133,7 +143,24 @@ def test_recovery_guides_target_relevant_documentation():
         (monitor.classify_recovery_error(make_http_error(429)), monitor.INTERVALS_GUIDE_URL),
     )
     for advice, guide_url in cases:
-        assert f"\n  Guide: {guide_url}" in advice.fix
+        assert f"\nGuide: {guide_url}" in advice.fix
+
+
+# Verifies manual cookie entry failures link directly to extraction steps
+def test_manual_cookie_recovery_uses_extraction_guide():
+    advice = monitor.classify_recovery_error(RuntimeError("invalid or expired"), "set_sp_dc")
+    assert monitor.MANUAL_COOKIE_GUIDE_URL == monitor.DOCUMENTATION_URL + "/configuration/#manual-cookie-extraction"
+    assert monitor.MANUAL_COOKIE_GUIDE_URL in advice.fix
+    assert monitor.COOKIE_GUIDE_URL not in advice.fix
+
+
+# Verifies recovery output keeps every hint line flush left
+def test_recovery_output_has_no_indented_hint_lines():
+    rendered = monitor.render_recovery_error(RuntimeError("unexpected shape"), debug=True)
+    assert "\nTo fix:" in rendered
+    assert "\nGuide:" in rendered
+    assert "\nTechnical detail:" in rendered
+    assert not any(line.startswith((" ", "\t")) for line in rendered.splitlines())
 
 
 # Verifies complete values and common serialized credentials are redacted
