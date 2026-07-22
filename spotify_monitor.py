@@ -699,6 +699,12 @@ SP_CACHED_WEB_CLIENT_ID = ""
 SP_CACHED_PLAYLIST_QUERY_HASH = ""
 SP_CACHED_TRACK_QUERY_HASH = ""
 
+# Caches dynamically discovered persisted-query hashes for private follow operations
+SP_CACHED_FOLLOW_QUERY_HASHES: dict[str, str] = {}
+
+# Maps private follow operations to the GraphQL operation types embedded in the web player
+SPOTIFY_FOLLOW_OPERATION_TYPES = {"isFollowingUsers": "query", "followUsers": "mutation"}
+
 # Switches each metadata type to the web backend after a restricted legacy response
 SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
 SP_WEB_TRACK_BACKEND_PREFERRED = False
@@ -1964,8 +1970,7 @@ adapter = HTTPAdapter(max_retries=retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://", adapter)
 SESSION.mount("http://", adapter)
 
-# The web-player GraphQL endpoint is queried through idempotent read-only POSTs, so it gets a dedicated
-# adapter that also retries POST on transient failures (other POSTs use the bare requests module, not SESSION)
+# The web-player GraphQL endpoint uses idempotent POST operations so it gets a dedicated retry adapter
 web_player_retry = CappedRetry(
     total=5,
     connect=3,
@@ -4215,14 +4220,19 @@ def spotify_get_web_access_token_data():
     return {"access_token": access_token, "expires_at": expires_at, "client_id": client_id}
 
 
-# Discovers and caches a metadata persisted-query hash from the current web-player bundle
+# Discovers and caches one persisted-query hash from the current web-player bundle
 def spotify_discover_web_query_hash(operation_name, force=False):
     global SP_CACHED_PLAYLIST_QUERY_HASH, SP_CACHED_TRACK_QUERY_HASH
 
     if operation_name == "fetchPlaylistMetadata":
         cached_hash = SP_CACHED_PLAYLIST_QUERY_HASH
+        operation_type = "query"
     elif operation_name == "getTrack":
         cached_hash = SP_CACHED_TRACK_QUERY_HASH
+        operation_type = "query"
+    elif operation_name in SPOTIFY_FOLLOW_OPERATION_TYPES:
+        cached_hash = SP_CACHED_FOLLOW_QUERY_HASHES.get(operation_name, "")
+        operation_type = SPOTIFY_FOLLOW_OPERATION_TYPES[operation_name]
     else:
         raise ValueError(f"Unsupported Spotify web-player operation: {operation_name}")
 
@@ -4249,14 +4259,21 @@ def spotify_discover_web_query_hash(operation_name, force=False):
     debug_print(f"HTTP GET {bundle_url} [query bundle operation={operation_name}] -> {bundle_response.status_code}")
     bundle_response.raise_for_status()
 
-    hash_match = re.search(rf'["\']{re.escape(operation_name)}["\']\s*,\s*["\']query["\']\s*,\s*["\']([0-9a-f]{{64}})["\']', bundle_response.text)
-    if not hash_match:
+    if operation_name in SPOTIFY_FOLLOW_OPERATION_TYPES:
+        for follow_operation, follow_type in SPOTIFY_FOLLOW_OPERATION_TYPES.items():
+            follow_match = re.search(rf'["\']{re.escape(follow_operation)}["\']\s*,\s*["\']{follow_type}["\']\s*,\s*["\']([0-9a-f]{{64}})["\']', bundle_response.text)
+            if follow_match:
+                SP_CACHED_FOLLOW_QUERY_HASHES[follow_operation] = follow_match.group(1)
+        query_hash = SP_CACHED_FOLLOW_QUERY_HASHES.get(operation_name, "")
+    else:
+        hash_match = re.search(rf'["\']{re.escape(operation_name)}["\']\s*,\s*["\']{operation_type}["\']\s*,\s*["\']([0-9a-f]{{64}})["\']', bundle_response.text)
+        query_hash = hash_match.group(1) if hash_match else ""
+    if not query_hash:
         raise RuntimeError(f"Cannot find the {operation_name} persisted-query hash in the Spotify web-player bundle")
 
-    query_hash = hash_match.group(1)
     if operation_name == "fetchPlaylistMetadata":
         SP_CACHED_PLAYLIST_QUERY_HASH = query_hash
-    else:
+    elif operation_name == "getTrack":
         SP_CACHED_TRACK_QUERY_HASH = query_hash
     debug_print(f"Discovered Spotify {operation_name} persisted-query hash from {bundle_url}")
     return query_hash
@@ -4270,6 +4287,81 @@ def spotify_discover_playlist_query_hash(force=False):
 # Discovers and caches the track metadata persisted-query hash
 def spotify_discover_track_query_hash(force=False):
     return spotify_discover_web_query_hash("getTrack", force)
+
+
+# Discovers and caches one private follow-operation persisted-query hash
+def spotify_discover_follow_query_hash(operation_name, force=False):
+    if operation_name not in SPOTIFY_FOLLOW_OPERATION_TYPES:
+        raise ValueError(f"Unsupported Spotify follow operation: {operation_name}")
+    return spotify_discover_web_query_hash(operation_name, force)
+
+
+# Executes one authenticated Spotify follow operation with automatic hash refresh
+def spotify_web_follow_operation(access_token, operation_name, variables):
+    if operation_name not in SPOTIFY_FOLLOW_OPERATION_TYPES:
+        raise ValueError(f"Unsupported Spotify follow operation: {operation_name}")
+    last_error = ""
+    for attempt in range(2):
+        query_hash = spotify_discover_follow_query_hash(operation_name, force=attempt > 0)
+        headers = {"Accept": "application/json", "App-Platform": "WebPlayer", "Authorization": f"Bearer {access_token}", "Content-Type": "application/json", "User-Agent": WEB_PLAYER_USER_AGENT}
+        if TOKEN_SOURCE == "cookie" and SP_CACHED_CLIENT_ID:
+            headers["Client-Id"] = SP_CACHED_CLIENT_ID
+        payload = {"extensions": {"persistedQuery": {"sha256Hash": query_hash, "version": 1}}, "operationName": operation_name, "variables": variables}
+        debug_print(f"HTTP POST {WEB_PLAYER_QUERY_URL} [follow operation={operation_name}] headers={sanitize_debug_headers(headers)}")
+        response = SESSION.post(WEB_PLAYER_QUERY_URL, headers=headers, json=payload, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP POST {WEB_PLAYER_QUERY_URL} [follow operation={operation_name}] -> {response.status_code}")
+        try:
+            json_response = response.json()
+        except ValueError:
+            response.raise_for_status()
+            raise RuntimeError(f"Spotify follow operation '{operation_name}' returned invalid JSON")
+        errors = json_response.get("errors") if isinstance(json_response, dict) else None
+        error_message = " | ".join(str(error.get("message", error)) if isinstance(error, dict) else str(error) for error in (errors or []))
+        last_error = error_message or f"HTTP {response.status_code}"
+        if errors and attempt == 0 and any(marker in error_message.lower() for marker in ("persistedquery", "persisted query", "sha256")):
+            SP_CACHED_FOLLOW_QUERY_HASHES.pop(operation_name, None)
+            debug_print(f"{operation_name} persisted query was rejected, rediscovering its hash once")
+            continue
+        if errors:
+            raise RuntimeError(f"Spotify follow operation '{operation_name}' failed: {error_message}")
+        response.raise_for_status()
+        data = json_response.get("data") if isinstance(json_response, dict) else None
+        if not isinstance(data, dict):
+            raise RuntimeError(f"Spotify follow operation '{operation_name}' returned no data")
+        return data
+    raise RuntimeError(f"Spotify follow operation '{operation_name}' failed after hash refresh: {last_error}")
+
+
+# Returns whether the authenticated Spotify account follows one target user
+def spotify_user_is_followed(access_token, target_user_id):
+    normalized_target = normalize_spotify_user_id(target_user_id)
+    target_uri = f"spotify:user:{normalized_target}"
+    data = spotify_web_follow_operation(access_token, "isFollowingUsers", {"uris": [target_uri]})
+    users = data.get("users")
+    if not isinstance(users, list):
+        raise RuntimeError("Spotify follow check returned no user results")
+    for user in users:
+        if not isinstance(user, dict) or user.get("uri") != target_uri:
+            continue
+        if user.get("__typename") == "NotFound":
+            return False
+        if user.get("__typename") == "User" and isinstance(user.get("following"), bool):
+            return user["following"]
+    raise RuntimeError(f"Spotify follow check returned no result for '{normalized_target}'")
+
+
+# Follows one Spotify target user and reports whether Spotify accepted the mutation
+def spotify_follow_user(access_token, target_user_id):
+    normalized_target = normalize_spotify_user_id(target_user_id)
+    data = spotify_web_follow_operation(access_token, "followUsers", {"usernames": [normalized_target]})
+    follow_data = data.get("followUsers")
+    responses = follow_data.get("responses") if isinstance(follow_data, dict) else None
+    if not isinstance(responses, list):
+        raise RuntimeError("Spotify follow mutation returned no results")
+    for response in responses:
+        if isinstance(response, dict) and response.get("username") == normalized_target and response.get("__typename") == "FollowUserResult":
+            return response.get("result") is True
+    return False
 
 
 # Executes a Spotify web-player metadata query with automatic token and hash refresh
@@ -5850,8 +5942,57 @@ def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_upda
     return result
 
 
+# Checks the target follow state and offers one confirmed follow mutation when needed
+def _wizard_offer_target_follow(target_user_id: str) -> str:
+    print("\nFollowing check\n")
+    report = DoctorReport()
+    checks = doctor_check_authentication(report)
+    if report.access_token is None:
+        failed_check = next((check for check in checks if check.status == "FAIL"), None)
+        detail = failed_check.label if failed_check is not None else "Authentication did not produce an access token"
+        print(f"  Follow status could not be checked: {detail}")
+        print("  No follow request was sent. Run the doctor check below after fixing authentication.")
+        return "unavailable"
+    try:
+        is_followed = spotify_user_is_followed(report.access_token, target_user_id)
+    except Exception as exc:
+        print(f"  Follow status could not be checked: {sanitize_error_text(exc)}")
+        print("  No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
+        return "unavailable"
+    if is_followed:
+        print(f"  The monitoring account already follows '{target_user_id}'.")
+        return "already_followed"
+    print(f"  The monitoring account does not follow '{target_user_id}'.")
+    if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
+        print("  Follow skipped. Spotify Monitor will not change the account.")
+        return "declined"
+    mutation_error = ""
+    mutation_accepted = False
+    try:
+        mutation_accepted = spotify_follow_user(report.access_token, target_user_id)
+    except Exception as exc:
+        mutation_error = sanitize_error_text(exc)
+    try:
+        verified = spotify_user_is_followed(report.access_token, target_user_id)
+    except Exception as exc:
+        print(f"  Spotify follow verification failed: {sanitize_error_text(exc)}")
+        return "follow_failed"
+    if verified:
+        print(f"  Follow verified. The monitoring account now follows '{target_user_id}'.")
+        return "followed"
+    if mutation_error:
+        print(f"  Spotify could not follow the target: {mutation_error}")
+    elif not mutation_accepted:
+        print("  Spotify did not accept the follow request.")
+    else:
+        print("  Spotify accepted the follow request but verification still reports not followed.")
+    print("  The account was not verified as following the target.")
+    return "follow_failed"
+
+
 # Loads the generated config and only allowlisted dotenv secrets for the doctor offer
 def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
+    global USER_AGENT
     if not load_config_file(config_path):
         return False
     selected_secrets = {key: os.environ.get(key) for key in SECRET_KEYS}
@@ -5866,6 +6007,8 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     for key, value in selected_secrets.items():
         if value is not None:
             globals()[key] = value
+    if not USER_AGENT:
+        USER_AGENT = get_random_spotify_user_agent() if TOKEN_SOURCE == "client" else get_random_user_agent()
     return True
 
 
@@ -6142,6 +6285,14 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if auth.get("browser") and method not in ("docker", "compose"):
         print()
         auth = _wizard_finish_browser_import(auth, env_path)
+    if auth["complete"]:
+        if _wizard_load_effective_setup(config_path, env_path):
+            follow_status = _wizard_offer_target_follow(target)
+            if follow_status in ("already_followed", "followed"):
+                auth["validated"] = True
+        else:
+            print("\nFollowing check\n")
+            print("  Follow status could not be checked because the saved setup could not be loaded.")
     doctor_failed = False
     doctor_ran = False
     print()
