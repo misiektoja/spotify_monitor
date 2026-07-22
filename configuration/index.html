@@ -1125,16 +1125,15 @@
 <p>Advanced options are available for further customization - refer to the configuration file comments. However, the default settings are suitable for most users and modifying other values is generally NOT recommended.</p>
 <p><a id="spotify-oauth-app"></a></p>
 <h2 id="spotify-oauth-app">Spotify OAuth App<a class="headerlink" href="#spotify-oauth-app" title="Permanent link">&para;</a></h2>
-<p>Since v3.0, you do not need a Spotify OAuth app for normal use. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
+<p>Since v3.0, you do not need a Spotify OAuth app for normal use, so normally you should not follow this section. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.</p>
 <p>Spotify requires the owner of every Development Mode app to keep an active Premium subscription. This applies to old and new apps. A Development Mode app stops working when the owner loses Premium and resumes after the owner resubscribes. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this path live and reports a warning when web-player metadata succeeds. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">official migration guide</a>.</p>
-<p>Do not create a new app for <code>spotify_monitor</code> because core monitoring and friend listing do not use it. The automatic web-player backend supplies the required track and public playlist metadata.</p>
-<p>If you already have a working app:</p>
+<p>If you already have a working app or want to create a new one:</p>
 <ul>
 <li>
 <p>Log in to <a href="https://developer.spotify.com/dashboard">Spotify Developer dashboard</a></p>
 </li>
 <li>
-<p>Open an app owned by an account with active Spotify Premium and verified legacy endpoint access</p>
+<p>Open an app owned by an account with active Spotify Premium and verified legacy endpoint access (or create new one)</p>
 </li>
 <li>
 <p>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></p>
@@ -1161,10 +1160,12 @@
 <p>Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.</p>
 <p><a id="how-to-get-a-friends-user-uri-id"></a></p>
 <h2 id="how-to-get-a-friends-user-uri-id">How to Get a Friend's User URI ID<a class="headerlink" href="#how-to-get-a-friends-user-uri-id" title="Permanent link">&para;</a></h2>
-<p>The easiest way is via the Spotify desktop or mobile client:
-- go to your friend's profile
-- click the <strong>three dots</strong> (•••) or press the <strong>Share</strong> button
-- copy the link to the profile</p>
+<p>The easiest way is via the Spotify desktop or mobile client:</p>
+<ul>
+<li>go to your friend's profile</li>
+<li>click the <strong>three dots</strong> (•••) or press the <strong>Share</strong> button</li>
+<li>copy the link to the profile</li>
+</ul>
 <p>You'll get a URL like: <a href="https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id">https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id</a></p>
 <p>Pass that profile URL directly to the tool. Raw IDs and Spotify user URIs such as <code>spotify:user:spotify_user_uri_id</code> are also accepted.</p>
 <p>As an alternative you can extract the part between <code>/user/</code> and <code>?si=</code> - in this case: <code>spotify_user_uri_id</code> - then pass that raw ID to the tool.</p>

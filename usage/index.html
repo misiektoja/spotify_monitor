@@ -999,20 +999,26 @@
 
 <p><a id="email-notifications"></a></p>
 <h2 id="email-notifications">Email Notifications<a class="headerlink" href="#email-notifications" title="Permanent link">&para;</a></h2>
-<p>To enable email notifications when a user becomes active:
-- set <code>ACTIVE_NOTIFICATION</code> to <code>True</code>
-- or use the <code>-a</code> flag</p>
+<p>To enable email notifications when a user becomes active:</p>
+<ul>
+<li>set <code>ACTIVE_NOTIFICATION</code> to <code>True</code></li>
+<li>or use the <code>-a</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
 </code></pre></div>
-<p>To be informed when a user gets inactive:
-- set <code>INACTIVE_NOTIFICATION</code> to <code>True</code>
-- or use the <code>-i</code> flag</p>
+<p>To be informed when a user gets inactive:</p>
+<ul>
+<li>set <code>INACTIVE_NOTIFICATION</code> to <code>True</code></li>
+<li>or use the <code>-i</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
 </code></pre></div>
 <p>Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the <code>INACTIVE_EMAIL_RECENT_SONGS_COUNT</code> configuration option.</p>
-<p>To get email notifications when a monitored track/playlist/album plays:
-- set <code>TRACK_NOTIFICATION</code> to <code>True</code>
-- or use the <code>-t</code> flag</p>
+<p>To get email notifications when a monitored track/playlist/album plays:</p>
+<ul>
+<li>set <code>TRACK_NOTIFICATION</code> to <code>True</code></li>
+<li>or use the <code>-t</code> flag</li>
+</ul>
 <p>For that feature you also need to create a file with a list of songs you want to track (one track, album or playlist per line). Specify the file using the <code>MONITOR_LIST_FILE</code> or <code>-s</code> flag:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
 </code></pre></div>
@@ -1024,19 +1030,25 @@
 <a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>I Will Be There
 </code></pre></div>
 <p>You can comment out specific lines with # if needed.</p>
-<p>To enable email notifications for every song listened by the user:
-- set <code>SONG_NOTIFICATION</code> to <code>True</code>
-- or use the <code>-j</code> flag</p>
+<p>To enable email notifications for every song listened by the user:</p>
+<ul>
+<li>set <code>SONG_NOTIFICATION</code> to <code>True</code></li>
+<li>or use the <code>-j</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
 </code></pre></div>
-<p>To be notified when a user listens to the same song on loop:
-- set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code>
-- or use the <code>-x</code> flag</p>
+<p>To be notified when a user listens to the same song on loop:</p>
+<ul>
+<li>set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code></li>
+<li>or use the <code>-x</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
 </code></pre></div>
-<p>To disable sending an email on errors (enabled by default):
-- set <code>ERROR_NOTIFICATION</code> to <code>False</code>
-- or use the <code>-e</code> flag</p>
+<p>To disable sending an email on errors (enabled by default):</p>
+<ul>
+<li>set <code>ERROR_NOTIFICATION</code> to <code>False</code></li>
+<li>or use the <code>-e</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
 </code></pre></div>
 <p>Make sure you defined your SMTP settings earlier (see <a href="../configuration/#smtp-settings">SMTP settings</a>).</p>
@@ -1108,9 +1120,11 @@
 <p>For a container, place the file under <code>/data</code> so it appears in the host directory. Each concurrently monitored user should have a different flag path.</p>
 <p><a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a></p>
 <h2 id="automatic-playback-of-listened-tracks-in-the-spotify-client">Automatic Playback of Listened Tracks in the Spotify Client<a class="headerlink" href="#automatic-playback-of-listened-tracks-in-the-spotify-client" title="Permanent link">&para;</a></h2>
-<p>If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:
-- set <code>TRACK_SONGS</code> to <code>True</code>
-- or use the <code>-g</code> flag</p>
+<p>If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:</p>
+<ul>
+<li>set <code>TRACK_SONGS</code> to <code>True</code></li>
+<li>or use the <code>-g</code> flag</li>
+</ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
 </code></pre></div>
 <p>Your Spotify client needs to be installed and running for this feature to work.</p>
@@ -1118,17 +1132,23 @@
 <p>The tool fully supports automatic playback on <strong>Linux</strong> and <strong>macOS</strong>. This means it will automatically play the changed track and can also pause or play the indicated track once the user becomes inactive (see the <code>SP_USER_GOT_OFFLINE_TRACK_ID</code> configuration option).</p>
 <p>For <strong>Windows</strong>, it works in a semi-automatic way: if you have the Spotify client running and you are not listening to any song, then the first track will play automatically. However, subsequent tracks will be located in the client, but you will need to press the play button manually.</p>
 <p>You can change the playback method per platform using the corresponding configuration option.</p>
-<p>For <strong>macOS</strong> set <code>SPOTIFY_MACOS_PLAYING_METHOD</code> to one of the following values:
--  "<strong>apple-script</strong>" (recommended, <strong>default</strong>)
--  "trigger-url"</p>
-<p>For <strong>Linux</strong> set <code>SPOTIFY_LINUX_PLAYING_METHOD</code> to one of the following values:
-- "<strong>dbus-send</strong>" (most common one, <strong>default</strong>)
-- "qdbus" (try if dbus-send does not work)
-- "trigger-url"</p>
-<p>For <strong>Windows</strong> set <code>SPOTIFY_WINDOWS_PLAYING_METHOD</code> to one of the following values:
-- "<strong>start-uri</strong>" (recommended, <strong>default</strong>)
-- "spotify-cmd"
-- "trigger-url"</p>
+<p>For <strong>macOS</strong> set <code>SPOTIFY_MACOS_PLAYING_METHOD</code> to one of the following values:</p>
+<ul>
+<li>"<strong>apple-script</strong>" (recommended, <strong>default</strong>)</li>
+<li>"trigger-url"</li>
+</ul>
+<p>For <strong>Linux</strong> set <code>SPOTIFY_LINUX_PLAYING_METHOD</code> to one of the following values:</p>
+<ul>
+<li>"<strong>dbus-send</strong>" (most common one, <strong>default</strong>)</li>
+<li>"qdbus" (try if dbus-send does not work)</li>
+<li>"trigger-url"</li>
+</ul>
+<p>For <strong>Windows</strong> set <code>SPOTIFY_WINDOWS_PLAYING_METHOD</code> to one of the following values:</p>
+<ul>
+<li>"<strong>start-uri</strong>" (recommended, <strong>default</strong>)</li>
+<li>"spotify-cmd"</li>
+<li>"trigger-url"</li>
+</ul>
 <p>The recommended defaults should work for most people.</p>
 <p>Note: monitoring reports the listened track after the user finishes listening to it. This is how activities are reported by Spotify. It means you will be one song behind the monitored user and if the song currently listened to by the tracked user is longer than the previous one, then the previously listened song might be played in your Spotify client on repeat (and if shorter it might be changed in the middle of the currently played song).</p>
 <p>For real-time playback tracking of a user's music activities, ask your friend to connect their Spotify account with <a href="https://www.last.fm/">Last.fm</a>. Then use my other tool: <a href="https://github.com/misiektoja/lastfm_monitor">lastfm_monitor</a>.</p>
