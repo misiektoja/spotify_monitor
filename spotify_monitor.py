@@ -5373,9 +5373,7 @@ def _wizard_local_command_args(method: str, exact: bool = False) -> List[str]:
             return [executable, "-m", "spotify_monitor"]
         return [executable, str(Path(__file__).resolve())]
     path_class = PureWindowsPath if platform.system() == "Windows" else Path
-    executable_name = path_class(sys.executable).name or ("python" if platform.system() == "Windows" else "python3")
-    if platform.system() == "Windows" and executable_name.casefold().endswith(".exe"):
-        executable_name = executable_name[:-4]
+    executable_name = "python" if platform.system() == "Windows" else "python3"
     script_name = path_class(__file__).name
     return [executable_name, script_name] if method == "manual" else ["spotify_monitor"]
 
