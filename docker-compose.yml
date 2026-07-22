@@ -4,7 +4,7 @@
 #   docker compose run --rm spotify_monitor --setup
 #   docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 #   docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
-#   docker compose run --rm spotify_monitor --doctor
+#   docker compose run --rm spotify_monitor --doctor --config-file /data/spotify_monitor.conf --env-file /data/.env
 #   docker compose up
 #
 # Advanced Linux Firefox import example with a read-only host profile mount:
@@ -25,4 +25,4 @@ services:
     volumes:
       # The shared SELinux label is ignored on hosts that do not use SELinux.
       - ./:/data:z
-    command: ["--config-file", "/data/spotify_monitor.conf"]
+    command: ["--config-file", "/data/spotify_monitor.conf", "--env-file", "/data/.env"]
