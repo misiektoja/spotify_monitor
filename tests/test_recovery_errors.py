@@ -52,15 +52,16 @@ def test_cookie_recovery_matches_manual_script_install(monkeypatch):
     assert "spotify_monitor --import-browser-cookie" not in advice.fix
 
 
-# Verifies container cookie recovery prefers hidden entry and retains mounted Firefox guidance
-def test_container_cookie_recovery_prefers_private_entry(monkeypatch):
+# Verifies container cookie recovery prefers mounted Firefox and retains private entry fallback
+def test_container_cookie_recovery_prefers_firefox_import(monkeypatch):
     monkeypatch.setattr(monitor, "is_container_environment", lambda: True)
     monkeypatch.setenv("SPOTIFY_MONITOR_COMPOSE", "1")
     advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
+    assert 'docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env' in advice.fix
+    assert "Manual fallback with hidden entry" in advice.fix
     assert "docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env" in advice.fix
-    assert "Advanced Firefox alternative" in advice.fix
-    assert advice.fix.index("--set-sp-dc") < advice.fix.index("--import-browser-cookie")
-    assert monitor.MANUAL_COOKIE_GUIDE_URL in advice.fix
+    assert advice.fix.index("--import-browser-cookie") < advice.fix.index("--set-sp-dc")
+    assert monitor.CONTAINER_FIREFOX_GUIDE_URL in advice.fix
 
 
 # Verifies client refresh failures point back to advanced desktop setup
