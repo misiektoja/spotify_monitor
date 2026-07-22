@@ -309,7 +309,7 @@ def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
         config = (directory / "spotify_monitor.conf").read_text(encoding="utf-8")
         assert 'TARGET_USER_URI_ID = ""' in config
         output = capsys.readouterr().out
-        assert "docker compose up requires a persisted target" in output
+        assert "docker compose up --no-log-prefix requires a persisted target" in output
         assert "--doctor target.user" in output
         assert "spotify_monitor target.user --config-file" in output
 
@@ -623,7 +623,7 @@ def test_doctor_failure_blocks_local_start(monkeypatch, capsys):
         assert "saved but is not ready" in capsys.readouterr().out
 
 
-# Verifies Compose prints up only for complete authentication with a persisted target
+# Verifies Compose prints prefix-free up only for complete authentication with a persisted target
 def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
@@ -634,7 +634,7 @@ def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
-        assert "docker compose up" in capsys.readouterr().out
+        assert "docker compose up --no-log-prefix" in capsys.readouterr().out
         exec_mock.assert_not_called()
 
 
