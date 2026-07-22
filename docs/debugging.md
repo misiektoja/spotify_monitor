@@ -113,6 +113,7 @@ Default file paths and names can be configured directly in the `OUTPUT_FILES` di
 A prebuilt multi-architecture image is available on Docker Hub: [`misiektoja/spotify-secrets-grabber`](https://hub.docker.com/r/misiektoja/spotify-secrets-grabber)
 
 This image works on:
+
 - macOS (Intel & Apple Silicon)
 - Linux (x86_64 and ARM64)
 - Windows (Docker Desktop / WSL2)
