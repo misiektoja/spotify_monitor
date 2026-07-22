@@ -42,11 +42,11 @@ The wizard detects PyPI, a downloaded script, Docker or Docker Compose and print
 
 After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
 
-For Docker or Docker Compose, enter the monitoring account's `sp_dc` login cookie manually. The default container cannot access a host browser profile unless you mount it. The [manual extraction steps](configuration.md#manual-cookie-extraction) show where to find the cookie.
+For Docker or Docker Compose, use the Firefox import command printed after setup. It mounts the signed-in host profile read-only once and saves `SP_DC_COOKIE` in the host `.env` file. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for Linux, Snap, Flatpak and macOS examples. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
 
 If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows quick-start guidance and offers the setup wizard.
 
-If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise it recommends manual entry.
+If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise it recommends Firefox import and prints the matching one-time Linux host command. The container cannot discover an unmounted browser profile so macOS, Snap and Flatpak users should copy the matching command from the Container Operation guide.
 
 <a id="before-you-start"></a>
 ## Before you start
