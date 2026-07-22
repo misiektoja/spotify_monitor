@@ -3,11 +3,11 @@
 <a id="new-here-run-the-setup-wizard"></a>
 ## New here? Run the setup wizard
 
-First complete one method on the [Installation](installation.md) page. The fastest way to configure that installation is the interactive setup wizard. It asks who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. It then saves a ready-to-run configuration while private values stay in `.env`.
+First complete one method on the [Installation](installation.md) page. Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
-For local installs the wizard can also run the doctor check and start monitoring immediately.
+For a local install, the wizard can check the setup and start monitoring immediately.
 
-Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown under [Install with Docker Compose](installation.md#docker-compose).
+Before using Docker Compose on Linux, run the two `export` commands under [Install with Docker Compose](installation.md#docker-compose). They pass your numeric user and group IDs to the container so files created in the current directory belong to you. Docker Desktop users on macOS or Windows can skip this step.
 
 Use the command that matches how you run the tool:
 
@@ -32,21 +32,21 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
 
-The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate cookie import path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing.
+In this documentation, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.
 
-The wizard detects PyPI, downloaded-script, Docker and Docker Compose installations then prints matching commands. Local commands reuse the active Python executable. Config and dotenv paths are quoted for the active operating system.
+The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation.
 
-It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`.
+The wizard detects PyPI, a downloaded script, Docker or Docker Compose and prints matching commands. It also formats file paths for the current operating system.
 
-After authentication is saved the wizard checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation.
+After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
 
-For a local installation, the easiest login method is automatic Firefox import. For Docker or Docker Compose, you will normally enter the `sp_dc` Spotify login cookie manually. The [manual extraction steps](configuration.md#manual-cookie-extraction) explain exactly where to find it.
+For Docker or Docker Compose, enter the monitoring account's `sp_dc` login cookie manually. The default container cannot access a host browser profile unless you mount it. The [manual extraction steps](configuration.md#manual-cookie-extraction) show where to find the cookie.
 
-When the discovered configuration contains a persisted `TARGET_USER_URI_ID`, running Spotify Monitor without a positional target starts that saved target. If no target has been saved, no-argument startup shows the quick-start guidance and offers the setup wizard in an interactive terminal.
+If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows quick-start guidance and offers the setup wizard.
 
-For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
+If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise it recommends manual entry.
 
 <a id="before-you-start"></a>
 ## Before you start
@@ -56,7 +56,7 @@ Spotify only shows a person's listening activity when both of these conditions a
 1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
 2. That person has enabled listening activity sharing in Spotify.
 
-The setup wizard (`spotify_monitor --setup`) checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation. If you want to do it manually, open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](configuration.md#following-the-monitored-user).
+The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](configuration.md#following-the-monitored-user).
 
 <a id="not-sure-which-command-you-need"></a>
 ## Not sure which command you need?
@@ -77,9 +77,9 @@ The setup wizard (`spotify_monitor --setup`) checks whether the configured Spoti
 <a id="manual-commands"></a>
 ## Run Individual Commands
 
-The shorter examples in this section use a PyPI installation. For a manual script replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux and `python spotify_monitor.py` on Windows. Docker and Docker Compose use the command prefixes under [Command Format by Installation Method](usage.md#command-format). Commands printed by Spotify Monitor detect the active installation automatically.
+The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows. Docker users should copy the matching prefix under [Command Format by Installation Method](usage.md#command-format).
 
-If you prefer to configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account you will use for monitoring. Then return to the terminal and import that browser login:
+To configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the monitoring account. Then import that browser login:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox
@@ -87,7 +87,7 @@ spotify_monitor --import-browser-cookie --browser firefox
 
 If browser import is not available, use the [manual cookie extraction](configuration.md#manual-cookie-extraction) fallback.
 
-The safe standalone replacement command reads `sp_dc` through a hidden prompt. It validates the cookie with Spotify before atomically updating only `SP_DC_COOKIE`. If validation fails, the dotenv file is left byte-for-byte unchanged. Existing cookie replacement always requires confirmation.
+The standalone replacement command reads `sp_dc` through a hidden prompt, so the value does not appear on screen. It validates the cookie with Spotify before updating only `SP_DC_COOKIE`. If validation fails, it does not change the `.env` file. Replacing an existing cookie requires confirmation.
 
 ```sh
 # PyPI install
@@ -106,9 +106,9 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --set-sp-dc --env-file /data/.env
 ```
 
-`--set-sp-dc` never accepts the cookie as a command-line value. Use `--env-file PATH` to select a different dotenv destination. `--env-file none` is rejected because the command must persist the validated cookie. The existing `-u` and `--spotify-dc-cookie` options remain available for backward compatibility, but command-line secrets may be visible in shell history or process listings.
+`--set-sp-dc` does not accept the cookie as a command-line value. Use `--env-file PATH` to select another `.env` file. `--env-file none` is invalid because this command must save the validated cookie. The older `-u` and `--spotify-dc-cookie` options still work, but their values may appear in shell history or process listings.
 
-A webhook URL is a private link that receives notifications. Treat it like a password because anyone who has it may be able to post through it. Follow the [webhook setup steps](configuration.md#webhook-settings) then save the link with the command that matches your installation:
+A webhook URL is the private address used to deliver notifications. Treat it like a password because anyone who has it may be able to post through it. Follow the [webhook setup steps](configuration.md#webhook-settings) then save the link with the command that matches your installation:
 
 ```sh
 # PyPI install
