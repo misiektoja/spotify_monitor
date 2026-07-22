@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v2.3
+v2.4
 
 Debug code to test the fetching of a Spotify access token using a Web Player sp_dc cookie and TOTP parameters
 https://misiektoja.github.io/spotify_monitor/debugging/
@@ -28,6 +28,10 @@ options:
 ---------------
 
 Change log:
+
+v2.4 (22 Jul 26):
+- Updated --fetch-secrets with static extraction from inline secret object literals in current Spotify web-player bundles
+- Preserved the original runtime property hook as a fallback for older bundle formats
 
 v2.3 (22 Jul 26):
 - Updated SECRET_CIPHER_DICT
@@ -78,6 +82,7 @@ v1.0 (19 Mar 25):
 
 
 import argparse
+import ast
 import base64
 import logging
 import re
@@ -122,11 +127,42 @@ SECRET_CIPHER_DICT_URL = "https://github.com/xyloflake/spot-secrets-go/blob/main
 USER_AGENT = ""
 
 BUNDLE_RE = re.compile(r"""(?x)(?:vendor~web-player|encore~web-player|web-player)\.[0-9a-f]{4,}\.(?:js|mjs)""")
+JS_STRING_PATTERN = r"(?:'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\")"
+SECRET_FIRST_RE = re.compile(r"\{\s*(?:secret|['\"]secret['\"])\s*:\s*(?P<secret>" + JS_STRING_PATTERN + r")\s*,\s*(?:version|['\"]version['\"])\s*:\s*(?P<version>\d+)\s*\}")
+VERSION_FIRST_RE = re.compile(r"\{\s*(?:version|['\"]version['\"])\s*:\s*(?P<version>\d+)\s*,\s*(?:secret|['\"]secret['\"])\s*:\s*(?P<secret>" + JS_STRING_PATTERN + r")\s*\}")
 PLAYWRIGHT_TIMEOUT = 45000  # 45s
 
 _LOGGER = logging.getLogger(__name__)
 
 
+# Decodes a quoted JavaScript string literal used by a secret object
+def decode_js_string_literal(literal):
+    try:
+        value = ast.literal_eval(literal)
+    except (SyntaxError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+# Extracts versioned TOTP secrets from current inline bundle object literals
+def extract_bundle_secrets(source):
+    captures = []
+    seen = set()
+    for pattern in (SECRET_FIRST_RE, VERSION_FIRST_RE):
+        for match in pattern.finditer(source):
+            secret = decode_js_string_literal(match.group('secret'))
+            if secret is None:
+                continue
+            version = int(match.group('version'))
+            key = (version, secret)
+            if key in seen:
+                continue
+            seen.add(key)
+            captures.append({'secret': secret, 'version': version, 'source': 'bundle'})
+    return captures
+
+
+# Extracts TOTP secrets from a live Spotify web-player session
 def fetch_secrets_from_web():
     try:
         from playwright.sync_api import sync_playwright
@@ -148,31 +184,50 @@ Object.defineProperty(this,'secret',{value:v,writable:true,configurable:true,enu
         context = browser.new_context()
         context.add_init_script(hook)
         page = context.new_page()
+        bundle_urls = []
 
-        def handle_response(response):
-            filename = response.url.split('/')[-1]
+        # Records matching Spotify bundle URLs for static parsing
+        def record_bundle_response(response):
+            filename = response.url.split('/')[-1].split('?', 1)[0]
             if BUNDLE_RE.fullmatch(filename):
-                _LOGGER.debug(f"↓ {filename} ({response.status})")
+                if response.url not in bundle_urls:
+                    bundle_urls.append(response.url)
+                _LOGGER.debug(f"[bundle] {filename} ({response.status})")
 
-        page.on('response', handle_response)
+        page.on('response', record_bundle_response)
 
-        _LOGGER.debug('→ opening open.spotify.com ...')
+        _LOGGER.debug('Opening open.spotify.com ...')
         page.goto('https://open.spotify.com', timeout=PLAYWRIGHT_TIMEOUT)
         page.wait_for_load_state('networkidle', timeout=PLAYWRIGHT_TIMEOUT)
         page.wait_for_timeout(3000)
 
         captures = page.evaluate('__captures')
 
+        for bundle_url in bundle_urls:
+            try:
+                response = context.request.get(bundle_url, timeout=PLAYWRIGHT_TIMEOUT)
+                if not response.ok:
+                    _LOGGER.debug(f"Bundle scan skipped HTTP {response.status}: {bundle_url}")
+                    continue
+                bundle_captures = extract_bundle_secrets(response.text())
+                captures.extend(bundle_captures)
+                if bundle_captures:
+                    filename = bundle_url.split('/')[-1].split('?', 1)[0]
+                    _LOGGER.debug(f"Bundle scan found {len(bundle_captures)} versioned secret(s) in {filename}")
+            except Exception as e:
+                _LOGGER.debug(f"Bundle scan failed for {bundle_url}: {e}")
+
         if captures:
             for c in captures:
                 if isinstance(c.get('secret'), str) and c.get('version') is not None:
-                    _LOGGER.debug(f"✔ secret({c.get('version')}) → {c.get('secret')}")
+                    _LOGGER.debug(f"Secret v{c.get('version')}: {c.get('secret')}")
 
         browser.close()
 
     return captures or []
 
 
+# Updates the in-memory cipher dictionary from extracted plain-text secrets
 def update_secret_cipher_dict(captures):
     global SECRET_CIPHER_DICT, TOTP_VER
 
@@ -223,6 +278,7 @@ def update_secret_cipher_dict(captures):
     return updated
 
 
+# Downloads and validates a cipher dictionary from the configured source
 def fetch_and_update_secrets():
     global SECRET_CIPHER_DICT, TOTP_VER
 
@@ -307,6 +363,7 @@ def fetch_and_update_secrets():
         return False
 
 
+# Generates a randomized browser user agent string
 def get_random_user_agent() -> str:
     browser = random.choice(['chrome', 'firefox', 'edge', 'safari'])
 
@@ -387,6 +444,7 @@ def get_random_user_agent() -> str:
         return ""
 
 
+# Fetches Spotify server time from the HTTP Date header
 def fetch_server_time(ua: str) -> int:
 
     headers = {
@@ -404,6 +462,7 @@ def fetch_server_time(ua: str) -> int:
     return int(parsedate_to_datetime(date_hdr).timestamp())
 
 
+# Builds a TOTP generator from the selected cipher version
 def generate_totp():
     _LOGGER.debug("Generating TOTP")
 
@@ -424,6 +483,7 @@ def generate_totp():
     return pyotp.TOTP(secret, digits=6, interval=30)
 
 
+# Fetches a Spotify access token using the configured cookie and TOTP values
 def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     transport = True
     init = True
@@ -502,6 +562,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     }
 
 
+# Checks whether a Spotify access token is accepted by the validity endpoint
 def check_token_validity(access_token: str, client_id: str = "", user_agent: str = "") -> bool:
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -524,6 +585,7 @@ def check_token_validity(access_token: str, client_id: str = "", user_agent: str
     return valid
 
 
+# Parses command options and runs the token test workflow
 def main():
     global USER_AGENT, TOTP_VER, TOKEN_VALIDITY_URL
 
