@@ -748,9 +748,10 @@ nl_ch = "\n"
 PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
 DOCUMENTATION_URL = "https://misiektoja.github.io/spotify_monitor"
 QUICK_START_GUIDE_URL = DOCUMENTATION_URL + "/quick-start/"
-INSTALLATION_GUIDE_URL = DOCUMENTATION_URL + "/installation/"
-CONFIG_GUIDE_URL = DOCUMENTATION_URL + "/configuration/"
+INSTALLATION_GUIDE_URL = DOCUMENTATION_URL + "/installation/#requirements"
+CONFIG_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#configuration-file"
 COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-sp_dc-cookie"
+MANUAL_COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#manual-cookie-extraction"
 CLIENT_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-desktop-client"
 TARGET_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#how-to-get-a-friends-user-uri-id"
 FOLLOWING_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#following-the-monitored-user"
@@ -761,7 +762,6 @@ INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 OAUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-oauth-app"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
-COOKIE_IMPORT_FIX = f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: spotify_monitor --import-browser-cookie --browser firefox"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
 
 STARTUP_BANNER = r"""
@@ -1007,19 +1007,25 @@ def make_recovery_advice(code: str, summary: str, fix: str, retryable: bool, det
     return RecoveryAdvice(code, sanitize_error_text(summary), sanitize_error_text(fix), retryable, sanitize_error_text(detail))
 
 
-# Adds a directly relevant documentation link on its own indented line
+# Adds a directly relevant documentation link on its own line
 def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
-    return f"{fix}\n  Guide: {guide_url}"
+    return f"{fix}\nGuide: {guide_url}"
 
 
 # Returns install-aware cookie recovery guidance with private entry preferred in containers
 def cookie_auth_recovery_fix() -> str:
-    if not is_container_environment():
-        return COOKIE_IMPORT_FIX
     method = _wizard_install_method()
-    private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env", exact=True)
-    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env", exact=True)
-    return f"Run the hidden private entry command: {private_command}\n  Advanced Firefox alternative with a read-only host profile mount: {firefox_command}"
+    if not is_container_environment():
+        firefox_command = _wizard_firefox_import_cmd(method)
+        return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}"
+    private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
+    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env")
+    return f"Run the hidden private entry command: {private_command}\nAdvanced Firefox alternative with a read-only host profile mount: {firefox_command}"
+
+
+# Returns the cookie guide section that matches the active installation
+def cookie_auth_recovery_guide_url() -> str:
+    return MANUAL_COOKIE_GUIDE_URL if is_container_environment() else COOKIE_GUIDE_URL
 
 
 # Builds a directly usable Spotify profile URL from a normalized user ID
@@ -1040,23 +1046,23 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
             return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", COOKIE_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
-            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
             return make_recovery_advice("file.unreadable", safe_detail or "The browser cookie database could not be read", "Close the browser, verify the selected profile or cookie database path then retry", False, safe_detail)
         if any(term in message for term in ("update dotenv", "dotenv destination", "file permissions")):
             return make_recovery_advice("file.unwritable", safe_detail or "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
-        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
 
     if context == "set_sp_dc":
         if "interactive terminal" in message:
             return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", "Run --set-sp-dc from an interactive shell so getpass can hide the cookie", False, safe_detail)
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no nonempty", "rejected")):
-            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
             return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
-        return make_recovery_advice("unknown", "SP_DC_COOKIE was not changed", recovery_fix_with_guide("Run the private entry command again or use the advanced Firefox import path", COOKIE_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("unknown", "SP_DC_COOKIE was not changed", recovery_fix_with_guide("Run the private entry command again or use the advanced Firefox import path", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
 
     if context == "set_webhook_url":
         if "interactive terminal" in message:
@@ -1084,7 +1090,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "target_not_visible":
         fix = "Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity"
         if target_user_id:
-            fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\n  Profile: {spotify_user_profile_url(target_user_id)}\n  The target also needs to share listening activity"
+            fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\nProfile: {spotify_user_profile_url(target_user_id)}\nThe target also needs to share listening activity"
         return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
         return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
@@ -1135,7 +1141,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
         if context.startswith("cookie"):
-            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if context.startswith("client"):
             return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", recovery_fix_with_guide("Re-export the Spotify Desktop Client login request", CLIENT_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected authentication", "Refresh the configured credentials then run --doctor", False, safe_detail)
@@ -1143,10 +1149,10 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove the optional OAuth credentials and use the automatic web-player fallback", OAUTH_GUIDE_URL), False, safe_detail)
     if status == 403:
         if context.startswith("cookie"):
-            return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated cookie request", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated cookie request", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated request", "Refresh the configured credentials then run --doctor", False, safe_detail)
     if context.startswith("cookie") and any(term in message for term in ("sp_dc", "unsuccessful token request", "valid spotify access token", "access token after")):
-        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
     if context.startswith("client") and any(term in message for term in ("refresh token", "client token", "invalid grant", "access token not found")):
         return make_recovery_advice("auth.client_invalid", "The Spotify desktop client credentials are invalid or expired", recovery_fix_with_guide("Re-export the relevant Spotify Desktop Client login or client-token request", CLIENT_GUIDE_URL), False, safe_detail)
     if isinstance(error, ModuleNotFoundError):
@@ -1161,10 +1167,10 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 # Renders structured recovery advice without exposing secret-bearing exception text
 def render_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "") -> str:
     advice = classify_recovery_error(error, context, detail)
-    lines = [f"* Error: {advice.summary}", f"  To fix: {advice.fix}"]
+    lines = [f"* Error: {advice.summary}", f"To fix: {advice.fix}"]
     show_debug = DEBUG_MODE if debug is None else debug
     if show_debug and advice.detail:
-        lines.append(f"  Technical detail: {sanitize_error_text(advice.detail)}")
+        lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
     return "\n".join(lines)
 
 
@@ -1872,7 +1878,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
         if not confirmed:
             raise BrowserCookieImportError("SP_DC_COOKIE replacement was cancelled. The dotenv file was not changed.")
 
-    print(f"* Need help finding sp_dc? {COOKIE_GUIDE_URL}")
+    print(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         sp_dc = hidden_prompt("Enter sp_dc privately: ")
@@ -5003,7 +5009,7 @@ def doctor_check_authentication(report: DoctorReport) -> List[DoctorCheck]:
         if TOKEN_SOURCE == "cookie":
             if is_missing_or_placeholder(SP_DC_COOKIE, ("your_sp_dc_cookie_value",)):
                 advice = classify_recovery_error(context="secret", detail="SP_DC_COOKIE is missing or still a placeholder")
-                advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False)
+                advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False)
                 report.authentication_advice = advice
                 return [make_doctor_check("Authentication", "FAIL", advice.summary, advice=advice)]
             access_token = spotify_get_access_token_from_sp_dc(SP_DC_COOKIE)
@@ -5283,12 +5289,12 @@ def render_doctor_report(report: DoctorReport) -> str:
         for check in (item for item in report.checks if item.section == section):
             lines.append(f"[{'PASS' if check.status == 'PASS' else check.status}] {check.label}")
             if check.detail:
-                lines.append(f"  {check.detail}")
+                lines.append(check.detail)
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
             if rendered_advice is not None and check.status in ("FAIL", "WARN"):
-                lines.append(f"  To fix: {rendered_advice.fix}")
+                lines.append(f"To fix: {rendered_advice.fix}")
     failures = sum(check.status == "FAIL" for check in report.checks)
     warnings = sum(check.status == "WARN" for check in report.checks)
     lines.extend(("", "Summary", f"{failures} failure(s), {warnings} warning(s)", "", f"Guide: {DOCTOR_GUIDE_URL}"))
@@ -5345,9 +5351,9 @@ def print_monitor_recovery(error: Any, context: str, tracker: RecoveryHintTracke
     advice = classify_recovery_error(error, context)
     print(prefix + advice.summary)
     if tracker.should_render(advice):
-        print(f"  To fix: {advice.fix}")
+        print(f"To fix: {advice.fix}")
         if DEBUG_MODE and advice.detail:
-            print(f"  Technical detail: {sanitize_error_text(advice.detail)}")
+            print(f"Technical detail: {sanitize_error_text(advice.detail)}")
     return advice
 
 
@@ -5885,7 +5891,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 return result
             continue
         if action == "manual":
-            print(f"  Find the sp_dc cookie first: {COOKIE_GUIDE_URL}")
+            print(f"Find the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}")
             print()
             cookie = _wizard_ask_secret("Existing sp_dc value")
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
@@ -6327,7 +6333,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         else:
             _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
-        print(f"Cookie guide: {COOKIE_GUIDE_URL}\n")
+        cookie_guide_url = MANUAL_COOKIE_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
+        print(f"Cookie guide: {cookie_guide_url}\n")
     if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
         _wizard_print_command("Start monitoring:", "docker compose up --no-log-prefix")
     else:
@@ -6761,7 +6768,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", "Check the target ID, URI or profile URL then retry", False)
                             if recovery_hint_tracker.should_render(not_found_advice):
-                                print(f"  To fix: {not_found_advice.fix}")
+                                print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
                                 m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
@@ -6771,7 +6778,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                             not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                             if recovery_hint_tracker.should_render(not_visible_advice):
-                                print(f"  To fix: {not_visible_advice.fix}")
+                                print(f"To fix: {not_visible_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
                                 profile_url = spotify_user_profile_url(user_uri_id)
@@ -7263,12 +7270,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                     not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", "Check the target ID, URI or profile URL then retry", False)
                     if recovery_hint_tracker.should_render(not_found_advice):
-                        print(f"  To fix: {not_found_advice.fix}")
+                        print(f"To fix: {not_found_advice.fix}")
                 else:
                     print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                     not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                     if recovery_hint_tracker.should_render(not_visible_advice):
-                        print(f"  To fix: {not_visible_advice.fix}")
+                        print(f"To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
@@ -8192,7 +8199,7 @@ def main():
             SP_DC_COOKIE = args.spotify_dc_cookie
 
         if not SP_DC_COOKIE or SP_DC_COOKIE == "your_sp_dc_cookie_value":
-            advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), COOKIE_GUIDE_URL), False)
+            advice = make_recovery_advice("secret.missing", "SP_DC_COOKIE is missing or still a placeholder", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False)
             print(render_recovery_error(RecoveryError(advice)))
             sys.exit(1)
 
