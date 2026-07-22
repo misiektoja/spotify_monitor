@@ -214,17 +214,15 @@ Advanced options are available for further customization - refer to the configur
 <a id="spotify-oauth-app"></a>
 ## Spotify OAuth App
 
-Since v3.0, you do not need a Spotify OAuth app for normal use. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
+Since v3.0, you do not need a Spotify OAuth app for normal use, so normally you should not follow this section. OAuth app credentials enable an optional legacy Spotify Web API Client Credentials path for track metadata and playlist owner metadata when the optional Spotipy dependency is installed. Configure this path only if you already have a working app with verified legacy endpoint access. The tool tries it first when configured then falls back automatically when Spotify returns a restricted response or Spotipy is unavailable.
 
 Spotify requires the owner of every Development Mode app to keep an active Premium subscription. This applies to old and new apps. A Development Mode app stops working when the owner loses Premium and resumes after the owner resubscribes. An HTTP 403 is consistent with restricted legacy access but does not prove the cause by itself. The doctor checks this path live and reports a warning when web-player metadata succeeds. See Spotify's [official migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 
-Do not create a new app for `spotify_monitor` because core monitoring and friend listing do not use it. The automatic web-player backend supplies the required track and public playlist metadata.
-
-If you already have a working app:
+If you already have a working app or want to create a new one:
 
 - Log in to [Spotify Developer dashboard](https://developer.spotify.com/dashboard)
 
-- Open an app owned by an account with active Spotify Premium and verified legacy endpoint access
+- Open an app owned by an account with active Spotify Premium and verified legacy endpoint access (or create new one)
 
 - Copy the **Client ID** and **Client Secret**
 
