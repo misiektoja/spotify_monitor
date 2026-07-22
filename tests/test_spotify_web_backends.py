@@ -96,6 +96,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
         monitor.SP_CACHED_WEB_CLIENT_ID = ""
         monitor.SP_CACHED_PLAYLIST_QUERY_HASH = ""
         monitor.SP_CACHED_TRACK_QUERY_HASH = ""
+        monitor.SP_CACHED_FOLLOW_QUERY_HASHES.clear()
         monitor.SP_WEB_PLAYLIST_BACKEND_PREFERRED = False
         monitor.SP_WEB_TRACK_BACKEND_PREFERRED = False
         monitor.SP_WEB_PLAYLIST_API_FAILURES = 0
@@ -492,6 +493,58 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(first, query_hash)
         self.assertEqual(second, query_hash)
         self.assertEqual(get.call_count, 2)
+
+    # Verifies one bundle discovery caches both private follow operation hashes
+    def test_follow_query_discovery_caches_query_and_mutation(self):
+        query_hash = "c" * 64
+        html = '<script src="https://open.spotifycdn.com/cdn/build/web-player/web-player.test.js"></script>'
+        bundle = f'new Query("isFollowingUsers","query","{query_hash}",null),new Query("followUsers","mutation","{query_hash}",null)'
+        with patch.object(monitor.SESSION, "get", side_effect=[FakeResponse(text=html), FakeResponse(text=bundle)]) as get:
+            check_hash = monitor.spotify_discover_follow_query_hash("isFollowingUsers")
+            follow_hash = monitor.spotify_discover_follow_query_hash("followUsers")
+        self.assertEqual(check_hash, query_hash)
+        self.assertEqual(follow_hash, query_hash)
+        self.assertEqual(get.call_count, 2)
+
+    # Verifies cookie follow checks send the authenticated client ID and normalize the result
+    def test_cookie_follow_check_uses_authenticated_pathfinder_headers(self):
+        monitor.SP_CACHED_CLIENT_ID = "cookie-client"
+        response = FakeResponse(json_data={"data": {"users": [{"__typename": "User", "uri": "spotify:user:target.user", "following": True}]}})
+        with patch.object(monitor, "spotify_discover_follow_query_hash", return_value="c" * 64), patch.object(monitor.SESSION, "post", return_value=response) as post:
+            followed = monitor.spotify_user_is_followed("cookie-token", "target.user")
+        self.assertTrue(followed)
+        request = post.call_args.kwargs
+        self.assertEqual(request["headers"]["Client-Id"], "cookie-client")
+        self.assertEqual(request["json"]["operationName"], "isFollowingUsers")
+        self.assertEqual(request["json"]["variables"], {"uris": ["spotify:user:target.user"]})
+
+    # Verifies client follow checks omit the web-player client ID header
+    def test_client_follow_check_uses_desktop_access_token_without_client_id(self):
+        monitor.TOKEN_SOURCE = "client"
+        monitor.SP_CACHED_CLIENT_ID = "unrelated-web-client"
+        response = FakeResponse(json_data={"data": {"users": [{"__typename": "User", "uri": "spotify:user:target.user", "following": False}]}})
+        with patch.object(monitor, "spotify_discover_follow_query_hash", return_value="c" * 64), patch.object(monitor.SESSION, "post", return_value=response) as post:
+            followed = monitor.spotify_user_is_followed("client-token", "spotify:user:target.user")
+        self.assertFalse(followed)
+        self.assertNotIn("Client-Id", post.call_args.kwargs["headers"])
+
+    # Verifies follow mutations submit one username and accept a matching success result
+    def test_follow_user_submits_private_mutation(self):
+        response = FakeResponse(json_data={"data": {"followUsers": {"responses": [{"__typename": "FollowUserResult", "username": "target.user", "result": True}]}}})
+        with patch.object(monitor, "spotify_discover_follow_query_hash", return_value="c" * 64), patch.object(monitor.SESSION, "post", return_value=response) as post:
+            accepted = monitor.spotify_follow_user("cookie-token", "https://open.spotify.com/user/target.user")
+        self.assertTrue(accepted)
+        self.assertEqual(post.call_args.kwargs["json"]["operationName"], "followUsers")
+        self.assertEqual(post.call_args.kwargs["json"]["variables"], {"usernames": ["target.user"]})
+
+    # Verifies a rejected follow-operation hash triggers one forced rediscovery
+    def test_follow_query_error_refreshes_hash(self):
+        monitor.SP_CACHED_FOLLOW_QUERY_HASHES["isFollowingUsers"] = "a" * 64
+        responses = [FakeResponse(json_data={"errors": [{"message": "PersistedQueryNotFound"}]}), FakeResponse(json_data={"data": {"users": [{"__typename": "User", "uri": "spotify:user:target.user", "following": True}]}})]
+        with patch.object(monitor, "spotify_discover_follow_query_hash", side_effect=["a" * 64, "b" * 64]) as discover, patch.object(monitor.SESSION, "post", side_effect=responses):
+            followed = monitor.spotify_user_is_followed("cookie-token", "target.user")
+        self.assertTrue(followed)
+        self.assertEqual(discover.call_args_list, [call("isFollowingUsers", force=False), call("isFollowingUsers", force=True)])
 
     # Verifies a rejected persisted query triggers one forced hash rediscovery
     def test_persisted_query_error_refreshes_hash(self):
