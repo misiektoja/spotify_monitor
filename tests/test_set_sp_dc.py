@@ -104,7 +104,7 @@ def test_set_sp_dc_never_exposes_entered_cookie(tmp_path, monkeypatch, capsys):
     assert secret not in str(error.value)
     assert secret not in captured.out
     assert secret not in captured.err
-    assert monitor.COOKIE_GUIDE_URL in captured.out
+    assert monitor.MANUAL_COOKIE_GUIDE_URL in captured.out
     assert not destination.exists()
 
 
