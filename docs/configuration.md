@@ -97,13 +97,13 @@ On Windows, Chrome 127 and newer prevent external programs from reading these co
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-The importer discovers Firefox profiles from `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:
+On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox --browser-profile "default-release"
 ```
 
-The advanced `--cookie-file PATH` option points directly to a Firefox `cookies.sqlite` database. It overrides automatic profile selection:
+For a custom Firefox layout, the advanced `--cookie-file PATH` option points directly to a `cookies.sqlite` database. It overrides automatic profile selection:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox --cookie-file /path/to/cookies.sqlite
