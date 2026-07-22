@@ -7,7 +7,7 @@ First complete one method on the [Installation](installation.md) page. Then use 
 
 For a local install, the wizard can check the setup and start monitoring immediately.
 
-Before using Docker Compose on Linux, run the two `export` commands under [Install with Docker Compose](installation.md#docker-compose). They pass your numeric user and group IDs to the container so files created in the current directory belong to you. Docker Desktop users on macOS or Windows can skip this step.
+Before using Docker Compose on a native Linux container engine, run the two `export` commands under [Install with Docker Compose](installation.md#docker-compose). They pass your numeric user and group IDs to the container so files created in the current directory belong to you. VM-backed Docker-compatible runtimes on macOS and Windows normally do not need this step.
 
 Use the command that matches how you run the tool:
 
@@ -32,7 +32,7 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
+The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt replace `${PWD}` with `%cd%`. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
 
 In this documentation, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.
 
@@ -152,14 +152,14 @@ docker compose up --no-log-prefix
 docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
-For a direct Docker image on Docker Desktop:
+For a direct `docker run` command on macOS or Windows PowerShell:
 
 ```sh
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf --env-file /data/.env
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
-These Docker Desktop commands work in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`. On Linux replace `${PWD}` with `$PWD` and add `--user "$(id -u):$(id -g)"` immediately after `--init`.
+These commands work in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`. On a native Linux container engine replace `${PWD}` with `$PWD` and add `--user "$(id -u):$(id -g)"` immediately after `--init`.
 
 To see all supported command-line arguments and flags:
 
