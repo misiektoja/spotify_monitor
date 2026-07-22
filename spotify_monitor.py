@@ -5516,7 +5516,7 @@ def _build_help_epilog() -> str:
         f"  {prefix} <spotify_user_id> --token-source client --login-request-body-file {protobuf_file}",
     ))
     if method == "compose":
-        sections.extend(("", "  # Start from the target saved by setup", "  docker compose up"))
+        sections.extend(("", "  # Start from the target saved by setup", "  docker compose up --no-log-prefix"))
     sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
     return "\n".join(sections) + "\n"
 
@@ -6329,10 +6329,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
         print(f"Cookie guide: {COOKIE_GUIDE_URL}\n")
     if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
-        _wizard_print_command("Start monitoring:", "docker compose up")
+        _wizard_print_command("Start monitoring:", "docker compose up --no-log-prefix")
     else:
         if method == "compose" and not persist_target:
-            print("docker compose up requires a persisted target. Use this direct command instead:")
+            print("docker compose up --no-log-prefix requires a persisted target. Use this direct command instead:")
         else:
             print("Start monitoring:")
         print(f"    {monitor_command}\n")
