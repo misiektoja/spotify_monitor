@@ -224,7 +224,7 @@ Stop an attached run with `Ctrl+C`. From the directory that contains `docker-com
 
 ```sh
 docker compose pull
-docker compose up
+docker compose up --no-log-prefix
 ```
 
 Compose recreates the service from the current `latest` image when needed. The bind-mounted `spotify_monitor.conf`, `.env`, logs and CSV files remain on the host.
