@@ -35,7 +35,7 @@ curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/he
 export SPOTIFY_MONITOR_UID="$(id -u)"
 export SPOTIFY_MONITOR_GID="$(id -g)"
 docker compose run --rm spotify_monitor --setup
-docker compose up
+docker compose up --no-log-prefix
 ```
 
 Docker run
@@ -167,7 +167,7 @@ For local installs, Firefox import is the recommended login path. Docker users s
 | --- | --- |
 | Set up Spotify Monitor for the first time | Use the setup command for your installation above |
 | Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
-| Start a target saved as `TARGET_USER_URI_ID` | `spotify_monitor --config-file spotify_monitor.conf` or `docker compose up` |
+| Start a target saved as `TARGET_USER_URI_ID` | `spotify_monitor --config-file spotify_monitor.conf` or `docker compose up --no-log-prefix` |
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
