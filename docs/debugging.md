@@ -45,7 +45,7 @@ The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monit
 
 The extractor can return v59, v60 and v61 from the current web-player bundle even when the older runtime hook finds nothing.
 
-> **Recommended:** Use the [Docker method](#-secret-key-extraction-via-docker) if you do not already have Playwright and its browser files installed.
+> **Recommended:** Use the [Docker method](#secret-key-extraction-via-docker) if you do not already have Playwright and its browser files installed.
 
 Download the file in a browser or run:
 
@@ -107,7 +107,7 @@ Default file paths and names can be configured directly in the `OUTPUT_FILES` di
 
 ---
 
-<a id="-secret-key-extraction-via-docker"></a>
+<a id="secret-key-extraction-via-docker"></a>
 ## Secret Key Extraction via Docker
 
 A prebuilt multi-architecture image is available on Docker Hub: [`misiektoja/spotify-secrets-grabber`](https://hub.docker.com/r/misiektoja/spotify-secrets-grabber)
