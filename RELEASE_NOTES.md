@@ -123,8 +123,8 @@ Special thanks to [@tomballgithub](https://github.com/tomballgithub) for testing
 
 - **IMPROVE:** Added support for loading TOTP secrets from local files via file:// URLs
 - **IMPROVE:** Updated remote URL in SECRET_CIPHER_DICT_URL
-- **IMPROVE:** Updated  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) to dump secrets in different formats. Choose what you need with the `--secret`,` --secretbytes` and `--secretdict` CLI flags, or go all out with the `--all` mode to write all secret formats to files like `secrets.json`, `secretBytes.json` and `secretDict.json` (thanks [@tomballgithub](https://github.com/tomballgithub))
-- **IMPROVE:** Added multi-arch Docker image build and compose support for  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/dev/debug/spotify_monitor_secret_grabber.py) - more info at [Secret Key Extraction via Docker](https://misiektoja.github.io/spotify_monitor/debugging/#-secret-key-extraction-via-docker-recommended-easiest-way)
+- **IMPROVE:** Updated  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) to dump secrets in different formats. Choose what you need with the `--secret`,` --secretbytes` and `--secretdict` CLI flags, or go all out with the `--all` mode to write all secret formats to files like `secrets.json`, `secretBytes.json` and `secretDict.json` (thanks [@tomballgithub](https://github.com/tomballgithub))
+- **IMPROVE:** Added multi-arch Docker image build and compose support for  [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) - more info at [Secret Key Extraction via Docker](https://misiektoja.github.io/spotify_monitor/debugging/#secret-key-extraction-via-docker)
 - **IMPROVE:** Added deletion of flag_file at launch if specified via .conf file. Previously only done when flag_file was specified on command line
 - **IMPROVE:** Added info to console output when TOTP secrets are fetched from a remote URL or local file
 
