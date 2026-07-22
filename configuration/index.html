@@ -945,7 +945,9 @@
 <p><a id="configuration-file"></a></p>
 <h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
 <p>Most settings can be configured via command-line arguments.</p>
-<p>If you want to have it stored persistently, generate a default config template and save it to a file named <code>spotify_monitor.conf</code>:</p>
+<p>If you want to have it stored persistently, you can store them in a configuration file.</p>
+<p>For a guided configuration, it is recommended to use <code>spotify_monitor --setup</code>. The setup wizard validates the generated settings before saving them. If you confirm replacement of an existing configuration, it creates a timestamped backup first.</p>
+<p>If you want to edit the file manually, generate a default config template and save it to a file named <code>spotify_monitor.conf</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># On macOS, Linux or Windows Command Prompt (cmd.exe)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>&gt;<span class="w"> </span>spotify_monitor.conf
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
@@ -1153,6 +1155,9 @@
 <p><a id="following-the-monitored-user"></a></p>
 <h2 id="following-the-monitored-user">Following the Monitored User<a class="headerlink" href="#following-the-monitored-user" title="Permanent link">&para;</a></h2>
 <p>To monitor a user's activity, you must follow them from the Spotify account associated with the <code>sp_dc</code> cookie or <code>client</code> credentials.</p>
+<p>The setup wizard checks that account's follow state after it saves usable authentication. If the target is not followed the wizard asks whether to follow it. The default answer is no. Spotify Monitor sends no follow request unless you explicitly answer yes. After an approved request the wizard queries Spotify again and reports success only when the target is confirmed as followed.</p>
+<p>This works in cookie mode and advanced client mode without a separate user-authorized OAuth token. It uses Spotify's private web-player Pathfinder operations rather than a supported public Web API contract. Spotify can change those operations, thats why Spotify Monitor discovers their current persisted-query hashes from the web-player bundle and retries discovery once when Spotify rejects a cached hash.</p>
+<p>If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.</p>
 <p>Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.</p>
 <p><a id="how-to-get-a-friends-user-uri-id"></a></p>
 <h2 id="how-to-get-a-friends-user-uri-id">How to Get a Friend's User URI ID<a class="headerlink" href="#how-to-get-a-friends-user-uri-id" title="Permanent link">&para;</a></h2>
