@@ -37,7 +37,7 @@ You can also save any of these forms as `TARGET_USER_URI_ID` in `spotify_monitor
 spotify_monitor --config-file spotify_monitor.conf
 ```
 
-The setup wizard asks whether to persist its target. This lets local installations start with `spotify_monitor` and lets Docker Compose start with `docker compose up`.
+The setup wizard asks whether to persist its target. This lets local installations start with `spotify_monitor` and lets Docker Compose start with `docker compose up --no-log-prefix`.
 
 If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fallback supplies it for one run:
 
@@ -86,14 +86,14 @@ Compose mounts the current directory at `/data`. The wizard creates `spotify_mon
 Start the target saved by setup in the foreground:
 
 ```sh
-docker compose up
+docker compose up --no-log-prefix
 ```
 
 For a background run and live logs:
 
 ```sh
 docker compose up -d
-docker compose logs -f
+docker compose logs -f --no-log-prefix
 ```
 
 Stop and remove the service container without deleting the bind-mounted files:
@@ -102,7 +102,7 @@ Stop and remove the service container without deleting the bind-mounted files:
 docker compose down
 ```
 
-If the wizard did not persist the target, `docker compose up` cannot supply one. Use the direct Compose command printed by setup:
+If the wizard did not persist the target, `docker compose up --no-log-prefix` cannot supply one. Use the direct Compose command printed by setup:
 
 ```sh
 docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
