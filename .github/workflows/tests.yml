@@ -96,6 +96,6 @@ jobs:
         run: |
           mkdir -p local/container-smoke
           docker tag spotify-monitor:ci misiektoja/spotify-monitor:latest
-          SPOTIFY_MONITOR_UID="$(id -u)" SPOTIFY_MONITOR_GID="$(id -g)" docker compose -f docker-compose.yml run --rm spotify_monitor --version
-          SPOTIFY_MONITOR_UID="$(id -u)" SPOTIFY_MONITOR_GID="$(id -g)" docker compose -f docker-compose.yml run --rm spotify_monitor --generate-config /data/local/container-smoke/compose-spotify-monitor.conf
+          SPOTIFY_MONITOR_UID="$(id -u)" SPOTIFY_MONITOR_GID="$(id -g)" docker compose -f docker-compose.yml run --rm --pull=never spotify_monitor --version
+          SPOTIFY_MONITOR_UID="$(id -u)" SPOTIFY_MONITOR_GID="$(id -g)" docker compose -f docker-compose.yml run --rm --pull=never spotify_monitor --generate-config /data/local/container-smoke/compose-spotify-monitor.conf
           test -s local/container-smoke/compose-spotify-monitor.conf
