@@ -1,6 +1,7 @@
 services:
   spotify-secrets-grabber:
-    image: docker.io/misiektoja/spotify-secrets-grabber:latest
+    image: misiektoja/spotify-secrets-grabber:latest
+    pull_policy: always
     working_dir: /work
     # SELinux (Fedora/RHEL): change to ".:/work:Z"
     volumes:

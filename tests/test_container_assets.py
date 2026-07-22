@@ -169,6 +169,17 @@ def test_debugging_docs_use_curl_downloads():
     assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py" in debugging
 
 
+# Verifies secret grabber container usage refreshes mutable images through direct Docker and Compose
+def test_secret_grabber_container_pull_contract():
+    debugging = read_asset("docs/debugging.md")
+    compose = read_asset("debug/spotify_monitor_secret_grabber_docker/compose.yaml")
+    assert debugging.count("docker run --rm --pull=always") == 4
+    assert "docker compose run --rm spotify-secrets-grabber --all" in debugging
+    assert "image: misiektoja/spotify-secrets-grabber:latest" in compose
+    assert "pull_policy: always" in compose
+    assert "docker.io/misiektoja/spotify-secrets-grabber" not in compose
+
+
 # Verifies webhook guidance targets the configuration page and its stable anchor
 def test_webhook_setup_anchor_is_consistent():
     readme = read_asset("README.md")
