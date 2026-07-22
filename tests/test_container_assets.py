@@ -85,8 +85,8 @@ def test_reusable_test_workflow_has_container_gate():
     assert ':/data:z"' in workflow
     assert "docker compose -f docker-compose.yml config" in workflow
     assert "docker tag spotify-monitor:ci misiektoja/spotify-monitor:latest" in workflow
-    assert "docker compose -f docker-compose.yml run --rm spotify_monitor --version" in workflow
-    assert "docker compose -f docker-compose.yml run --rm spotify_monitor --generate-config /data/local/container-smoke/compose-spotify-monitor.conf" in workflow
+    assert "docker compose -f docker-compose.yml run --rm --pull=never spotify_monitor --version" in workflow
+    assert "docker compose -f docker-compose.yml run --rm --pull=never spotify_monitor --generate-config /data/local/container-smoke/compose-spotify-monitor.conf" in workflow
     assert "SPOTIFY_MONITOR_UID" in workflow
     assert "SPOTIFY_MONITOR_GID" in workflow
     assert "test -s local/container-smoke/compose-spotify-monitor.conf" in workflow
@@ -120,6 +120,9 @@ def test_installation_docs_cover_all_delivery_and_upgrade_paths():
     assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt" in installation
     assert "pip install --upgrade -r requirements.txt" in installation
     assert "docker build --pull --tag spotify-monitor:local ." in installation
+    assert "Plain `docker run` reuses a cached image" in installation
+    assert "docker pull misiektoja/spotify-monitor:latest" in installation
+    assert "docker compose pull" in installation
 
 
 # Verifies manual upgrade guidance repeats linked files and direct download commands
