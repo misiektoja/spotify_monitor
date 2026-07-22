@@ -28,7 +28,7 @@ spotify_monitor --setup
 
 Docker Compose
 
-On Linux, set the container user to your host user before the first setup command. This lets Spotify Monitor create its configuration and private `.env` file in the current directory. Docker Desktop users on macOS or Windows can skip the two `export` commands.
+On Linux, the container needs your numeric user ID and group ID so files it creates in the current directory belong to you instead of `root`. Run the two `export` commands in the same terminal before the Compose commands. Docker Desktop handles file ownership on macOS and Windows, so users on those systems can skip both `export` commands.
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
@@ -48,9 +48,11 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
 
-The Docker Desktop commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+The first command starts the setup wizard. The second starts monitoring with the files created by the wizard. Both commands keep configuration, private values and output in the current directory.
 
-On Linux, pass your host user and group so the container can write to the current directory:
+These commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+
+On Linux, `--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
@@ -95,8 +97,8 @@ For the manual single-file method, optional extras and upgrade commands for ever
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
 </p>
 
-🎵 For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, check out [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor) - it is much easier to set up, simply ask your friend to connect Last.fm to Spotify (Last.fm Settings → Applications → Connect Spotify Scrobbling) and you're ready to go!
+For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
-✨ If you're interested in tracking changes to Spotify users' profiles including their playlists, take a look at another tool I've developed: [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
+For Spotify profile and playlist change tracking, see [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
-🛠️ If you're looking for debug tools to get Spotify Web Player access tokens and extract secret keys: [click here](debugging.md#debugging-tools)
+For Spotify Web Player token and TOTP utilities, see [Debugging Tools](debugging.md#debugging-tools).
