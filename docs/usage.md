@@ -110,7 +110,44 @@ If the wizard did not save the target, `docker compose up --no-log-prefix` canno
 docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
-The default container authentication method asks for `sp_dc` through a hidden prompt. To import from Firefox instead, mount the browser profile as described under [Spotify sp_dc Cookie](configuration.md#spotify-sp_dc-cookie).
+<a id="import-firefox-into-container-authentication"></a>
+### Import Firefox into Container Authentication
+
+Spotify Monitor stores the imported `SP_DC_COOKIE` in `/data/.env`. Keep the same `/data` mount and `--env-file /data/.env` option during import and later runs.
+
+On Linux, mount the Firefox profile read-only:
+
+```sh
+docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+With Compose on Linux:
+
+```sh
+docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+Firefox installed through Snap or Flatpak stores its profile in a different host directory. Mount that directory at the standard container path:
+
+```sh
+# Firefox from Snap
+docker compose run --rm -v "$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+
+# Firefox from Flatpak
+docker compose run --rm -v "$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+On macOS, mount one explicit Firefox cookie database:
+
+```sh
+docker run --rm -it --init -v "${PWD}:/data:z" -v "${HOME}/Library/Application Support/Firefox/Profiles/<profile>/cookies.sqlite:/cookies/cookies.sqlite:ro" misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --cookie-file /cookies/cookies.sqlite --env-file /data/.env
+```
+
+Firefox works inside Docker because its cookie database can be mounted as a read-only file. Chrome, Brave and Chromium need the host password service to decrypt their cookies. A container cannot use that service. Import from those browsers through a local PyPI or manual installation instead.
+
+Do not add `:z` or `:Z` to the whole Firefox profile mount. Those suffixes can change SELinux labels on the host files. If SELinux blocks the read-only mount, close Firefox and copy `cookies.sqlite` to a dedicated directory before mounting that copy.
+
+After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable, use the hidden [`--set-sp-dc`](configuration.md#manual-cookie-extraction) fallback.
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
 
