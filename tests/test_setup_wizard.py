@@ -676,7 +676,8 @@ def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "\nThe monitoring account does not follow 'target.user'.\n\n" in output
     assert "\n  The monitoring account" not in output
-    assert "will not change the account" in output
+    assert "\nFollow skipped. Spotify Monitor will not change the account.\n" in output
+    assert "\n  Follow" not in output
 
 
 # Verifies an approved follow is rechecked before setup reports success
@@ -690,7 +691,9 @@ def test_setup_follow_check_verifies_approved_mutation(monkeypatch, capsys):
     assert monitor._wizard_offer_target_follow("target.user") == "followed"
     follow.assert_called_once_with("authenticated-token", "target.user")
     assert check.call_count == 2
-    assert "Follow verified" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "\nFollow verified. The monitoring account now follows 'target.user'.\n" in output
+    assert "\n  Follow" not in output
 
 
 # Verifies setup does not claim success when the post-mutation follow check stays false
@@ -700,7 +703,11 @@ def test_setup_follow_check_rejects_unverified_mutation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "spotify_follow_user", Mock(return_value=True))
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))
     assert monitor._wizard_offer_target_follow("target.user") == "follow_failed"
-    assert "not verified as following" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "\nSpotify accepted the follow request but verification still reports not followed.\n" in output
+    assert "\nThe account was not verified as following the target.\n" in output
+    assert "\n  Spotify" not in output
+    assert "\n  The account" not in output
 
 
 # Verifies interactive no-argument welcome launches setup when accepted
