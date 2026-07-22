@@ -1,20 +1,20 @@
 # Installation
 
-Choose one installation method and keep using its command format throughout the documentation. PyPI is the simplest local installation. Docker Compose is the recommended container installation because it keeps configuration, secrets and output files in the current directory.
+Choose one installation method. You do not need both Python and Docker. PyPI is usually the easiest local option. Docker Compose is usually the easiest container option because it keeps settings, private values and output files in the current directory.
 
 <a id="requirements"></a>
 ## Requirements
 
-Choose one runtime path:
+Choose either the Python path or the container path.
 
 **Python path**:
 
 - [Python](https://www.python.org/downloads/) 3.9 or higher
 - Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `Pillow`
-- Optional legacy OAuth library: `spotipy`
-- Optional Chromium cookie import library: `pycookiecheat`
+- `spotipy` is optional and is needed only for legacy OAuth metadata access
+- `pycookiecheat` is optional and is needed only to import cookies from Chrome, Brave or Chromium
 
-**Container path** (Python is not required on the host):
+**Container path** (Python is included in the image):
 
 - Any Docker-compatible runtime such as:
     - [Docker Desktop](https://docs.docker.com/get-started/get-docker/) (macOS, Windows, Linux)
@@ -22,11 +22,11 @@ Choose one runtime path:
     - [Colima](https://colima.run/docs/installation/) with Docker CLI (macOS)
     - [OrbStack](https://docs.orbstack.dev/quick-start) (macOS)
     - [Rancher Desktop](https://docs.rancherdesktop.io/getting-started/installation/) with Moby or Docker CLI enabled (macOS, Windows, Linux)
-- The Docker Compose v2 plugin if you choose Docker Compose
+- The Docker Compose v2 plugin if you choose the Compose method
 
 The published image already contains Python and all core libraries. You do not need a local Python installation for Docker.
 
-Container commands use the Docker-compatible `docker` CLI. Check the runtime with `docker --version`. If you choose Compose, check the plugin with `docker compose version`.
+The examples use the `docker` command. Check that it works with `docker --version`. If you choose Compose, also check `docker compose version`.
 
 Tested on:
 
@@ -41,12 +41,12 @@ It should work on other versions of macOS, Linux, Unix and Windows as well.
 
 | Method | Best for | Command used in later examples |
 | --- | --- | --- |
-| PyPI | The easiest local install and automatic upgrades | `spotify_monitor [OPTIONS]` |
-| Manual script | A portable single-file local install | `python3 spotify_monitor.py [OPTIONS]` on macOS/Linux or `python spotify_monitor.py [OPTIONS]` on Windows |
-| Docker Compose | A persistent container with files stored in the current directory | `docker compose run --rm spotify_monitor [OPTIONS]` |
-| Docker Hub image | Direct container runs without a Compose file | `docker run ... misiektoja/spotify-monitor:latest [OPTIONS]` |
+| PyPI | Most local users | `spotify_monitor [OPTIONS]` |
+| Manual script | Users who want to download and run one Python file | `python3 spotify_monitor.py [OPTIONS]` on macOS/Linux or `python spotify_monitor.py [OPTIONS]` on Windows |
+| Docker Compose | Users who want a reusable container setup | `docker compose run --rm spotify_monitor [OPTIONS]` |
+| Docker Hub image | Users who want to write each Docker option themselves | `docker run ... misiektoja/spotify-monitor:latest [OPTIONS]` |
 
-The examples on Configuration, Usage and Troubleshooting use the shorter PyPI command unless a container path or behavior needs a dedicated example. Replace that command with the matching form above. The setup wizard and `--help` also detect the active installation and print matching commands.
+Later pages use the short PyPI command unless Docker behaves differently. If you chose another method, keep the options after `spotify_monitor` but replace `spotify_monitor` with the command in the table. The setup wizard and `--help` also print commands for the detected installation.
 
 <a id="install-from-pypi"></a>
 ### Install from PyPI
@@ -56,7 +56,7 @@ pip install spotify_monitor
 spotify_monitor --version
 ```
 
-Each command below that uses square brackets installs the base `spotify_monitor` package plus its named optional dependencies. Use only the command matching your needs. You do not need to run the plain install command first.
+Each command below that uses square brackets installs the base `spotify_monitor` package plus the named optional dependency. Run only the command that matches your needs. You do not need to run the plain install command first.
 
 Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:
 
@@ -127,7 +127,7 @@ Use `python spotify_monitor.py --version` on Windows.
 <a id="docker-compose"></a>
 ### Install with Docker Compose
 
-Download the project Compose file into the directory where you want to keep the configuration and output:
+Create or choose a directory for Spotify Monitor. Download the Compose file into that directory, then run these commands from there:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
@@ -137,16 +137,23 @@ docker compose run --rm spotify_monitor --version
 
 You can also download [docker-compose.yml](https://github.com/misiektoja/spotify_monitor/blob/main/docker-compose.yml) in a browser or use the file from a cloned repository.
 
-On Linux, export your host user and group before setup if the current directory is not writable by the image user `10001:10001`:
+On Linux, the container does not automatically know which host user should own new files. Export your numeric user ID and group ID so configuration, logs and CSV files created by the container belong to your account instead of `root`:
 
 ```sh
 export SPOTIFY_MONITOR_UID="$(id -u)"
 export SPOTIFY_MONITOR_GID="$(id -g)"
 ```
 
-Keep these variables set for later `docker compose` commands. Alternatively store their numeric values as `SPOTIFY_MONITOR_UID` and `SPOTIFY_MONITOR_GID` in `.env`. The setup wizard preserves unrelated entries in that file. Docker Desktop on macOS and Windows normally handles bind-mount ownership without this override.
+Run these commands in the same terminal that you will use for setup and later Compose commands. A new terminal will not keep the exported values. To make them permanent for this project, put the numeric results from `id -u` and `id -g` in the Compose `.env` file:
 
-Compose mounts the current directory at `/data`. The setup wizard creates `spotify_monitor.conf` and `.env` on the host so upgrades or container replacement do not remove them. Continue with [Quick Start](quick-start.md#new-here-run-the-setup-wizard).
+```ini
+SPOTIFY_MONITOR_UID=1000
+SPOTIFY_MONITOR_GID=1000
+```
+
+The values above are only examples. Use the numbers returned on your system. The setup wizard keeps unrelated entries in this file. Docker Desktop normally handles file ownership on macOS and Windows, so users on those systems can skip this step.
+
+Compose makes the current host directory available as `/data` inside the container. This is called a bind mount. The setup wizard creates `spotify_monitor.conf` and `.env` there, so the files remain on your computer when the container is replaced. Continue with [Quick Start](quick-start.md#new-here-run-the-setup-wizard).
 
 <a id="docker-image"></a>
 ### Install from Docker Hub
@@ -158,15 +165,15 @@ docker pull misiektoja/spotify-monitor:latest
 docker run --rm misiektoja/spotify-monitor:latest --version
 ```
 
-Plain `docker run` reuses a cached image when the tag already exists locally. Repeat the documented `docker pull` during upgrades. Normal monitoring commands do not force a registry check on every start, which avoids an unexpected release change during routine runs.
+Plain `docker run` reuses a cached image when the tag already exists locally. Run `docker pull` again when you want to upgrade. Normal monitoring commands do not download a newer image automatically.
 
-Normal runs mount the current directory at `/data` so configuration and output survive the temporary container. On Linux, pass your host identity so setup can write to that directory. The [Quick Start](quick-start.md#new-here-run-the-setup-wizard) shows both Docker Desktop and Linux commands.
+Normal runs make the current directory available as `/data` in the container. Configuration and output written there remain on the host after the temporary container stops. On Linux, the command also passes your numeric user and group IDs so new files belong to you. [Quick Start](quick-start.md#new-here-run-the-setup-wizard) shows the complete commands for Docker Desktop and Linux.
 
-Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt use `%cd%` for the current directory. Linux examples use `$PWD` and add the host user mapping when needed.
+Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt use `%cd%` for the current directory. Linux examples use `$PWD` and pass your numeric user and group IDs.
 
-The Compose file and direct commands use the `/data:z` mount form for SELinux hosts. If a Docker-compatible runtime rejects the `:z` suffix, remove only that suffix and keep the `/data` mount.
+The `:z` suffix lets Docker relabel the mounted directory on hosts that use SELinux. If your Docker-compatible runtime reports that `:z` is invalid, remove only `:z` and keep the rest of the mount.
 
-The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. Default container authentication uses private `sp_dc` entry because Chromium browser credentials are unavailable inside the image.
+The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. The default container setup asks you to enter `sp_dc` privately because the container cannot read cookies from an unmounted host browser profile.
 
 <a id="build-docker-locally"></a>
 ### Build the Docker Image Locally
@@ -188,7 +195,7 @@ Continue to [Quick Start](quick-start.md). It shows the setup wizard command for
 <a id="upgrading"></a>
 ## Upgrading
 
-Configuration files, dotenv secrets, logs and CSV output are not part of the PyPI package or Docker image. Keep them in your working directory or another persistent path and reuse them after an upgrade.
+Upgrading the package or image does not remove your configuration, `.env` secrets, logs or CSV files. Keep those files in the same working directory or another persistent location.
 
 ### Upgrade a PyPI Installation
 
@@ -227,7 +234,7 @@ docker compose pull
 docker compose up --no-log-prefix
 ```
 
-Compose recreates the service from the current `latest` image when needed. The bind-mounted `spotify_monitor.conf`, `.env`, logs and CSV files remain on the host.
+Compose replaces the service container with one based on the current `latest` image. The host files `spotify_monitor.conf` and `.env` remain in place with the logs and CSV files.
 
 ### Upgrade a Direct Docker Installation
 
@@ -238,7 +245,7 @@ docker pull misiektoja/spotify-monitor:latest
 docker run --rm misiektoja/spotify-monitor:latest --version
 ```
 
-Start the tool again with the same `/data` bind mount and options you used before. If you pin a versioned tag such as `3.0`, change that tag explicitly when you want to move to another release. Published releases update `latest` and also publish both `vX.Y` and `X.Y` tags.
+Start the tool again with the same `/data` mount and options you used before. If your command uses a version such as `3.0` instead of `latest`, replace that version yourself when you want to upgrade. Each release publishes `latest` plus tags in `vX.Y` and `X.Y` forms.
 
 For example, to pin version 3.0:
 
