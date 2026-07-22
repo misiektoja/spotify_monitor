@@ -169,9 +169,8 @@ def test_chromium_dependency_install_uses_active_python(monkeypatch, method, req
     run_mock.assert_called_once_with(["/active/python", "-m", "pip", "install", requirement], check=False)
 
 
-# Verifies Docker defaults to hidden private entry when no cookie exists
-def test_docker_cookie_setup_defaults_to_hidden_manual_entry(tmp_path, monkeypatch, capsys):
-    secret = "PHASE6-DOCKER-SETUP-SECRET"
+# Verifies Docker recommends a read-only Firefox host profile mount when no cookie exists
+def test_docker_cookie_setup_defaults_to_firefox_import(tmp_path, monkeypatch, capsys):
     captured = {}
 
     # Selects the displayed default while recording the container choices
@@ -180,14 +179,16 @@ def test_docker_cookie_setup_defaults_to_hidden_manual_entry(tmp_path, monkeypat
         return default_index
 
     monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
-    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: secret)
     updates = {}
     result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
-    assert captured["options"][0][0] == "Enter sp_dc privately (recommended for Docker)"
-    assert "hidden getpass prompt" in captured["options"][0][1]
-    assert updates == {"SP_DC_COOKIE": secret}
-    assert result["source"] == "private manual entry"
-    assert secret not in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert captured["options"][0][0] == "Import from Firefox, recommended"
+    assert "host Firefox profile mounted read-only" in captured["options"][0][1]
+    assert updates == {}
+    assert result["complete"] is False
+    assert result["mount_required"] is True
+    assert result["source"] == "Firefox import pending a read-only host profile mount"
+    assert "needs the host profile mounted read-only" in output
 
 
 # Verifies Docker naturally retains an existing non-placeholder cookie
@@ -211,24 +212,25 @@ def test_docker_cookie_setup_defaults_to_existing_cookie(tmp_path, monkeypatch):
     assert destination.read_bytes() == original
 
 
-# Verifies container browser import is advanced and explicitly requires a host mount
-def test_container_browser_import_is_advanced_and_mount_dependent(tmp_path, monkeypatch, capsys):
+# Verifies hidden container cookie entry remains available as a private fallback
+def test_container_cookie_setup_offers_hidden_manual_fallback(tmp_path, monkeypatch, capsys):
+    secret = "PHASE6-DOCKER-SETUP-SECRET"
     captured = {}
 
-    # Selects the advanced browser choice while recording its description
+    # Selects private entry while recording the displayed choices
     def choose(question, options, default_index=0):
         captured["options"] = options
         return 1
 
     monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
-    result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", {})
-    output = capsys.readouterr().out
-    assert captured["options"][1][0] == "Import from Firefox (advanced)"
-    assert "host Firefox profile mounted read-only" in captured["options"][1][1]
-    assert result["complete"] is False
-    assert result["mount_required"] is True
-    assert "advanced Firefox import pending" in result["source"]
-    assert "requires the host Firefox profile mounted read-only" in output
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: secret)
+    updates = {}
+    result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
+    assert captured["options"][1][0] == "Enter sp_dc privately"
+    assert "hidden getpass prompt" in captured["options"][1][1]
+    assert updates == {"SP_DC_COOKIE": secret}
+    assert result["source"] == "private manual entry"
+    assert secret not in capsys.readouterr().out
 
 
 # Verifies target prompts accept every supported form and re-prompt after invalid input
