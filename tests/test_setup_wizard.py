@@ -47,6 +47,7 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
+    monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
     if report is not None:
         monkeypatch.setattr(monitor, "build_doctor_report", Mock(return_value=report))
         monkeypatch.setattr(monitor, "render_doctor_report", lambda selected: "DOCTOR REPORT")
@@ -641,6 +642,58 @@ def test_client_mode_without_protobuf_is_incomplete(monkeypatch):
     result = monitor._wizard_collect_client_auth({}, Path("unused.env"), {})
     assert result["complete"] is False
     assert result["source"] == "advanced client mode without credentials"
+
+
+# Verifies setup reports an existing follow without offering an account mutation
+def test_setup_follow_check_reports_already_followed(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
+    follow = Mock()
+    ask = Mock()
+    monkeypatch.setattr(monitor, "spotify_follow_user", follow)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
+    assert monitor._wizard_offer_target_follow("target.user") == "already_followed"
+    follow.assert_not_called()
+    ask.assert_not_called()
+    assert "already follows 'target.user'" in capsys.readouterr().out
+
+
+# Verifies declining the follow prompt leaves the Spotify account unchanged
+def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=False))
+    follow = Mock()
+    ask = Mock(return_value=False)
+    monkeypatch.setattr(monitor, "spotify_follow_user", follow)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
+    assert monitor._wizard_offer_target_follow("target.user") == "declined"
+    ask.assert_called_once_with("Follow 'target.user' now using the configured Spotify account?", default=False)
+    follow.assert_not_called()
+    assert "will not change the account" in capsys.readouterr().out
+
+
+# Verifies an approved follow is rechecked before setup reports success
+def test_setup_follow_check_verifies_approved_mutation(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    check = Mock(side_effect=[False, True])
+    follow = Mock(return_value=True)
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", check)
+    monkeypatch.setattr(monitor, "spotify_follow_user", follow)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))
+    assert monitor._wizard_offer_target_follow("target.user") == "followed"
+    follow.assert_called_once_with("authenticated-token", "target.user")
+    assert check.call_count == 2
+    assert "Follow verified" in capsys.readouterr().out
+
+
+# Verifies setup does not claim success when the post-mutation follow check stays false
+def test_setup_follow_check_rejects_unverified_mutation(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=[False, False]))
+    monkeypatch.setattr(monitor, "spotify_follow_user", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))
+    assert monitor._wizard_offer_target_follow("target.user") == "follow_failed"
+    assert "not verified as following" in capsys.readouterr().out
 
 
 # Verifies interactive no-argument welcome launches setup when accepted
