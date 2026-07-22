@@ -151,12 +151,12 @@ Running the tool with no arguments also offers the wizard when no target has bee
 <a id="before-monitoring"></a>
 ### Before monitoring
 
-Spotify can show a person's listening activity only when:
+Spotify only shows a person's listening activity when both of these conditions are met:
 
-1. The Spotify account used by Spotify Monitor follows that person.
+1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
 2. That person has enabled listening activity sharing in Spotify.
 
-Open the person's profile in the Spotify desktop or mobile app, choose **Share** > **Copy link to profile** then paste the complete link into the wizard. You do not need to extract the user ID. If `--doctor` reports that the person is not visible, see [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
+The setup wizard (`spotify_monitor --setup`) checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation. If you want to do it manually, open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
 
 For local installs, Firefox import is the recommended login path. Docker users should use the wizard's hidden manual `sp_dc` entry. See the [full Quick Start guide](https://misiektoja.github.io/spotify_monitor/quick-start/) for details.
 
