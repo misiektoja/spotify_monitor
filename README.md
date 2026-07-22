@@ -28,7 +28,7 @@ spotify_monitor --setup
 
 Docker Compose
 
-On Linux, set the container user to your host user before the first setup command. This lets Spotify Monitor create its configuration and private `.env` file in the current directory. Docker Desktop users on macOS or Windows can skip the two `export` commands.
+On Linux, the container needs your numeric user ID and group ID so files it creates in the current directory belong to you instead of `root`. Run the two `export` commands in the same terminal before the Compose commands. Docker Desktop handles file ownership on macOS and Windows, so users on those systems can skip both `export` commands.
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
@@ -48,9 +48,11 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
 
-The Docker Desktop commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+The first command starts the setup wizard. The second starts monitoring with the files created by the wizard. Both commands keep configuration, private values and output in the current directory.
 
-On Linux, pass your host user and group so the container can write to the current directory:
+These commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+
+On Linux, `--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit:
 
 ```sh
 docker pull misiektoja/spotify-monitor:latest
@@ -121,7 +123,7 @@ Full documentation is available at **[misiektoja.github.io/spotify_monitor](http
 
 The fastest way to get started is `--setup`. It asks who to monitor, how to connect to Spotify and which alerts you want then saves a ready-to-run configuration. Private values stay in `.env`.
 
-On Linux, set `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` before using Docker Compose.
+On Linux, set `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` before using Docker Compose. These values make files created by the container belong to your host user. Docker Desktop users on macOS or Windows do not need them.
 
 Use the command that matches how you run the tool:
 
@@ -146,7 +148,7 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-Running the tool with no arguments also offers the wizard when no target has been saved. It detects whether you use PyPI, the downloaded script, Docker or Docker Compose then shows matching commands.
+Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target. The wizard detects the installation method and shows matching commands.
 
 <a id="before-monitoring"></a>
 ### Before monitoring
@@ -156,7 +158,7 @@ Spotify only shows a person's listening activity when both of these conditions a
 1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
 2. That person has enabled listening activity sharing in Spotify.
 
-The setup wizard (`spotify_monitor --setup`) checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation. If you want to do it manually, open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
+The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
 
 For local installs, Firefox import is the recommended login path. Docker users should use the wizard's hidden manual `sp_dc` entry. See the [full Quick Start guide](https://misiektoja.github.io/spotify_monitor/quick-start/) for details.
 
@@ -177,7 +179,7 @@ For local installs, Firefox import is the recommended login path. Docker users s
 <a id="manual-commands"></a>
 ### Manual commands
 
-The examples below use a PyPI install. For a manual script install, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux and `python spotify_monitor.py` on Windows. Docker users can copy the complete command prefixes from the [Usage guide](https://misiektoja.github.io/spotify_monitor/usage/#command-format).
+The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows. Docker users can copy the complete command prefix from the [Usage guide](https://misiektoja.github.io/spotify_monitor/usage/#command-format).
 
 Sign in to [Spotify Web Player](https://open.spotify.com/) with Firefox then import that login:
 
