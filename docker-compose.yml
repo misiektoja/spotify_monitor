@@ -17,7 +17,7 @@ services:
     init: true
     stdin_open: true
     tty: true
-    # VM-backed runtimes normally need no override. These optional values help native Linux hosts whose bind mount rejects writes from UID 10001.
+    # Docker-compatible runtimes on macOS and Windows normally need no override. These optional values help native Linux hosts whose bind mount rejects writes from UID 10001.
     user: "${SPOTIFY_MONITOR_UID:-10001}:${SPOTIFY_MONITOR_GID:-10001}"
     environment:
       SPOTIFY_MONITOR_COMPOSE: "1"
