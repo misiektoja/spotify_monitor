@@ -1,21 +1,11 @@
 # Quick Start
 
-<a id="before-you-start"></a>
-## Before you start
-
-Spotify only shows a person's listening activity when both of these conditions are met:
-
-1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
-2. That person has enabled listening activity sharing in Spotify.
-
-Open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](configuration.md#following-the-monitored-user) if the doctor later reports that the person is not visible.
-
-For a local installation, the easiest login method is automatic Firefox import. For Docker or Docker Compose, you will normally enter the `sp_dc` Spotify login cookie manually. The [manual extraction steps](configuration.md#manual-cookie-extraction) explain exactly where to find it.
-
 <a id="new-here-run-the-setup-wizard"></a>
 ## New here? Run the setup wizard
 
-First complete one method on the [Installation](installation.md) page. The fastest way to configure that installation is the interactive setup wizard. It asks who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. It then saves a ready-to-run configuration while private values stay in `.env`. For local installs the wizard can also check the setup and start monitoring immediately.
+First complete one method on the [Installation](installation.md) page. The fastest way to configure that installation is the interactive setup wizard. It asks who to monitor, how to connect to Spotify and whether you want alerts by email or webhook. Before saving, you can review the summary and edit any setup section without losing the other answers. It then saves a ready-to-run configuration while private values stay in `.env`.
+
+For local installs the wizard can also run the doctor check and start monitoring immediately.
 
 Before running the Docker Compose setup command on Linux, export `SPOTIFY_MONITOR_UID="$(id -u)"` and `SPOTIFY_MONITOR_GID="$(id -g)"` as shown under [Install with Docker Compose](installation.md#docker-compose).
 
@@ -44,11 +34,29 @@ docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiekto
 
 Docker Desktop examples use `${PWD}` in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
-The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate authentication path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing. It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`. It also detects whether you use PyPI, the downloaded script or Docker then shows commands that match your installation. Local next-step commands use the current Python interpreter and quote paths for the active operating system.
+The wizard asks for one Spotify target, recommends Firefox-based `sp_dc` import and lets you choose email alerts, webhook alerts or both. On macOS and Linux it offers Chrome, Brave and Chromium as a separate cookie import path. If the optional `pycookiecheat` package is missing, setup can install it into the active Python environment before continuing.
+
+The wizard detects PyPI, downloaded-script, Docker and Docker Compose installations then prints matching commands. Local commands reuse the active Python executable. Config and dotenv paths are quoted for the active operating system.
+
+It writes regular settings to `spotify_monitor.conf` while private values go only to `.env`.
+
+After authentication is saved the wizard checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation.
+
+For a local installation, the easiest login method is automatic Firefox import. For Docker or Docker Compose, you will normally enter the `sp_dc` Spotify login cookie manually. The [manual extraction steps](configuration.md#manual-cookie-extraction) explain exactly where to find it.
 
 When the discovered configuration contains a persisted `TARGET_USER_URI_ID`, running Spotify Monitor without a positional target starts that saved target. If no target has been saved, no-argument startup shows the quick-start guidance and offers the setup wizard in an interactive terminal.
 
 For a local PyPI or downloaded-script installation, Firefox browser import remains the recommended authentication path and the default setup choice. For Docker and Docker Compose, manual `sp_dc` entry is recommended because the default container cannot access an unmounted host browser profile. If the selected dotenv file already contains a non-placeholder `SP_DC_COOKIE`, container setup offers to retain it as the default choice.
+
+<a id="before-you-start"></a>
+## Before you start
+
+Spotify only shows a person's listening activity when both of these conditions are met:
+
+1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
+2. That person has enabled listening activity sharing in Spotify.
+
+The setup wizard (`spotify_monitor --setup`) checks whether the configured Spotify account follows the target. It offers to follow only when needed and changes the account only after explicit confirmation. If you want to do it manually, open the person's profile in the Spotify desktop or mobile app then use **Share** > **Copy link to profile**. You can paste the complete profile link into the setup wizard. You do not need to extract the user ID yourself. See [Following the Monitored User](configuration.md#following-the-monitored-user).
 
 <a id="not-sure-which-command-you-need"></a>
 ## Not sure which command you need?
