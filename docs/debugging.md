@@ -112,6 +112,8 @@ Default file paths and names can be configured directly in the `OUTPUT_FILES` di
 
 A prebuilt multi-architecture image is available on Docker Hub: [`misiektoja/spotify-secrets-grabber`](https://hub.docker.com/r/misiektoja/spotify-secrets-grabber)
 
+The examples below use the mutable `latest` tag. The `--pull=always` option prevents Docker from reusing an older cached extractor. For reproducible runs, replace the image name with an explicit version such as `misiektoja/spotify-secrets-grabber:1.3`.
+
 This image works on:
 
 - macOS (Intel & Apple Silicon)
@@ -122,23 +124,23 @@ This image works on:
 Run interactively (default output mode):
 
 ```sh
-docker run --rm misiektoja/spotify-secrets-grabber
+docker run --rm --pull=always misiektoja/spotify-secrets-grabber
 ```
 
 Show help:
 ```sh
-docker run --rm misiektoja/spotify-secrets-grabber -h
+docker run --rm --pull=always misiektoja/spotify-secrets-grabber -h
 ```
 
 Print extracted secrets in specific format, for example Python-friendly secret bytes (JSON object/dict) and save to indicated file:
 ```sh
-docker run --rm misiektoja/spotify-secrets-grabber --secretdict > secretDict.json
+docker run --rm --pull=always misiektoja/spotify-secrets-grabber --secretdict > secretDict.json
 ```
 
 Or, to generate and save all secret formats to files (`secrets.json`, `secretBytes.json`, `secretDict.json`) at once:
 
 ```sh
-docker run --rm -v .:/work -w /work misiektoja/spotify-secrets-grabber --all
+docker run --rm --pull=always -v .:/work -w /work misiektoja/spotify-secrets-grabber --all
 ```
 
 *For SELinux hosts (Fedora/RHEL), use `-v .:/work:Z`.*
@@ -147,7 +149,7 @@ docker run --rm -v .:/work -w /work misiektoja/spotify-secrets-grabber --all
 Or optionally use Docker Compose (a preconfigured [compose.yaml](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber_docker/compose.yaml) file is included in the repo):
 
 ```sh
-docker compose run --rm spotify-secrets-grabber --all
+docker compose run --rm --pull=always spotify-secrets-grabber --all
 ```
 
 This will save all files into your current directory on any system (macOS, Linux or Windows).
