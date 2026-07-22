@@ -11,12 +11,12 @@ Most examples on this page use the PyPI command `spotify_monitor`. If you chose 
 | Manual script on macOS or Linux | `python3 spotify_monitor.py` |
 | Manual script on Windows | `python spotify_monitor.py` |
 | Docker Compose | `docker compose run --rm spotify_monitor` |
-| Direct Docker on Docker Desktop | `docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest` |
-| Direct Docker on Linux | `docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest` |
+| Direct `docker run` on macOS or Windows PowerShell | `docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest` |
+| Direct `docker run` on native Linux | `docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest` |
 
 For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm spotify_monitor --doctor TARGET` with Compose. The current host directory appears as `/data` inside the container, so container paths to its files must start with `/data/`.
 
-The Docker Desktop command works in macOS shells and Windows PowerShell. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+The first `docker run` command works in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
 See [Installation](installation.md) for setup, optional dependencies, image details and upgrade commands.
 
