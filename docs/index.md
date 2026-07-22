@@ -35,7 +35,7 @@ curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/he
 export SPOTIFY_MONITOR_UID="$(id -u)"
 export SPOTIFY_MONITOR_GID="$(id -g)"
 docker compose run --rm spotify_monitor --setup
-docker compose up
+docker compose up --no-log-prefix
 ```
 
 Docker run
