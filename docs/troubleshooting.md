@@ -47,7 +47,7 @@ Each failed check includes a `To fix:` action. For local cookie authentication f
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-Inside Docker or Docker Compose, the suggested fix uses hidden `--set-sp-dc` entry. It also shows the advanced mounted Firefox command.
+Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. It also shows hidden `--set-sp-dc` entry as a fallback. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for Linux, Snap, Flatpak and macOS commands.
 
 For advanced client-mode failures, repeat the [Spotify Desktop Client](configuration.md#spotify-desktop-client) export steps. Add `--debug` to Doctor or a normal run for sanitized technical detail. Use `--verbose` for a complete startup summary plus occasional state changes without output for every poll. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.
 
