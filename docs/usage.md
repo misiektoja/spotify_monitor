@@ -154,6 +154,7 @@ It also displays your friend's Spotify username (often the user's first and last
 ## Email Notifications
 
 To enable email notifications when a user becomes active:
+
 - set `ACTIVE_NOTIFICATION` to `True`
 - or use the `-a` flag
 
@@ -162,6 +163,7 @@ spotify_monitor <spotify_user_uri_id> -a
 ```
 
 To be informed when a user gets inactive:
+
 - set `INACTIVE_NOTIFICATION` to `True`
 - or use the `-i` flag
 
@@ -172,6 +174,7 @@ spotify_monitor <spotify_user_uri_id> -i
 Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To get email notifications when a monitored track/playlist/album plays:
+
 - set `TRACK_NOTIFICATION` to `True`
 - or use the `-t` flag
 
@@ -194,6 +197,7 @@ I Will Be There
 You can comment out specific lines with # if needed.
 
 To enable email notifications for every song listened by the user:
+
 - set `SONG_NOTIFICATION` to `True`
 - or use the `-j` flag
 
@@ -202,6 +206,7 @@ spotify_monitor <spotify_user_uri_id> -j
 ```
 
 To be notified when a user listens to the same song on loop:
+
 - set `SONG_ON_LOOP_NOTIFICATION` to `True`
 - or use the `-x` flag
 
@@ -210,6 +215,7 @@ spotify_monitor <spotify_user_uri_id> -x
 ```
 
 To disable sending an email on errors (enabled by default):
+
 - set `ERROR_NOTIFICATION` to `False`
 - or use the `-e` flag
 
@@ -275,6 +281,7 @@ For a container, place the file under `/data` so it appears in the host director
 ## Automatic Playback of Listened Tracks in the Spotify Client
 
 If you want the tool to automatically play the tracks listened to by the user in your local Spotify client:
+
 - set `TRACK_SONGS` to `True`
 - or use the `-g` flag
 
@@ -293,15 +300,18 @@ For **Windows**, it works in a semi-automatic way: if you have the Spotify clien
 You can change the playback method per platform using the corresponding configuration option.
 
 For **macOS** set `SPOTIFY_MACOS_PLAYING_METHOD` to one of the following values:
+
 -  "**apple-script**" (recommended, **default**)
 -  "trigger-url"
 
 For **Linux** set `SPOTIFY_LINUX_PLAYING_METHOD` to one of the following values:
+
 - "**dbus-send**" (most common one, **default**)
 - "qdbus" (try if dbus-send does not work)
 - "trigger-url"
 
 For **Windows** set `SPOTIFY_WINDOWS_PLAYING_METHOD` to one of the following values:
+
 - "**start-uri**" (recommended, **default**)
 - "spotify-cmd"
 - "trigger-url"
