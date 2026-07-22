@@ -42,7 +42,7 @@ def test_install_method_detects_docker_and_compose(monkeypatch):
 # Verifies every installation method has the requested portable command prefix
 def test_install_method_command_prefixes(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
+    monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
     monkeypatch.setattr(monitor.os, "getuid", lambda: 1234, raising=False)
     monkeypatch.setattr(monitor.os, "getgid", lambda: 5678, raising=False)
