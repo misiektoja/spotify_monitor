@@ -49,6 +49,7 @@ def test_compose_contract():
     assert "restart:" not in compose
     assert "SPOTIFY_MONITOR_UID" in compose
     assert "SPOTIFY_MONITOR_GID" in compose
+    assert "docker compose up --no-log-prefix" in compose
 
 
 # Verifies Docker publishing is test-gated and uses the expected Hub credentials and architectures
