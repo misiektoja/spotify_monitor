@@ -119,6 +119,7 @@ def test_explicit_firefox_cookie_file_takes_precedence_and_prints_followup_comma
     assert dotenv_values(destination, interpolate=False)["SP_DC_COOKIE"] == "secret-cookie"
     output = capsys.readouterr().out
     assert monitor.SPOTIFY_WEB_LOGIN_URL in output
+    assert "* Browser cookie import completed successfully\n\nCheck authentication and the target:" in output
     assert "Check authentication and the target:" in output
     assert "--doctor target.user" in output
     assert f"--config-file {config_path}" in output
