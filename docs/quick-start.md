@@ -70,11 +70,11 @@ The wizard detects PyPI, a downloaded script, Docker or Docker Compose and print
 
 After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
 
-For Docker or Docker Compose, use the Firefox import command printed after setup. It mounts the signed-in host profile read-only once and saves `SP_DC_COOKIE` in the host `.env` file. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for Linux, Snap, Flatpak and macOS examples. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
+For Docker or Docker Compose, choose **Import from Firefox after setup**. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap or Linux with Flatpak. It then prints the matching command to mount the signed-in host profile read-only once and save `SP_DC_COOKIE` in the host `.env` file. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
 
 If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows quick-start guidance and offers the setup wizard.
 
-If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise it recommends Firefox import and prints the matching one-time Linux host command. The container cannot discover an unmounted browser profile so macOS, Snap and Flatpak users should copy the matching command from the Container Operation guide.
+If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.
 
 <a id="before-you-start"></a>
 ## Before you start
