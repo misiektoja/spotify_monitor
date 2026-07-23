@@ -674,11 +674,14 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         prompts = [call.args[0] for call in ask_mock.call_args_list]
         assert not any("Run doctor now" in prompt for prompt in prompts)
         output = capsys.readouterr().out
+        prerequisite_index = output.index(f"Before import, open {monitor.SPOTIFY_WEB_LOGIN_URL} in Firefox on the host")
         import_index = output.index("Import Spotify login from Firefox on macOS:")
         doctor_index = output.index("After authentication succeeds, verify authentication and the target:")
         start_index = output.index("After Doctor passes, start monitoring:")
-        assert import_index < doctor_index < start_index
+        assert prerequisite_index < import_index < doctor_index < start_index
         assert '${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro' in output
+        assert "--config-file /data/" in output
+        assert "spotify_monitor.conf" in output
         assert "--user 10001:10001" not in output
         assert "Run doctor now?" not in output
 
