@@ -5455,9 +5455,19 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
         selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
         parts.extend(("--config-file", _wizard_quote_argument(selected_config)))
     if env_path is not None:
-        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        selected_env = "none" if str(env_path).casefold() == "none" else _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
         parts.extend(("--env-file", _wizard_quote_argument(selected_env)))
     return " ".join(parts)
+
+
+# Prints the install-aware monitoring command after a successful Doctor run
+def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, target_is_saved: bool = False) -> None:
+    method = _wizard_install_method()
+    command_target = None if target_is_saved else target or "SPOTIFY_USER_URI_ID"
+    command = _wizard_action_command(method, "", config_path, env_path, command_target)
+    print("\nNext steps\n")
+    print("After Doctor passes, start monitoring:")
+    print(f"    {command}\n")
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
@@ -8149,7 +8159,13 @@ def main():
 
     if args.doctor:
         doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
-        sys.exit(run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks))
+        doctor_exit = run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks)
+        if doctor_exit == 0:
+            command_target = args.user_id if args.user_id is not None else None
+            target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
+            selected_env = "none" if args.env_file is not None and args.env_file.casefold() == "none" else env_path
+            _wizard_print_monitor_after_doctor(cfg_path or CLI_CONFIG_PATH, selected_env, command_target, target_is_saved=target_is_saved)
+        sys.exit(doctor_exit)
 
     if args.send_test_webhook:
         print("* Sending a test webhook ...\n")
