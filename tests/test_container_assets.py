@@ -130,6 +130,12 @@ def test_usage_docs_cover_container_firefox_import():
     assert f'docker run --rm -it --init -v "${{PWD}}:/data:z" -v "{mac_mount}"' in usage
     assert f'docker compose run --rm -v "{mac_mount}"' in usage
     assert f'docker compose run --rm -v "{mac_mount}"' in compose
+    windows_mounts = (("${PWD}", "$env:APPDATA\\Mozilla\\Firefox", "Windows PowerShell"), ("%cd%", "%APPDATA%\\Mozilla\\Firefox", "Windows Command Prompt"))
+    for current_directory, source, label in windows_mounts:
+        assert f'docker run --rm -it --init -v "{current_directory}:/data:z" -v "{source}:/home/spotify/.mozilla/firefox:ro"' in usage
+        assert f'docker compose run --rm -v "{source}:/home/spotify/.mozilla/firefox:ro"' in usage
+        assert f'docker compose run --rm -v "{source}:/home/spotify/.mozilla/firefox:ro"' in compose
+        assert f"#### {label}" in usage
     for heading in ("#### Linux with a standard Firefox package", "#### Linux with Firefox from Snap", "#### Linux with Firefox from Flatpak", "#### macOS"):
         assert heading in usage
     assert "Guided setup asks which host environment runs Docker" in usage
