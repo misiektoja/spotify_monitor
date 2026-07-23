@@ -1,7 +1,7 @@
 # Main Spotify Monitor application container
 #
 # Quick start:
-#   docker compose run --rm spotify_monitor --setup
+#   docker compose run --rm --pull=always spotify_monitor --setup
 #   docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
 # Manual authentication fallback:
 #   docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
