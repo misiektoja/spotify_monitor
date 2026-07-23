@@ -7,7 +7,7 @@ Examples on this page use the PyPI command `spotify_monitor`. Manual script, Doc
 
 You can pass most settings as command-line options or save them in a configuration file for later runs.
 
-The easiest way to create this file is `spotify_monitor --setup`. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first.
+The easiest way to create this file is `spotify_monitor --setup`. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first. Replacement builds a fresh configuration from defaults, so settings that are not shown by the wizard are reset unless you restore them from the backup.
 
 To edit every available setting yourself, generate a default configuration file:
 
