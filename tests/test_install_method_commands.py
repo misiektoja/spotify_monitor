@@ -82,6 +82,15 @@ def test_container_action_commands_include_paths_and_target(tmp_path, monkeypatc
     assert command == "docker compose run --rm spotify_monitor --doctor target.user --config-file /data/spotify_monitor.conf --env-file /data/.env"
 
 
+# Verifies container setup defaults always target the bind-mounted data directory
+@pytest.mark.parametrize("method", ["docker", "compose"])
+def test_container_setup_destinations_use_data_mount(tmp_path, monkeypatch, method):
+    monkeypatch.chdir(tmp_path)
+    config_path, env_path = monitor._wizard_destinations(method=method)
+    assert config_path == Path("/data/spotify_monitor.conf")
+    assert env_path == Path("/data/.env")
+
+
 # Verifies Firefox import commands use the selected host profile layout
 @pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"')])
 def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os, source):
@@ -92,6 +101,14 @@ def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypat
     assert f"-v {source} misiektoja/spotify-monitor" in docker
     assert ('--user "$(id -u):$(id -g)"' in docker) is host_os.startswith("linux")
     assert docker.endswith("--import-browser-cookie --browser firefox --env-file /data/.env")
+
+
+# Verifies a setup-generated import carries the saved config and target into post-import guidance
+def test_firefox_import_command_carries_followup_context(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    command = monitor._wizard_firefox_import_cmd("docker", tmp_path / ".env", host_os="macos", config_path=tmp_path / "spotify_monitor.conf", target="target.user")
+    assert "--import-browser-cookie --browser firefox target.user" in command
+    assert "--config-file /data/spotify_monitor.conf --env-file /data/.env" in command
 
 
 # Verifies private entry commands use installation-aware dotenv paths
