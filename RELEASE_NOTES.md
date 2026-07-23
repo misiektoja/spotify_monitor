@@ -2,26 +2,28 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 3.0.2 (23 Jul 2026)
+# Changes in 3.1 (23 Jul 2026)
+
+Version **3.1** makes **Docker onboarding portable across macOS, Linux and Windows**. Setup now centers on **host-aware Firefox authentication**, keeps configuration and secrets on the persistent **`/data` bind mount** and carries exact **Doctor and monitoring commands** through recovery.
 
 **Features and improvements**:
 
-- **IMPROVE:** Kept Firefox import as the recommended Docker authentication path while making its deferred workflow explicit. Setup now asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt then prints the matching read-only profile mount
-- **NEW:** Added Windows-host Firefox import for direct Docker and Docker Compose through the normal `%APPDATA%\Mozilla\Firefox` profile root with shell-specific PowerShell and Command Prompt commands
-- **IMPROVE:** Deferred Doctor until Firefox authentication has been imported. Container setup now finishes with ordered commands to import the login, verify authentication and the target then start monitoring
-- **IMPROVE:** Preserved setup guidance across one-time authentication commands by keeping terminal history visible and repeating the exact Doctor and monitoring commands after a successful Firefox import
-- **IMPROVE:** Printed the install-aware monitoring command after a successful Doctor run while preserving explicit or saved targets and selected configuration files
+- **IMPROVE:** Kept Firefox import as the **recommended Docker authentication path** while making its deferred workflow explicit. Setup now asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt then prints the matching read-only profile mount
+- **NEW:** Added **Windows-host Firefox import** for direct Docker and Docker Compose through the normal `%APPDATA%\Mozilla\Firefox` profile root with shell-specific PowerShell and Command Prompt commands
+- **IMPROVE:** Deferred **Doctor until Firefox authentication has been imported**. Container setup now finishes with ordered commands to import the login, verify authentication and the target then start monitoring
+- **IMPROVE:** Preserved **setup guidance across one-time authentication commands** by keeping terminal history visible and repeating the exact Doctor and monitoring commands after a successful Firefox import
+- **IMPROVE:** Printed the **install-aware monitoring command** after a successful Doctor run while preserving explicit or saved targets and selected configuration files
 
 **Bug fixes**:
 
-- **BUGFIX:** Fixed generated Docker commands that used the container UID `10001:10001` and always assumed the Linux `~/.mozilla/firefox` profile path. macOS commands omit the Linux user mapping while Linux commands resolve the host user and group IDs in the host shell
+- **BUGFIX:** Fixed generated Docker commands that used the container UID `10001:10001` and always assumed the Linux `~/.mozilla/firefox` profile path. **macOS commands omit Linux user mapping** while Linux commands resolve the host user and group IDs in the host shell
 - **BUGFIX:** Stopped standalone container recovery guidance from presenting one Linux-only Firefox command when the Docker host is unknown
-- **BUGFIX:** Anchored default container setup files to the bind-mounted `/data` directory so the generated configuration and dotenv files survive the temporary setup container
-- **BUGFIX:** Rejected Docker setup destinations outside `/data` instead of saving ephemeral files then printing commands for different paths
-- **BUGFIX:** Generated direct Docker commands with `${PWD}` for macOS shells, native Linux hosts and Windows PowerShell then switched to `%cd%` for Windows Command Prompt while retaining Linux user mapping
-- **BUGFIX:** Saved the selected dotenv destination in generated configuration so later config-only starts and secret reloads keep using it
-- **BUGFIX:** Printed an explicit Compose monitoring command when setup uses nondefault config or dotenv paths instead of falling back to hardcoded defaults
-- **BUGFIX:** Preserved the selected configuration path through the hidden `--set-sp-dc` fallback and its Doctor and monitoring guidance
+- **BUGFIX:** Anchored **default container setup files** to the bind-mounted **`/data` directory** so the generated configuration and dotenv files survive the temporary setup container
+- **BUGFIX:** Rejected **Docker setup destinations outside `/data`** instead of saving ephemeral files then printing commands for different paths
+- **BUGFIX:** Generated direct Docker commands with **`${PWD}` for macOS, Linux and Windows PowerShell** then switched to `%cd%` for Windows Command Prompt while retaining Linux user mapping
+- **BUGFIX:** Saved the **selected dotenv destination** in generated configuration so later config-only starts and secret reloads keep using it
+- **BUGFIX:** Printed an **explicit Compose monitoring command** when setup uses nondefault config or dotenv paths instead of falling back to hardcoded defaults
+- **BUGFIX:** Preserved the selected configuration path through the hidden **`--set-sp-dc` fallback** and its Doctor and monitoring guidance
 
 # Changes in 3.0.1 (22 Jul 2026)
 
