@@ -6332,10 +6332,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
-    if secret_updates:
+    if secret_updates or not env_path.exists():
         try:
             update_status = update_dotenv_file(env_path, secret_updates)
-            print(f"  Secrets:       {update_status['path']}")
+            label = "Secrets" if secret_updates else "Dotenv"
+            print(f"  {label + ':':<15}{update_status['path']}")
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
