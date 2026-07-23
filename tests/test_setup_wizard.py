@@ -169,26 +169,42 @@ def test_chromium_dependency_install_uses_active_python(monkeypatch, method, req
     run_mock.assert_called_once_with(["/active/python", "-m", "pip", "install", requirement], check=False)
 
 
-# Verifies Docker recommends a read-only Firefox host profile mount when no cookie exists
+# Verifies Docker keeps deferred Firefox import as the host-aware default
 def test_docker_cookie_setup_defaults_to_firefox_import(tmp_path, monkeypatch, capsys):
-    captured = {}
+    captured = []
 
-    # Selects the displayed default while recording the container choices
+    # Selects the displayed defaults while recording the container choices
     def choose(question, options, default_index=0):
-        captured["options"] = options
+        captured.append((question, options))
         return default_index
 
     monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
     updates = {}
     result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
     output = capsys.readouterr().out
-    assert captured["options"][0][0] == "Import from Firefox, recommended"
-    assert "host Firefox profile mounted read-only" in captured["options"][0][1]
+    assert captured[0][1][0][0] == "Import from Firefox after setup, recommended"
+    assert "read-only import command" in captured[0][1][0][1]
+    assert captured[1][0] == "Which operating system runs Docker and how was Firefox installed?"
     assert updates == {}
     assert result["complete"] is False
     assert result["mount_required"] is True
-    assert result["source"] == "Firefox import pending a read-only host profile mount"
-    assert "needs the host profile mounted read-only" in output
+    assert result["host_os"] == "macos"
+    assert result["source"] == "Firefox import after setup from macOS"
+    assert "will run after setup" in output
+
+
+# Verifies every supported container Firefox layout maps to stable host state
+@pytest.mark.parametrize("choice,expected", [(0, "macos"), (1, "linux"), (2, "linux-snap"), (3, "linux-flatpak")])
+def test_container_firefox_host_selection(monkeypatch, choice, expected):
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: choice)
+    assert monitor._wizard_select_container_firefox_host() == expected
+
+
+# Verifies unsupported container hosts return to another authentication choice
+def test_unsupported_container_firefox_host_is_not_assumed(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 4)
+    assert monitor._wizard_select_container_firefox_host() is None
+    assert "not currently available for this host" in capsys.readouterr().out
 
 
 # Verifies Docker naturally retains an existing non-placeholder cookie
@@ -358,7 +374,7 @@ def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
         assert (directory / "spotify_monitor.conf").is_file()
         output = capsys.readouterr().out
         assert "safe import failure" in output
-        assert "authentication is incomplete" in output
+        assert "Authentication still needs to be completed" in output
 
 
 # Verifies failed browser import can retry through the same Phase 2 runner
@@ -639,6 +655,32 @@ def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
         assert error.value.code == 0
         assert "docker compose up --no-log-prefix" in capsys.readouterr().out
         exec_mock.assert_not_called()
+
+
+# Verifies deferred macOS Firefox setup skips Doctor and prints ordered host commands
+def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        auth = {"complete": False, "validated": False, "browser": "firefox", "source": "Firefox import after setup from macOS", "mount_required": True, "host_os": "macos"}
+        install_minimal_wizard_flow(monkeypatch, "docker", auth, [True])
+        ask_mock = Mock(side_effect=[True])
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask_mock)
+        doctor_mock = Mock(side_effect=AssertionError("Doctor ran before authentication"))
+        monkeypatch.setattr(monitor, "build_doctor_report", doctor_mock)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        doctor_mock.assert_not_called()
+        prompts = [call.args[0] for call in ask_mock.call_args_list]
+        assert not any("Run doctor now" in prompt for prompt in prompts)
+        output = capsys.readouterr().out
+        import_index = output.index("Import Spotify login from Firefox on macOS:")
+        doctor_index = output.index("After authentication succeeds, verify authentication and the target:")
+        start_index = output.index("After Doctor passes, start monitoring:")
+        assert import_index < doctor_index < start_index
+        assert '${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro' in output
+        assert "--user 10001:10001" not in output
+        assert "Run doctor now?" not in output
 
 
 # Verifies advanced client mode can finish incomplete when no Protobuf is available
