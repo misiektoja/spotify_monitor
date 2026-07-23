@@ -103,6 +103,19 @@ def test_usage_docs_describe_default_container_playback_limitation():
     assert "--track-in-spotify" in usage
 
 
+# Verifies setup and Compose docs explain persistent and custom file paths
+def test_docs_explain_setup_and_compose_file_paths():
+    readme = read_asset("README.md")
+    quick_start = read_asset("docs/quick-start.md")
+    configuration = read_asset("docs/configuration.md")
+    usage = read_asset("docs/usage.md")
+    assert "Container setup destinations must stay inside `/data`" in quick_start
+    assert "Add `--config-file PATH`" in quick_start
+    assert "fresh configuration from defaults" in configuration
+    assert "If setup saved either file under another `/data` path" in usage
+    assert "Setup prints an explicit `docker compose run` command" in readme
+
+
 # Verifies container Firefox documentation covers persistent auth and host-specific mounts
 def test_usage_docs_cover_container_firefox_import():
     usage = read_asset("docs/usage.md")
