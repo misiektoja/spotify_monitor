@@ -19,45 +19,77 @@ Powerful real-time tracker for Spotify friend music activity: monitor listening 
 <a id="-quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
-Python from PyPI
+#### Python from PyPI
 
 ```sh
 pip install spotify_monitor
+```
+
+Run setup by itself:
+
+```sh
 spotify_monitor --setup
 ```
 
-Docker Compose
+#### Docker image - fastest container setup
 
-On a native Linux container engine, the container needs your numeric user ID and group ID so files it creates in the current directory belong to you instead of `root`. Run the two `export` commands in the same terminal before the Compose commands. Docker-compatible runtimes on macOS and Windows normally handle bind-mount ownership, so users on those systems can usually skip both `export` commands.
+##### macOS or Windows
+
+Use a macOS shell or Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI.
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
-export SPOTIFY_MONITOR_UID="$(id -u)"
-export SPOTIFY_MONITOR_GID="$(id -g)"
-docker compose run --rm spotify_monitor --setup
-docker compose up --no-log-prefix
+docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-Docker run
-
-On macOS shells or Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI:
+After setup finishes, start monitoring with the files created by the wizard:
 
 ```sh
-docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
 
-The first command starts the setup wizard. The second starts monitoring with the files created by the wizard. Both commands keep configuration, private values and output in the current directory.
+The setup command pulls the current image. Both commands keep configuration, private values and output in the current directory.
 
-These commands use macOS shell or Windows PowerShell syntax. In Windows Command Prompt replace `${PWD}` with `%cd%`.
+In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
-On Linux, `--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit:
+##### Linux
+
+`--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit.
 
 ```sh
-docker pull misiektoja/spotify-monitor:latest
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
+docker run --rm --pull=always -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
+```
+
+After setup finishes, start monitoring:
+
+```sh
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
+```
+
+#### Docker Compose - shorter recurring commands
+
+Download the Compose file:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
+```
+
+On a native Linux container engine, export your numeric user ID and group ID so files created in the current directory belong to you instead of `root`. Docker-compatible runtimes on macOS and Windows normally do not need these values.
+
+```sh
+export SPOTIFY_MONITOR_UID="$(id -u)"
+export SPOTIFY_MONITOR_GID="$(id -g)"
+```
+
+Run setup by itself:
+
+```sh
+docker compose run --rm --pull=always spotify_monitor --setup
+```
+
+After setup finishes, start monitoring with the shorter recurring command:
+
+```sh
+docker compose up --no-log-prefix
 ```
 
 For the manual single-file method, optional extras and upgrade commands for every method, see [Installation](installation.md).
