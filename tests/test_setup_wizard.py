@@ -270,6 +270,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert error.value.code == 0
         config = config_path.read_text(encoding="utf-8")
         assert 'TARGET_USER_URI_ID = "target.user"' in config
+        assert f'DOTENV_FILE = "{env_path.resolve()}"' in config
         assert "cookie-private-value" not in config
         assert dotenv_values(env_path, interpolate=False)["SP_DC_COOKIE"] == "cookie-private-value"
         output = capsys.readouterr().out
@@ -320,8 +321,10 @@ def test_setup_review_edits_polling_before_save(monkeypatch):
 def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
+        monkeypatch.chdir(directory)
         install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "1", "3", "", "n", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
@@ -574,6 +577,7 @@ def test_destination_edit_recollects_secret_sections(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_collect_webhook_section", webhook_mock)
     monitor._wizard_collect_destination_section(state, "manual")
     assert state.env_path == new_env.resolve()
+    assert state.config_values["DOTENV_FILE"] == str(new_env.resolve())
     auth_mock.assert_called_once_with(state, "manual")
     email_mock.assert_called_once_with(state)
     webhook_mock.assert_called_once_with(state)
@@ -647,8 +651,10 @@ def test_doctor_failure_blocks_local_start(monkeypatch, capsys):
 def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
+        monkeypatch.chdir(directory)
         auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
         install_minimal_wizard_flow(monkeypatch, "compose", auth, [True, False])
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         exec_mock = Mock()
         monkeypatch.setattr(monitor.os, "execv", exec_mock)
         with pytest.raises(SystemExit) as error:
@@ -658,12 +664,32 @@ def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
         exec_mock.assert_not_called()
 
 
+# Verifies custom Compose destinations keep the explicit monitoring command
+def test_compose_custom_destinations_do_not_print_up(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        monkeypatch.chdir(directory)
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        install_minimal_wizard_flow(monkeypatch, "compose", auth, [True, False])
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "custom.conf", env_file=directory / "custom.env")
+
+        assert error.value.code == 0
+        output = capsys.readouterr().out
+        assert "docker compose up --no-log-prefix" not in output
+        assert "spotify_monitor --config-file /data/custom.conf --env-file /data/custom.env" in output
+
+
 # Verifies deferred macOS Firefox setup skips Doctor and prints ordered host commands
 def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
+        monkeypatch.chdir(directory)
         auth = {"complete": False, "validated": False, "browser": "firefox", "source": "Firefox import after setup from macOS", "mount_required": True, "host_os": "macos"}
         install_minimal_wizard_flow(monkeypatch, "docker", auth, [True])
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         ask_mock = Mock(side_effect=[True])
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask_mock)
         doctor_mock = Mock(side_effect=AssertionError("Doctor ran before authentication"))
