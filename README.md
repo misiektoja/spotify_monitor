@@ -223,6 +223,8 @@ Firefox import is the recommended login path for local and container installs. D
 | Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
 
+The short `docker compose up` command uses the default config and dotenv paths. Setup prints an explicit `docker compose run` command when you choose another path.
+
 <a id="manual-commands"></a>
 ### Manual commands
 
