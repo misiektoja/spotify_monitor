@@ -104,7 +104,7 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 | Save a new webhook URL | Run `spotify_monitor --set-webhook-url` |
 | Send a test webhook | Run `spotify_monitor --send-test-webhook` |
 
-<a id="manual-commands"></a>
+<a id="run-individual-commands"></a>
 ## Run Individual Commands
 
 The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows. Docker users should copy the matching prefix under [Command Format by Installation Method](usage.md#command-format).
