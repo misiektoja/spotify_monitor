@@ -108,14 +108,21 @@ def test_usage_docs_cover_container_firefox_import():
     usage = read_asset("docs/usage.md")
     compose = read_asset("docker-compose.yml")
     assert '<a id="import-firefox-into-container-authentication"></a>' in usage
-    assert '-v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"' in usage
-    assert '-v "$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"' in usage
-    assert '-v "$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"' in usage
-    assert '${HOME}/Library/Application Support/Firefox/Profiles/<profile>/cookies.sqlite:/cookies/cookies.sqlite:ro' in usage
-    assert "--cookie-file /cookies/cookies.sqlite --env-file /data/.env" in usage
+    linux_sources = ("$HOME/.mozilla/firefox", "$HOME/snap/firefox/common/.mozilla/firefox", "$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox")
+    for source in linux_sources:
+        assert f'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" -v "{source}:/home/spotify/.mozilla/firefox:ro"' in usage
+        assert f'docker compose run --rm -v "{source}:/home/spotify/.mozilla/firefox:ro"' in usage
+        assert f'docker compose run --rm -v "{source}:/home/spotify/.mozilla/firefox:ro"' in compose
+    mac_mount = '${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro'
+    assert f'docker run --rm -it --init -v "${{PWD}}:/data:z" -v "{mac_mount}"' in usage
+    assert f'docker compose run --rm -v "{mac_mount}"' in usage
+    assert f'docker compose run --rm -v "{mac_mount}"' in compose
+    for heading in ("#### Linux with a standard Firefox package", "#### Linux with Firefox from Snap", "#### Linux with Firefox from Flatpak", "#### macOS"):
+        assert heading in usage
+    assert "Guided setup asks which host environment runs Docker" in usage
+    assert "Doctor is deferred until the import succeeds" in usage
     assert "Do not add `:z` or `:Z` to the whole Firefox profile mount" in usage
     assert "You do not need to mount Firefox again" in usage
-    assert 'docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env' in compose
 
 
 # Verifies the usage and configuration guides cover portable mounts and safe dotenv copying
