@@ -639,6 +639,16 @@ def test_windows_launch_uses_argument_sequence(monkeypatch):
     run_mock.assert_called_once_with(arguments, check=False)
 
 
+# Verifies a Windows parent launch treats duplicate Ctrl+C delivery as clean child termination
+def test_windows_launch_handles_parent_keyboard_interrupt(monkeypatch):
+    arguments = [r"C:\Python Tools\python.exe", r"C:\Project Space\spotify_monitor.py", "--config-file", r"C:\Project Space\spotify_monitor.conf"]
+    run_mock = Mock(side_effect=KeyboardInterrupt)
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(monitor.subprocess, "run", run_mock)
+    assert monitor._wizard_launch_monitor(arguments) == 0
+    run_mock.assert_called_once_with(arguments, check=False)
+
+
 # Verifies doctor failures block the automatic local start offer
 def test_doctor_failure_blocks_local_start(monkeypatch, capsys):
     with make_test_directory() as directory_name:
