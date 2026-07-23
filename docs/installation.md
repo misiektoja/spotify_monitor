@@ -137,6 +137,8 @@ Normal runs make the current directory available as `/data` in the container. Co
 
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt use `%cd%` for the current directory. Native Linux examples use `$PWD` and pass your numeric user and group IDs.
 
+On Windows, configure Docker Desktop or another Docker-compatible runtime to use Linux containers. Guided setup supports Firefox import from the normal `%APPDATA%\Mozilla\Firefox` profile root and prints shell-specific commands for PowerShell or Command Prompt.
+
 The `:z` suffix lets Docker relabel the mounted directory on hosts that use SELinux. If your Docker-compatible runtime reports that `:z` is invalid, remove only `:z` and keep the rest of the mount.
 
 The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. Firefox works inside a container when its cookie database is mounted read-only for the import command. Chrome, Brave and Chromium need the host password service to decrypt cookies. A container cannot use that service. See [Container Operation](usage.md#import-firefox-into-container-authentication) for the complete Firefox commands. Hidden `sp_dc` entry remains available as a fallback.
