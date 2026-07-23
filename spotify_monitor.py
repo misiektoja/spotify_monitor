@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.0.1
+v3.0.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -19,7 +19,7 @@ spotipy (optional, used when legacy OAuth app credentials are configured)
 pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
 
-VERSION = "3.0.1"
+VERSION = "3.0.2"
 
 
 # ---------------------------
@@ -861,6 +861,12 @@ NTFY_IMAGES_AVAILABLE = PILImage is not None
 # Browsers supported by the sp_dc cookie importer
 IMPORT_BROWSERS = ("firefox", "chrome", "brave", "chromium")
 CHROMIUM_IMPORT_BROWSERS = ("chrome", "brave", "chromium")
+CONTAINER_FIREFOX_HOSTS = {
+    "macos": ("macOS", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'),
+    "linux": ("Linux with a standard Firefox package", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
+    "linux-snap": ("Linux with Firefox from Snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
+    "linux-flatpak": ("Linux with Firefox from Flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
+}
 
 
 # Returns whether Spotify Monitor is running in a Docker or Docker Compose container
@@ -1013,15 +1019,14 @@ def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
     return f"{fix}\nGuide: {guide_url}"
 
 
-# Returns install-aware cookie recovery guidance with Firefox import preferred when available
+# Returns install-aware cookie recovery guidance with host-specific container instructions
 def cookie_auth_recovery_fix() -> str:
     method = _wizard_install_method()
     if not is_container_environment():
         firefox_command = _wizard_firefox_import_cmd(method)
         return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}"
     private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
-    firefox_command = _wizard_firefox_import_cmd(method, Path.cwd() / ".env")
-    return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in. Then run the read-only profile import command: {firefox_command}\nManual fallback with hidden entry: {private_command}"
+    return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in. Then use the host-specific read-only profile import command in the guide below.\nManual fallback with hidden entry: {private_command}"
 
 
 # Returns the cookie guide section that matches the active installation
@@ -5389,12 +5394,13 @@ def _wizard_quote_argument(value: Any) -> str:
     return _wizard_render_command([str(value)])
 
 
-# Returns the portable command prefix for one supported installation method
-def _wizard_cmd_prefix(method: str, exact: bool = False) -> str:
+# Returns the portable command prefix for one installation method and optional host environment
+def _wizard_cmd_prefix(method: str, exact: bool = False, host_os: Optional[str] = None) -> str:
     if method == "compose":
         return "docker compose run --rm spotify_monitor"
     if method == "docker":
-        user_flag = f" --user {os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") and hasattr(os, "getgid") else ""
+        linux_user_mapping = host_os in ("linux", "linux-snap", "linux-flatpak") or (host_os is None and hasattr(os, "getuid") and os.getuid() != 10001)
+        user_flag = ' --user "$(id -u):$(id -g)"' if linux_user_mapping else ""
         return f'docker run --rm -it --init{user_flag} -v "$PWD:/data:z" misiektoja/spotify-monitor'
     return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
 
@@ -5416,8 +5422,8 @@ def _wizard_container_path(path) -> str:
 
 
 # Builds a Spotify Monitor action command using install-aware paths and an optional target
-def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None) -> str:
-    parts = [_wizard_cmd_prefix(method, exact=True)]
+def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None, host_os: Optional[str] = None) -> str:
+    parts = [_wizard_cmd_prefix(method, exact=True, host_os=host_os)]
     if action:
         parts.append(action)
     if target:
@@ -5431,13 +5437,16 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     return " ".join(parts)
 
 
-# Returns the Firefox import command with a read-only Linux host profile mount for containers
-def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False) -> str:
-    prefix = _wizard_cmd_prefix(method, exact=exact)
+# Returns the Firefox import command with a read-only profile mount for the selected host
+def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None) -> str:
+    selected_host = host_os or "linux"
+    prefix = _wizard_cmd_prefix(method, exact=exact, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
-        prefix = prefix.replace("misiektoja/spotify-monitor", '-v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor')
+        profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
+        prefix = prefix.replace("misiektoja/spotify-monitor", f"-v {profile_mount} misiektoja/spotify-monitor")
     elif method == "compose":
-        prefix = 'docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor'
+        profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
+        prefix = f"docker compose run --rm -v {profile_mount} spotify_monitor"
     command = f"{prefix} --import-browser-cookie --browser firefox"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
@@ -5446,8 +5455,8 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False) 
 
 
 # Returns the hidden manual sp_dc entry command for one installation method
-def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False) -> str:
-    command = f"{_wizard_cmd_prefix(method, exact=exact)} --set-sp-dc"
+def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None) -> str:
+    command = f"{_wizard_cmd_prefix(method, exact=exact, host_os=host_os)} --set-sp-dc"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
         command += f" --env-file {_wizard_quote_argument(selected_env)}"
@@ -5478,7 +5487,7 @@ def _build_help_epilog() -> str:
         sections.extend((
             "  # Linux host example: mount a signed-in Firefox profile read-only",
             "  # Open https://open.spotify.com/ in Firefox on the host and sign in first",
-            f"  {_wizard_firefox_import_cmd(method, Path.cwd() / '.env')}",
+            f"  {_wizard_firefox_import_cmd(method, Path.cwd() / '.env', host_os='linux')}",
             "",
             "  # Or enter the Spotify cookie through a hidden prompt",
             f"  {_wizard_set_sp_dc_cmd(method, Path.cwd() / '.env')}",
@@ -5834,9 +5843,27 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
     return [labels[name] for name in notification_names if selected[name]]
 
 
+# Selects one supported Docker host and Firefox profile layout for deferred import
+def _wizard_select_container_firefox_host() -> Optional[str]:
+    options = [
+        ("macOS", "Use the Firefox profile under Library/Application Support."),
+        ("Linux with a standard Firefox package", "Use the profile under ~/.mozilla/firefox."),
+        ("Linux with Firefox from Snap", "Use the profile under ~/snap/firefox."),
+        ("Linux with Firefox from Flatpak", "Use the profile under ~/.var/app/org.mozilla.firefox."),
+        ("Windows or another system", "Firefox import after Docker setup is not currently available for this host."),
+    ]
+    selected = _wizard_ask_choice("Which operating system runs Docker and how was Firefox installed?", options)
+    if selected == len(options) - 1:
+        print()
+        print("  Firefox import after Docker setup is not currently available for this host.")
+        print("  Choose private sp_dc entry or finish without credentials.")
+        return None
+    return ("macos", "linux", "linux-snap", "linux-flatpak")[selected]
+
+
 # Collects cookie-mode choices while keeping all secret values out of output
 def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dict) -> dict:
-    result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+    result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
     container_method = method in ("docker", "compose")
     existing_cookie = _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",))
     import_browsers = _wizard_import_browsers(method)
@@ -5844,10 +5871,10 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
     while True:
         if container_method:
             if existing_cookie:
-                options = [("Retain the existing SP_DC_COOKIE", "Keep the non-placeholder value without displaying or rewriting it."), ("Import from Firefox, recommended", "Reuses a signed-in host Firefox profile mounted read-only into this container."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
+                options = [("Retain the existing SP_DC_COOKIE", "Keep the non-placeholder value without displaying or rewriting it."), ("Import from Firefox after setup, recommended", "Reuses a signed-in host Firefox profile through one read-only import command."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
                 actions = ("existing", "browser", "manual", "finish")
             else:
-                options = [("Import from Firefox, recommended", "Reuses a signed-in host Firefox profile mounted read-only into this container."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
+                options = [("Import from Firefox after setup, recommended", "Reuses a signed-in host Firefox profile through one read-only import command."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
                 actions = ("browser", "manual", "finish")
         else:
             options = [("Import from Firefox, recommended", "Uses Firefox directly with no additional package.")]
@@ -5861,6 +5888,11 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
         action = actions[_wizard_ask_choice("How should cookie authentication be configured?", options)]
         if action in ("browser", "firefox", "chromium"):
             selected_browser = "firefox"
+            selected_host = None
+            if container_method:
+                selected_host = _wizard_select_container_firefox_host()
+                if selected_host is None:
+                    continue
             if action == "chromium":
                 if not _wizard_chromium_dependency_available():
                     print()
@@ -5871,14 +5903,15 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                         continue
                 browser_index = _wizard_ask_choice("Which Chromium browser should be imported?", [(browser_label(browser), _wizard_browser_description(browser)) for browser in chromium_browsers])
                 selected_browser = chromium_browsers[browser_index]
-            result.update({"browser": selected_browser, "source": f"browser import ({browser_label(selected_browser)})"})
+            result.update({"browser": selected_browser, "source": f"browser import ({browser_label(selected_browser)})", "host_os": selected_host})
             browser_location = f"{browser_label(selected_browser)} on the host" if method in ("docker", "compose") else browser_label(selected_browser)
             print()
             print(f"  Before import, open {SPOTIFY_WEB_LOGIN_URL} in {browser_location} and sign in to the Spotify account used for monitoring.")
             if method in ("docker", "compose"):
-                result.update({"source": "Firefox import pending a read-only host profile mount", "mount_required": True})
-                print("  Inside a container Firefox import needs the host profile mounted read-only.")
-                print("  Setup will show the separate one-time import command after saving.")
+                host_label = CONTAINER_FIREFOX_HOSTS[cast(str, selected_host)][0]
+                result.update({"source": f"Firefox import after setup from {host_label}", "mount_required": True})
+                print("  Firefox import will run after setup with the host profile mounted read-only.")
+                print(f"  Setup will show the one-time command for {host_label} after saving.")
                 print("  Chromium cookie import is unavailable inside containers.")
             return result
         if action == "existing":
@@ -6090,7 +6123,7 @@ def _wizard_collect_target_section(state: WizardSetupState, initial_target: Opti
 # Collects one authentication mode after clearing pending answers from that section
 def _wizard_collect_auth_section(state: WizardSetupState, method: str) -> None:
     _wizard_reset_section(state, WIZARD_AUTH_CONFIG_KEYS, ("SP_DC_COOKIE", "REFRESH_TOKEN"))
-    cookie_onboarding = "Firefox import through a one-time read-only host profile mount is recommended for Docker and Docker Compose." if method in ("docker", "compose") else "Browser import is the recommended local onboarding path and Firefox is the easiest source."
+    cookie_onboarding = "Firefox import after setup through a one-time read-only host profile mount is recommended for Docker and Docker Compose." if method in ("docker", "compose") else "Browser import is the recommended local onboarding path and Firefox is the easiest source."
     auth_mode = _wizard_ask_choice("Choose an authentication mode", [("Cookie mode using sp_dc, recommended", cookie_onboarding), ("Client mode using Spotify desktop credentials, advanced", "Uses exported Protobuf request bodies.")])
     if auth_mode == 0:
         state.config_values["TOKEN_SOURCE"] = "cookie"
@@ -6150,7 +6183,9 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
     print(f"  Token source: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
     if state.auth.get("mount_required"):
-        print("  Required action: mount the host Firefox profile read-only and run the separate import command shown below")
+        print("  Required action: run the host-specific Firefox import command shown after saving")
+    if state.auth.get("host_os"):
+        print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
     if state.auth.get("browser"):
         print(f"  Browser: {browser_label(state.auth['browser'])}")
     print(f"  Polling interval: {state.config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
@@ -6252,7 +6287,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"Dotenv:                 {env_path}\n")
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
-    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
     state = WizardSetupState(config_path, env_path, baseline_values, dict(baseline_values), {}, "", True, initial_auth, [], [])
     _wizard_collect_target_section(state, initial_target)
     _wizard_collect_auth_section(state, method)
@@ -6304,7 +6339,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     doctor_failed = False
     doctor_ran = False
     print()
-    if _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
+    if auth["complete"] and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
         doctor_ran = True
         if _wizard_load_effective_setup(config_path, env_path):
             try:
@@ -6319,29 +6354,41 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             doctor_failed = doctor_failed or any(check.status == "FAIL" for check in delivery_checks)
         else:
             doctor_failed = True
+    host_os = auth.get("host_os")
     doctor_target = None if persist_target else target
-    doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target)
+    doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target, host_os=host_os)
     monitor_target = None if persist_target else target
-    monitor_command = _wizard_action_command(method, "", config_path, env_path, monitor_target)
+    monitor_command = _wizard_action_command(method, "", config_path, env_path, monitor_target, host_os=host_os)
     print("\nNext steps\n")
-    _wizard_print_command("Check setup again:", doctor_command)
     if not auth["complete"]:
-        print("Setup was saved but authentication is incomplete.")
-        if method in ("docker", "compose"):
-            _wizard_print_command("Import Spotify login from Firefox with a read-only Linux host profile mount:", _wizard_firefox_import_cmd(method, env_path, exact=True))
-            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
-        else:
+        print("Setup was saved. Authentication still needs to be completed.\n")
+        if config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose") and auth.get("browser") and host_os:
+            host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
+            _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os))
+            _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os))
+        elif config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose"):
+            _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
+            print("Run setup again to select a host-specific Firefox import command.\n")
+        elif config_values["TOKEN_SOURCE"] == "cookie":
             _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
-        cookie_guide_url = CONTAINER_FIREFOX_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
-        print(f"Cookie guide: {cookie_guide_url}\n")
-    if method == "compose" and persist_target and auth["complete"] and not doctor_failed:
-        _wizard_print_command("Start monitoring:", "docker compose up --no-log-prefix")
+        else:
+            print("Complete advanced client authentication before running Doctor.")
+            print(f"Client guide: {CLIENT_GUIDE_URL}\n")
+        if config_values["TOKEN_SOURCE"] == "cookie":
+            cookie_guide_url = CONTAINER_FIREFOX_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
+            print(f"Cookie guide: {cookie_guide_url}\n")
+        _wizard_print_command("After authentication succeeds, verify authentication and the target:", doctor_command)
+    else:
+        _wizard_print_command("Check setup again:", doctor_command)
+    start_label = "After Doctor passes, start monitoring:" if not auth["complete"] or doctor_failed else "Start monitoring:"
+    if method == "compose" and persist_target:
+        _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
         if method == "compose" and not persist_target:
             print("docker compose up --no-log-prefix requires a persisted target. Use this direct command instead:")
         else:
-            print("Start monitoring:")
+            print(start_label)
         print(f"    {monitor_command}\n")
     print(f"Guide: {QUICK_START_GUIDE_URL}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
