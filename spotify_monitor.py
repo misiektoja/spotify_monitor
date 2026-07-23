@@ -6306,7 +6306,10 @@ def _wizard_review_setup(state: WizardSetupState, method: str) -> bool:
 def _wizard_launch_monitor(arguments: Sequence[str]) -> int:
     command = [str(argument) for argument in arguments]
     if platform.system() == "Windows":
-        return subprocess.run(command, check=False).returncode
+        try:
+            return subprocess.run(command, check=False).returncode
+        except KeyboardInterrupt:
+            return 0
     os.execv(command[0], command)
     return 0
 
