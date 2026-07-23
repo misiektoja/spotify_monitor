@@ -119,6 +119,38 @@ Spotify Monitor stores the imported `SP_DC_COOKIE` in `/data/.env`. Keep the sam
 
 Guided setup asks which host environment runs Docker then prints the matching command below. Doctor is deferred until the import succeeds so an expected missing cookie is not reported as a setup failure.
 
+#### Windows PowerShell
+
+Use Docker Desktop or another Docker-compatible runtime in Linux container mode. Firefox stores the profile root under `$env:APPDATA\Mozilla\Firefox`.
+
+Direct Docker:
+
+```powershell
+docker run --rm -it --init -v "${PWD}:/data:z" -v "$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+Docker Compose:
+
+```powershell
+docker compose run --rm -v "$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+#### Windows Command Prompt
+
+Use `%cd%` for the current project directory and `%APPDATA%` for the Firefox profile root.
+
+Direct Docker:
+
+```bat
+docker run --rm -it --init -v "%cd%:/data:z" -v "%APPDATA%\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
+Docker Compose:
+
+```bat
+docker compose run --rm -v "%APPDATA%\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+```
+
 #### Linux with a standard Firefox package
 
 Direct Docker:
@@ -181,9 +213,7 @@ Firefox works inside Docker because its cookie database can be mounted as a read
 
 Do not add `:z` or `:Z` to the whole Firefox profile mount. Those suffixes can change SELinux labels on the host files. If SELinux blocks the read-only mount, close Firefox and copy `cookies.sqlite` to a dedicated directory before mounting that copy.
 
-After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable, use the hidden [`--set-sp-dc`](configuration.md#manual-cookie-extraction) fallback.
-
-Firefox import after Docker setup is not currently offered for Windows or untested hosts. Setup returns to the authentication choices so you can enter `sp_dc` privately or finish without credentials.
+After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the hidden [`--set-sp-dc`](configuration.md#manual-cookie-extraction) fallback.
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
 
