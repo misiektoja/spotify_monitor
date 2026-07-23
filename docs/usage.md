@@ -89,6 +89,8 @@ Start the target saved by setup in the foreground:
 docker compose up --no-log-prefix
 ```
 
+This short command uses `/data/spotify_monitor.conf` and `/data/.env` from `docker-compose.yml`. If setup saved either file under another `/data` path, use the explicit `docker compose run` command printed by setup.
+
 For a background run and live logs:
 
 ```sh
