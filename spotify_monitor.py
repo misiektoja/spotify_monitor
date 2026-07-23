@@ -1815,7 +1815,7 @@ def validate_imported_sp_dc(sp_dc):
 
 
 # Runs extraction, validation, overwrite handling and atomic dotenv persistence
-def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None):
+def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None, config_path=None, target=None):
     destination = resolve_import_env_path(env_file)
     print(f"* Browser prerequisite: open {SPOTIFY_WEB_LOGIN_URL} in {browser_label(browser)} and sign in to the Spotify account used for monitoring")
     print(f"* Dotenv destination: {destination}")
@@ -1865,6 +1865,12 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     print("* Browser cookie import completed successfully")
     if TOKEN_SOURCE == "client":
         print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
+    selected_config = config_path or find_config_file()
+    method = _wizard_install_method()
+    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, target)
+    monitor_command = _wizard_action_command(method, "", selected_config, destination, target or "SPOTIFY_USER_URI_ID")
+    _wizard_print_command("Check authentication and the target:", doctor_command)
+    _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
 
 
@@ -5438,7 +5444,7 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
-def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None) -> str:
+def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
     selected_host = host_os or "linux"
     prefix = _wizard_cmd_prefix(method, exact=exact, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
@@ -5448,6 +5454,11 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, 
         profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
         prefix = f"docker compose run --rm -v {profile_mount} spotify_monitor"
     command = f"{prefix} --import-browser-cookie --browser firefox"
+    if target:
+        command += f" {_wizard_quote_argument(target)}"
+    if config_path is not None:
+        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+        command += f" --config-file {_wizard_quote_argument(selected_config)}"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
         command += f" --env-file {_wizard_quote_argument(selected_env)}"
@@ -5658,11 +5669,14 @@ def _wizard_ask_secret(question: str) -> str:
 
 
 # Resolves setup destinations without searching parent directories
-def _wizard_destinations(config_file=None, env_file=None):
+def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] = None):
     if env_file is not None and str(env_file).casefold() == "none":
         raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
-    config_path = Path(config_file or DEFAULT_CONFIG_FILENAME).expanduser().resolve()
-    env_path = Path(env_file or ".env").expanduser().resolve()
+    default_root = Path("/data") if method in ("docker", "compose") else Path.cwd()
+    config_path = Path(config_file) if config_file is not None else default_root / DEFAULT_CONFIG_FILENAME
+    env_path = Path(env_file) if env_file is not None else default_root / ".env"
+    config_path = config_path.expanduser().resolve()
+    env_path = env_path.expanduser().resolve()
     return config_path, env_path
 
 
@@ -6268,12 +6282,12 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
         print(f"Guide: {QUICK_START_GUIDE_URL}")
         raise SystemExit(1)
+    method = _wizard_install_method()
     try:
-        config_path, env_path = _wizard_destinations(config_file, env_file)
+        config_path, env_path = _wizard_destinations(config_file, env_file, method=method)
     except ValueError as exc:
         print(f"Setup cannot start: {exc}")
         raise SystemExit(1) from None
-    method = _wizard_install_method()
     print("\nSetup Wizard\n")
     print("This asks a few questions and writes a ready-to-run configuration.")
     print("Press Enter to accept the shown default. Ctrl+C cancels.\n")
@@ -6364,7 +6378,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print("Setup was saved. Authentication still needs to be completed.\n")
         if config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose") and auth.get("browser") and host_os:
             host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
-            _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os))
+            print(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n")
+            _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path, target=doctor_target))
             _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os))
         elif config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose"):
             _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
@@ -7363,7 +7378,8 @@ def main():
 
     stdout_bck = sys.stdout
 
-    clear_screen(CLEAR_SCREEN and sys.stdout.isatty())
+    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--doctor"))
+    clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
 
     print_startup_banner()
 
@@ -7928,7 +7944,7 @@ def main():
         if args.user_agent:
             USER_AGENT = args.user_agent
         try:
-            run_browser_cookie_import(browser=args.browser or "firefox", browser_profile=args.browser_profile, cookie_file=args.cookie_file, env_file=args.env_file, force=args.force)
+            run_browser_cookie_import(browser=args.browser or "firefox", browser_profile=args.browser_profile, cookie_file=args.cookie_file, env_file=args.env_file, force=args.force, config_path=args.config_file, target=args.user_id or TARGET_USER_URI_ID)
         except BrowserCookieImportError as exc:
             print_recovery_error(exc, "browser_import")
             sys.exit(1)
