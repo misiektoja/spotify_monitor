@@ -356,7 +356,8 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert import_mock.call_args.kwargs["browser"] == "firefox"
         output = capsys.readouterr().out
         assert monitor.SPOTIFY_WEB_LOGIN_URL in output
-        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n\n* Browser prerequisite: test guidance" in output
+        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}" in output
+        assert f"  Dotenv:        {env_path.resolve()}\n\n* Browser prerequisite: test guidance" in output
         assert "browser-private-value" not in output
 
 
@@ -670,6 +671,7 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
+        assert (directory / ".env").read_text(encoding="utf-8") == ""
         doctor_mock.assert_not_called()
         prompts = [call.args[0] for call in ask_mock.call_args_list]
         assert not any("Run doctor now" in prompt for prompt in prompts)
