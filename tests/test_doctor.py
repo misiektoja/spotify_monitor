@@ -597,6 +597,35 @@ def test_cli_doctor_without_target_bypasses_normal_startup():
     assert result.returncode == 0
     assert "connectivity gate called" not in result.stderr
     assert "monitor loop called" not in result.stderr
+    assert "After Doctor passes, start monitoring:" in result.stdout
+    assert "SPOTIFY_USER_URI_ID --env-file none" in result.stdout
+
+
+# Verifies a successful Compose Doctor command prints the matching target and file context
+def test_cli_doctor_success_prints_compose_monitoring_command():
+    setup = "runtime['run_doctor'] = lambda *args: 0; runtime['_wizard_install_method'] = lambda: 'compose';"
+    result = run_cli(["friend.user", "--doctor", "--env-file", "none"], setup)
+    assert result.returncode == 0
+    assert "After Doctor passes, start monitoring:" in result.stdout
+    assert "docker compose run --rm spotify_monitor friend.user --env-file none" in result.stdout
+    assert "--doctor" not in result.stdout.split("After Doctor passes, start monitoring:", 1)[1]
+
+
+# Verifies a target already saved in config is not replaced with a placeholder
+def test_doctor_monitoring_command_uses_saved_target(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monitor._wizard_print_monitor_after_doctor(tmp_path / "spotify_monitor.conf", tmp_path / ".env", target_is_saved=True)
+    output = capsys.readouterr().out
+    assert "SPOTIFY_USER_URI_ID" not in output
+    assert f"--config-file {tmp_path / 'spotify_monitor.conf'}" in output
+    assert f"--env-file {tmp_path / '.env'}" in output
+
+
+# Verifies a failed Doctor command does not suggest starting monitoring
+def test_cli_doctor_failure_does_not_print_monitoring_command():
+    result = run_cli(["friend.user", "--doctor", "--env-file", "none"], "runtime['run_doctor'] = lambda *args: 1;")
+    assert result.returncode == 1
+    assert "After Doctor passes, start monitoring:" not in result.stdout
 
 
 # Verifies contradictory doctor action flags are rejected
