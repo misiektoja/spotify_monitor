@@ -207,7 +207,7 @@ Spotify only shows a person's listening activity when both of these conditions a
 
 The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
 
-Firefox import is the recommended login path for local and container installs. Docker users mount the host Firefox profile read-only for one import command then reuse the cookie saved in `.env`. Hidden manual `sp_dc` entry remains available as a fallback. See [Container Operation](https://misiektoja.github.io/spotify_monitor/usage/#import-firefox-into-container-authentication) or the [full Quick Start guide](https://misiektoja.github.io/spotify_monitor/quick-start/) for details.
+Firefox import is the recommended login path for local and container installs. Docker setup asks for the host operating system and Firefox package then prints a matching one-time read-only import command. Later runs reuse the cookie saved in `.env`. Hidden manual `sp_dc` entry remains available as a fallback. See [Container Operation](https://misiektoja.github.io/spotify_monitor/usage/#import-firefox-into-container-authentication) or the [full Quick Start guide](https://misiektoja.github.io/spotify_monitor/quick-start/) for details.
 
 <a id="not-sure-which-command-you-need"></a>
 ### Not sure which command you need?
