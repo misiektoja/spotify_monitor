@@ -52,6 +52,8 @@ def test_install_method_command_prefixes(monkeypatch):
     assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "${PWD}:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("docker", host_os="macos") == 'docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("docker", host_os="linux") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "${PWD}:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="windows-powershell") == 'docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="windows-cmd") == 'docker run --rm -it --init -v "%cd%:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
 
 
@@ -106,7 +108,7 @@ def test_container_paths_already_inside_data_are_preserved():
 
 
 # Verifies Firefox import commands use the selected host profile layout
-@pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"')])
+@pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("windows-powershell", '"$env:APPDATA\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'), ("windows-cmd", '"%APPDATA%\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"')])
 def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os, source):
     monkeypatch.chdir(tmp_path)
     compose = monitor._wizard_firefox_import_cmd("compose", tmp_path / ".env", host_os=host_os)
@@ -114,6 +116,7 @@ def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypat
     assert compose == f"docker compose run --rm -v {source} spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env"
     assert f"-v {source} misiektoja/spotify-monitor" in docker
     assert ('--user "$(id -u):$(id -g)"' in docker) is host_os.startswith("linux")
+    assert ('-v "%cd%:/data:z"' in docker) is (host_os == "windows-cmd")
     assert docker.endswith("--import-browser-cookie --browser firefox --env-file /data/.env")
 
 
