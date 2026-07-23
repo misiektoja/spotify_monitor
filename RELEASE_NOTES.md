@@ -24,6 +24,7 @@ Version **3.1** makes **Docker onboarding portable across macOS, Linux and Windo
 - **BUGFIX:** Saved the **selected dotenv destination** in generated configuration so later config-only starts and secret reloads keep using it
 - **BUGFIX:** Printed an **explicit Compose monitoring command** when setup uses nondefault config or dotenv paths instead of falling back to hardcoded defaults
 - **BUGFIX:** Preserved the selected configuration path through the hidden **`--set-sp-dc` fallback** and its Doctor and monitoring guidance
+- **BUGFIX:** Prevented a **Windows traceback after Ctrl+C** when monitoring was started directly from setup. The setup parent now treats its duplicate console interrupt as the same clean termination already handled by the monitoring child
 
 # Changes in 3.0.1 (22 Jul 2026)
 
