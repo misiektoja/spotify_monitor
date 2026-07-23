@@ -1,8 +1,10 @@
 import builtins
+import json
 import os
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -25,9 +27,15 @@ def disable_webhook_collection_by_default(monkeypatch):
 
 
 # Creates one disposable wizard test directory under the project local directory
+@contextmanager
 def make_test_directory():
     ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
-    return tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT)
+    previous_directory = Path.cwd()
+    with tempfile.TemporaryDirectory(dir=ARTIFACT_ROOT) as directory_name:
+        try:
+            yield directory_name
+        finally:
+            os.chdir(previous_directory)
 
 
 # Installs sequential plain input responses and an interactive stdin marker
@@ -270,7 +278,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert error.value.code == 0
         config = config_path.read_text(encoding="utf-8")
         assert 'TARGET_USER_URI_ID = "target.user"' in config
-        assert f'DOTENV_FILE = "{env_path.resolve()}"' in config
+        assert f"DOTENV_FILE = {json.dumps(str(env_path.resolve()))}" in config
         assert "cookie-private-value" not in config
         assert dotenv_values(env_path, interpolate=False)["SP_DC_COOKIE"] == "cookie-private-value"
         output = capsys.readouterr().out
