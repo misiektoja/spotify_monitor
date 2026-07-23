@@ -39,16 +39,19 @@ def test_install_method_detects_docker_and_compose(monkeypatch):
     assert monitor._wizard_install_method() == "compose"
 
 
-# Verifies every installation method has the requested portable command prefix
+# Verifies container prefixes use host-side IDs only for selected Linux hosts
 def test_install_method_command_prefixes(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
-    monkeypatch.setattr(monitor.os, "getuid", lambda: 1234, raising=False)
-    monkeypatch.setattr(monitor.os, "getgid", lambda: 5678, raising=False)
+    monkeypatch.setattr(monitor.os, "getuid", lambda: 10001, raising=False)
     assert monitor._wizard_cmd_prefix("manual") == "python3 spotify_monitor.py"
     assert monitor._wizard_cmd_prefix("pip") == "spotify_monitor"
-    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user 1234:5678 -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    monkeypatch.setattr(monitor.os, "getuid", lambda: 1000, raising=False)
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="macos") == 'docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="linux") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
 
 
@@ -79,13 +82,15 @@ def test_container_action_commands_include_paths_and_target(tmp_path, monkeypatc
     assert command == "docker compose run --rm spotify_monitor --doctor target.user --config-file /data/spotify_monitor.conf --env-file /data/.env"
 
 
-# Verifies the Linux Firefox mount command places the volume before the container service or image
-def test_firefox_import_commands_mount_linux_profile(tmp_path, monkeypatch):
+# Verifies Firefox import commands use the selected host profile layout
+@pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"')])
+def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os, source):
     monkeypatch.chdir(tmp_path)
-    compose = monitor._wizard_firefox_import_cmd("compose", tmp_path / ".env")
-    docker = monitor._wizard_firefox_import_cmd("docker", tmp_path / ".env")
-    assert compose == 'docker compose run --rm -v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env'
-    assert '-v "$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" misiektoja/spotify-monitor' in docker
+    compose = monitor._wizard_firefox_import_cmd("compose", tmp_path / ".env", host_os=host_os)
+    docker = monitor._wizard_firefox_import_cmd("docker", tmp_path / ".env", host_os=host_os)
+    assert compose == f"docker compose run --rm -v {source} spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env"
+    assert f"-v {source} misiektoja/spotify-monitor" in docker
+    assert ('--user "$(id -u):$(id -g)"' in docker) is host_os.startswith("linux")
     assert docker.endswith("--import-browser-cookie --browser firefox --env-file /data/.env")
 
 
