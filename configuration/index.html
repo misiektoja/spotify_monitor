@@ -945,7 +945,7 @@
 <p><a id="configuration-file"></a></p>
 <h2 id="configuration-file">Configuration File<a class="headerlink" href="#configuration-file" title="Permanent link">&para;</a></h2>
 <p>You can pass most settings as command-line options or save them in a configuration file for later runs.</p>
-<p>The easiest way to create this file is <code>spotify_monitor --setup</code>. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first.</p>
+<p>The easiest way to create this file is <code>spotify_monitor --setup</code>. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first. Replacement builds a fresh configuration from defaults, so settings that are not shown by the wizard are reset unless you restore them from the backup.</p>
 <p>To edit every available setting yourself, generate a default configuration file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># On macOS, Linux or Windows Command Prompt (cmd.exe)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>spotify_monitor<span class="w"> </span>--generate-config<span class="w"> </span>&gt;<span class="w"> </span>spotify_monitor.conf
@@ -986,7 +986,7 @@
 <p><a id="spotify-sp_dc-cookie"></a></p>
 <h3 id="spotify-sp_dc-cookie">Spotify sp_dc Cookie<a class="headerlink" href="#spotify-sp_dc-cookie" title="Permanent link">&para;</a></h3>
 <p>This is the default method used to obtain a Spotify access token.</p>
-<p>For a local PyPI or downloaded-script installation, import a Firefox login. This works on macOS, Linux and Windows without an optional package. Docker and Docker Compose also support Firefox import through a one-time read-only host profile mount. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
+<p>For a local PyPI or downloaded-script installation, import a Firefox login. This works on macOS, Linux and Windows without an optional package. Docker and Docker Compose also support Firefox import through a one-time read-only host profile mount. Guided container setup asks for macOS or the matching Linux Firefox package then prints the correct command. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for details.</p>
 <p>Before importing, open <a href="https://open.spotify.com/">Spotify Web Player</a> in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.</p>
 <p><a id="which-browsers-are-supported"></a></p>
 <h4 id="which-browsers-are-supported">Which browsers are supported<a class="headerlink" href="#which-browsers-are-supported" title="Permanent link">&para;</a></h4>
@@ -1054,7 +1054,7 @@
 <li>Run the <code>--set-sp-dc</code> command for your installation and paste the value at the hidden prompt. The value will not appear on the screen.</li>
 </ol>
 <p>As an alternative, <a href="https://cookie-editor.com/">Cookie-Editor by cgagnier</a> can display the <code>sp_dc</code> value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.</p>
-<p>The recommended <code>--set-sp-dc</code> command validates the cookie with Spotify before changing <code>.env</code>. Existing cookie replacement requires confirmation. See the <a href="../quick-start/#manual-commands">copy-paste commands</a> for PyPI, downloaded-script, Docker Compose and Docker installations.</p>
+<p>The recommended <code>--set-sp-dc</code> command validates the cookie with Spotify before changing <code>.env</code>. Existing cookie replacement requires confirmation. See the <a href="../quick-start/#run-individual-commands">copy-paste commands</a> for PyPI, downloaded-script, Docker Compose and Docker installations.</p>
 <p>You can also provide <code>SP_DC_COOKIE</code> in these ways:</p>
 <ul>
 <li>Set it as an <a href="#storing-secrets">environment variable</a>, for example <code>export SP_DC_COOKIE="your_sp_dc_cookie_value"</code>.</li>
