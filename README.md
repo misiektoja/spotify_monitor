@@ -51,8 +51,6 @@ The setup command pulls the current image. Both commands keep configuration, pri
 
 In Windows Command Prompt replace `${PWD}` with `%cd%`. Windows hosts must use Linux containers.
 
-When setup asks how to import Firefox on Windows, choose PowerShell or Command Prompt. The wizard prints the matching direct Docker command with the current directory mounted at `/data` and the Firefox profile under `%APPDATA%\Mozilla\Firefox` mounted read-only. The same host choice also prints the matching Docker Compose import command.
-
 ##### Linux
 
 `--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit.
@@ -75,12 +73,14 @@ Download the Compose file:
 curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
 ```
 
-On a native Linux container engine, export your numeric user ID and group ID so files created in the current directory belong to you instead of `root`. Docker-compatible runtimes on macOS and Windows normally do not need these values.
+Linux container engine requires to export your numeric user ID and group ID so files created in the current directory belong to you instead of `root`.
 
 ```sh
 export SPOTIFY_MONITOR_UID="$(id -u)"
 export SPOTIFY_MONITOR_GID="$(id -g)"
 ```
+
+Docker-compatible runtimes on macOS and Windows normally do not need these values.
 
 Run setup by itself:
 
@@ -227,38 +227,7 @@ Firefox import is the recommended login path for local and container installs. D
 
 The short `docker compose up` command uses the default config and dotenv paths. Setup prints an explicit `docker compose run` command when you choose another path.
 
-<a id="manual-commands"></a>
-### Manual commands
-
-The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows. Docker users can copy the complete command prefix from the [Usage guide](https://misiektoja.github.io/spotify_monitor/usage/#command-format).
-
-Sign in to [Spotify Web Player](https://open.spotify.com/) with Firefox then import that login:
-
-```sh
-spotify_monitor --import-browser-cookie --browser firefox
-```
-
-If browser import is unavailable, enter `sp_dc` through a hidden prompt:
-
-```sh
-spotify_monitor --set-sp-dc
-```
-
-Start monitoring with a raw user ID, Spotify user URI or profile URL. A target saved by the wizard does not need to be repeated:
-
-```sh
-spotify_monitor <spotify_user_uri_id>
-spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id"
-spotify_monitor --config-file spotify_monitor.conf
-```
-
-Run the self-check or view every command:
-
-```sh
-spotify_monitor --doctor <spotify_user_uri_id>
-spotify_monitor --list-friends
-spotify_monitor --help
-```
+For complete copy-paste commands for every installation method, see [Run Individual Commands](https://misiektoja.github.io/spotify_monitor/quick-start/#run-individual-commands).
 
 For browser profiles, manual cookie extraction, Docker authentication, email and webhook setup, see [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/). For notification choices, playback controls and output files, see [Usage](https://misiektoja.github.io/spotify_monitor/usage/).
 
