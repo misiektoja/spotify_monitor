@@ -49,7 +49,9 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 
 The setup command pulls the current image. Both commands keep configuration, private values and output in the current directory.
 
-In Windows Command Prompt replace `${PWD}` with `%cd%`.
+In Windows Command Prompt replace `${PWD}` with `%cd%`. Windows hosts must use Linux containers.
+
+When setup asks how to import Firefox on Windows, choose PowerShell or Command Prompt. The wizard prints the matching direct Docker command with the current directory mounted at `/data` and the Firefox profile under `%APPDATA%\Mozilla\Firefox` mounted read-only. The same host choice also prints the matching Docker Compose import command.
 
 ##### Linux
 
