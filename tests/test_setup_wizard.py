@@ -184,7 +184,7 @@ def test_docker_cookie_setup_defaults_to_firefox_import(tmp_path, monkeypatch, c
     output = capsys.readouterr().out
     assert captured[0][1][0][0] == "Import from Firefox after setup, recommended"
     assert "read-only import command" in captured[0][1][0][1]
-    assert captured[1][0] == "Which operating system runs Docker and how was Firefox installed?"
+    assert captured[1][0] == "Which host environment runs Docker?"
     assert updates == {}
     assert result["complete"] is False
     assert result["mount_required"] is True
@@ -194,7 +194,7 @@ def test_docker_cookie_setup_defaults_to_firefox_import(tmp_path, monkeypatch, c
 
 
 # Verifies every supported container Firefox layout maps to stable host state
-@pytest.mark.parametrize("choice,expected", [(0, "macos"), (1, "linux"), (2, "linux-snap"), (3, "linux-flatpak")])
+@pytest.mark.parametrize("choice,expected", [(0, "macos"), (1, "linux"), (2, "linux-snap"), (3, "linux-flatpak"), (4, "windows-powershell"), (5, "windows-cmd")])
 def test_container_firefox_host_selection(monkeypatch, choice, expected):
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: choice)
     assert monitor._wizard_select_container_firefox_host() == expected
@@ -202,7 +202,7 @@ def test_container_firefox_host_selection(monkeypatch, choice, expected):
 
 # Verifies unsupported container hosts return to another authentication choice
 def test_unsupported_container_firefox_host_is_not_assumed(monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 4)
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 6)
     assert monitor._wizard_select_container_firefox_host() is None
     assert "not currently available for this host" in capsys.readouterr().out
 
