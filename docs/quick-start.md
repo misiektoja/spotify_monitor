@@ -3,34 +3,62 @@
 <a id="new-here-run-the-setup-wizard"></a>
 ## New here? Run the setup wizard
 
-First complete one method on the [Installation](installation.md) page. Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
+Quick Start configures an existing installation. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose). Complete that method's prerequisites and return here.
+
+Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
 For a local install, the wizard can check the setup and start monitoring immediately.
 
-Before using Docker Compose on a native Linux container engine, run the two `export` commands under [Install with Docker Compose](installation.md#docker-compose). They pass your numeric user and group IDs to the container so files created in the current directory belong to you. Docker-compatible runtimes on macOS and Windows normally do not need this step.
+Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.
 
-Use the command that matches how you run the tool:
+=== "PyPI"
 
-```sh
-# PyPI install
-spotify_monitor --setup
+    ```sh
+    spotify_monitor --setup
+    ```
 
-# Manual Python script on macOS or Linux
-python3 spotify_monitor.py --setup
+=== "Manual Python script on macOS or Linux"
 
-# Manual Python script on Windows
-python spotify_monitor.py --setup
+    ```sh
+    python3 spotify_monitor.py --setup
+    ```
 
-# Docker Compose (skip curl if you cloned the repository)
-curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
-docker compose run --rm spotify_monitor --setup
+=== "Manual Python script on Windows"
 
-# Docker image on macOS or Windows
-docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
+    ```powershell
+    python spotify_monitor.py --setup
+    ```
 
-# Docker image on Linux
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
-```
+=== "Docker image on macOS or Windows"
+
+    ```sh
+    docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
+    ```
+
+=== "Docker image on Linux"
+
+    ```sh
+    docker run --rm --pull=always -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
+    ```
+
+=== "Docker Compose"
+
+    Run setup from the directory used during installation. You do not need to download `docker-compose.yml` again.
+
+    On a native Linux container engine, run these shell commands in the same terminal immediately before setup unless the variables are already set there or you saved the numeric values in the Compose `.env` file during installation. For permanent project values, use the numeric `.env` form under [Install with Docker Compose](installation.md#docker-compose). Docker-compatible runtimes on macOS and Windows should skip this export block.
+
+    ```sh
+    export SPOTIFY_MONITOR_UID="$(id -u)"
+    export SPOTIFY_MONITOR_GID="$(id -g)"
+    ```
+
+    Then run setup by itself:
+
+    ```sh
+    docker compose run --rm --pull=always spotify_monitor --setup
+    ```
+
+Run interactive setup commands by themselves instead of including them in a multi-command paste.
 
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt replace `${PWD}` with `%cd%`. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
 
