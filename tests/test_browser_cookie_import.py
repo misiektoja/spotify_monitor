@@ -104,7 +104,7 @@ def test_profile_selection_by_directory_basename(tmp_path):
 
 
 # Verifies an explicit cookie database bypasses Firefox profile discovery
-def test_explicit_firefox_cookie_file_takes_precedence(tmp_path, monkeypatch, capsys):
+def test_explicit_firefox_cookie_file_takes_precedence_and_prints_followup_commands(tmp_path, monkeypatch, capsys):
     cookie_file = tmp_path / "explicit.sqlite"
     cookie_file.touch()
     destination = tmp_path / "import.env"
@@ -112,10 +112,17 @@ def test_explicit_firefox_cookie_file_takes_precedence(tmp_path, monkeypatch, ca
     monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="secret-cookie"))
     monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
 
-    monitor.run_browser_cookie_import(browser="firefox", browser_profile="ignored", cookie_file=str(cookie_file), env_file=str(destination), interactive=False)
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("TOKEN_SOURCE = 'cookie'\n", encoding="utf-8")
+    monitor.run_browser_cookie_import(browser="firefox", browser_profile="ignored", cookie_file=str(cookie_file), env_file=str(destination), interactive=False, config_path=config_path, target="target.user")
 
     assert dotenv_values(destination, interpolate=False)["SP_DC_COOKIE"] == "secret-cookie"
-    assert monitor.SPOTIFY_WEB_LOGIN_URL in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert monitor.SPOTIFY_WEB_LOGIN_URL in output
+    assert "Check authentication and the target:" in output
+    assert "--doctor target.user" in output
+    assert f"--config-file {config_path}" in output
+    assert "After Doctor passes, start monitoring:" in output
 
 
 # Verifies modern Firefox schemas prefer the newest nonexpired Spotify cookie
