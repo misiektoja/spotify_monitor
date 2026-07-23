@@ -68,6 +68,8 @@ The wizard recommends importing the monitoring account's saved Firefox login. On
 
 The wizard detects PyPI, a downloaded script, Docker or Docker Compose and prints matching commands. It also formats file paths for the current operating system.
 
+Container setup destinations must stay inside `/data`. That directory is the current host directory mounted into the temporary setup container, so files written there survive `--rm`. The wizard rejects paths such as `/tmp/spotify_monitor.conf` instead of printing a command for a different file.
+
 After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
 
 For Docker or Docker Compose, choose **Import from Firefox after setup**. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap or Linux with Flatpak. It then prints the matching command to mount the signed-in host profile read-only once and save `SP_DC_COOKIE` in the host `.env` file. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
@@ -134,7 +136,7 @@ docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest
 docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --set-sp-dc --env-file /data/.env
 ```
 
-`--set-sp-dc` does not accept the cookie as a command-line value. Use `--env-file PATH` to select another `.env` file. `--env-file none` is invalid because this command must save the validated cookie. The older `-u` and `--spotify-dc-cookie` options still work, but their values may appear in shell history or process listings.
+`--set-sp-dc` does not accept the cookie as a command-line value. Use `--env-file PATH` to select another `.env` file. Add `--config-file PATH` when its success output should preserve a nondefault configuration path. `--env-file none` is invalid because this command must save the validated cookie. The older `-u` and `--spotify-dc-cookie` options still work, but their values may appear in shell history or process listings.
 
 A webhook URL is the private address used to deliver notifications. Treat it like a password because anyone who has it may be able to post through it. Follow the [webhook setup steps](configuration.md#webhook-settings) then save the link with the command that matches your installation:
 
@@ -179,6 +181,8 @@ For Docker Compose, use `/data` paths inside the container. If the target was sa
 docker compose up --no-log-prefix
 docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
+
+`docker compose up --no-log-prefix` uses the default `/data/spotify_monitor.conf` and `/data/.env` paths declared in `docker-compose.yml`. If setup saved either file under another `/data` path, use the explicit `docker compose run` command printed by setup.
 
 For a direct `docker run` command on macOS or Windows PowerShell:
 
