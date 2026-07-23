@@ -47,11 +47,11 @@ def test_install_method_command_prefixes(monkeypatch):
     monkeypatch.setattr(monitor.os, "getuid", lambda: 10001, raising=False)
     assert monitor._wizard_cmd_prefix("manual") == "python3 spotify_monitor.py"
     assert monitor._wizard_cmd_prefix("pip") == "spotify_monitor"
-    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor'
     monkeypatch.setattr(monitor.os, "getuid", lambda: 1000, raising=False)
-    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor'
-    assert monitor._wizard_cmd_prefix("docker", host_os="macos") == 'docker run --rm -it --init -v "$PWD:/data:z" misiektoja/spotify-monitor'
-    assert monitor._wizard_cmd_prefix("docker", host_os="linux") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "${PWD}:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="macos") == 'docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor'
+    assert monitor._wizard_cmd_prefix("docker", host_os="linux") == 'docker run --rm -it --init --user "$(id -u):$(id -g)" -v "${PWD}:/data:z" misiektoja/spotify-monitor'
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
 
 
@@ -91,6 +91,20 @@ def test_container_setup_destinations_use_data_mount(tmp_path, monkeypatch, meth
     assert env_path == Path("/data/.env")
 
 
+# Verifies temporary container paths outside the bind mount are rejected
+@pytest.mark.parametrize("method", ["docker", "compose"])
+def test_container_setup_rejects_destinations_outside_data(method):
+    with pytest.raises(ValueError, match="must be inside /data"):
+        monitor._wizard_destinations("/tmp/custom.conf", "/data/.env", method=method)
+    with pytest.raises(ValueError, match="must be inside /data"):
+        monitor._wizard_destinations("/data/custom.conf", "/tmp/custom.env", method=method)
+
+
+# Verifies paths already expressed inside the bind mount remain unchanged
+def test_container_paths_already_inside_data_are_preserved():
+    assert monitor._wizard_container_path("/data/nested/custom.conf") == "/data/nested/custom.conf"
+
+
 # Verifies Firefox import commands use the selected host profile layout
 @pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"')])
 def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os, source):
@@ -117,6 +131,7 @@ def test_set_sp_dc_commands_use_container_data_paths(tmp_path, monkeypatch):
     assert monitor._wizard_set_sp_dc_cmd("pip") == "spotify_monitor --set-sp-dc"
     assert monitor._wizard_set_sp_dc_cmd("docker", tmp_path / ".env").endswith("misiektoja/spotify-monitor --set-sp-dc --env-file /data/.env")
     assert monitor._wizard_set_sp_dc_cmd("compose", tmp_path / ".env") == "docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env"
+    assert monitor._wizard_set_sp_dc_cmd("compose", tmp_path / ".env", config_path=tmp_path / "custom.conf") == "docker compose run --rm spotify_monitor --set-sp-dc --config-file /data/custom.conf --env-file /data/.env"
 
 
 # Verifies Chromium-family browser choices are removed on Windows and inside containers
