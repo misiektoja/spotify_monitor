@@ -5408,8 +5408,19 @@ def _wizard_cmd_prefix(method: str, exact: bool = False, host_os: Optional[str] 
     if method == "docker":
         linux_user_mapping = host_os in ("linux", "linux-snap", "linux-flatpak") or (host_os is None and hasattr(os, "getuid") and os.getuid() != 10001)
         user_flag = ' --user "$(id -u):$(id -g)"' if linux_user_mapping else ""
-        return f'docker run --rm -it --init{user_flag} -v "$PWD:/data:z" misiektoja/spotify-monitor'
+        return f'docker run --rm -it --init{user_flag} -v "${{PWD}}:/data:z" misiektoja/spotify-monitor'
     return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
+
+
+# Rejects container setup destinations that would disappear with the temporary container
+def _wizard_validate_destination(method: str, path, label: str) -> Path:
+    resolved = Path(path).expanduser().resolve()
+    if method in ("docker", "compose"):
+        try:
+            resolved.relative_to(Path("/data"))
+        except ValueError:
+            raise ValueError(f"{label} must be inside /data so it remains on the host after the setup container exits")
+    return resolved
 
 
 # Prints one labelled command with sibling-style indentation and spacing
@@ -5422,9 +5433,14 @@ def _wizard_print_command(label: str, command: str, suffix: str = "") -> None:
 def _wizard_container_path(path) -> str:
     resolved = Path(path).expanduser().resolve()
     try:
+        resolved.relative_to(Path("/data"))
+        return resolved.as_posix()
+    except ValueError:
+        pass
+    try:
         relative = resolved.relative_to(Path.cwd().resolve())
     except ValueError:
-        relative = Path(resolved.name)
+        raise ValueError(f"Container path '{resolved}' is outside the /data bind mount") from None
     return str(PurePosixPath("/data", *relative.parts))
 
 
@@ -5466,9 +5482,12 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, 
     return command
 
 
-# Returns the hidden manual sp_dc entry command for one installation method
-def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None) -> str:
+# Returns the hidden manual sp_dc entry command with optional setup context
+def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None) -> str:
     command = f"{_wizard_cmd_prefix(method, exact=exact, host_os=host_os)} --set-sp-dc"
+    if config_path is not None:
+        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+        command += f" --config-file {_wizard_quote_argument(selected_config)}"
     if env_path is not None:
         selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
         command += f" --env-file {_wizard_quote_argument(selected_env)}"
@@ -5676,15 +5695,15 @@ def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] 
     default_root = Path("/data") if method in ("docker", "compose") else Path.cwd()
     config_path = Path(config_file) if config_file is not None else default_root / DEFAULT_CONFIG_FILENAME
     env_path = Path(env_file) if env_file is not None else default_root / ".env"
-    config_path = config_path.expanduser().resolve()
-    env_path = env_path.expanduser().resolve()
+    config_path = _wizard_validate_destination(method or "manual", config_path, "Configuration destination")
+    env_path = _wizard_validate_destination(method or "manual", env_path, "Dotenv destination")
     return config_path, env_path
 
 
 # Confirms replacement or selects another config destination before secrets are collected
 def _wizard_choose_config_destination(config_path: Path) -> Path:
     selected = config_path
-    while selected.exists() and not _wizard_ask_yes_no(f"Configuration file '{selected}' exists. Replace it and create a timestamped backup?", default=False):
+    while selected.exists() and not _wizard_ask_yes_no(f"Configuration file '{selected}' exists. Replace it with a fresh configuration built from defaults and create a timestamped backup?", default=False):
         alternative = _wizard_ask_text("Another config destination or leave empty to cancel")
         if not alternative:
             print("Setup cancelled. Destination files were not changed.")
@@ -6169,16 +6188,26 @@ def _wizard_collect_webhook_section(state: WizardSetupState) -> None:
 
 # Lets the user change output files and recollects sections tied to a changed dotenv file
 def _wizard_collect_destination_section(state: WizardSetupState, method: str) -> None:
-    config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
-    selected_config = Path(config_text).expanduser().resolve()
+    while True:
+        config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
+        try:
+            selected_config = _wizard_validate_destination(method, config_text, "Configuration destination")
+            break
+        except ValueError as exc:
+            print(f"  {exc}.")
     if selected_config != state.config_path:
         state.config_path = _wizard_choose_config_destination(selected_config)
     while True:
         env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True)
-        if env_text.casefold() != "none":
+        if env_text.casefold() == "none":
+            print("  Setup needs a writable dotenv file and cannot use 'none'.")
+            continue
+        try:
+            selected_env = _wizard_validate_destination(method, env_text, "Dotenv destination")
             break
-        print("  Setup needs a writable dotenv file and cannot use 'none'.")
-    selected_env = Path(env_text).expanduser().resolve()
+        except ValueError as exc:
+            print(f"  {exc}.")
+    state.config_values["DOTENV_FILE"] = str(selected_env)
     if selected_env == state.env_path:
         return
     state.env_path = selected_env
@@ -6303,7 +6332,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
     initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
-    state = WizardSetupState(config_path, env_path, baseline_values, dict(baseline_values), {}, "", True, initial_auth, [], [])
+    config_values = dict(baseline_values)
+    config_values["DOTENV_FILE"] = str(env_path)
+    state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
     _wizard_collect_target_section(state, initial_target)
     _wizard_collect_auth_section(state, method)
     print()
@@ -6382,13 +6413,13 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
             print(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n")
             _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path, target=doctor_target))
-            _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os))
+            _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path))
         elif config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose"):
-            _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
+            _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
             print("Run setup again to select a host-specific Firefox import command.\n")
         elif config_values["TOKEN_SOURCE"] == "cookie":
             _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
-            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True))
+            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
         else:
             print("Complete advanced client authentication before running Doctor.")
             print(f"Client guide: {CLIENT_GUIDE_URL}\n")
@@ -6399,7 +6430,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     else:
         _wizard_print_command("Check setup again:", doctor_command)
     start_label = "After Doctor passes, start monitoring:" if not auth["complete"] or doctor_failed else "Start monitoring:"
-    if method == "compose" and persist_target:
+    compose_uses_default_files = method == "compose" and _wizard_container_path(config_path) == f"/data/{DEFAULT_CONFIG_FILENAME}" and _wizard_container_path(env_path) == "/data/.env"
+    if method == "compose" and persist_target and compose_uses_default_files:
         _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
         if method == "compose" and not persist_target:
@@ -7758,7 +7790,6 @@ def main():
             (args.doctor, "--doctor"),
             (args.version, "--version"),
             (args.generate_config, "--generate-config"),
-            (args.config_file, "--config-file"),
             (args.import_browser_cookie, "--import-browser-cookie"),
             (args.send_test_email, "--send-test-email"),
             (args.send_test_webhook, "--send-test-webhook"),
@@ -7790,7 +7821,7 @@ def main():
         if args.env_file is not None and args.env_file.casefold() == "none":
             parser.error("--set-sp-dc requires a writable dotenv destination and cannot use --env-file none")
         try:
-            run_set_sp_dc(env_file=args.env_file)
+            run_set_sp_dc(env_file=args.env_file, config_path=args.config_file)
         except BrowserCookieImportError as exc:
             print_recovery_error(exc, "set_sp_dc")
             sys.exit(1)
