@@ -1865,6 +1865,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     print("* Browser cookie import completed successfully")
     if TOKEN_SOURCE == "client":
         print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
+    print()
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, target)
