@@ -233,7 +233,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
     def test_version_is_offline(self):
         result = run_cli("--version")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("spotify_monitor.py v3.0.1", result.stdout)
+        self.assertIn("spotify_monitor.py v3.0.2", result.stdout)
 
     # Verifies config generation emits valid Python without network access or Spotipy
     def test_generate_config_is_offline(self):
