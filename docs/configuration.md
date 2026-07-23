@@ -71,7 +71,7 @@ Friend Activity is not available through Spotify's supported public Web API. Spo
 
 This is the default method used to obtain a Spotify access token.
 
-For a local PyPI or downloaded-script installation, import a Firefox login. This works on macOS, Linux and Windows without an optional package. Docker and Docker Compose also support Firefox import through a one-time read-only host profile mount. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for Linux, Snap, Flatpak and macOS commands.
+For a local PyPI or downloaded-script installation, import a Firefox login. This works on macOS, Linux and Windows without an optional package. Docker and Docker Compose also support Firefox import through a one-time read-only host profile mount. Guided container setup asks for macOS or the matching Linux Firefox package then prints the correct command. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for details.
 
 Before importing, open [Spotify Web Player](https://open.spotify.com/) in the browser you want to use and sign in to the Spotify account that follows the user you plan to monitor. Then return to the terminal and run the import command.
 
