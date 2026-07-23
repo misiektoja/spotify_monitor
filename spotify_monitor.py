@@ -866,6 +866,8 @@ CONTAINER_FIREFOX_HOSTS = {
     "linux": ("Linux with a standard Firefox package", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
     "linux-snap": ("Linux with Firefox from Snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
     "linux-flatpak": ("Linux with Firefox from Flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'),
+    "windows-powershell": ("Windows PowerShell", '"$env:APPDATA\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'),
+    "windows-cmd": ("Windows Command Prompt", '"%APPDATA%\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'),
 }
 
 
@@ -5408,7 +5410,8 @@ def _wizard_cmd_prefix(method: str, exact: bool = False, host_os: Optional[str] 
     if method == "docker":
         linux_user_mapping = host_os in ("linux", "linux-snap", "linux-flatpak") or (host_os is None and hasattr(os, "getuid") and os.getuid() != 10001)
         user_flag = ' --user "$(id -u):$(id -g)"' if linux_user_mapping else ""
-        return f'docker run --rm -it --init{user_flag} -v "${{PWD}}:/data:z" misiektoja/spotify-monitor'
+        current_directory = "%cd%" if host_os == "windows-cmd" else "${PWD}"
+        return f'docker run --rm -it --init{user_flag} -v "{current_directory}:/data:z" misiektoja/spotify-monitor'
     return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
 
 
@@ -5894,15 +5897,17 @@ def _wizard_select_container_firefox_host() -> Optional[str]:
         ("Linux with a standard Firefox package", "Use the profile under ~/.mozilla/firefox."),
         ("Linux with Firefox from Snap", "Use the profile under ~/snap/firefox."),
         ("Linux with Firefox from Flatpak", "Use the profile under ~/.var/app/org.mozilla.firefox."),
-        ("Windows or another system", "Firefox import after Docker setup is not currently available for this host."),
+        ("Windows PowerShell", "Use the Firefox profile under $env:APPDATA."),
+        ("Windows Command Prompt", "Use the Firefox profile under %APPDATA%."),
+        ("Another system", "Firefox import after Docker setup is not currently available for this host."),
     ]
-    selected = _wizard_ask_choice("Which operating system runs Docker and how was Firefox installed?", options)
+    selected = _wizard_ask_choice("Which host environment runs Docker?", options)
     if selected == len(options) - 1:
         print()
         print("  Firefox import after Docker setup is not currently available for this host.")
         print("  Choose private sp_dc entry or finish without credentials.")
         return None
-    return ("macos", "linux", "linux-snap", "linux-flatpak")[selected]
+    return ("macos", "linux", "linux-snap", "linux-flatpak", "windows-powershell", "windows-cmd")[selected]
 
 
 # Collects cookie-mode choices while keeping all secret values out of output
