@@ -136,9 +136,56 @@ def test_installation_docs_cover_all_delivery_and_upgrade_paths():
     assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt" in installation
     assert "pip install --upgrade -r requirements.txt" in installation
     assert "docker build --pull --tag spotify-monitor:local ." in installation
-    assert "Plain `docker run` reuses a cached image" in installation
+    assert "No separate image download is required" in installation
     assert "docker pull misiektoja/spotify-monitor:latest" in installation
     assert "docker compose pull" in installation
+
+
+# Verifies container onboarding prioritizes direct Docker and folds pulls into setup
+def test_container_onboarding_prioritizes_direct_docker_and_folds_pulls_into_setup():
+    installation = read_asset("docs/installation.md")
+    quick_start = read_asset("docs/quick-start.md")
+    compose = read_asset("docker-compose.yml")
+    assert installation.index("### Install from Docker Hub") < installation.index("### Install with Docker Compose")
+    direct_install = installation.split("### Install from Docker Hub", 1)[1].split("### Install with Docker Compose", 1)[0]
+    compose_install = installation.split("### Install with Docker Compose", 1)[1].split("### Build the Docker Image Locally", 1)[0]
+    assert "docker run --pull=always" in direct_install
+    assert "docker pull misiektoja/spotify-monitor:latest" not in direct_install
+    assert "\ndocker compose pull\n" not in compose_install
+    assert "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml" in compose_install
+    assert "curl -fsSLO" not in quick_start
+    assert "If you opened this page first" in quick_start
+    assert '=== "Manual Python script on macOS or Linux"' in quick_start
+    assert '=== "Manual Python script on Windows"' in quick_start
+    assert quick_start.index('=== "Docker image on macOS or Windows"') < quick_start.index('=== "Docker Compose"')
+    assert 'docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup' in quick_start
+    assert 'docker run --rm --pull=always -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup' in quick_start
+    compose_quick_start = quick_start.split('=== "Docker Compose"', 1)[1].split("Run interactive setup commands", 1)[0]
+    assert "run these shell commands in the same terminal immediately before setup" in compose_quick_start
+    assert 'export SPOTIFY_MONITOR_UID="$(id -u)"' in compose_quick_start
+    assert 'export SPOTIFY_MONITOR_GID="$(id -g)"' in compose_quick_start
+    assert "docker compose run --rm --pull=always spotify_monitor --setup" in compose_quick_start
+    assert "#   docker compose run --rm --pull=always spotify_monitor --setup" in compose
+    for relative_path in ("README.md", "docs/index.md"):
+        landing_page = read_asset(relative_path)
+        quick_install = landing_page.split("Quick Install & Run", 1)[1].split("<a id=\"features\"></a>", 1)[0]
+        assert quick_install.index("#### Docker image - fastest container setup") < quick_install.index("#### Docker Compose - shorter recurring commands")
+        assert "#### Python from PyPI" in quick_install
+        assert "##### macOS or Windows" in quick_install
+        assert "##### Linux" in quick_install
+        assert "\ndocker pull misiektoja/spotify-monitor:latest" not in quick_install
+        assert "\ndocker compose pull" not in quick_install
+        assert "docker run --rm --pull=always" in quick_install
+        assert "docker compose run --rm --pull=always spotify_monitor --setup" in quick_install
+        assert "pip install spotify_monitor\n```\n\nRun setup by itself:\n\n```sh\nspotify_monitor --setup" in quick_install
+        assert 'misiektoja/spotify-monitor:latest --setup\n```\n\nAfter setup finishes, start monitoring with the files created by the wizard:\n\n```sh\ndocker run --rm -it --init -v "${PWD}:/data:z"' in quick_install
+        assert 'misiektoja/spotify-monitor:latest --setup\n```\n\nAfter setup finishes, start monitoring:\n\n```sh\ndocker run --rm -it --init --user "$(id -u):$(id -g)"' in quick_install
+    readme = read_asset("README.md")
+    assert "# Manual Python script on macOS or Linux\npython3 spotify_monitor.py --setup" in readme
+    assert "# Manual Python script on Windows\npython spotify_monitor.py --setup" in readme
+    assert readme.index("# Docker image on macOS or Windows") < readme.index("# Docker Compose on native Linux only")
+    assert "# Docker image on macOS or Windows\ndocker run --rm --pull=always" in readme
+    assert "# Docker Compose on native Linux only\nexport SPOTIFY_MONITOR_UID" in readme
 
 
 # Verifies manual upgrade guidance repeats linked files and direct download commands
