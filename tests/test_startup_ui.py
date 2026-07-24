@@ -162,7 +162,7 @@ def test_no_argument_welcome_uses_spaced_quick_start_blocks():
 def test_version_output_is_machine_friendly():
     result = run_cli("--version")
     assert result.returncode == 0
-    assert result.stdout.splitlines() == ["spotify_monitor.py v3.1"]
+    assert result.stdout.splitlines() == ["spotify_monitor.py v3.1.1"]
     assert monitor.STARTUP_BANNER.splitlines()[1] not in result.stdout
 
 
