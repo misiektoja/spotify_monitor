@@ -105,7 +105,7 @@ def test_usage_docs_describe_default_container_playback_limitation():
 
 # Verifies setup and Compose docs explain persistent and custom file paths
 def test_docs_explain_setup_and_compose_file_paths():
-    quick_start = read_asset("docs/quick-start.md")
+    quick_start = read_asset("docs/setup-and-first-run.md")
     configuration = read_asset("docs/configuration.md")
     usage = read_asset("docs/usage.md")
     assert "Container setup destinations must stay inside `/data`" in quick_start
@@ -169,7 +169,7 @@ def test_installation_docs_cover_all_delivery_and_upgrade_paths():
 # Verifies container onboarding prioritizes direct Docker and folds pulls into setup
 def test_container_onboarding_prioritizes_direct_docker_and_folds_pulls_into_setup():
     installation = read_asset("docs/installation.md")
-    quick_start = read_asset("docs/quick-start.md")
+    quick_start = read_asset("docs/setup-and-first-run.md")
     compose = read_asset("docker-compose.yml")
     assert installation.index("### Install from Docker Hub") < installation.index("### Install with Docker Compose")
     direct_install = installation.split("### Install from Docker Hub", 1)[1].split("### Install with Docker Compose", 1)[0]
@@ -202,16 +202,16 @@ def test_container_onboarding_prioritizes_direct_docker_and_folds_pulls_into_set
         assert "\ndocker compose pull" not in quick_install
         assert "docker run --rm --pull=always" in quick_install
         assert "docker compose run --rm --pull=always spotify_monitor --setup" in quick_install
-        assert "pip install spotify_monitor\n```\n\nRun setup by itself:\n\n```sh\nspotify_monitor --setup" in quick_install
-        assert 'misiektoja/spotify-monitor:latest --setup\n```\n\nAfter setup finishes, start monitoring with the files created by the wizard:\n\n```sh\ndocker run --rm -it --init -v "${PWD}:/data:z"' in quick_install
-        assert 'misiektoja/spotify-monitor:latest --setup\n```\n\nAfter setup finishes, start monitoring:\n\n```sh\ndocker run --rm -it --init --user "$(id -u):$(id -g)"' in quick_install
+        assert "pip install spotify_monitor\n```\n\nRun setup wizard:\n\n```sh\nspotify_monitor --setup" in quick_install
+        assert 'docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup' in quick_install
+        assert 'docker run --rm --pull=always -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup' in quick_install
     readme = read_asset("README.md")
     assert "\n## Quick Start\n" not in readme
     assert '<a id="common-commands"></a>' in readme
     assert readme.index('<a id="features"></a>') < readme.index('<a id="before-monitoring"></a>') < readme.index('<a id="common-commands"></a>') < readme.index('<a id="documentation"></a>')
     assert "| Set up Spotify Monitor for the first time |" not in readme
-    assert "https://misiektoja.github.io/spotify_monitor/quick-start/#run-individual-commands" in readme
-    assert "https://misiektoja.github.io/spotify_monitor/quick-start/" in readme
+    assert "https://misiektoja.github.io/spotify_monitor/setup-and-first-run/#run-individual-commands" in readme
+    assert "https://misiektoja.github.io/spotify_monitor/setup-and-first-run/" in readme
     common_section = readme.split("## Common Commands", 1)[1].split('<a id="documentation"></a>', 1)[0]
     common_table = common_section.split("| I want to... | Run this |", 1)[1].split("\n\n", 1)[0]
     assert "The table uses PyPI commands." in common_section
@@ -290,7 +290,7 @@ def test_documentation_site_contract():
     mkdocs = read_asset("mkdocs.yml")
     workflow = read_asset(".github/workflows/docs.yml")
     assert "site_url: https://misiektoja.github.io/spotify_monitor/" in mkdocs
-    for page in ("index.md", "installation.md", "quick-start.md", "configuration.md", "usage.md", "troubleshooting.md", "debugging.md", "testing.md", "about.md"):
+    for page in ("index.md", "installation.md", "setup-and-first-run.md", "configuration.md", "usage.md", "troubleshooting.md", "debugging.md", "testing.md", "about.md"):
         assert f": {page}" in mkdocs
         assert (PROJECT_ROOT / "docs" / page).is_file()
     assert 'workflows: ["Publish to PyPI"]' in workflow
