@@ -127,13 +127,19 @@ Use `python spotify_monitor.py --version` on Windows.
 <a id="docker-image"></a>
 ### Install from Docker Hub
 
-The published [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor) image supports `linux/amd64` and `linux/arm64`:
+The published [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor) image supports `linux/amd64` and `linux/arm64`.
 
-No separate image download is required. Continue to [Quick Start](quick-start.md#new-here-run-the-setup-wizard). Its first-run command uses `docker run --pull=always` to pull the current image and start the setup wizard in one step.
+No separate image download is required. Its first-run command uses `docker run --pull=always` to pull the current image and start the setup wizard in one step, so for Docker installing and setting up are a single command:
+
+```sh
+docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
+```
+
+On a native Linux container engine, add `--user "$(id -u):$(id -g)"` immediately after `--init`. [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard) shows the exact command for macOS shells, Windows PowerShell and native Linux engines then explains what the wizard asks.
 
 Normal monitoring commands reuse the installed image and do not check for a newer release. The [upgrade instructions](#upgrade-a-direct-docker-installation) pull explicitly when you choose to upgrade.
 
-Normal runs make the current directory available as `/data` in the container. Configuration and output written there remain on the host after the temporary container stops. On a native Linux container engine, the command also passes your numeric user and group IDs so new files belong to you. [Quick Start](quick-start.md#new-here-run-the-setup-wizard) shows the complete commands for macOS shells, Windows PowerShell and native Linux engines.
+Normal runs make the current directory available as `/data` in the container. Configuration and output written there remain on the host after the temporary container stops. On a native Linux container engine, the command also passes your numeric user and group IDs so new files belong to you.
 
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt use `%cd%` for the current directory. Native Linux examples use `$PWD` and pass your numeric user and group IDs.
 
@@ -170,7 +176,13 @@ SPOTIFY_MONITOR_GID=1000
 
 The values above are only examples. Use the numbers returned on your system. The setup wizard keeps unrelated entries in this file. Docker-compatible runtimes on macOS and Windows normally handle bind-mount ownership, so users on those systems can usually skip this step. If `/data` is not writable, set the host user and group IDs as shown above.
 
-Compose makes the current host directory available as `/data` inside the container. This is called a bind mount. The setup wizard creates `spotify_monitor.conf` and `.env` there, so the files remain on your computer when the container is replaced. Keep this directory and continue with [Quick Start](quick-start.md#new-here-run-the-setup-wizard). Its Compose setup command pulls the current image with `--pull=always`, so no separate `docker compose pull` is needed during onboarding.
+Compose makes the current host directory available as `/data` inside the container. This is called a bind mount. The setup wizard creates `spotify_monitor.conf` and `.env` there, so the files remain on your computer when the container is replaced. From this directory your first command is the setup wizard:
+
+```sh
+docker compose run --rm --pull=always spotify_monitor --setup
+```
+
+The `--pull=always` flag pulls the current image first, so no separate `docker compose pull` is needed during onboarding. On a native Linux container engine, export the UID and GID shown above in the same terminal before you run setup. See [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard) for the wizard walkthrough.
 
 <a id="build-docker-locally"></a>
 ### Build the Docker Image Locally
@@ -187,7 +199,7 @@ To use this image through Compose, comment out `image:` in `docker-compose.yml` 
 <a id="next-step"></a>
 ## Next Step
 
-Continue to [Quick Start](quick-start.md). It shows the setup wizard command for every installation method then explains authentication and the first monitoring run.
+Continue to [Setup & First Run](setup-and-first-run.md). It shows the setup wizard command for every installation method then explains authentication and the first monitoring run.
 
 <a id="upgrading"></a>
 ## Upgrading
