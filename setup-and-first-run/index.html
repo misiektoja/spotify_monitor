@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://misiektoja.github.io/spotify_monitor/quick-start/">
+        <link rel="canonical" href="https://misiektoja.github.io/spotify_monitor/setup-and-first-run/">
       
       
         <link rel="prev" href="../installation/">
@@ -27,7 +27,7 @@
     
     
       
-        <title>Quick Start - spotify_monitor</title>
+        <title>Setup & First Run - spotify_monitor</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#quick-start" class="md-skip">
+        <a href="#setup-first-run" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Quick Start
+              Setup & First Run
             
           </span>
         </div>
@@ -332,7 +332,7 @@
   <span class="md-ellipsis">
     
   
-    Quick Start
+    Setup & First Run
   
 
     
@@ -350,7 +350,7 @@
   <span class="md-ellipsis">
     
   
-    Quick Start
+    Setup & First Run
   
 
     
@@ -376,10 +376,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#new-here-run-the-setup-wizard" class="md-nav__link">
+  <a href="#run-the-setup-wizard" class="md-nav__link">
     <span class="md-ellipsis">
       
-        New here? Run the setup wizard
+        Run the setup wizard
       
     </span>
   </a>
@@ -413,6 +413,17 @@
     <span class="md-ellipsis">
       
         Run Individual Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Step
       
     </span>
   </a>
@@ -616,10 +627,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#new-here-run-the-setup-wizard" class="md-nav__link">
+  <a href="#run-the-setup-wizard" class="md-nav__link">
     <span class="md-ellipsis">
       
-        New here? Run the setup wizard
+        Run the setup wizard
       
     </span>
   </a>
@@ -659,6 +670,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#next-step" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Step
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -676,7 +698,7 @@
 
 
   
-    <a href="https://github.com/misiektoja/spotify_monitor/edit/main/docs/quick-start.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/misiektoja/spotify_monitor/edit/main/docs/setup-and-first-run.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -684,10 +706,10 @@
   
 
 
-<h1 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h1>
+<h1 id="setup-first-run">Setup &amp; First Run<a class="headerlink" href="#setup-first-run" title="Permanent link">&para;</a></h1>
 <p><a id="new-here-run-the-setup-wizard"></a></p>
-<h2 id="new-here-run-the-setup-wizard">New here? Run the setup wizard<a class="headerlink" href="#new-here-run-the-setup-wizard" title="Permanent link">&para;</a></h2>
-<p>Quick Start configures an existing installation. If you opened this page first, choose <a href="../installation/#install-from-pypi">PyPI</a>, the <a href="../installation/#manual-installation">manual Python script</a>, the <a href="../installation/#docker-image">Docker image</a> or <a href="../installation/#docker-compose">Docker Compose</a>. Complete that method's prerequisites and return here.</p>
+<h2 id="run-the-setup-wizard">Run the setup wizard<a class="headerlink" href="#run-the-setup-wizard" title="Permanent link">&para;</a></h2>
+<p>This page assumes Spotify Monitor is already installed (see <a href="../installation/">Installation</a>). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose <a href="../installation/#install-from-pypi">PyPI</a>, the <a href="../installation/#manual-installation">manual Python script</a>, the <a href="../installation/#docker-image">Docker image</a> or <a href="../installation/#docker-compose">Docker Compose</a>, finish that method's steps then return here.</p>
 <p>Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in <code>spotify_monitor.conf</code>. Private values such as login cookies and webhook URLs go in <code>.env</code>.</p>
 <p>For a local install, the wizard can check the setup and start monitoring immediately.</p>
 <p>Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.</p>
@@ -733,7 +755,7 @@
 <p>Container setup destinations must stay inside <code>/data</code>. That directory is the current host directory mounted into the temporary setup container, so files written there survive <code>--rm</code>. The wizard rejects paths such as <code>/tmp/spotify_monitor.conf</code> instead of printing a command for a different file.</p>
 <p>After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.</p>
 <p>For Docker or Docker Compose, choose <strong>Import from Firefox after setup</strong>. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt. It then prints the matching command to mount the signed-in host profile read-only once and save <code>SP_DC_COOKIE</code> in the host <code>.env</code> file. Windows commands use the Firefox profile under <code>%APPDATA%\Mozilla\Firefox</code>. Use <a href="../configuration/#manual-cookie-extraction">manual extraction</a> only when that mount is unavailable.</p>
-<p>If the selected configuration contains <code>TARGET_USER_URI_ID</code>, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows quick-start guidance and offers the setup wizard.</p>
+<p>If the selected configuration contains <code>TARGET_USER_URI_ID</code>, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard.</p>
 <p>If the selected <code>.env</code> file already contains a saved <code>SP_DC_COOKIE</code>, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.</p>
 <p><a id="before-you-start"></a></p>
 <h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
@@ -858,6 +880,9 @@
 <p>To see all supported command-line arguments and flags:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>spotify_monitor<span class="w"> </span>--help
 </code></pre></div>
+<p><a id="next-step"></a></p>
+<h2 id="next-step">Next Step<a class="headerlink" href="#next-step" title="Permanent link">&para;</a></h2>
+<p>With authentication saved and a first run working, continue to <a href="../configuration/">Configuration</a> for targets, Spotify login, SMTP and secrets. See <a href="../usage/">Usage</a> for command formats, monitoring, container operation, notifications, playback and output.</p>
 
 
 

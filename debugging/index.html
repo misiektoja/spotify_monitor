@@ -316,14 +316,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../quick-start/" class="md-nav__link">
+      <a href="../setup-and-first-run/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Quick Start
+    Setup & First Run
   
 
     
@@ -707,7 +707,8 @@
 <p><strong>If the included TOTP values stop working:</strong> <code>--fetch-secrets</code> opens Spotify Web Player in a headless Playwright browser and extracts current values. <code>--download-secrets</code> reads <code>SECRET_CIPHER_DICT_URL</code> from an HTTP URL or local <code>file:</code> URL. Its default source is <a href="https://github.com/xyloflake/spot-secrets-go">xyloflake/spot-secrets-go</a>. These options affect only this test utility. The main Spotify Monitor tool uses <code>TOTP_VERSION</code> and <code>TOTP_SECRET_CIPHER_BYTES</code> instead.</p>
 </blockquote>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python3<span class="w"> </span>spotify_monitor_totp_test.py<span class="w"> </span>--sp-dc<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>--fetch-secrets
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python3<span class="w"> </span>spotify_monitor_totp_test.py<span class="w"> </span>--sp-dc<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>--download-secrets
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>spotify_monitor_totp_test.py<span class="w"> </span>--sp-dc<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>--download-secrets
 </code></pre></div>
 <p><a id="secret-key-extraction-from-spotify-web-player-bundles"></a></p>
 <h2 id="secret-key-extraction-from-spotify-web-player-bundles">Secret Key Extraction from Spotify Web Player Bundles<a class="headerlink" href="#secret-key-extraction-from-spotify-web-player-bundles" title="Permanent link">&para;</a></h2>
@@ -717,14 +718,14 @@
 <p><strong>Recommended:</strong> Use the <a href="#secret-key-extraction-via-docker">Docker method</a> if you do not already have Playwright and its browser files installed.</p>
 </blockquote>
 <p>Download the file in a browser or run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/debug/spotify_monitor_secret_grabber.py
 </code></pre></div>
 <p>Install requirements:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span>playwright
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>playwright<span class="w"> </span>install
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pip<span class="w"> </span>install<span class="w"> </span>playwright
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>playwright<span class="w"> </span>install
 </code></pre></div>
 <p>Run interactively (default output mode):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py
 </code></pre></div>
 <p>Example output:</p>
 <p align="center">
@@ -732,7 +733,7 @@
 </p>
 
 <p>Show help:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>-h
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>-h
 </code></pre></div></p>
 <hr />
 <p><a id="cli-output-modes"></a></p>
@@ -770,10 +771,10 @@
 </tbody>
 </table>
 <p>Save the version-to-byte mapping as JSON:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>--secretdict<span class="w"> </span>&gt;<span class="w"> </span>secretDict.json
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>--secretdict<span class="w"> </span>&gt;<span class="w"> </span>secretDict.json
 </code></pre></div>
 <p>Generate all three output files at once:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>--all
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python3<span class="w"> </span>spotify_monitor_secret_grabber.py<span class="w"> </span>--all
 </code></pre></div>
 <p>Default file paths and names can be configured directly in the <code>OUTPUT_FILES</code> dictionary at the top of the script.</p>
 <hr />
@@ -789,21 +790,21 @@
 <li>Raspberry Pi 4/5 (64-bit OS)</li>
 </ul>
 <p>Run interactively (default output mode):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber
 </code></pre></div>
 <p>Show help:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>-h
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>-h
 </code></pre></div></p>
 <p>Save the version-to-byte mapping as JSON:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>--secretdict<span class="w"> </span>&gt;<span class="w"> </span>secretDict.json
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>--secretdict<span class="w"> </span>&gt;<span class="w"> </span>secretDict.json
 </code></pre></div></p>
 <p>Generate all three output files at once:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-v<span class="w"> </span>.:/work<span class="w"> </span>-w<span class="w"> </span>/work<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>--all
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-v<span class="w"> </span>.:/work<span class="w"> </span>-w<span class="w"> </span>/work<span class="w"> </span>misiektoja/spotify-secrets-grabber<span class="w"> </span>--all
 </code></pre></div>
 <p><em>For SELinux hosts (Fedora/RHEL), use <code>-v .:/work:Z</code>.</em></p>
 <p><a id="optional-use-docker-compose-one-command-for-all-oss"></a>
 To use Docker Compose, run the included <a href="https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber_docker/compose.yaml">compose.yaml</a>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-secrets-grabber<span class="w"> </span>--all
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-secrets-grabber<span class="w"> </span>--all
 </code></pre></div>
 <p>Run the command from the directory that contains <code>compose.yaml</code>. The <code>.:/work</code> mount saves generated files in that host directory.</p>
 <hr />
