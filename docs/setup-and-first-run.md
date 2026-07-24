@@ -1,9 +1,9 @@
-# Quick Start
+# Setup & First Run
 
 <a id="new-here-run-the-setup-wizard"></a>
-## New here? Run the setup wizard
+## Run the setup wizard
 
-Quick Start configures an existing installation. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose). Complete that method's prerequisites and return here.
+This page assumes Spotify Monitor is already installed (see [Installation](installation.md)). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose), finish that method's steps then return here.
 
 Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
@@ -74,7 +74,7 @@ After saving authentication, the wizard checks whether the monitoring account fo
 
 For Docker or Docker Compose, choose **Import from Firefox after setup**. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt. It then prints the matching command to mount the signed-in host profile read-only once and save `SP_DC_COOKIE` in the host `.env` file. Windows commands use the Firefox profile under `%APPDATA%\Mozilla\Firefox`. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
 
-If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows quick-start guidance and offers the setup wizard.
+If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard.
 
 If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.
 
@@ -198,3 +198,8 @@ To see all supported command-line arguments and flags:
 ```sh
 spotify_monitor --help
 ```
+
+<a id="next-step"></a>
+## Next Step
+
+With authentication saved and a first run working, continue to [Configuration](configuration.md) for targets, Spotify login, SMTP and secrets. See [Usage](usage.md) for command formats, monitoring, container operation, notifications, playback and output.
