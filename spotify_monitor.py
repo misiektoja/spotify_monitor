@@ -2566,7 +2566,7 @@ def build_ntfy_image(image_url: str = "") -> Optional[bytes]:
 
 
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "") -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "") -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
@@ -2589,11 +2589,17 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     last_error: Any = None
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
+            ntfy_params = {"title": ntfy_title}
+            if ntfy_priority and isinstance(ntfy_priority, int):
+                ntfy_params["priority"] = ntfy_priority
+            if ntfy_tags and isinstance(ntfy_tags, str):
+                ntfy_params["tags"] = ntfy_tags
             if provider == "ntfy":
                 if use_ntfy_image:
-                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_image, params={"title": ntfy_title, "message": ntfy_message}, headers={**request_headers, "Content-Type": "image/jpeg", "X-Filename": NTFY_IMAGE_FILENAME}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                    ntfy_params["message"] = ntfy_message.encode("utf-8")
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_image, params=ntfy_params, headers={**request_headers, "Content-Type": "image/jpeg", "X-Filename": NTFY_IMAGE_FILENAME}, timeout=WEBHOOK_TIMEOUT_SECONDS)
                 else:
-                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
                 response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
