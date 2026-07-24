@@ -2,6 +2,12 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.1.1 (24 Jul 2026)
+
+**Bug fixes**:
+
+- **BUGFIX:** Updated the built-in guide link to the renamed **Setup & First Run** page so CLI help and recovery guidance no longer point to the retired Quick Start URL
+
 # Changes in 3.1 (23 Jul 2026)
 
 Version **3.1** makes **Docker onboarding portable across macOS, Linux and Windows**. Setup now centers on **host-aware Firefox authentication**, keeps configuration and secrets on the persistent **`/data` bind mount** and carries exact **Doctor and monitoring commands** through recovery.
