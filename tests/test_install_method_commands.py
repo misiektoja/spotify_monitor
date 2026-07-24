@@ -215,7 +215,7 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Advanced Spotify desktop client mode
   python3 spotify_monitor.py <spotify_user_id> --token-source client --login-request-body-file <protobuf_file>
 
-Guide: https://misiektoja.github.io/spotify_monitor/quick-start/
+Guide: https://misiektoja.github.io/spotify_monitor/setup-and-first-run/
 """
 
 
