@@ -11,8 +11,8 @@ Choose either the Python path or the container path.
 
 - [Python](https://www.python.org/downloads/) 3.9 or higher
 - Core libraries: `requests`, `python-dateutil`, `urllib3`, `pyotp`, `python-dotenv`, `wcwidth`, `Pillow`
-- `spotipy` is optional and is needed only for legacy OAuth metadata access
-- `pycookiecheat` is optional and is needed only to import cookies from Chrome, Brave or Chromium
+- [spotipy](https://github.com/spotipy-dev/spotipy) is optional and is needed only for legacy OAuth metadata access
+- [pycookiecheat](https://github.com/n8henrie/pycookiecheat) is optional and is needed only to import cookies from Chrome, Brave or Chromium
 
 **Container path** (Python is included in the image):
 
@@ -30,9 +30,9 @@ The examples use the `docker` command. Check that it works with `docker --versio
 
 Tested on:
 
-* **macOS**: Ventura, Sonoma, Sequoia, Tahoe
-* **Linux**: Raspberry Pi OS (Bullseye, Bookworm, Trixie), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2024/2025
-* **Windows**: 10, 11
+* **macOS**: Tahoe, Sequoia, Sonoma, Ventura
+* **Linux**: Raspberry Pi OS (Trixie, Bookworm, Bullseye), Ubuntu 24/25, Rocky Linux 8.x/9.x, Kali Linux 2026/2025/2024
+* **Windows**: 11, 10
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
 

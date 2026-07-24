@@ -25,7 +25,7 @@ Powerful real-time tracker for Spotify friend music activity: monitor listening 
 pip install spotify_monitor
 ```
 
-Run setup by itself:
+Run setup wizard:
 
 ```sh
 spotify_monitor --setup
@@ -41,28 +41,14 @@ Use a macOS shell or Windows PowerShell with a Docker-compatible runtime that pr
 docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-After setup finishes, start monitoring with the files created by the wizard:
-
-```sh
-docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
-```
-
-The setup command pulls the current image. Both commands keep configuration, private values and output in the current directory.
-
-In Windows Command Prompt replace `${PWD}` with `%cd%`. Windows hosts must use Linux containers.
+In Windows Command Prompt replace `${PWD}` with `%cd%` above.
 
 ##### Linux
 
-`--user "$(id -u):$(id -g)"` runs the container with your numeric user and group IDs. This lets the container write files that your host account can edit.
+Run the container with your numeric user and group IDs (`--user "$(id -u):$(id -g)"` below). This lets the container write files that your host account can edit.
 
 ```sh
 docker run --rm --pull=always -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --setup
-```
-
-After setup finishes, start monitoring:
-
-```sh
-docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf
 ```
 
 #### Docker Compose - shorter recurring commands
@@ -82,16 +68,10 @@ export SPOTIFY_MONITOR_GID="$(id -g)"
 
 Docker-compatible runtimes on macOS and Windows normally do not need these values.
 
-Run setup by itself:
+Run setup wizard:
 
 ```sh
 docker compose run --rm --pull=always spotify_monitor --setup
-```
-
-After setup finishes, start monitoring with the shorter recurring command:
-
-```sh
-docker compose up --no-log-prefix
 ```
 
 For the manual single-file method, optional extras and upgrade commands for every method, see [Installation](https://misiektoja.github.io/spotify_monitor/installation/).
@@ -146,8 +126,6 @@ Spotify only shows a person's listening activity when both of these conditions a
 2. That person has enabled listening activity sharing in Spotify.
 
 The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](https://misiektoja.github.io/spotify_monitor/configuration/#following-the-monitored-user).
-
-Firefox import is the recommended login path for local and container installs. See [Container Operation](https://misiektoja.github.io/spotify_monitor/usage/#import-firefox-into-container-authentication) for the host-specific import commands.
 
 <a id="common-commands"></a>
 ## Common Commands

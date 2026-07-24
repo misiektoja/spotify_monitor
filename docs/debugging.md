@@ -35,6 +35,9 @@ The command prints the access token response. Example output:
 
 ```sh
 python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --fetch-secrets
+```
+
+```sh
 python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --download-secrets
 ```
 
