@@ -747,7 +747,7 @@ nl_ch = "\n"
 
 PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
 DOCUMENTATION_URL = "https://misiektoja.github.io/spotify_monitor"
-QUICK_START_GUIDE_URL = DOCUMENTATION_URL + "/quick-start/"
+QUICK_START_GUIDE_URL = DOCUMENTATION_URL + "/setup-and-first-run/"
 INSTALLATION_GUIDE_URL = DOCUMENTATION_URL + "/installation/#requirements"
 CONFIG_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#configuration-file"
 COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-sp_dc-cookie"
