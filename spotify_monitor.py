@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.1
+v3.1.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -19,7 +19,7 @@ spotipy (optional, used when legacy OAuth app credentials are configured)
 pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
 
-VERSION = "3.1"
+VERSION = "3.1.1"
 
 
 # ---------------------------
