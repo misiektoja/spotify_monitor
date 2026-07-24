@@ -2566,7 +2566,7 @@ def build_ntfy_image(image_url: str = "") -> Optional[bytes]:
 
 
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "") -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "") -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
