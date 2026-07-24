@@ -140,7 +140,7 @@ Follow these steps:
 
 As an alternative, [Cookie-Editor by cgagnier](https://cookie-editor.com/) can display the `sp_dc` value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.
 
-The recommended `--set-sp-dc` command validates the cookie with Spotify before changing `.env`. Existing cookie replacement requires confirmation. See the [copy-paste commands](quick-start.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
+The recommended `--set-sp-dc` command validates the cookie with Spotify before changing `.env`. Existing cookie replacement requires confirmation. See the [copy-paste commands](setup-and-first-run.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
 
 You can also provide `SP_DC_COOKIE` in these ways:
 
