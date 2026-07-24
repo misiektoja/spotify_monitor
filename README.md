@@ -130,7 +130,7 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 <a id="common-commands"></a>
 ## Common Commands
 
-Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The table uses PyPI commands. For manual script, direct Docker and Docker Compose equivalents, see [Run Individual Commands](https://misiektoja.github.io/spotify_monitor/quick-start/#run-individual-commands).
+Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The table uses PyPI commands. For manual script, direct Docker and Docker Compose equivalents, see [Run Individual Commands](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/#run-individual-commands).
 
 | I want to... | Run this |
 | --- | --- |
@@ -144,7 +144,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 
 Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target.
 
-For authentication, saved targets, configuration backups and setup recovery, see the [full Quick Start guide](https://misiektoja.github.io/spotify_monitor/quick-start/).
+For authentication, saved targets, configuration backups and setup recovery, see the [full Setup & First Run guide](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/).
 
 For browser profiles, manual cookie extraction, Docker authentication, email and webhook setup, see [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/). For notification choices, playback controls and output files, see [Usage](https://misiektoja.github.io/spotify_monitor/usage/).
 
@@ -154,7 +154,7 @@ For browser profiles, manual cookie extraction, Docker authentication, email and
 Full documentation is available at **[misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/)**:
 
 - [Installation](https://misiektoja.github.io/spotify_monitor/installation/) - PyPI, manual script, Docker installation and upgrades
-- [Quick Start](https://misiektoja.github.io/spotify_monitor/quick-start/) - setup wizard, authentication and first run
+- [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) - setup wizard, authentication and first run
 - [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) - Spotify login, targets, SMTP, webhooks and secrets
 - [Usage](https://misiektoja.github.io/spotify_monitor/usage/) - command formats, monitoring, container operation, notifications, playback and output
 - [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) - the `--doctor` self-check and logging levels
