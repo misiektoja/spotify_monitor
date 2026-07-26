@@ -4142,12 +4142,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
-    if enabled_notifications and enabled_webhooks:
-        notification_state = "On (email: " + ", ".join(enabled_notifications) + " | webhook: " + ", ".join(enabled_webhooks) + ")"
-    elif enabled_webhooks:
-        notification_state = "On (webhook: " + ", ".join(enabled_webhooks) + ")"
-    else:
-        notification_state = "Off" if not enabled_notifications else "On (" + ", ".join(enabled_notifications) + ")"
+    notification_state_email =   "On (" + ", ".join(enabled_notifications) + ")" if enabled_notifications else "Off"
+    notification_state_webhook = "On (" + ", ".join(enabled_webhooks)      + ")" if enabled_webhooks      else "Off"
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     rows = [
         StartupSummaryRow("Target", str(target), concise=True),
@@ -4157,7 +4153,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Inactivity timer", display_time(SPOTIFY_INACTIVITY_CHECK), concise=False),
         StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
         StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
-        StartupSummaryRow("Notifications", notification_state, concise=True, full=False, log=False),
+        StartupSummaryRow("Notifications (email)", notification_state_email, concise=True, full=False, log=False),
+        StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True, full=False, log=False),
         StartupSummaryRow("Notify active", str(ACTIVE_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify inactive", str(INACTIVE_NOTIFICATION), concise=False),
         StartupSummaryRow("Notify monitored tracks", str(TRACK_NOTIFICATION), concise=False),
