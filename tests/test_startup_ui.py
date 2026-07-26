@@ -193,7 +193,8 @@ def test_concise_summary_core_rows(monkeypatch):
     assert "target.user" in lines[0]
     assert "* Authentication:" in output and "Cookie mode" in output
     assert "* Polling interval:" in output and "30 seconds" in output
-    assert "* Notifications:" in output and "Off" in output
+    assert any(l.startswith("* Notifications (email):") and "Off" in l for l in lines)
+    assert any(l.startswith("* Notifications (webhook):") and "Off" in l for l in lines)
     assert "* Output:" in output and "spotify_monitor_target.user.log" in output
     assert "* Config:" in output and "/data/spotify_monitor.conf" in output
     assert "* Dotenv:" in output and "/data/.env" in output
