@@ -2,6 +2,7 @@
 
 from io import StringIO
 from urllib.parse import quote
+from unittest.mock import patch
 
 import pytest
 from dotenv import dotenv_values
@@ -68,8 +69,8 @@ def test_utf8_truncation_preserves_valid_prefix(value: str, max_bytes: int):
 
 # Verifies configured secrets are always removed from diagnostic text
 @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", min_size=8, max_size=80), SAFE_TEXT, SAFE_TEXT)
-def test_error_sanitization_removes_configured_secret(monkeypatch: pytest.MonkeyPatch, secret: str, prefix: str, suffix: str):
-    monkeypatch.setattr(monitor, "SP_DC_COOKIE", secret)
-    sanitized = monitor.sanitize_error_text(f"{prefix}{secret}{suffix}")
+def test_error_sanitization_removes_configured_secret(secret: str, prefix: str, suffix: str):
+    with patch.object(monitor, "SP_DC_COOKIE", secret):
+        sanitized = monitor.sanitize_error_text(f"{prefix}{secret}{suffix}")
     assert secret not in sanitized
     assert "<redacted>" in sanitized
