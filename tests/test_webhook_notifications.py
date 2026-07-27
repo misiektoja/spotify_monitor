@@ -74,6 +74,7 @@ def configure_webhook(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [])
     monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "")
     monkeypatch.setattr(monitor, "NTFY_IMAGES", False)
+    monkeypatch.setattr(monitor, "NTFY_SHORT", False)
     monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", True)
 
 
@@ -194,6 +195,7 @@ def test_generated_config_includes_advanced_webhook_settings(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"Authorization": "Bearer private-header"})
     monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", {"content": "private-template"})
     monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [("title", "upper")])
+    monkeypatch.setattr(monitor, "NTFY_SHORT", True)
     rendered = monitor.generate_config_with_current_values()
     namespace = {}
     exec(rendered, namespace)
@@ -201,6 +203,7 @@ def test_generated_config_includes_advanced_webhook_settings(monkeypatch):
     assert namespace["WEBHOOK_HEADERS"] == {}
     assert namespace["WEBHOOK_TEMPLATE"]["allowed_mentions"] == {"parse": []}
     assert namespace["WEBHOOK_TRANSFORMS"] == [("title", "upper")]
+    assert namespace["NTFY_SHORT"] is True
     assert "private-header" not in rendered
     assert "private-template" not in rendered
 
@@ -389,7 +392,7 @@ def test_invalid_webhook_headers_are_rejected(monkeypatch, headers):
 
 
 # Verifies malformed advanced customization fails before a webhook request is attempted
-@pytest.mark.parametrize("setting,value", [("WEBHOOK_USERNAME", 3), ("WEBHOOK_AVATAR_URL", "http://example.test/avatar.png"), ("WEBHOOK_TEMPLATE", 3), ("WEBHOOK_TRANSFORMS", [("title", "missing_method")]), ("WEBHOOK_TRANSFORMS", [("title",)])])
+@pytest.mark.parametrize("setting,value", [("WEBHOOK_USERNAME", 3), ("WEBHOOK_AVATAR_URL", "http://example.test/avatar.png"), ("WEBHOOK_TEMPLATE", 3), ("WEBHOOK_TRANSFORMS", [("title", "missing_method")]), ("WEBHOOK_TRANSFORMS", [("title",)]), ("NTFY_SHORT", "yes")])
 def test_invalid_webhook_customization_is_rejected(monkeypatch, setting, value):
     configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor, setting, value)
@@ -405,6 +408,40 @@ def test_ntfy_message_is_bounded_by_utf8_bytes():
     assert title == "Title"
     assert len(message.encode("utf-8")) == monitor.NTFY_MESSAGE_LIMIT_BYTES - 1
     assert not message.endswith("\U0001f3b5")
+
+
+# Verifies compact ntfy playback bodies preserve metadata with or without a playlist
+@pytest.mark.parametrize("playlist,expected", [("", "Track\nArtist\nAlbum"), ("Playlist", "Track\nArtist\nAlbum\n[Playlist]")])
+def test_short_ntfy_body_keeps_non_playlist_metadata(playlist, expected):
+    assert monitor.build_short_ntfy_body("Track", "Artist", "Album", playlist) == expected
+
+
+# Verifies compact notification durations use abbreviated time units
+def test_short_ntfy_duration_uses_abbreviated_units():
+    assert monitor.calculate_timespan(90061, 0, short=True) == "1 day, 1 hr, 1 min"
+
+
+# Verifies valid ntfy priority and tags are sent as native query parameters
+def test_ntfy_metadata_is_sent_as_query_parameters(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.example.test/private-topic")
+    webhook_post = Mock(return_value=FakeResponse(200))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song", ntfy_priority=5, ntfy_tags=" warning,musical_note ") == 0
+    assert webhook_post.call_args.kwargs["params"] == {"title": "Title", "priority": 5, "tags": "warning,musical_note"}
+
+
+# Verifies invalid ntfy metadata fails before a webhook request is attempted
+@pytest.mark.parametrize("priority,tags", [(-1, ""), (6, ""), (True, ""), (0, ["warning"]), (0, "warning\nalert")])
+def test_invalid_ntfy_metadata_is_rejected(monkeypatch, priority, tags):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.example.test/private-topic")
+    webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song", ntfy_priority=priority, ntfy_tags=tags) == 1
+    webhook_post.assert_not_called()
 
 
 # Verifies unsupported webhook providers fail before any request is attempted
@@ -454,6 +491,18 @@ def test_notification_channels_are_independent(monkeypatch):
     assert monitor.send_notification_channels("song", "Title", "Body", email_enabled=False, webhook_enabled=True) == (False, True)
     email.assert_not_called()
     webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="")
+
+
+# Verifies compact content is ntfy-only and missing compact fields fall back to normal content
+@pytest.mark.parametrize("provider,notification_type,subject_short,body_short,expected_subject,expected_body", [("ntfy", "song", "Short title", "Short body", "Short title", "Short body"), ("ntfy", "error", "", "", "Normal title", "Normal body"), ("discord", "song", "Short title", "Short body", "Normal title", "Normal body")])
+def test_short_notification_content_is_ntfy_only_with_fallbacks(monkeypatch, provider, notification_type, subject_short, body_short, expected_subject, expected_body):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(monitor, "NTFY_SHORT", True)
+    webhook = Mock(return_value=0)
+    monkeypatch.setattr(monitor, "send_webhook", webhook)
+    assert monitor.send_notification_channels(notification_type, "Normal title", "Normal body", webhook_enabled=True, subject_short=subject_short, body_short=body_short) == (False, True)
+    webhook.assert_called_once_with(expected_subject, expected_body, notification_type, force=True, image_url="", ntfy_priority=0, ntfy_tags="")
 
 
 # Verifies the recommended wizard preset stores the URL privately without contacting it
