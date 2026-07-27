@@ -121,25 +121,23 @@ ERROR_NOTIFICATION = True
 
 # ---------------------------------------------------------------------
 
-# Webhook alerts through Discord or ntfy
-# Available providers: discord, ntfy
-# Discord URL: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL
-# ntfy URL: complete topic URL such as https://ntfy.sh/your-private-topic
-# Store WEBHOOK_URL in an environment variable or dotenv file because this private link can send messages through the service
+# Webhook notifications through Discord or ntfy
+
+# Master switch for the webhook event settings below
+# Can also be enabled via the --webhook flag
 WEBHOOK_ENABLED = False
-WEBHOOK_URL = "your_webhook_url"
+
+# Service used to deliver webhook notifications: "discord" or "ntfy"
 WEBHOOK_PROVIDER = "discord"
+
+# Private destination used to send webhook notifications
+# Discord: Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL
+# ntfy: complete topic URL such as https://ntfy.sh/your-private-topic
+# Prefer --set-webhook-url, an environment variable or a dotenv file instead of storing this private URL here
+WEBHOOK_URL = "your_webhook_url"
+
+# Discord display name (leave empty to use the webhook default)
 WEBHOOK_USERNAME = "Spotify Monitor"
-
-# Optional static request headers for advanced webhook integrations
-# Prefer NTFY_ACCESS_TOKEN in an environment variable or dotenv file for ntfy Bearer authentication
-WEBHOOK_HEADERS = {}
-NTFY_ACCESS_TOKEN = ""
-
-# Attach playlist or album artwork to supported ntfy alerts
-# Set to False to keep ntfy alerts text-only
-# Image preparation or delivery failures fall back to text
-NTFY_IMAGES = True
 
 # Whether to send a webhook alert when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False
@@ -158,6 +156,17 @@ WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
 # Whether to send a webhook alert on monitoring errors
 WEBHOOK_ERROR_NOTIFICATION = True
+
+# Optional static request headers for advanced webhook integrations
+WEBHOOK_HEADERS = {}
+
+# Optional ntfy access token for Bearer authentication
+# Prefer an environment variable or dotenv file instead of storing this token here
+NTFY_ACCESS_TOKEN = ""
+
+# Whether to attach playlist or album artwork to supported ntfy alerts
+# Image preparation or delivery failures fall back to text
+NTFY_IMAGES = True
 
 # How often to check for user activity; in seconds
 # Can also be set using the -c flag
