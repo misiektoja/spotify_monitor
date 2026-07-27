@@ -200,17 +200,19 @@ def test_concise_summary_core_rows(monkeypatch):
     assert "* Metadata backend:" in output and "web player" in output
 
 
-# Verifies concise notification rows keep email and webhook states independent
+# Verifies concise and complete notification rows keep email and webhook states independent
 @pytest.mark.parametrize("email_enabled,webhook_category_enabled,webhook_master_enabled,expected_email,expected_webhook", [(False, False, False, "Off", "Off"), (True, False, False, "On (active, monitored tracks)", "Off"), (False, True, True, "Off", "On (active, errors)"), (True, True, True, "On (active, monitored tracks)", "On (active, errors)"), (False, True, False, "Off", "Off")])
-def test_concise_summary_notification_channels(monkeypatch, email_enabled, webhook_category_enabled, webhook_master_enabled, expected_email, expected_webhook):
+def test_startup_summary_notification_channels(monkeypatch, email_enabled, webhook_category_enabled, webhook_master_enabled, expected_email, expected_webhook):
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", email_enabled)
     monkeypatch.setattr(monitor, "TRACK_NOTIFICATION", email_enabled)
     monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", webhook_category_enabled)
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", webhook_category_enabled)
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", webhook_master_enabled)
-    notification_lines = [line for line in emit_to_string(summary_rows()).splitlines() if line.startswith("* Notifications (")]
-    assert notification_lines == [f"* Notifications (email):        {expected_email}", f"* Notifications (webhook):      {expected_webhook}"]
+    expected_lines = [f"* Notifications (email):        {expected_email}", f"* Notifications (webhook):      {expected_webhook}"]
+    for show_full in (False, True):
+        notification_lines = [line for line in emit_to_string(summary_rows(), show_full=show_full).splitlines() if line.startswith("* Notifications (")]
+        assert notification_lines == expected_lines
 
 
 # Verifies disabled advanced defaults stay out of the concise view
@@ -246,11 +248,9 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", True)
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
     output = emit_to_string(summary_rows(), show_full=True)
-    assert "Webhook enabled" in output
-    provider_line = next(line for line in output.splitlines() if "Webhook provider:" in line)
-    alerts_line = next(line for line in output.splitlines() if "Webhook alerts:" in line)
-    assert provider_line.index("discord") == 32
-    assert alerts_line.index("active, errors") == 32
+    assert "* Notifications (webhook):      On (active, errors)" in output
+    assert "Webhook enabled" not in output
+    assert "Webhook provider" not in output
     assert "known-webhook-secret" not in output
 
 
@@ -274,8 +274,10 @@ def test_default_terminal_is_concise_and_full_summary_reaches_log(monkeypatch, t
     terminal_output = terminal.getvalue()
     assert "Error retry timer" not in terminal_output
     assert "Error retry timer" in log_output
-    assert "Notify active" in log_output
-    assert "Notifications:" not in log_output
+    assert "* Notifications (email):" in log_output
+    assert "* Notifications (webhook):" in log_output
+    assert "Notify active" not in log_output
+    assert "Webhook enabled" not in log_output
     assert log_output.count("* Target:") == 1
 
 
@@ -289,7 +291,10 @@ def test_verbose_and_debug_terminal_receive_full_summary(monkeypatch, mode_name)
     error_retry_line = next(line for line in output.splitlines() if "Error retry timer:" in line)
     assert error_retry_line.index("3 minutes") == 32
     assert "Error retry timer" in output
-    assert "Notify active" in output
+    assert "* Notifications (email):" in output
+    assert "* Notifications (webhook):" in output
+    assert "Notify active" not in output
+    assert "Webhook enabled" not in output
     assert "More details" not in output
 
 
