@@ -348,7 +348,7 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 | Monitored track, playlist or album plays | `WEBHOOK_TRACK_NOTIFICATION` | `--webhook-track` |
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
-| Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Disable with `--no-webhook-error-notify` |
+| Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Enable with `--webhook-errors` or disable with `--no-webhook-error-notify` |
 
 For example, this sends a webhook alert for every song change during one run:
 
@@ -356,7 +356,15 @@ For example, this sends a webhook alert for every song change during one run:
 spotify_monitor <spotify_user_uri_id> --webhook-song-changes
 ```
 
-Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Use `--webhook-provider {discord,ntfy}` to override the configured request format. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+
+The recommended way to save a private destination is still the hidden `--set-webhook-url` command. For automation or one-time testing, `--webhook-url URL` overrides the destination without changing `.env`:
+
+```sh
+spotify_monitor <spotify_user_uri_id> --webhook-provider ntfy --webhook-url "https://ntfy.sh/your-private-topic" --webhook-song-changes
+```
+
+A URL passed on the command line may remain visible in shell history or process listings. See [Webhook Settings](configuration.md#webhook-settings) for the setup wizard, advanced payload templates and dynamic headers.
 
 <a id="csv-export"></a>
 ## CSV Export
