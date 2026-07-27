@@ -2,6 +2,19 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.2 (TBD)
+
+Version **3.2** adds flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
+
+**Features and improvements**:
+
+- **NEW:** Added `--webhook-provider {discord,ntfy}` to override the configured request format for one run
+- **NEW:** Added `--webhook-url URL` for automation and one-time delivery checks while retaining the hidden `--set-webhook-url` command as the recommended way to save private destinations
+- **NEW:** Added `--webhook-errors` so configurations with error alerts disabled can enable them for one run. `--no-webhook-error-notify` remains available for the opposite override
+- **NEW:** Added `WEBHOOK_AVATAR_URL` and customizable `WEBHOOK_TEMPLATE` payloads for Discord-format integrations, plus `WEBHOOK_TRANSFORMS` and placeholder expansion in `WEBHOOK_HEADERS` for Discord and ntfy
+- **NEW:** Added `NTFY_SHORT` for compact ntfy activity alerts on smaller screens while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
+- **IMPROVE:** Added validation for webhook avatar URLs, templates and transformations during Doctor checks and before delivery. Expanded headers are validated again so placeholders cannot introduce invalid values or line breaks
+
 # Changes in 3.1.1 (24 Jul 2026)
 
 **Bug fixes**:

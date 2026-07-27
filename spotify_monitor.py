@@ -221,6 +221,10 @@ NTFY_ACCESS_TOKEN = ""
 # Image preparation or delivery failures fall back to text
 NTFY_IMAGES = True
 
+# Whether to use compact ntfy alert titles and bodies for smaller screens
+# Discord webhook and email content remain unchanged
+NTFY_SHORT = False
+
 # ----------------------------
 # Monitoring Settings
 # ----------------------------
@@ -675,6 +679,7 @@ WEBHOOK_TEMPLATE = {}
 WEBHOOK_TRANSFORMS = []
 NTFY_ACCESS_TOKEN = ""
 NTFY_IMAGES = False
+NTFY_SHORT = False
 WEBHOOK_ACTIVE_NOTIFICATION = False
 WEBHOOK_INACTIVE_NOTIFICATION = False
 WEBHOOK_TRACK_NOTIFICATION = False
@@ -902,7 +907,7 @@ from io import BytesIO
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import secrets
-from typing import Any, Callable, List, Optional, Sequence, cast
+from typing import Any, Callable, List, Optional, Sequence, Union, cast
 from email.utils import parseaddr, parsedate_to_datetime
 
 import urllib3
@@ -2280,11 +2285,15 @@ def display_time(seconds, granularity=2):
 
 
 # Calculates time span between two timestamps, accepts timestamp integers, floats and datetime objects
-def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True, show_minutes=True, show_seconds=True, granularity=3):
+def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True, show_minutes=True, show_seconds=True, granularity=3, short=False):
     result = []
     intervals = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds']
+    intervals_short = ['yrs', 'mths', 'wks', 'days', 'hrs', 'mins', 'secs']
     ts1 = timestamp1
     ts2 = timestamp2
+
+    if short:
+        intervals = intervals_short
 
     if type(timestamp1) is int:
         dt1 = datetime.fromtimestamp(int(ts1))
@@ -2534,6 +2543,8 @@ def validate_webhook_customization(provider: Any = None) -> Optional[str]:
             return "WEBHOOK_AVATAR_URL must contain a complete HTTPS link without embedded credentials"
         if not isinstance(WEBHOOK_TEMPLATE, (dict, list, str)):
             return "WEBHOOK_TEMPLATE must be a dictionary, list or string"
+    if not isinstance(NTFY_SHORT, bool):
+        return "NTFY_SHORT must be a boolean"
     if not isinstance(WEBHOOK_TRANSFORMS, (list, tuple)):
         return "WEBHOOK_TRANSFORMS must be a list or tuple"
     for index, transform in enumerate(WEBHOOK_TRANSFORMS):
@@ -2599,6 +2610,25 @@ def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
     safe_message = truncate_utf8_bytes(sanitize_error_text(description), NTFY_MESSAGE_LIMIT_BYTES)
     return safe_title, safe_message
+
+
+# Builds one compact ntfy playback body with an optional playlist name
+def build_short_ntfy_body(track: str, artist: str, album: str, playlist: str = "") -> str:
+    lines = [track, artist, album]
+    if playlist:
+        lines.append(f"[{playlist}]")
+    return "\n".join(lines)
+
+
+# Returns a validation error for unsupported ntfy priority or tag values
+def validate_ntfy_metadata(priority: Any, tags: Any) -> Optional[str]:
+    if not isinstance(priority, int) or isinstance(priority, bool) or not 0 <= priority <= 5:
+        return "ntfy priority must be 0 to omit it or an integer from 1 through 5"
+    if not isinstance(tags, str):
+        return "ntfy tags must be a comma-separated string"
+    if "\r" in tags or "\n" in tags:
+        return "ntfy tags must not contain line breaks"
+    return None
 
 
 # Returns a safe validation error for one custom webhook header mapping
@@ -2725,7 +2755,7 @@ def build_ntfy_image(image_url: str = "") -> Optional[bytes]:
 
 
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "") -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "") -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     if not validate_webhook_url():
@@ -2734,6 +2764,10 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     provider = normalized_webhook_provider()
     if not provider:
         print_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
+        return 1
+    metadata_error = validate_ntfy_metadata(ntfy_priority, ntfy_tags) if provider == "ntfy" else None
+    if metadata_error is not None:
+        print_recovery_error(context="webhook_config", detail=metadata_error)
         return 1
     customization_error = validate_webhook_customization(provider)
     if customization_error is not None:
@@ -2754,14 +2788,21 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     ntfy_title, ntfy_message = build_ntfy_webhook_message(str(webhook_values["title"]), str(webhook_values["description"])) if provider == "ntfy" else ("", "")
     ntfy_image = build_ntfy_image(image_url) if provider == "ntfy" and NTFY_IMAGES and image_url else None
     use_ntfy_image = ntfy_image is not None
+    ntfy_params: dict[str, Union[str, int]] = {"title": ntfy_title}
+    if provider == "ntfy" and ntfy_priority:
+        ntfy_params["priority"] = ntfy_priority
+    if provider == "ntfy" and ntfy_tags.strip():
+        ntfy_params["tags"] = ntfy_tags.strip()
     last_error: Any = None
     for attempt in range(WEBHOOK_MAX_ATTEMPTS):
         try:
             if provider == "ntfy":
                 if use_ntfy_image:
-                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_image, params={"title": ntfy_title, "message": ntfy_message}, headers={**request_headers, "Content-Type": "image/jpeg", "X-Filename": NTFY_IMAGE_FILENAME}, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                    image_params = dict(ntfy_params)
+                    image_params["message"] = ntfy_message
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_image, params=image_params, headers={**request_headers, "Content-Type": "image/jpeg", "X-Filename": NTFY_IMAGE_FILENAME}, timeout=WEBHOOK_TIMEOUT_SECONDS)
                 else:
-                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
                 if isinstance(discord_payload, str):
                     response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
@@ -2802,7 +2843,7 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "") -> tuple[bool, bool]:
+def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "", subject_short: str = "", body_short: str = "", ntfy_priority: int = 0, ntfy_tags: str = "") -> tuple[bool, bool]:
     email_attempted = bool(email_enabled)
     webhook_attempted = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     if email_attempted:
@@ -2810,7 +2851,10 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         send_email(subject, body, body_html, SMTP_SSL)
     if webhook_attempted:
         print("Sending webhook notification")
-        send_webhook(subject, body, notification_type, force=True, image_url=image_url)
+        use_short_content = NTFY_SHORT is True and normalized_webhook_provider() == "ntfy"
+        webhook_subject = (subject_short or subject) if use_short_content else subject
+        webhook_body = (body_short or body) if use_short_content else body
+        send_webhook(webhook_subject, webhook_body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags)
     return email_attempted, webhook_attempted
 
 
@@ -6927,9 +6971,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             lyrics_section_text = ""
                             lyrics_section_html = ""
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
+                    m_subject_short = f"{sp_username} is now active"
                     m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                     m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                    send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
+                    m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "")
+                    send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
 
                 if TRACK_SONGS and sp_track_uri_id:
                     if platform.system() == 'Darwin':       # macOS
@@ -7311,6 +7357,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         print(f"\n*** Friend got ACTIVE after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))} ({get_date_from_ts(sp_active_ts_stop)})")
                         m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False)} - {get_short_date_from_ts(sp_active_ts_stop)})"
+                        m_subject_short = f"{sp_username} is active after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False, short=True)}"
                         friend_active_m_body = f"Friend got active after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))}\nLast activity (before getting offline): {get_date_from_ts(sp_active_ts_stop)}"
                         friend_active_m_body_html = f"Friend got active after being offline for <b>{calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))}</b><br>Last activity (before getting offline): <b>{get_date_from_ts(sp_active_ts_stop)}</b>"
                         if (sp_active_ts_start - sp_active_ts_stop) < 30:
@@ -7346,9 +7393,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 lyrics_section_html = ""
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "")
 
                         if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
-                            email_attempted, webhook_attempted = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
+                            email_attempted, webhook_attempted = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_attempted
                             webhook_sent = webhook_sent or webhook_attempted
 
@@ -7380,9 +7428,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 lyrics_section_text = ""
                                 lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
+                        m_subject_short = f"{sp_username} looped a song {song_on_loop} times"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                        email_attempted, webhook_attempted = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent, image_url=sp_album_image_url)
+                        m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "")
+                        email_attempted, webhook_attempted = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                         email_sent = email_sent or email_attempted
                         webhook_sent = webhook_sent or webhook_attempted
 
@@ -7410,10 +7460,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 lyrics_section_text = ""
                                 lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
+                        m_subject_short = f"{sp_username} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start), show_seconds=False, short=True)}, {listened_songs} songs)"
                         m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(sp_ts), int(sp_active_ts_start))})<br><br>Last activity: {get_date_from_ts(sp_ts)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "")
                         notification_type = "track" if on_the_list and ((TRACK_NOTIFICATION and email_song_enabled) or webhook_event_enabled("track")) else "song"
-                        email_attempted, webhook_attempted = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled, image_url=sp_album_image_url)
+                        email_attempted, webhook_attempted = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                         email_sent = email_sent or email_attempted
                         webhook_sent = webhook_sent or webhook_attempted
 
@@ -7528,9 +7580,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     lyrics_section_text = ""
                                     lyrics_section_html = ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
+                            m_subject_short = f"{sp_username} is inactive (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False, short=True)}, {listened_songs} songs)"
                             m_body = f"Last played: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
                             m_body_html = f"<html><head></head><body>Last played: <b><a href=\"{sp_artist_url}\">{escape(sp_artist)}</a> - <a href=\"{sp_track_url}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{sp_album_url}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
-                            email_attempted, webhook_attempted = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url)
+                            m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "")
+                            email_attempted, webhook_attempted = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_attempted
                             webhook_sent = webhook_sent or webhook_attempted
                         sp_active_ts_start_old = sp_active_ts_start
@@ -7623,7 +7677,7 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
 
 
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()

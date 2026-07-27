@@ -337,6 +337,14 @@ NTFY_IMAGES = False
 
 Active and inactive alerts use playlist artwork when available then fall back to album artwork. Tracked-song, every-song and loop alerts use album artwork. Error alerts and `--send-test-webhook` remain text-only. Spotify Monitor accepts only Spotify HTTPS CDN image URLs, limits downloads to 5 MiB and rejects oversized decoded images before preparing each attachment in memory. PyPI, requirements-file and Docker installs include Pillow. Manual single-file users who install dependencies individually must include Pillow. If image preparation fails, the alert is sent as text. If the attachment upload fails, the alert is retried once as text so artwork cannot suppress the notification. Self-hosted ntfy servers must allow attachments.
 
+For compact activity notifications on phones and smartwatches, enable the short ntfy format in `spotify_monitor.conf`:
+
+```ini
+NTFY_SHORT = True
+```
+
+The default is `False`. Compact playback alerts keep the event summary in the title and show the track, artist and album on separate lines. Playlist playback adds the playlist name in brackets. This setting affects only ntfy. Discord and email content remain unchanged. Error notifications use their complete text when no compact alternative is available.
+
 For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in `.env` without displaying it. For manual setup, add the token to `.env`:
 
 ```ini
