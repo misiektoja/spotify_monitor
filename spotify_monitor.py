@@ -134,6 +134,7 @@ ERROR_NOTIFICATION = True
 WEBHOOK_ENABLED = False
 
 # Service used to deliver webhook notifications: "discord" or "ntfy"
+# Known Discord and ntfy.sh URLs correct a mismatched configured value at runtime
 # Can also be set via the --webhook-provider flag
 WEBHOOK_PROVIDER = "discord"
 
@@ -2469,6 +2470,22 @@ def normalized_webhook_provider(provider: Any = None) -> str:
         return ""
     normalized = selected_provider.strip().casefold()
     return normalized if normalized in ("discord", "ntfy") else ""
+
+
+# Detects Discord and public ntfy webhook providers from distinctive URL shapes
+def detect_webhook_provider(url: Any) -> str:
+    if not validate_webhook_url(url):
+        return ""
+    try:
+        parsed = urlsplit(str(url).strip())
+    except ValueError:
+        return ""
+    hostname = parsed.hostname.casefold() if parsed.hostname else ""
+    if hostname == "ntfy.sh":
+        return "ntfy"
+    discord_host = hostname in ("discord.com", "discordapp.com") or hostname.endswith(".discord.com") or hostname.endswith(".discordapp.com")
+    discord_path = re.match(r"^/api(?:/v[0-9]+)?/webhooks/[0-9]+/[^/]+/?$", parsed.path) is not None
+    return "discord" if discord_host and discord_path else ""
 
 
 # Returns whether one configured webhook alert is enabled independently of email settings
@@ -7662,6 +7679,12 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
         WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
         if args.webhook_errors:
             WEBHOOK_ENABLED = True
+    if args.webhook_provider is None:
+        detected_provider = detect_webhook_provider(WEBHOOK_URL)
+        configured_provider = normalized_webhook_provider()
+        if detected_provider and detected_provider != configured_provider:
+            WEBHOOK_PROVIDER = detected_provider
+            print(f"* Warning: Configured webhook provider did not match the URL. Using {detected_provider}.")
 
 
 def main():
