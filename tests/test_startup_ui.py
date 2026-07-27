@@ -193,12 +193,23 @@ def test_concise_summary_core_rows(monkeypatch):
     assert "target.user" in lines[0]
     assert "* Authentication:" in output and "Cookie mode" in output
     assert "* Polling interval:" in output and "30 seconds" in output
-    assert any(l.startswith("* Notifications (email):") and "Off" in l for l in lines)
-    assert any(l.startswith("* Notifications (webhook):") and "Off" in l for l in lines)
     assert "* Output:" in output and "spotify_monitor_target.user.log" in output
     assert "* Config:" in output and "/data/spotify_monitor.conf" in output
     assert "* Dotenv:" in output and "/data/.env" in output
     assert "* Metadata backend:" in output and "web player" in output
+
+
+# Verifies concise notification rows keep email and webhook states independent
+@pytest.mark.parametrize("email_enabled,webhook_category_enabled,webhook_master_enabled,expected_email,expected_webhook", [(False, False, False, "Off", "Off"), (True, False, False, "On (active, monitored tracks)", "Off"), (False, True, True, "Off", "On (active, errors)"), (True, True, True, "On (active, monitored tracks)", "On (active, errors)"), (False, True, False, "Off", "Off")])
+def test_concise_summary_notification_channels(monkeypatch, email_enabled, webhook_category_enabled, webhook_master_enabled, expected_email, expected_webhook):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", email_enabled)
+    monkeypatch.setattr(monitor, "TRACK_NOTIFICATION", email_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", webhook_category_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", webhook_category_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", webhook_master_enabled)
+    notification_lines = [line for line in emit_to_string(summary_rows()).splitlines() if line.startswith("* Notifications (")]
+    assert notification_lines == [f"* Notifications (email):     {expected_email}", f"* Notifications (webhook):   {expected_webhook}"]
 
 
 # Verifies disabled advanced defaults stay out of the concise view
