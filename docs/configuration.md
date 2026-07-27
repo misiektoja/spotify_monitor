@@ -163,23 +163,23 @@ Client mode reuses login data from a real Spotify desktop session. It is an adva
 - Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com) - the trial version is sufficient)
 
 - Enable SSL traffic decryption for `spotify.com` domain
-   - in Proxyman: click **Tools → SSL Proxying List → + button → Add Domain → paste `*.spotify.com` → Add**
+    - in Proxyman: click **Tools → SSL Proxying List → + button → Add Domain → paste `*.spotify.com` → Add**
 
 - Launch the Spotify desktop client, then switch to your intercepting proxy (like Proxyman) and look for POST requests to `https://login5.spotify.com/v3/login`
 
 - If you don't see this request, try following steps (stop once it works):
-   - restart the Spotify desktop client
-   - log out from the Spotify desktop client and log back in
-   - point Spotify at the intercepting proxy directly in its settings, i.e. in **Spotify → Settings → Proxy Settings**, set:
-      - **proxy type**: `HTTP`
-      - **host**: `127.0.0.1` (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)
-      - **port**: `9090` (port of your proxy, for Proxyman use the port you see at the top bar)
-      - restart the app. This makes Spotify use a TCP connection that the proxy can inspect instead of QUIC over UDP
-   - block Spotify's UDP port 443 with an operating system firewall. This also forces a TCP connection that the proxy can inspect
-   - try an older version of the Spotify desktop client
+    - restart the Spotify desktop client
+    - log out from the Spotify desktop client and log back in
+    - point Spotify at the intercepting proxy directly in its settings, i.e. in **Spotify → Settings → Proxy Settings**, set:
+        - **proxy type**: `HTTP`
+        - **host**: `127.0.0.1` (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)
+        - **port**: `9090` (port of your proxy, for Proxyman use the port you see at the top bar)
+        - restart the app. This makes Spotify use a TCP connection that the proxy can inspect instead of QUIC over UDP
+    - block Spotify's UDP port 443 with an operating system firewall. This also forces a TCP connection that the proxy can inspect
+    - try an older version of the Spotify desktop client
 
 - Export the login request body (a binary Protobuf payload) to a file (e.g. ***login-request-body-file***)
-   - In Proxyman: **right click the request → Export → Request Body → Save File**.
+    - In Proxyman: **right click the request → Export → Request Body → Save File**.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/proxyman_export_protobuf.png" alt="proxyman_export_protobuf" width="80%"/>
@@ -221,10 +221,10 @@ If you already have a working app or want to create a new one:
 - Copy the **Client ID** and **Client Secret**
 
 - Provide the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` secrets using one of the following methods:
-   - Pass it at runtime with `-r` / `--oauth-app-creds` (use `SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET` format - note the colon separator)
-   - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...`)
-   - Add it to [.env file](#storing-secrets) (`SP_APP_CLIENT_ID=...` and `SP_APP_CLIENT_SECRET=...`) for persistent use
-   - Fallback: hard-code it in the code or config file
+    - Pass it at runtime with `-r` / `--oauth-app-creds` (use `SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET` format - note the colon separator)
+    - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...`)
+    - Add it to [.env file](#storing-secrets) (`SP_APP_CLIENT_ID=...` and `SP_APP_CLIENT_SECRET=...`) for persistent use
+    - Fallback: hard-code it in the code or config file
 
 Example:
 
