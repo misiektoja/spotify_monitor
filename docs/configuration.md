@@ -282,7 +282,7 @@ spotify_monitor --send-test-email
 
 Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). Webhook alerts work with or without email. Run `spotify_monitor --setup`, choose webhook alerts and select Discord or ntfy.
 
-`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working. For a one-run override, use `--webhook-provider discord` or `--webhook-provider ntfy`.
+`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working. Standard Discord and public `ntfy.sh` URLs automatically select the matching format if this configured value is stale. Self-hosted ntfy and compatible endpoints still use the configured provider. For an explicit one-run override, use `--webhook-provider discord` or `--webhook-provider ntfy`.
 
 <a id="discord"></a>
 ### Discord
@@ -298,7 +298,7 @@ If you are new to Discord, follow these steps to get your private webhook URL:
 spotify_monitor --set-webhook-url
 ```
 
-Paste the copied link at the hidden prompt. Spotify Monitor saves it in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
+Paste the copied link at the hidden prompt. Spotify Monitor saves only `WEBHOOK_URL` in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
 
 For a one-run override, `--webhook-url URL` uses a complete HTTPS destination without changing `.env`. The URL may remain visible in shell history or process listings, so prefer `--set-webhook-url` for normal setup.
 
@@ -315,7 +315,7 @@ For ntfy.sh or a self-hosted ntfy server:
 
 1. Choose a hard-to-guess topic such as `spotify-monitor-long-random-value`.
 2. In the setup wizard, paste either the bare ntfy.sh topic name or its complete topic URL such as `https://ntfy.sh/spotify-monitor-long-random-value`. A bare topic name is expanded to an ntfy.sh URL. For a self-hosted server, use the complete HTTPS topic URL.
-3. Set the provider in `spotify_monitor.conf`:
+3. Public `ntfy.sh` URLs are recognized automatically. Set the provider in `spotify_monitor.conf` for a self-hosted ntfy server:
 
 ```ini
 WEBHOOK_PROVIDER = "ntfy"
