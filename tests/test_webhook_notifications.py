@@ -84,6 +84,12 @@ def test_webhook_url_validation(url, expected):
     assert monitor.validate_webhook_url(url) is expected
 
 
+@pytest.mark.parametrize("url,expected", [("https://discord.com/api/webhooks/123/token", "discord"), ("https://canary.discord.com/api/v10/webhooks/123/token", "discord"), ("https://ntfy.sh/private-topic", "ntfy"), ("https://ntfy.example.test/private-topic", ""), ("https://example.test/custom-hook", "")])
+# Verifies distinctive Discord and public ntfy URLs select the proper payload provider
+def test_webhook_provider_detection(url, expected):
+    assert monitor.detect_webhook_provider(url) == expected
+
+
 # Verifies ntfy input normalization preserves HTTPS URLs and expands only valid bare topics
 @pytest.mark.parametrize("value,expected", [("https://ntfy.example.test/private-topic?auth=value", "https://ntfy.example.test/private-topic?auth=value"), (" private_Topic-123 ", "https://ntfy.sh/private_Topic-123"), ("a" * 64, f"https://ntfy.sh/{'a' * 64}"), ("a" * 65, ""), ("ntfy.sh/private-topic", ""), ("http://ntfy.sh/private-topic", ""), ("private.topic", ""), ("private/topic", ""), (None, "")])
 def test_ntfy_topic_url_normalization(value, expected):
@@ -674,6 +680,27 @@ def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
     assert monitor.WEBHOOK_URL == url
     assert monitor.WEBHOOK_ENABLED is True
     assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
+    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+
+
+# Verifies a known ntfy URL corrects a stale configured provider before Doctor or test delivery
+def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
+    delivery = Mock(return_value=0)
+    url = "https://ntfy.sh/private-topic"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--webhook-url", url, "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 0
+    assert monitor.WEBHOOK_PROVIDER == "ntfy"
+    assert "Using ntfy" in capsys.readouterr().out
     delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
 
 
