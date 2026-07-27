@@ -140,12 +140,12 @@ Follow these steps:
 
 As an alternative, [Cookie-Editor by cgagnier](https://cookie-editor.com/) can display the `sp_dc` value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.
 
-The recommended `--set-sp-dc` command validates the cookie with Spotify before changing `.env`. Existing cookie replacement requires confirmation. See the [copy-paste commands](setup-and-first-run.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
+The recommended `--set-sp-dc` command is the most secure way to enter a manually extracted cookie. It reads the value through a hidden prompt, validates it with Spotify before changing `.env` and updates only `SP_DC_COOKIE`. Existing cookie replacement requires confirmation. See the [copy-paste commands](setup-and-first-run.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
 
-You can also provide `SP_DC_COOKIE` in these ways:
+Direct `.env` editing and the other existing methods remain supported:
 
-* Set it as an [environment variable](#storing-secrets), for example `export SP_DC_COOKIE="your_sp_dc_cookie_value"`.
 * Add `SP_DC_COOKIE="your_sp_dc_cookie_value"` to an [`.env` file](#storing-secrets) to keep it for later runs.
+* Set it as an [environment variable](#storing-secrets), for example `export SP_DC_COOKIE="your_sp_dc_cookie_value"`.
 * Pass it for one run with `-u` or `--spotify-dc-cookie`. This is not recommended because the value may appear in shell history or process listings.
 * Store it in the configuration file or source code as a last resort. This is not recommended because it is easier to expose or commit accidentally.
 
@@ -441,7 +441,7 @@ On **Windows Command Prompt** use `set` instead of `export` and on **Windows Pow
 
 To keep the values between terminal sessions, store them in `.env`.
 
-Browser import, `--set-sp-dc` and the setup wizard can create or update `.env` for you.
+Browser import, `--set-sp-dc` and the setup wizard can create or update `.env` for you. For a manually extracted `sp_dc` value, prefer `--set-sp-dc` over editing `.env` directly because the hidden prompt is the most secure entry method.
 
 If you cloned the repository, you can copy the included example then fill in only the secrets you use:
 
