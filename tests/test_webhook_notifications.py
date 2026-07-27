@@ -408,12 +408,14 @@ def test_invalid_webhook_customization_is_rejected(monkeypatch, setting, value):
     webhook_post.assert_not_called()
 
 
-# Verifies ntfy message truncation respects its UTF-8 byte limit without splitting a character
-def test_ntfy_message_is_bounded_by_utf8_bytes():
-    title, message = monitor.build_ntfy_webhook_message("Title", ("a" * (monitor.NTFY_MESSAGE_LIMIT_BYTES - 1)) + "\U0001f3b5")
+# Verifies long ntfy messages stay below the server attachment boundary with a visible truncation marker
+def test_ntfy_message_stays_below_attachment_boundary():
+    title, message = monitor.build_ntfy_webhook_message("Title", ("a" * monitor.NTFY_MESSAGE_LIMIT_BYTES) + "\U0001f3b5")
     assert title == "Title"
-    assert len(message.encode("utf-8")) == monitor.NTFY_MESSAGE_LIMIT_BYTES - 1
-    assert not message.endswith("\U0001f3b5")
+    assert message.endswith(monitor.NTFY_TRUNCATION_SUFFIX)
+    assert len(message.encode("utf-8")) <= monitor.NTFY_MESSAGE_LIMIT_BYTES
+    assert len(message.encode("utf-8")) < 4096
+    assert "\ufffd" not in message
 
 
 # Verifies compact ntfy playback bodies preserve metadata with or without a playlist
