@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.1.1
+v3.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -19,7 +19,7 @@ spotipy (optional, used when legacy OAuth app credentials are configured)
 pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
 
-VERSION = "3.1.1"
+VERSION = "3.2"
 
 
 # ---------------------------
@@ -43,15 +43,18 @@ TARGET_USER_URI_ID = ""
 # - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
 #   (use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/)
 # - Provide the SP_DC_COOKIE secret using one of the following methods:
-#   - Pass it at runtime with -u / --spotify-dc-cookie
+#   - Recommended and most secure for manual entry: run Spotify Monitor with --set-sp-dc to use a hidden prompt, validate the cookie and save it to ".env"
+#   - Add it directly to ".env" file (SP_DC_COOKIE=...) for persistent use
 #   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
-#   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
+#   - Pass it at runtime with -u or --spotify-dc-cookie
 #   - Fallback: hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Optional Spotify Web API Credentials
+# ----------------------------
 
-# The optional section below enables the legacy Web API path for track and playlist metadata
+# These settings enable the legacy Web API path for track and playlist metadata
 # Spotify requires the owner of every Development Mode app to keep an active Premium subscription
 # Do not create a new Spotify app only for this tool because the web-player backend already provides the required metadata
 # Configure these values only for an app whose owner has Premium and that you have verified still supports the legacy endpoints
@@ -63,7 +66,7 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 #   - Copy the 'Client ID' and 'Client Secret'
 #
 # Provide the SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET secrets using one of the following methods:
-#   - Pass it at runtime with -r / --oauth-app-creds (use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format - note the colon separator)
+#   - Pass it at runtime with -r or --oauth-app-creds using SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format
 #   - Set it as an environment variable (e.g. export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...)
 #   - Add it to ".env" file (SP_APP_CLIENT_ID=... and SP_APP_CLIENT_SECRET=...) for persistent use
 #   - Fallback: hard-code it in the code or config file
@@ -76,10 +79,12 @@ SP_APP_CLIENT_SECRET = "your_spotify_app_client_secret"
 # Set to empty to use in-memory cache only
 SP_APP_TOKENS_FILE = ".spotify-monitor-oauth-app.json"
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Email Notifications
+# ----------------------------
 
 # SMTP settings for sending email notifications
-# If left as-is, no notifications will be sent
+# If left as-is, no email notifications will be sent
 #
 # Provide the SMTP_PASSWORD secret using one of the following methods:
 #   - Set it as an environment variable (e.g. export SMTP_PASSWORD=...)
@@ -94,15 +99,15 @@ SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
-# Whether to send an email when user becomes active
+# Whether to send an email when the user becomes active
 # Can also be enabled via the -a flag
 ACTIVE_NOTIFICATION = False
 
-# Whether to send an email when user goes inactive
+# Whether to send an email when the user goes inactive
 # Can also be enabled via the -i flag
 INACTIVE_NOTIFICATION = False
 
-# Whether to send an email when a monitored track/playlist/album plays
+# Whether to send an email when a monitored track, playlist or album plays
 # Can also be enabled via the -t flag
 TRACK_NOTIFICATION = False
 
@@ -115,66 +120,126 @@ SONG_NOTIFICATION = False
 # Can also be enabled via the -x flag
 SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send an email on errors
+# Whether to send an email on monitoring errors
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Webhook Notifications
+# ----------------------------
 
-# Webhook alerts through Discord or ntfy
-# Available providers: discord, ntfy
-# Discord URL: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL
-# ntfy URL: complete topic URL such as https://ntfy.sh/your-private-topic
-# Store WEBHOOK_URL in an environment variable or dotenv file because this private link can send messages through the service
+# Master switch for webhook notifications through Discord or ntfy
+# Event settings below select which notifications are sent
+# Can also be enabled via the --webhook flag
 WEBHOOK_ENABLED = False
-WEBHOOK_URL = "your_webhook_url"
+
+# Service used to deliver webhook notifications: "discord" or "ntfy"
+# Can also be set via the --webhook-provider flag
 WEBHOOK_PROVIDER = "discord"
+
+# Private destination used to send webhook notifications
+# Discord: Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL
+# ntfy: complete topic URL such as https://ntfy.sh/your-private-topic
+# Prefer --set-webhook-url, an environment variable or a dotenv file instead of storing this private URL here
+# The --webhook-url flag is available for one-run overrides but may leave the private URL in shell history
+WEBHOOK_URL = "your_webhook_url"
+
+# Discord display name (leave empty to use the webhook default)
 WEBHOOK_USERNAME = "Spotify Monitor"
 
-# Optional static request headers for advanced webhook integrations
-# Prefer NTFY_ACCESS_TOKEN in an environment variable or dotenv file for ntfy Bearer authentication
+# Discord avatar URL (leave empty to use the webhook default)
+WEBHOOK_AVATAR_URL = ""
+
+# Whether to send a webhook notification when the user becomes active
+# Can also be enabled via the --webhook-active flag
+WEBHOOK_ACTIVE_NOTIFICATION = False
+
+# Whether to send a webhook notification when the user goes inactive
+# Can also be enabled via the --webhook-inactive flag
+WEBHOOK_INACTIVE_NOTIFICATION = False
+
+# Whether to send a webhook notification when a monitored track, playlist or album plays
+# Can also be enabled via the --webhook-track flag
+WEBHOOK_TRACK_NOTIFICATION = False
+
+# Whether to send a webhook notification on every song change
+# Can also be enabled via the --webhook-song-changes flag
+WEBHOOK_SONG_NOTIFICATION = False
+
+# Whether to send a webhook notification when the user plays a song on loop
+# Can also be enabled via the --webhook-loop flag
+WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
+
+# Whether to send a webhook notification on monitoring errors
+# Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
+WEBHOOK_ERROR_NOTIFICATION = True
+
+# Optional request headers for advanced webhook integrations
+# Values support the same placeholders as WEBHOOK_TEMPLATE
 WEBHOOK_HEADERS = {}
+
+# ----------------------------
+# Advanced Webhook Settings
+# ----------------------------
+
+# Discord-format webhook request payload template
+# Supported placeholders include title, description, version, image_url, fields, fields_str, color, timestamp,
+# username and avatar_url
+WEBHOOK_TEMPLATE = {
+    "username": "{username}",
+    "avatar_url": "{avatar_url}",
+    "allowed_mentions": {
+        "parse": [],
+    },
+    "embeds": [{
+        "title": "{title}",
+        "description": "{description}",
+        "color": "{color}",
+        "footer": {
+            "text": "Spotify Monitor v{version}",
+        },
+        "timestamp": "{timestamp}",
+    }],
+}
+
+# Optional transformations applied to WEBHOOK_TEMPLATE and WEBHOOK_HEADERS values
+# Tuple format: (field_to_target, method_name, *optional_arguments)
+#
+# Examples:
+#   [
+#       ("title", "upper"),
+#       ("description", "replace", "**", ""),
+#       ("description", "strip"),
+#   ]
+WEBHOOK_TRANSFORMS = []
+
+# Optional ntfy access token for Bearer authentication
+# Prefer an environment variable or dotenv file instead of storing this token here
 NTFY_ACCESS_TOKEN = ""
 
-# Attach playlist or album artwork to supported ntfy alerts
-# Set to False to keep ntfy alerts text-only
+# Whether to attach playlist or album artwork to supported ntfy alerts
 # Image preparation or delivery failures fall back to text
 NTFY_IMAGES = True
 
-# Whether to shorten ntfy alert messages for smart watches & mobile devices
-# Set to True for shorter ntfy alerts
-# Default is messages that are identical to email content
+# Whether to use compact ntfy alert titles and bodies for smaller screens
+# Discord webhook and email content remain unchanged
 NTFY_SHORT = False
 
-# Whether to send a webhook alert when the user becomes active
-WEBHOOK_ACTIVE_NOTIFICATION = False
+# ----------------------------
+# Monitoring Settings
+# ----------------------------
 
-# Whether to send a webhook alert when the user goes inactive
-WEBHOOK_INACTIVE_NOTIFICATION = False
-
-# Whether to send a webhook alert when a monitored track, playlist or album plays
-WEBHOOK_TRACK_NOTIFICATION = False
-
-# Whether to send a webhook alert on every song change
-WEBHOOK_SONG_NOTIFICATION = False
-
-# Whether to send a webhook alert when the user plays a song on loop
-WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
-
-# Whether to send a webhook alert on monitoring errors
-WEBHOOK_ERROR_NOTIFICATION = True
-
-# How often to check for user activity; in seconds
+# How often to check for user activity in seconds
 # Can also be set using the -c flag
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
-# Time to wait before retrying after an error; in seconds
-SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
+# Time to wait before retrying after an error in seconds
+SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 
-# Time after which a user is considered inactive (based on last activity); in seconds
+# Time after which a user is considered inactive based on last activity in seconds
 # Can also be set using the -o flag
-# Note: If the user listens to songs longer than this value, they may be marked as inactive
-SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
+# Songs longer than this value can cause the user to appear inactive
+SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
 
 # How many recently listened songs to display in the inactive notification email
 # Set to 0 to disable the recently listened songs list
@@ -196,38 +261,42 @@ DETECT_CROSSFADED_SONGS = True
 CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
 CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
 
-# Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
+# Interval for checking whether a missing user has reappeared in seconds
 # Can happen due to:
 #   - unfollowing the user
 #   - Spotify service issues
 #   - private session bugs
 #   - user inactivity for over a week
-# In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
+# The tool continues checking for the user's reappearance at this interval
 # Can also be set using the -m flag
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
+
+# ----------------------------
+# Spotify Playback Integration
+# ----------------------------
 
 # Whether to auto-play each listened song in your Spotify client
 # Host Spotify auto-play is unavailable by default inside Docker and Docker Compose containers
 # Can also be set using the -g flag
 TRACK_SONGS = False
 
-# Method used to play the song listened by the tracked user in local Spotify client under macOS
-# (i.e. when TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on macOS
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "apple-script" (recommended)
 #       "trigger-url"
 SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 
-# Method used to play the song listened by the tracked user in local Spotify client under Linux OS
-# (i.e. when TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on Linux
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "dbus-send" (most common one)
 #       "qdbus"
 #       "trigger-url"
 SPOTIFY_LINUX_PLAYING_METHOD = "dbus-send"
 
-# Method used to play the song listened by the tracked user in local Spotify client under Windows OS
-# (if TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on Windows
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "start-uri" (recommended)
 #       "spotify-cmd"
@@ -237,15 +306,16 @@ SPOTIFY_WINDOWS_PLAYING_METHOD = "start-uri"
 # Number of consecutive plays of the same song considered to be on loop
 SONG_ON_LOOP_VALUE = 3
 
-# Threshold for considering a song as skipped (fraction of duration)
+# Fraction of a song that must play before it is no longer considered skipped
 SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55% of its total length
 
-# Spotify track ID to play when the user goes offline (used when TRACK_SONGS / -g functionality is enabled)
+# Spotify track ID to play when the user goes offline
+# Only applies when TRACK_SONGS or -g is enabled
 # Leave empty to simply pause
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
-# Delay before pausing the above track after the user goes offline; in seconds
+# Delay before pausing the offline track in seconds
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
@@ -253,54 +323,58 @@ SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 # To avoid false alarms, we delay alerts until this happens REMOVED_DISAPPEARED_COUNTER times in a row
 REMOVED_DISAPPEARED_COUNTER = 4
 
-# Optional: specify user agent manually
+# ----------------------------
+# Network Settings
+# ----------------------------
+
+# Optional user agent
 #
-# When the token source is 'cookie' - set it to web browser user agent, some examples:
+# For cookie token mode use a web browser user agent such as:
 # Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0
 # Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:139.0) Gecko/20100101 Firefox/139.0
 #
-# When the token source is 'client' - set it to Spotify desktop client user agent, some examples:
+# For client token mode use a Spotify desktop client user agent such as:
 # Spotify/126200580 Win32_x86_64/0 (PC desktop)
 # Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
 #
-# Leave empty to auto-generate it randomly for specific token source
+# Leave empty to generate an appropriate value for the selected token source
 USER_AGENT = ""
 
-# How often to print a "liveness check" message to the output; in seconds
+# How often to print a liveness message in seconds
 # Set to 0 to disable
 LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
 
-# Timeout used when checking initial internet connectivity; in seconds
+# Timeout used when checking initial internet connectivity in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# Whether to enable / disable SSL certificate verification while sending https requests
+# Whether to verify TLS certificates for HTTPS requests
 VERIFY_SSL = True
 
-# Threshold for displaying Spotify 50x errors - it is to suppress sporadic issues with Spotify API endpoint
-# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 Spotify API related errors in 4 minutes, show an alert
+# Number of Spotify 5xx errors allowed within ERROR_500_TIME_LIMIT before showing an alert
 ERROR_500_NUMBER_LIMIT = 6
-ERROR_500_TIME_LIMIT = 240  # 4 min
+ERROR_500_TIME_LIMIT = 240  # 4 minutes
 
-# Threshold for displaying network errors - it is to suppress sporadic issues with internet connectivity
-# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 network related errors in 4 minutes, show an alert
+# Number of network errors allowed within ERROR_NETWORK_ISSUES_TIME_LIMIT before showing an alert
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
-ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
+ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 minutes
+
+# ----------------------------
+# Files and Storage
+# ----------------------------
 
 # CSV file to write every listened track
 # Can also be set using the -b flag
 CSV_FILE = ""
 
-# Filename with Spotify tracks/playlists/albums to alert on
+# File containing Spotify tracks, playlists and albums to alert on
 # Can also be set using the -s flag
 MONITOR_LIST_FILE = ""
 
-# Location of the optional dotenv file which can keep secrets
-# If not specified it will try to auto-search for .env files
+# Optional dotenv file used to store secrets
+# Leave empty to search automatically for .env files
 # To disable auto-search, set this to the literal string "none"
 # Can also be set using the --env-file flag
 DOTENV_FILE = ""
@@ -309,21 +383,27 @@ DOTENV_FILE = ""
 # Can also be set using the -y flag
 FILE_SUFFIX = ""
 
-# Base name for the log file. Output will be saved to spotify_monitor_<user_uri_id/file_suffix>.log
-# Can include a directory path to specify the location, e.g. ~/some_dir/spotify_monitor
+# Base name for the log file
+# Can include a directory path such as ~/some_dir/spotify_monitor
 SP_LOGFILE = "spotify_monitor"
 
 # Whether to disable logging to spotify_monitor_<user_uri_id/file_suffix>.log
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
-# Enable debug mode for technical logging (can also be enabled via --debug flag)
-# Shows request flow, selected params and internal state changes (with sensitive values redacted)
-DEBUG_MODE = False
+# ----------------------------
+# Terminal Output
+# ----------------------------
 
-# Enable verbose operational events and the complete startup summary
+# Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
+# Can also be enabled via the --verbose flag
 VERBOSE_MODE = False
+
+# Whether to enable debug output
+# Shows request flow, selected parameters and internal state changes with sensitive values redacted
+# Can also be enabled via the --debug flag
+DEBUG_MODE = False
 
 # Width of horizontal line
 HORIZONTAL_LINE = 113
@@ -343,8 +423,12 @@ FLAG_FILE = ""
 # Can also be set via the --truncate flag
 TRUNCATE_CHARS = 0
 
-# Value added/subtracted via signal handlers to adjust inactivity timeout (SPOTIFY_INACTIVITY_CHECK); in seconds
+# Amount added to or removed from SPOTIFY_INACTIVITY_CHECK by signal handlers in seconds
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
+
+# ----------------------------
+# Music and Lyrics Links
+# ----------------------------
 
 # Whether to show Apple Music URL in console and emails
 ENABLE_APPLE_MUSIC_URL = True
@@ -378,10 +462,8 @@ ENABLE_MUSIXMATCH_URL = False
 # Whether to show Lyrics.com lyrics URL in console and emails
 ENABLE_LYRICS_COM_URL = False
 
-# String to add after playlist name to indicate it's a Spotify public curated and customized playlist
-# The distinction may be important because the songs will vary by account due to listening habits.
-# This will be used for messages on console and emails
-# The string should include all desired characters, including a preceding space and parenthesis, if desired
+# Text added after a playlist name to identify Spotify-curated personalized playlists
+# Include any required leading space or punctuation in the value
 #
 # Example:
 #   For: 90s Pop (by Spotify), SPOTIFY_SUFFIX = " (by Spotify)"
@@ -389,20 +471,17 @@ ENABLE_LYRICS_COM_URL = False
 # Leave empty to disable
 SPOTIFY_SUFFIX = ""
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Advanced Cookie Token Settings
+# ----------------------------
 
-# The section below is used when the token source is set to 'cookie'
+# These settings apply when TOKEN_SOURCE is "cookie"
 
-# Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token_from_sp_dc() function
+# Maximum attempts to obtain a valid access token
 TOKEN_MAX_RETRIES = 3
 
-# Interval between access token retry attempts; in seconds
+# Delay between access token attempts in seconds
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
-
-# ----------------------------------------------
-# Advanced options for 'cookie' token source
-# Modifying the values below is NOT recommended!
-# ----------------------------------------------
 
 # TOTP parameters used to sign Spotify web-player access token requests
 #
@@ -420,15 +499,17 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 TOTP_VERSION = 61
 TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78)
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Advanced Client Token Settings
+# ----------------------------
 
-# The section below is used when the token source is set to 'client'
+# These settings apply when TOKEN_SOURCE is "client"
 #
 # - Run an intercepting proxy of your choice (like Proxyman)
 # - Launch the Spotify desktop client and look for requests to: https://login{n}.spotify.com/v3/login
 #   (the 'login' part is suffixed with one or more digits)
 # - Export the login request body (a binary Protobuf payload) to a file
-#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <login-request-body-file>)
+#   (for example in Proxyman: right-click the request -> Export -> Request Body -> Save File -> <login-request-body-file>)
 #
 # To automatically extract DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN from the exported binary login
 # request Protobuf file:
@@ -436,20 +517,20 @@ TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 12
 # - Run the tool with the -w flag to indicate an exported file or specify its file name below
 LOGIN_REQUEST_BODY_FILE = ""
 
-# Alternatively, you can manually set the DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN options
-# (however, using the automated method described above is recommended)
+# Alternatively you can set DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN manually
+# The automated method above is recommended
 #
 # These values can be extracted using one of the following methods:
 #
-# - Run spotify_profile_monitor with the -w flag without specifying SPOTIFY_USER_URI_ID - it will decode the file and
+# - Run spotify_profile_monitor with the -w flag without specifying SPOTIFY_USER_URI_ID to decode the file and
 #   print the values to stdout, example:
 #       spotify_profile_monitor --token-source client -w <path-to-login-request-body-file>
 #
-# - Use the protoc tool (part of protobuf pip package):
+# - Use the protoc tool from the protobuf package:
 #       pip install protobuf
 #       protoc --decode_raw < <path-to-login-request-body-file>
 #
-# - Use the built-in Protobuf decoder in your intercepting proxy (if supported)
+# - Use the built-in Protobuf decoder in your intercepting proxy if supported
 #
 # The Protobuf structure is as follows:
 #
@@ -474,10 +555,8 @@ SYSTEM_ID = "your_spotify_app_system_id"
 USER_URI_ID = "your_spotify_user_uri_id"
 REFRESH_TOKEN = "your_spotify_app_refresh_token"
 
-# ----------------------------------------------
-# Advanced options for 'client' token source
-# Modifying the values below is NOT recommended!
-# ----------------------------------------------
+# Client request internals
+# Change these values only when Spotify changes its desktop client protocol
 
 # Spotify login URL
 LOGIN_URL = "https://login5.spotify.com/v3/login"
@@ -492,7 +571,7 @@ CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 # - Launch the Spotify desktop client and look for requests to: https://clienttoken.spotify.com/v1/clienttoken
 #   (these requests are sent every time client token expires, usually every 2 weeks)
 # - Export the client token request body (a binary Protobuf payload) to a file
-#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
+#   (for example in Proxyman: right-click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
 #
 # To automatically extract APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and CLIENT_MODEL from the
 # exported binary client token request Protobuf file:
@@ -500,20 +579,19 @@ CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 # - Run the tool with the hidden -z flag to indicate an exported file or specify its file name below
 CLIENTTOKEN_REQUEST_BODY_FILE = ""
 
-# Alternatively, you can manually set the APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and
-# CLIENT_MODEL options
+# Alternatively you can set APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and CLIENT_MODEL manually
 #
 # These values can be extracted using one of the following methods:
 #
-# - run spotify_profile_monitor with the hidden -z flag without specifying SPOTIFY_USER_URI_ID - it will decode the file
+# - Run spotify_profile_monitor with the hidden -z flag without specifying SPOTIFY_USER_URI_ID to decode the file
 #   and print the values to stdout, example:
 #       spotify_profile_monitor --token-source client -z <path-to-clienttoken-request-body-file>
 #
-# - use the protoc tool (part of protobuf pip package):
+# - Use the protoc tool from the protobuf package:
 #       pip install protobuf
 #       protoc --decode_raw < <path-to-clienttoken-request-body-file>
 #
-# - use the built-in Protobuf decoder in your intercepting proxy (if supported)
+# - Use the built-in Protobuf decoder in your intercepting proxy if supported
 #
 # The Protobuf structure is as follows:
 #
@@ -536,7 +614,7 @@ CLIENTTOKEN_REQUEST_BODY_FILE = ""
 #   }
 # }
 #
-# Provide the extracted values below (except for DEVICE_ID and SYSTEM_ID as it was already provided via -w)
+# Provide the extracted values below except for DEVICE_ID and SYSTEM_ID which were already provided via -w
 CPU_ARCH = 10
 OS_BUILD = 19045
 PLATFORM = 2
@@ -595,7 +673,10 @@ WEBHOOK_ENABLED = False
 WEBHOOK_URL = ""
 WEBHOOK_PROVIDER = ""
 WEBHOOK_USERNAME = ""
+WEBHOOK_AVATAR_URL = ""
 WEBHOOK_HEADERS = {}
+WEBHOOK_TEMPLATE = {}
+WEBHOOK_TRANSFORMS = []
 NTFY_ACCESS_TOKEN = ""
 NTFY_IMAGES = False
 NTFY_SHORT = False
@@ -1113,7 +1194,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
-        return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check WEBHOOK_PROVIDER, WEBHOOK_URL, WEBHOOK_HEADERS and NTFY_ACCESS_TOKEN then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check the webhook provider, URL, customization, headers and ntfy access token then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
@@ -2430,15 +2511,87 @@ def webhook_retry_after_seconds(response: Any) -> float:
     return WEBHOOK_FALLBACK_RETRY_SECONDS
 
 
-# Builds one bounded Discord embed without allowing notification text to trigger mentions
-def build_webhook_payload(title: str, description: str, notification_type: str) -> dict:
+# Applies configured placeholders recursively to a webhook template
+def format_payload(template: Any, payload: dict) -> Any:
+    if isinstance(template, dict):
+        return {key: format_payload(value, payload) for key, value in template.items()}
+    if isinstance(template, list):
+        return [format_payload(value, payload) for value in template]
+    if isinstance(template, tuple):
+        return tuple(format_payload(value, payload) for value in template)
+    if isinstance(template, str):
+        if template == "{fields}":
+            return payload.get("fields", [])
+        if template == "{color}":
+            return payload.get("color", 0x1DB954)
+        try:
+            return template.format(**payload)
+        except KeyError:
+            return template
+    return template
+
+
+# Returns a configuration error for unsafe or unsupported webhook customization
+def validate_webhook_customization(provider: Any = None) -> Optional[str]:
+    selected_provider = normalized_webhook_provider(provider)
+    if selected_provider == "discord":
+        if not isinstance(WEBHOOK_USERNAME, str):
+            return "WEBHOOK_USERNAME must be a string"
+        if not isinstance(WEBHOOK_AVATAR_URL, str):
+            return "WEBHOOK_AVATAR_URL must be a string"
+        if WEBHOOK_AVATAR_URL.strip() and not validate_webhook_url(WEBHOOK_AVATAR_URL):
+            return "WEBHOOK_AVATAR_URL must contain a complete HTTPS link without embedded credentials"
+        if not isinstance(WEBHOOK_TEMPLATE, (dict, list, str)):
+            return "WEBHOOK_TEMPLATE must be a dictionary, list or string"
+    if not isinstance(WEBHOOK_TRANSFORMS, (list, tuple)):
+        return "WEBHOOK_TRANSFORMS must be a list or tuple"
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        if not isinstance(transform, (list, tuple)) or len(transform) < 2 or not isinstance(transform[0], str) or not isinstance(transform[1], str):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} must contain a field name and string method name"
+        if transform[1].startswith("_") or not callable(getattr("", transform[1], None)):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} uses an unsupported string method"
+    return None
+
+
+# Applies configured string transformations to one webhook value mapping
+def apply_webhook_transforms(payload: dict) -> dict:
+    transformed = dict(payload)
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        field = transform[0]
+        method_name = transform[1]
+        if field not in transformed or not isinstance(transformed[field], str):
+            continue
+        try:
+            transformed[field] = getattr(transformed[field], method_name)(*transform[2:])
+        except Exception as exc:
+            raise ValueError(f"WEBHOOK_TRANSFORMS entry {index + 1} could not apply {field}.{method_name}") from exc
+    return transformed
+
+
+# Builds bounded placeholder values shared by webhook templates, headers and providers
+def build_webhook_values(title: str, description: str, notification_type: str, image_url: str = "") -> dict:
     colors = {"active": 0x1DB954, "inactive": 0x747F8D, "track": 0x1DB954, "song": 0x3498DB, "loop": 0x9B59B6, "error": 0xE74C3C}
     safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
     safe_description = sanitize_error_text(description)[:WEBHOOK_EMBED_DESCRIPTION_LIMIT]
-    embed = {"title": safe_title, "description": safe_description, "color": colors.get(notification_type, 0x1DB954), "footer": {"text": f"Spotify Monitor v{VERSION}"}, "timestamp": datetime.now().astimezone().isoformat()}
-    payload = {"allowed_mentions": {"parse": []}, "embeds": [embed]}
-    if isinstance(WEBHOOK_USERNAME, str) and WEBHOOK_USERNAME.strip():
-        payload["username"] = WEBHOOK_USERNAME.strip()[:80]
+    username = WEBHOOK_USERNAME.strip()[:80] if isinstance(WEBHOOK_USERNAME, str) else ""
+    avatar_url = WEBHOOK_AVATAR_URL.strip() if isinstance(WEBHOOK_AVATAR_URL, str) else ""
+    payload = {"title": safe_title, "description": safe_description, "version": VERSION, "image_url": str(image_url or ""), "fields": [], "fields_str": "", "color": colors.get(notification_type, 0x1DB954), "timestamp": datetime.now().astimezone().isoformat(), "username": username, "avatar_url": avatar_url}
+    return apply_webhook_transforms(payload)
+
+
+# Builds one customized Discord-format payload while keeping mentions disabled
+def build_webhook_payload(title: str, description: str, notification_type: str, image_url: str = "", payload_values: Optional[dict] = None) -> Any:
+    values = build_webhook_values(title, description, notification_type, image_url) if payload_values is None else payload_values
+    try:
+        payload = format_payload(WEBHOOK_TEMPLATE, values)
+    except Exception as exc:
+        raise ValueError("WEBHOOK_TEMPLATE could not be formatted with the supported placeholders") from exc
+    if isinstance(payload, dict):
+        if payload.get("username") == "":
+            payload.pop("username")
+        if payload.get("avatar_url") == "":
+            payload.pop("avatar_url")
+        payload["allowed_mentions"] = {"parse": []}
     return payload
 
 
@@ -2457,13 +2610,12 @@ def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     return safe_title, safe_message
 
 
-# Returns a safe configuration error for custom webhook headers or ntfy access tokens
-def validate_webhook_headers(provider: Any = None) -> Optional[str]:
-    selected_provider = normalized_webhook_provider(provider)
-    if not isinstance(WEBHOOK_HEADERS, dict):
+# Returns a safe validation error for one custom webhook header mapping
+def _validate_webhook_header_mapping(headers: Any) -> Optional[str]:
+    if not isinstance(headers, dict):
         return "WEBHOOK_HEADERS must be a dictionary of string header names and values"
     normalized_names = set()
-    for name, value in WEBHOOK_HEADERS.items():
+    for name, value in headers.items():
         if not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name):
             return "WEBHOOK_HEADERS contains an invalid HTTP header name"
         normalized_name = name.casefold()
@@ -2474,6 +2626,15 @@ def validate_webhook_headers(provider: Any = None) -> Optional[str]:
             return f"WEBHOOK_HEADERS value for {name} must be a string"
         if "\r" in value or "\n" in value:
             return f"WEBHOOK_HEADERS value for {name} must not contain line breaks"
+    return None
+
+
+# Returns a safe configuration error for custom webhook headers or ntfy access tokens
+def validate_webhook_headers(provider: Any = None) -> Optional[str]:
+    selected_provider = normalized_webhook_provider(provider)
+    header_error = _validate_webhook_header_mapping(WEBHOOK_HEADERS)
+    if header_error is not None:
+        return header_error
     if selected_provider == "ntfy":
         if not isinstance(NTFY_ACCESS_TOKEN, str):
             return "NTFY_ACCESS_TOKEN must be a string"
@@ -2485,12 +2646,19 @@ def validate_webhook_headers(provider: Any = None) -> Optional[str]:
     return None
 
 
-# Builds provider-specific headers while applying safe defaults and private ntfy authentication
-def build_webhook_headers(provider: str) -> dict:
+# Builds provider-specific headers while formatting placeholders and applying private ntfy authentication
+def build_webhook_headers(provider: str, payload: dict) -> dict:
     validation_error = validate_webhook_headers(provider)
     if validation_error is not None:
         raise ValueError(validation_error)
-    headers = dict(WEBHOOK_HEADERS)
+    try:
+        formatted_headers = format_payload(WEBHOOK_HEADERS, payload)
+    except Exception as exc:
+        raise ValueError("WEBHOOK_HEADERS could not be formatted with the supported placeholders") from exc
+    formatted_error = _validate_webhook_header_mapping(formatted_headers)
+    if formatted_error is not None:
+        raise ValueError(formatted_error)
+    headers = dict(cast(dict[str, str], formatted_headers))
     if not any(name.casefold() == "user-agent" for name in headers):
         headers["User-Agent"] = f"SpotifyMonitor/{VERSION}"
     if provider == "ntfy":
@@ -2576,14 +2744,23 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if not provider:
         print_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
         return 1
+    customization_error = validate_webhook_customization(provider)
+    if customization_error is not None:
+        print_recovery_error(context="webhook_config", detail=customization_error)
+        return 1
     header_error = validate_webhook_headers(provider)
     if header_error is not None:
         print_recovery_error(context="webhook_config", detail=header_error)
         return 1
-    request_headers = build_webhook_headers(provider)
+    try:
+        webhook_values = build_webhook_values(title, description, notification_type, image_url)
+        request_headers = build_webhook_headers(provider, webhook_values)
+        discord_payload = build_webhook_payload(title, description, notification_type, image_url, webhook_values) if provider == "discord" else None
+    except ValueError as exc:
+        print_recovery_error(context="webhook_config", detail=str(exc))
+        return 1
     sleep_func = time.sleep if sleeper is None else sleeper
-    discord_payload = build_webhook_payload(title, description, notification_type) if provider == "discord" else None
-    ntfy_title, ntfy_message = build_ntfy_webhook_message(title, description) if provider == "ntfy" else ("", "")
+    ntfy_title, ntfy_message = build_ntfy_webhook_message(str(webhook_values["title"]), str(webhook_values["description"])) if provider == "ntfy" else ("", "")
     ntfy_image = build_ntfy_image(image_url) if provider == "ntfy" and NTFY_IMAGES and image_url else None
     use_ntfy_image = ntfy_image is not None
     last_error: Any = None
@@ -2601,7 +2778,10 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
                 else:
                     response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params=ntfy_params, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
-                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                if isinstance(discord_payload, str):
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                else:
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
                 return 0
             last_error = response
@@ -5217,6 +5397,10 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not validate_webhook_url():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    customization_error = validate_webhook_customization(normalized_webhook_provider())
+    if customization_error is not None:
+        advice = classify_recovery_error(context="webhook_config", detail=customization_error)
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     header_error = validate_webhook_headers(normalized_webhook_provider())
     if header_error is not None:
         advice = classify_recovery_error(context="webhook_config", detail=header_error)
@@ -5556,7 +5740,7 @@ def _build_help_epilog() -> str:
             "  # Open https://open.spotify.com/ in Firefox on the host and sign in first",
             f"  {_wizard_firefox_import_cmd(method, Path.cwd() / '.env', host_os='linux')}",
             "",
-            "  # Or enter the Spotify cookie through a hidden prompt",
+            "  # Or use the most secure manual method to enter the Spotify cookie",
             f"  {_wizard_set_sp_dc_cmd(method, Path.cwd() / '.env')}",
             "",
             "  # Host Spotify auto-play is unavailable by default inside containers",
@@ -5569,7 +5753,7 @@ def _build_help_epilog() -> str:
             "  # Then import Spotify login from Firefox (recommended for local installs)",
             f"  {_wizard_firefox_import_cmd(method)}",
             "",
-            "  # Or enter the Spotify cookie through a hidden prompt",
+            "  # Or use the most secure manual method to enter the Spotify cookie",
             f"  {_wizard_set_sp_dc_cmd(method)}",
             "",
         ))
@@ -7430,6 +7614,39 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             continue
 
 
+# Applies validated one-run webhook command-line overrides to runtime settings
+def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION
+    if args.webhook_provider is not None:
+        WEBHOOK_PROVIDER = str(args.webhook_provider)
+    if args.webhook_url is not None:
+        if not validate_webhook_url(args.webhook_url):
+            parser.error("--webhook-url must contain a complete HTTPS link without embedded credentials")
+        WEBHOOK_URL = str(args.webhook_url).strip()
+        WEBHOOK_ENABLED = True
+    if args.webhook_enabled is not None:
+        WEBHOOK_ENABLED = args.webhook_enabled
+    if args.webhook_active is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_ACTIVE_NOTIFICATION = True
+    if args.webhook_inactive is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_INACTIVE_NOTIFICATION = True
+    if args.webhook_track is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_TRACK_NOTIFICATION = True
+    if args.webhook_song_changes is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_NOTIFICATION = True
+    if args.webhook_loop is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
+    if args.webhook_errors is not None:
+        WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
+        if args.webhook_errors:
+            WEBHOOK_ENABLED = True
+
+
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
@@ -7677,6 +7894,19 @@ def main():
         help="Disable the configured webhook alerts"
     )
     webhook_notify.add_argument(
+        "--webhook-url",
+        dest="webhook_url",
+        metavar="URL",
+        type=str,
+        help="Use one Discord webhook or ntfy topic URL for this run (may remain in shell history)"
+    )
+    webhook_notify.add_argument(
+        "--webhook-provider",
+        dest="webhook_provider",
+        choices=("discord", "ntfy"),
+        help="Webhook request format for this run (default: configured provider)"
+    )
+    webhook_notify.add_argument(
         "--webhook-active",
         dest="webhook_active",
         action="store_true",
@@ -7711,7 +7941,15 @@ def main():
         default=None,
         help="Send a webhook alert when the user plays a song on loop"
     )
-    webhook_notify.add_argument(
+    webhook_error_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_error_toggle.add_argument(
+        "--webhook-errors",
+        dest="webhook_errors",
+        action="store_true",
+        default=None,
+        help="Send webhook alerts when monitoring has a problem"
+    )
+    webhook_error_toggle.add_argument(
         "--no-webhook-error-notify",
         dest="webhook_errors",
         action="store_false",
@@ -7850,6 +8088,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7865,7 +8105,7 @@ def main():
             (args.force, "--force"),
         )
         set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_sp_dc_conflicts:
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
@@ -7897,6 +8137,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7912,7 +8154,7 @@ def main():
             (args.force, "--force"),
         )
         set_webhook_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_webhook_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_webhook_conflicts:
             parser.error("--set-webhook-url cannot be combined with " + ", ".join(set_webhook_conflicts))
@@ -7942,6 +8184,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7953,7 +8197,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -8176,25 +8420,7 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
-    if args.webhook_enabled is not None:
-        WEBHOOK_ENABLED = args.webhook_enabled
-    if args.webhook_active is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_ACTIVE_NOTIFICATION = True
-    if args.webhook_inactive is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_INACTIVE_NOTIFICATION = True
-    if args.webhook_track is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_TRACK_NOTIFICATION = True
-    if args.webhook_song_changes is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_NOTIFICATION = True
-    if args.webhook_loop is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
-    if args.webhook_errors is False:
-        WEBHOOK_ERROR_NOTIFICATION = False
+    apply_webhook_cli_overrides(args, parser)
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
@@ -8483,31 +8709,7 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
 
-    if args.webhook_enabled is not None:
-        WEBHOOK_ENABLED = args.webhook_enabled
-
-    if args.webhook_active is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_ACTIVE_NOTIFICATION = True
-
-    if args.webhook_inactive is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_INACTIVE_NOTIFICATION = True
-
-    if args.webhook_track is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_TRACK_NOTIFICATION = True
-
-    if args.webhook_song_changes is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_NOTIFICATION = True
-
-    if args.webhook_loop is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
-
-    if args.webhook_errors is False:
-        WEBHOOK_ERROR_NOTIFICATION = False
+    apply_webhook_cli_overrides(args, parser)
 
     if args.track_in_spotify is True:
         TRACK_SONGS = True

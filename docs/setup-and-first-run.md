@@ -99,7 +99,7 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
-| Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
+| Most securely enter or replace a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 | Set up webhook alerts | Run the setup wizard and choose webhook alerts |
 | Save a new webhook URL | Run `spotify_monitor --set-webhook-url` |
 | Send a test webhook | Run `spotify_monitor --send-test-webhook` |
@@ -117,7 +117,7 @@ spotify_monitor --import-browser-cookie --browser firefox
 
 If browser import is not available, use the [manual cookie extraction](configuration.md#manual-cookie-extraction) fallback.
 
-The standalone replacement command reads `sp_dc` through a hidden prompt, so the value does not appear on screen. It validates the cookie with Spotify before updating only `SP_DC_COOKIE`. If validation fails, it does not change the `.env` file. Replacing an existing cookie requires confirmation.
+For a manually extracted cookie, `--set-sp-dc` is the recommended and most secure entry method. The command reads `sp_dc` through a hidden prompt, so the value does not appear on screen or in the command line. It validates the cookie with Spotify before updating only `SP_DC_COOKIE`. If validation fails, it does not change the `.env` file. Replacing an existing cookie requires confirmation. Directly adding `SP_DC_COOKIE` to `.env` remains supported.
 
 ```sh
 # PyPI install

@@ -139,7 +139,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
-| Safely set or replace `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
+| Most securely enter or replace a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
 
 Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target.

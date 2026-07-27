@@ -193,7 +193,7 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Then import Spotify login from Firefox (recommended for local installs)
   python3 spotify_monitor.py --import-browser-cookie --browser firefox
 
-  # Or enter the Spotify cookie through a hidden prompt
+  # Or use the most secure manual method to enter the Spotify cookie
   python3 spotify_monitor.py --set-sp-dc
 
   # Save a Discord or ntfy webhook URL through a hidden prompt

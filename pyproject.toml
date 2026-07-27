@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spotify_monitor"
-version = "3.1.1"
+version = "3.2"
 description = "Track Spotify friends' music activity in real time with auto-playback, skipped tracks detection and instant notifications"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -36,7 +36,7 @@ classifiers = [
 keywords = ["spotify", "monitoring", "tracking", "real-time", "friend-activity",  "osint"]
 
 [project.optional-dependencies]
-test = ["pytest>=7.0"]
+test = ["build>=1.2", "coverage>=7.10", "hypothesis>=6.100", "pyright>=1.1.400", "pytest>=7.0", "setuptools>=61.0", "wheel"]
 legacy-oauth = ["spotipy>=2.24.0"]
 browser = ["pycookiecheat>=0.8"]
 
@@ -63,3 +63,7 @@ namespaces = true
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+  "e2e: offline end-to-end tests that exercise a complete local user flow",
+  "integration: local transport tests that use loopback HTTP or SMTP servers",
+]

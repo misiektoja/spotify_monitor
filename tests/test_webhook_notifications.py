@@ -68,7 +68,10 @@ def configure_webhook(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/private-token")
     monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_USERNAME", "Spotify Monitor")
+    monkeypatch.setattr(monitor, "WEBHOOK_AVATAR_URL", "")
     monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {})
+    monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [])
     monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "")
     monkeypatch.setattr(monitor, "NTFY_IMAGES", False)
     monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", True)
@@ -146,6 +149,60 @@ def test_webhook_payload_is_bounded_and_safe(monkeypatch):
     assert secret not in embed["description"]
     assert payload["allowed_mentions"] == {"parse": []}
     assert embed["color"] == 0xE74C3C
+
+
+# Verifies custom templates, avatars, transformations and header placeholders share sanitized values
+def test_advanced_webhook_customization_matches_instagram_features(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_AVATAR_URL", "https://cdn.example.test/avatar.png")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"X-Webhook-Title": "{title}", "X-Webhook-Version": "{version}"})
+    monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", {"content": "{title}: {description}", "avatar_url": "{avatar_url}", "color": "{color}", "allowed_mentions": {"parse": ["everyone"]}})
+    monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [("title", "replace", "secret", "masked"), ("description", "upper")])
+    webhook_post = Mock(return_value=FakeResponse())
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("secret title", "custom body", "song") == 0
+    request = webhook_post.call_args
+    assert request.kwargs["json"] == {"content": "masked title: CUSTOM BODY", "avatar_url": "https://cdn.example.test/avatar.png", "color": 0x3498DB, "allowed_mentions": {"parse": []}}
+    assert request.kwargs["headers"]["X-Webhook-Title"] == "masked title"
+    assert request.kwargs["headers"]["X-Webhook-Version"] == monitor.VERSION
+
+
+# Verifies a string webhook template is delivered as a raw request body
+def test_string_webhook_template_uses_raw_body(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", "{title}: {description}")
+    webhook_post = Mock(return_value=FakeResponse())
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 0
+    assert webhook_post.call_args.kwargs["data"] == "Title: Body"
+    assert "json" not in webhook_post.call_args.kwargs
+
+
+# Verifies formatted headers are validated again before network delivery
+def test_formatted_webhook_headers_reject_injected_line_breaks(monkeypatch):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"X-Description": "{description}"})
+    webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "first\nsecond", "song") == 1
+    webhook_post.assert_not_called()
+
+
+# Verifies generated configuration includes advanced defaults and current non-secret settings
+def test_generated_config_includes_advanced_webhook_settings(monkeypatch):
+    monkeypatch.setattr(monitor, "WEBHOOK_AVATAR_URL", "https://cdn.example.test/avatar.png")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"Authorization": "Bearer private-header"})
+    monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", {"content": "private-template"})
+    monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [("title", "upper")])
+    rendered = monitor.generate_config_with_current_values()
+    namespace = {}
+    exec(rendered, namespace)
+    assert namespace["WEBHOOK_AVATAR_URL"] == "https://cdn.example.test/avatar.png"
+    assert namespace["WEBHOOK_HEADERS"] == {}
+    assert namespace["WEBHOOK_TEMPLATE"]["allowed_mentions"] == {"parse": []}
+    assert namespace["WEBHOOK_TRANSFORMS"] == [("title", "upper")]
+    assert "private-header" not in rendered
+    assert "private-template" not in rendered
 
 
 # Verifies debug mode retains sanitized HTTP diagnostics for troubleshooting
@@ -325,6 +382,17 @@ def test_ntfy_access_token_uses_bearer_authentication(monkeypatch):
 def test_invalid_webhook_headers_are_rejected(monkeypatch, headers):
     configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", headers)
+    webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
+    assert monitor.send_webhook("Title", "Body", "song") == 1
+    webhook_post.assert_not_called()
+
+
+# Verifies malformed advanced customization fails before a webhook request is attempted
+@pytest.mark.parametrize("setting,value", [("WEBHOOK_USERNAME", 3), ("WEBHOOK_AVATAR_URL", "http://example.test/avatar.png"), ("WEBHOOK_TEMPLATE", 3), ("WEBHOOK_TRANSFORMS", [("title", "missing_method")]), ("WEBHOOK_TRANSFORMS", [("title",)])])
+def test_invalid_webhook_customization_is_rejected(monkeypatch, setting, value):
+    configure_webhook(monkeypatch)
+    monkeypatch.setattr(monitor, setting, value)
     webhook_post = Mock(side_effect=AssertionError("webhook request attempted"))
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
     assert monitor.send_webhook("Title", "Body", "song") == 1
@@ -534,6 +602,46 @@ def test_send_test_webhook_cli_is_spotify_independent(monkeypatch):
     assert error.value.code == 0
     delivery.assert_called_once()
     connectivity.assert_not_called()
+
+
+# Verifies one-run webhook CLI options override provider, URL and error delivery
+def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
+    delivery = Mock(return_value=0)
+    url = "https://ntfy.example.test/private-topic"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--webhook-provider", "ntfy", "--webhook-url", url, "--webhook-errors", "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 0
+    assert monitor.WEBHOOK_PROVIDER == "ntfy"
+    assert monitor.WEBHOOK_URL == url
+    assert monitor.WEBHOOK_ENABLED is True
+    assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
+    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+
+
+# Verifies the direct webhook URL CLI override retains strict HTTPS validation
+def test_webhook_url_cli_rejects_insecure_url(monkeypatch, capsys):
+    delivery = Mock(side_effect=AssertionError("webhook request attempted"))
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--webhook-url", "http://example.test/private-topic", "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 2
+    assert "complete HTTPS link without embedded credentials" in capsys.readouterr().err
+    delivery.assert_not_called()
 
 
 # Verifies the doctor checks webhook settings without sending a message

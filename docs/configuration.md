@@ -140,12 +140,12 @@ Follow these steps:
 
 As an alternative, [Cookie-Editor by cgagnier](https://cookie-editor.com/) can display the `sp_dc` value. Only use a browser extension that you trust because browser extensions can access sensitive login cookies.
 
-The recommended `--set-sp-dc` command validates the cookie with Spotify before changing `.env`. Existing cookie replacement requires confirmation. See the [copy-paste commands](setup-and-first-run.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
+The recommended `--set-sp-dc` command is the most secure way to enter a manually extracted cookie. It reads the value through a hidden prompt, validates it with Spotify before changing `.env` and updates only `SP_DC_COOKIE`. Existing cookie replacement requires confirmation. See the [copy-paste commands](setup-and-first-run.md#run-individual-commands) for PyPI, downloaded-script, Docker Compose and Docker installations.
 
-You can also provide `SP_DC_COOKIE` in these ways:
+Direct `.env` editing and the other existing methods remain supported:
 
-* Set it as an [environment variable](#storing-secrets), for example `export SP_DC_COOKIE="your_sp_dc_cookie_value"`.
 * Add `SP_DC_COOKIE="your_sp_dc_cookie_value"` to an [`.env` file](#storing-secrets) to keep it for later runs.
+* Set it as an [environment variable](#storing-secrets), for example `export SP_DC_COOKIE="your_sp_dc_cookie_value"`.
 * Pass it for one run with `-u` or `--spotify-dc-cookie`. This is not recommended because the value may appear in shell history or process listings.
 * Store it in the configuration file or source code as a last resort. This is not recommended because it is easier to expose or commit accidentally.
 
@@ -163,23 +163,23 @@ Client mode reuses login data from a real Spotify desktop session. It is an adva
 - Run an intercepting proxy of your choice (like [Proxyman](https://proxyman.com) - the trial version is sufficient)
 
 - Enable SSL traffic decryption for `spotify.com` domain
-   - in Proxyman: click **Tools → SSL Proxying List → + button → Add Domain → paste `*.spotify.com` → Add**
+    - in Proxyman: click **Tools → SSL Proxying List → + button → Add Domain → paste `*.spotify.com` → Add**
 
 - Launch the Spotify desktop client, then switch to your intercepting proxy (like Proxyman) and look for POST requests to `https://login5.spotify.com/v3/login`
 
 - If you don't see this request, try following steps (stop once it works):
-   - restart the Spotify desktop client
-   - log out from the Spotify desktop client and log back in
-   - point Spotify at the intercepting proxy directly in its settings, i.e. in **Spotify → Settings → Proxy Settings**, set:
-      - **proxy type**: `HTTP`
-      - **host**: `127.0.0.1` (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)
-      - **port**: `9090` (port of your proxy, for Proxyman use the port you see at the top bar)
-      - restart the app. This makes Spotify use a TCP connection that the proxy can inspect instead of QUIC over UDP
-   - block Spotify's UDP port 443 with an operating system firewall. This also forces a TCP connection that the proxy can inspect
-   - try an older version of the Spotify desktop client
+    - restart the Spotify desktop client
+    - log out from the Spotify desktop client and log back in
+    - point Spotify at the intercepting proxy directly in its settings, i.e. in **Spotify → Settings → Proxy Settings**, set:
+        - **proxy type**: `HTTP`
+        - **host**: `127.0.0.1` (IP/FQDN of your proxy, for Proxyman use the IP you see at the top bar)
+        - **port**: `9090` (port of your proxy, for Proxyman use the port you see at the top bar)
+        - restart the app. This makes Spotify use a TCP connection that the proxy can inspect instead of QUIC over UDP
+    - block Spotify's UDP port 443 with an operating system firewall. This also forces a TCP connection that the proxy can inspect
+    - try an older version of the Spotify desktop client
 
 - Export the login request body (a binary Protobuf payload) to a file (e.g. ***login-request-body-file***)
-   - In Proxyman: **right click the request → Export → Request Body → Save File**.
+    - In Proxyman: **right click the request → Export → Request Body → Save File**.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/proxyman_export_protobuf.png" alt="proxyman_export_protobuf" width="80%"/>
@@ -221,10 +221,10 @@ If you already have a working app or want to create a new one:
 - Copy the **Client ID** and **Client Secret**
 
 - Provide the `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` secrets using one of the following methods:
-   - Pass it at runtime with `-r` / `--oauth-app-creds` (use `SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET` format - note the colon separator)
-   - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...`)
-   - Add it to [.env file](#storing-secrets) (`SP_APP_CLIENT_ID=...` and `SP_APP_CLIENT_SECRET=...`) for persistent use
-   - Fallback: hard-code it in the code or config file
+    - Pass it at runtime with `-r` / `--oauth-app-creds` (use `SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET` format - note the colon separator)
+    - Set it as an [environment variable](#storing-secrets) (e.g. `export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...`)
+    - Add it to [.env file](#storing-secrets) (`SP_APP_CLIENT_ID=...` and `SP_APP_CLIENT_SECRET=...`) for persistent use
+    - Fallback: hard-code it in the code or config file
 
 Example:
 
@@ -282,7 +282,7 @@ spotify_monitor --send-test-email
 
 Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). Webhook alerts work with or without email. Run `spotify_monitor --setup`, choose webhook alerts and select Discord or ntfy.
 
-`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working.
+`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working. For a one-run override, use `--webhook-provider discord` or `--webhook-provider ntfy`.
 
 <a id="discord"></a>
 ### Discord
@@ -299,6 +299,8 @@ spotify_monitor --set-webhook-url
 ```
 
 Paste the copied link at the hidden prompt. Spotify Monitor saves it in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
+
+For a one-run override, `--webhook-url URL` uses a complete HTTPS destination without changing `.env`. The URL may remain visible in shell history or process listings, so prefer `--set-webhook-url` for normal setup.
 
 Keep the default provider in `spotify_monitor.conf`:
 
@@ -343,15 +345,50 @@ NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 
 Spotify Monitor sends this value as `Authorization: Bearer <token>`. `NTFY_ACCESS_TOKEN` takes precedence over an `Authorization` entry in `WEBHOOK_HEADERS`.
 
-For compatibility with other advanced webhook integrations, static custom headers are also supported in `spotify_monitor.conf`:
+For compatibility with advanced webhook integrations, custom headers are also supported in `spotify_monitor.conf`:
 
 ```ini
 WEBHOOK_HEADERS = {
-    "Authorization": "Bearer tk_your_ntfy_access_token",
+    "X-Webhook-Title": "{title}",
 }
 ```
 
-The dictionary applies to Discord and ntfy requests. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header. Header names and values are validated before any request is sent.
+Header values support the same placeholders as `WEBHOOK_TEMPLATE`. The dictionary applies to Discord and ntfy requests. Spotify Monitor validates headers before and after placeholder expansion so formatted values cannot introduce invalid names, non-string values or line breaks. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header.
+
+### Advanced Discord-format customization
+
+`WEBHOOK_USERNAME` and `WEBHOOK_AVATAR_URL` change the sender name and HTTPS avatar for Discord-format payloads:
+
+```ini
+WEBHOOK_USERNAME = "Spotify Monitor"
+WEBHOOK_AVATAR_URL = "https://example.com/path/avatar.png"
+```
+
+`WEBHOOK_TEMPLATE` controls the Discord-format request body. The generated configuration contains the safe default template. It supports these placeholders:
+
+- `{title}`
+- `{description}`
+- `{version}`
+- `{image_url}`
+- `{fields}` and `{fields_str}`
+- `{color}`
+- `{timestamp}`
+- `{username}`
+- `{avatar_url}`
+
+A dictionary or list is sent as JSON. A string template is sent as the raw request body for compatible advanced integrations. When the rendered payload is a dictionary, Spotify Monitor always replaces `allowed_mentions` with `{"parse": []}` so notification text cannot trigger Discord mentions.
+
+`WEBHOOK_TRANSFORMS` applies string methods to shared placeholder values before the template and headers are rendered:
+
+```ini
+WEBHOOK_TRANSFORMS = [
+    ("title", "upper"),
+    ("description", "replace", "**", ""),
+    ("description", "strip"),
+]
+```
+
+The tuple format is `(field_to_target, method_name, *optional_arguments)`. Invalid templates, avatar URLs, transforms or formatted headers fail before a webhook request is attempted. These custom payload settings apply to the Discord request format. ntfy continues to use its native publish API while transformations and header placeholders use the same shared title and description values.
 
 Topics on the public ntfy.sh service are public unless protected through an account reservation. Treat an unprotected topic name like a password and do not reuse the example topic above.
 
@@ -371,6 +408,12 @@ Send one test webhook without starting monitoring:
 
 ```sh
 spotify_monitor --send-test-webhook
+```
+
+You can combine one-run provider and URL overrides with the test:
+
+```sh
+spotify_monitor --webhook-provider ntfy --webhook-url "https://ntfy.sh/your-private-topic" --send-test-webhook
 ```
 
 Email and webhooks work separately. If one fails, Spotify Monitor can still send the other. Discord messages cannot trigger `@everyone` or `@here` mentions.
@@ -398,7 +441,7 @@ On **Windows Command Prompt** use `set` instead of `export` and on **Windows Pow
 
 To keep the values between terminal sessions, store them in `.env`.
 
-Browser import, `--set-sp-dc` and the setup wizard can create or update `.env` for you.
+Browser import, `--set-sp-dc` and the setup wizard can create or update `.env` for you. For a manually extracted `sp_dc` value, prefer `--set-sp-dc` over editing `.env` directly because the hidden prompt is the most secure entry method.
 
 If you cloned the repository, you can copy the included example then fill in only the secrets you use:
 
