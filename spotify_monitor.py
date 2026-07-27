@@ -43,15 +43,17 @@ TARGET_USER_URI_ID = ""
 # - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
 #   (use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/)
 # - Provide the SP_DC_COOKIE secret using one of the following methods:
-#   - Pass it at runtime with -u / --spotify-dc-cookie
+#   - Pass it at runtime with -u or --spotify-dc-cookie
 #   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
 #   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
 #   - Fallback: hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Optional Spotify Web API Credentials
+# ----------------------------
 
-# The optional section below enables the legacy Web API path for track and playlist metadata
+# These settings enable the legacy Web API path for track and playlist metadata
 # Spotify requires the owner of every Development Mode app to keep an active Premium subscription
 # Do not create a new Spotify app only for this tool because the web-player backend already provides the required metadata
 # Configure these values only for an app whose owner has Premium and that you have verified still supports the legacy endpoints
@@ -63,7 +65,7 @@ SP_DC_COOKIE = "your_sp_dc_cookie_value"
 #   - Copy the 'Client ID' and 'Client Secret'
 #
 # Provide the SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET secrets using one of the following methods:
-#   - Pass it at runtime with -r / --oauth-app-creds (use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format - note the colon separator)
+#   - Pass it at runtime with -r or --oauth-app-creds using SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format
 #   - Set it as an environment variable (e.g. export SP_APP_CLIENT_ID=...; export SP_APP_CLIENT_SECRET=...)
 #   - Add it to ".env" file (SP_APP_CLIENT_ID=... and SP_APP_CLIENT_SECRET=...) for persistent use
 #   - Fallback: hard-code it in the code or config file
@@ -76,10 +78,12 @@ SP_APP_CLIENT_SECRET = "your_spotify_app_client_secret"
 # Set to empty to use in-memory cache only
 SP_APP_TOKENS_FILE = ".spotify-monitor-oauth-app.json"
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Email Notifications
+# ----------------------------
 
 # SMTP settings for sending email notifications
-# If left as-is, no notifications will be sent
+# If left as-is, no email notifications will be sent
 #
 # Provide the SMTP_PASSWORD secret using one of the following methods:
 #   - Set it as an environment variable (e.g. export SMTP_PASSWORD=...)
@@ -94,15 +98,15 @@ SMTP_SSL = True
 SENDER_EMAIL = "your_sender_email"
 RECEIVER_EMAIL = "your_receiver_email"
 
-# Whether to send an email when user becomes active
+# Whether to send an email when the user becomes active
 # Can also be enabled via the -a flag
 ACTIVE_NOTIFICATION = False
 
-# Whether to send an email when user goes inactive
+# Whether to send an email when the user goes inactive
 # Can also be enabled via the -i flag
 INACTIVE_NOTIFICATION = False
 
-# Whether to send an email when a monitored track/playlist/album plays
+# Whether to send an email when a monitored track, playlist or album plays
 # Can also be enabled via the -t flag
 TRACK_NOTIFICATION = False
 
@@ -115,15 +119,16 @@ SONG_NOTIFICATION = False
 # Can also be enabled via the -x flag
 SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send an email on errors
+# Whether to send an email on monitoring errors
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Webhook Notifications
+# ----------------------------
 
-# Webhook notifications through Discord or ntfy
-
-# Master switch for the webhook event settings below
+# Master switch for webhook notifications through Discord or ntfy
+# Event settings below select which notifications are sent
 # Can also be enabled via the --webhook flag
 WEBHOOK_ENABLED = False
 
@@ -139,22 +144,22 @@ WEBHOOK_URL = "your_webhook_url"
 # Discord display name (leave empty to use the webhook default)
 WEBHOOK_USERNAME = "Spotify Monitor"
 
-# Whether to send a webhook alert when the user becomes active
+# Whether to send a webhook notification when the user becomes active
 WEBHOOK_ACTIVE_NOTIFICATION = False
 
-# Whether to send a webhook alert when the user goes inactive
+# Whether to send a webhook notification when the user goes inactive
 WEBHOOK_INACTIVE_NOTIFICATION = False
 
-# Whether to send a webhook alert when a monitored track, playlist or album plays
+# Whether to send a webhook notification when a monitored track, playlist or album plays
 WEBHOOK_TRACK_NOTIFICATION = False
 
-# Whether to send a webhook alert on every song change
+# Whether to send a webhook notification on every song change
 WEBHOOK_SONG_NOTIFICATION = False
 
-# Whether to send a webhook alert when the user plays a song on loop
+# Whether to send a webhook notification when the user plays a song on loop
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send a webhook alert on monitoring errors
+# Whether to send a webhook notification on monitoring errors
 WEBHOOK_ERROR_NOTIFICATION = True
 
 # Optional static request headers for advanced webhook integrations
@@ -168,17 +173,21 @@ NTFY_ACCESS_TOKEN = ""
 # Image preparation or delivery failures fall back to text
 NTFY_IMAGES = True
 
-# How often to check for user activity; in seconds
+# ----------------------------
+# Monitoring Settings
+# ----------------------------
+
+# How often to check for user activity in seconds
 # Can also be set using the -c flag
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
-# Time to wait before retrying after an error; in seconds
-SPOTIFY_ERROR_INTERVAL = 180  # 3 mins
+# Time to wait before retrying after an error in seconds
+SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 
-# Time after which a user is considered inactive (based on last activity); in seconds
+# Time after which a user is considered inactive based on last activity in seconds
 # Can also be set using the -o flag
-# Note: If the user listens to songs longer than this value, they may be marked as inactive
-SPOTIFY_INACTIVITY_CHECK = 660  # 11 mins
+# Songs longer than this value can cause the user to appear inactive
+SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
 
 # How many recently listened songs to display in the inactive notification email
 # Set to 0 to disable the recently listened songs list
@@ -200,38 +209,42 @@ DETECT_CROSSFADED_SONGS = True
 CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
 CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
 
-# Interval for checking if a user who disappeared from the list of recently active friends has reappeared; in seconds
+# Interval for checking whether a missing user has reappeared in seconds
 # Can happen due to:
 #   - unfollowing the user
 #   - Spotify service issues
 #   - private session bugs
 #   - user inactivity for over a week
-# In such a case, the tool will continuously check for the user's reappearance using the time interval specified below
+# The tool continues checking for the user's reappearance at this interval
 # Can also be set using the -m flag
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 mins
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
+
+# ----------------------------
+# Spotify Playback Integration
+# ----------------------------
 
 # Whether to auto-play each listened song in your Spotify client
 # Host Spotify auto-play is unavailable by default inside Docker and Docker Compose containers
 # Can also be set using the -g flag
 TRACK_SONGS = False
 
-# Method used to play the song listened by the tracked user in local Spotify client under macOS
-# (i.e. when TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on macOS
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "apple-script" (recommended)
 #       "trigger-url"
 SPOTIFY_MACOS_PLAYING_METHOD = "apple-script"
 
-# Method used to play the song listened by the tracked user in local Spotify client under Linux OS
-# (i.e. when TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on Linux
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "dbus-send" (most common one)
 #       "qdbus"
 #       "trigger-url"
 SPOTIFY_LINUX_PLAYING_METHOD = "dbus-send"
 
-# Method used to play the song listened by the tracked user in local Spotify client under Windows OS
-# (if TRACK_SONGS / -g functionality is enabled)
+# Method used to play the tracked song in the local Spotify client on Windows
+# Only applies when TRACK_SONGS or -g is enabled
 # Methods:
 #       "start-uri" (recommended)
 #       "spotify-cmd"
@@ -241,15 +254,16 @@ SPOTIFY_WINDOWS_PLAYING_METHOD = "start-uri"
 # Number of consecutive plays of the same song considered to be on loop
 SONG_ON_LOOP_VALUE = 3
 
-# Threshold for considering a song as skipped (fraction of duration)
+# Fraction of a song that must play before it is no longer considered skipped
 SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55% of its total length
 
-# Spotify track ID to play when the user goes offline (used when TRACK_SONGS / -g functionality is enabled)
+# Spotify track ID to play when the user goes offline
+# Only applies when TRACK_SONGS or -g is enabled
 # Leave empty to simply pause
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
-# Delay before pausing the above track after the user goes offline; in seconds
+# Delay before pausing the offline track in seconds
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
@@ -257,54 +271,58 @@ SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 # To avoid false alarms, we delay alerts until this happens REMOVED_DISAPPEARED_COUNTER times in a row
 REMOVED_DISAPPEARED_COUNTER = 4
 
-# Optional: specify user agent manually
+# ----------------------------
+# Network Settings
+# ----------------------------
+
+# Optional user agent
 #
-# When the token source is 'cookie' - set it to web browser user agent, some examples:
+# For cookie token mode use a web browser user agent such as:
 # Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0
 # Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:139.0) Gecko/20100101 Firefox/139.0
 #
-# When the token source is 'client' - set it to Spotify desktop client user agent, some examples:
+# For client token mode use a Spotify desktop client user agent such as:
 # Spotify/126200580 Win32_x86_64/0 (PC desktop)
 # Spotify/126400408 OSX_ARM64/OS X 15.5.0 [arm 2]
 #
-# Leave empty to auto-generate it randomly for specific token source
+# Leave empty to generate an appropriate value for the selected token source
 USER_AGENT = ""
 
-# How often to print a "liveness check" message to the output; in seconds
+# How often to print a liveness message in seconds
 # Set to 0 to disable
 LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
 
-# Timeout used when checking initial internet connectivity; in seconds
+# Timeout used when checking initial internet connectivity in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# Whether to enable / disable SSL certificate verification while sending https requests
+# Whether to verify TLS certificates for HTTPS requests
 VERIFY_SSL = True
 
-# Threshold for displaying Spotify 50x errors - it is to suppress sporadic issues with Spotify API endpoint
-# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 Spotify API related errors in 4 minutes, show an alert
+# Number of Spotify 5xx errors allowed within ERROR_500_TIME_LIMIT before showing an alert
 ERROR_500_NUMBER_LIMIT = 6
-ERROR_500_TIME_LIMIT = 240  # 4 min
+ERROR_500_TIME_LIMIT = 240  # 4 minutes
 
-# Threshold for displaying network errors - it is to suppress sporadic issues with internet connectivity
-# Adjust the values according to the SPOTIFY_CHECK_INTERVAL timer
-# If more than 6 network related errors in 4 minutes, show an alert
+# Number of network errors allowed within ERROR_NETWORK_ISSUES_TIME_LIMIT before showing an alert
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
-ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 min
+ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 minutes
+
+# ----------------------------
+# Files and Storage
+# ----------------------------
 
 # CSV file to write every listened track
 # Can also be set using the -b flag
 CSV_FILE = ""
 
-# Filename with Spotify tracks/playlists/albums to alert on
+# File containing Spotify tracks, playlists and albums to alert on
 # Can also be set using the -s flag
 MONITOR_LIST_FILE = ""
 
-# Location of the optional dotenv file which can keep secrets
-# If not specified it will try to auto-search for .env files
+# Optional dotenv file used to store secrets
+# Leave empty to search automatically for .env files
 # To disable auto-search, set this to the literal string "none"
 # Can also be set using the --env-file flag
 DOTENV_FILE = ""
@@ -313,21 +331,27 @@ DOTENV_FILE = ""
 # Can also be set using the -y flag
 FILE_SUFFIX = ""
 
-# Base name for the log file. Output will be saved to spotify_monitor_<user_uri_id/file_suffix>.log
-# Can include a directory path to specify the location, e.g. ~/some_dir/spotify_monitor
+# Base name for the log file
+# Can include a directory path such as ~/some_dir/spotify_monitor
 SP_LOGFILE = "spotify_monitor"
 
 # Whether to disable logging to spotify_monitor_<user_uri_id/file_suffix>.log
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
-# Enable debug mode for technical logging (can also be enabled via --debug flag)
-# Shows request flow, selected params and internal state changes (with sensitive values redacted)
-DEBUG_MODE = False
+# ----------------------------
+# Terminal Output
+# ----------------------------
 
-# Enable verbose operational events and the complete startup summary
+# Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
+# Can also be enabled via the --verbose flag
 VERBOSE_MODE = False
+
+# Whether to enable debug output
+# Shows request flow, selected parameters and internal state changes with sensitive values redacted
+# Can also be enabled via the --debug flag
+DEBUG_MODE = False
 
 # Width of horizontal line
 HORIZONTAL_LINE = 113
@@ -347,8 +371,12 @@ FLAG_FILE = ""
 # Can also be set via the --truncate flag
 TRUNCATE_CHARS = 0
 
-# Value added/subtracted via signal handlers to adjust inactivity timeout (SPOTIFY_INACTIVITY_CHECK); in seconds
+# Amount added to or removed from SPOTIFY_INACTIVITY_CHECK by signal handlers in seconds
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
+
+# ----------------------------
+# Music and Lyrics Links
+# ----------------------------
 
 # Whether to show Apple Music URL in console and emails
 ENABLE_APPLE_MUSIC_URL = True
@@ -382,10 +410,8 @@ ENABLE_MUSIXMATCH_URL = False
 # Whether to show Lyrics.com lyrics URL in console and emails
 ENABLE_LYRICS_COM_URL = False
 
-# String to add after playlist name to indicate it's a Spotify public curated and customized playlist
-# The distinction may be important because the songs will vary by account due to listening habits.
-# This will be used for messages on console and emails
-# The string should include all desired characters, including a preceding space and parenthesis, if desired
+# Text added after a playlist name to identify Spotify-curated personalized playlists
+# Include any required leading space or punctuation in the value
 #
 # Example:
 #   For: 90s Pop (by Spotify), SPOTIFY_SUFFIX = " (by Spotify)"
@@ -393,20 +419,17 @@ ENABLE_LYRICS_COM_URL = False
 # Leave empty to disable
 SPOTIFY_SUFFIX = ""
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Advanced Cookie Token Settings
+# ----------------------------
 
-# The section below is used when the token source is set to 'cookie'
+# These settings apply when TOKEN_SOURCE is "cookie"
 
-# Maximum number of attempts to get a valid access token in a single run of the spotify_get_access_token_from_sp_dc() function
+# Maximum attempts to obtain a valid access token
 TOKEN_MAX_RETRIES = 3
 
-# Interval between access token retry attempts; in seconds
+# Delay between access token attempts in seconds
 TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
-
-# ----------------------------------------------
-# Advanced options for 'cookie' token source
-# Modifying the values below is NOT recommended!
-# ----------------------------------------------
 
 # TOTP parameters used to sign Spotify web-player access token requests
 #
@@ -424,15 +447,17 @@ TOKEN_RETRY_TIMEOUT = 0.5  # 0.5 second
 TOTP_VERSION = 61
 TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 120, 97, 75, 76, 94, 102, 43, 69, 49, 120, 118, 80, 64, 78)
 
-# ---------------------------------------------------------------------
+# ----------------------------
+# Advanced Client Token Settings
+# ----------------------------
 
-# The section below is used when the token source is set to 'client'
+# These settings apply when TOKEN_SOURCE is "client"
 #
 # - Run an intercepting proxy of your choice (like Proxyman)
 # - Launch the Spotify desktop client and look for requests to: https://login{n}.spotify.com/v3/login
 #   (the 'login' part is suffixed with one or more digits)
 # - Export the login request body (a binary Protobuf payload) to a file
-#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <login-request-body-file>)
+#   (for example in Proxyman: right-click the request -> Export -> Request Body -> Save File -> <login-request-body-file>)
 #
 # To automatically extract DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN from the exported binary login
 # request Protobuf file:
@@ -440,20 +465,20 @@ TOTP_SECRET_CIPHER_BYTES = (44, 55, 47, 42, 70, 40, 34, 114, 76, 74, 50, 111, 12
 # - Run the tool with the -w flag to indicate an exported file or specify its file name below
 LOGIN_REQUEST_BODY_FILE = ""
 
-# Alternatively, you can manually set the DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN options
-# (however, using the automated method described above is recommended)
+# Alternatively you can set DEVICE_ID, SYSTEM_ID, USER_URI_ID and REFRESH_TOKEN manually
+# The automated method above is recommended
 #
 # These values can be extracted using one of the following methods:
 #
-# - Run spotify_profile_monitor with the -w flag without specifying SPOTIFY_USER_URI_ID - it will decode the file and
+# - Run spotify_profile_monitor with the -w flag without specifying SPOTIFY_USER_URI_ID to decode the file and
 #   print the values to stdout, example:
 #       spotify_profile_monitor --token-source client -w <path-to-login-request-body-file>
 #
-# - Use the protoc tool (part of protobuf pip package):
+# - Use the protoc tool from the protobuf package:
 #       pip install protobuf
 #       protoc --decode_raw < <path-to-login-request-body-file>
 #
-# - Use the built-in Protobuf decoder in your intercepting proxy (if supported)
+# - Use the built-in Protobuf decoder in your intercepting proxy if supported
 #
 # The Protobuf structure is as follows:
 #
@@ -478,10 +503,8 @@ SYSTEM_ID = "your_spotify_app_system_id"
 USER_URI_ID = "your_spotify_user_uri_id"
 REFRESH_TOKEN = "your_spotify_app_refresh_token"
 
-# ----------------------------------------------
-# Advanced options for 'client' token source
-# Modifying the values below is NOT recommended!
-# ----------------------------------------------
+# Client request internals
+# Change these values only when Spotify changes its desktop client protocol
 
 # Spotify login URL
 LOGIN_URL = "https://login5.spotify.com/v3/login"
@@ -496,7 +519,7 @@ CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 # - Launch the Spotify desktop client and look for requests to: https://clienttoken.spotify.com/v1/clienttoken
 #   (these requests are sent every time client token expires, usually every 2 weeks)
 # - Export the client token request body (a binary Protobuf payload) to a file
-#   (e.g. in Proxyman: right click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
+#   (for example in Proxyman: right-click the request -> Export -> Request Body -> Save File -> <clienttoken-request-body-file>)
 #
 # To automatically extract APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and CLIENT_MODEL from the
 # exported binary client token request Protobuf file:
@@ -504,20 +527,19 @@ CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"
 # - Run the tool with the hidden -z flag to indicate an exported file or specify its file name below
 CLIENTTOKEN_REQUEST_BODY_FILE = ""
 
-# Alternatively, you can manually set the APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and
-# CLIENT_MODEL options
+# Alternatively you can set APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR and CLIENT_MODEL manually
 #
 # These values can be extracted using one of the following methods:
 #
-# - run spotify_profile_monitor with the hidden -z flag without specifying SPOTIFY_USER_URI_ID - it will decode the file
+# - Run spotify_profile_monitor with the hidden -z flag without specifying SPOTIFY_USER_URI_ID to decode the file
 #   and print the values to stdout, example:
 #       spotify_profile_monitor --token-source client -z <path-to-clienttoken-request-body-file>
 #
-# - use the protoc tool (part of protobuf pip package):
+# - Use the protoc tool from the protobuf package:
 #       pip install protobuf
 #       protoc --decode_raw < <path-to-clienttoken-request-body-file>
 #
-# - use the built-in Protobuf decoder in your intercepting proxy (if supported)
+# - Use the built-in Protobuf decoder in your intercepting proxy if supported
 #
 # The Protobuf structure is as follows:
 #
@@ -540,7 +562,7 @@ CLIENTTOKEN_REQUEST_BODY_FILE = ""
 #   }
 # }
 #
-# Provide the extracted values below (except for DEVICE_ID and SYSTEM_ID as it was already provided via -w)
+# Provide the extracted values below except for DEVICE_ID and SYSTEM_ID which were already provided via -w
 CPU_ARCH = 10
 OS_BUILD = 19045
 PLATFORM = 2
