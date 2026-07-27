@@ -356,7 +356,7 @@ For example, this sends a webhook alert for every song change during one run:
 spotify_monitor <spotify_user_uri_id> --webhook-song-changes
 ```
 
-Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Use `--webhook-provider {discord,ntfy}` to override the configured request format. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Standard Discord and public `ntfy.sh` URLs automatically correct a stale configured provider. Use `--webhook-provider {discord,ntfy}` as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
 
 The recommended way to save a private destination is still the hidden `--set-webhook-url` command. For automation or one-time testing, `--webhook-url URL` overrides the destination without changing `.env`:
 
