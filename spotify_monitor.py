@@ -133,37 +133,84 @@ ERROR_NOTIFICATION = True
 WEBHOOK_ENABLED = False
 
 # Service used to deliver webhook notifications: "discord" or "ntfy"
+# Can also be set via the --webhook-provider flag
 WEBHOOK_PROVIDER = "discord"
 
 # Private destination used to send webhook notifications
 # Discord: Edit Channel -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL
 # ntfy: complete topic URL such as https://ntfy.sh/your-private-topic
 # Prefer --set-webhook-url, an environment variable or a dotenv file instead of storing this private URL here
+# The --webhook-url flag is available for one-run overrides but may leave the private URL in shell history
 WEBHOOK_URL = "your_webhook_url"
 
 # Discord display name (leave empty to use the webhook default)
 WEBHOOK_USERNAME = "Spotify Monitor"
 
+# Discord avatar URL (leave empty to use the webhook default)
+WEBHOOK_AVATAR_URL = ""
+
 # Whether to send a webhook notification when the user becomes active
+# Can also be enabled via the --webhook-active flag
 WEBHOOK_ACTIVE_NOTIFICATION = False
 
 # Whether to send a webhook notification when the user goes inactive
+# Can also be enabled via the --webhook-inactive flag
 WEBHOOK_INACTIVE_NOTIFICATION = False
 
 # Whether to send a webhook notification when a monitored track, playlist or album plays
+# Can also be enabled via the --webhook-track flag
 WEBHOOK_TRACK_NOTIFICATION = False
 
 # Whether to send a webhook notification on every song change
+# Can also be enabled via the --webhook-song-changes flag
 WEBHOOK_SONG_NOTIFICATION = False
 
 # Whether to send a webhook notification when the user plays a song on loop
+# Can also be enabled via the --webhook-loop flag
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
 # Whether to send a webhook notification on monitoring errors
+# Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
-# Optional static request headers for advanced webhook integrations
+# Optional request headers for advanced webhook integrations
+# Values support the same placeholders as WEBHOOK_TEMPLATE
 WEBHOOK_HEADERS = {}
+
+# ----------------------------
+# Advanced Webhook Settings
+# ----------------------------
+
+# Discord-format webhook request payload template
+# Supported placeholders include title, description, version, image_url, fields, fields_str, color, timestamp,
+# username and avatar_url
+WEBHOOK_TEMPLATE = {
+    "username": "{username}",
+    "avatar_url": "{avatar_url}",
+    "allowed_mentions": {
+        "parse": [],
+    },
+    "embeds": [{
+        "title": "{title}",
+        "description": "{description}",
+        "color": "{color}",
+        "footer": {
+            "text": "Spotify Monitor v{version}",
+        },
+        "timestamp": "{timestamp}",
+    }],
+}
+
+# Optional transformations applied to WEBHOOK_TEMPLATE and WEBHOOK_HEADERS values
+# Tuple format: (field_to_target, method_name, *optional_arguments)
+#
+# Examples:
+#   [
+#       ("title", "upper"),
+#       ("description", "replace", "**", ""),
+#       ("description", "strip"),
+#   ]
+WEBHOOK_TRANSFORMS = []
 
 # Optional ntfy access token for Bearer authentication
 # Prefer an environment variable or dotenv file instead of storing this token here
@@ -621,7 +668,10 @@ WEBHOOK_ENABLED = False
 WEBHOOK_URL = ""
 WEBHOOK_PROVIDER = ""
 WEBHOOK_USERNAME = ""
+WEBHOOK_AVATAR_URL = ""
 WEBHOOK_HEADERS = {}
+WEBHOOK_TEMPLATE = {}
+WEBHOOK_TRANSFORMS = []
 NTFY_ACCESS_TOKEN = ""
 NTFY_IMAGES = False
 WEBHOOK_ACTIVE_NOTIFICATION = False
@@ -1138,7 +1188,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
-        return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check WEBHOOK_PROVIDER, WEBHOOK_URL, WEBHOOK_HEADERS and NTFY_ACCESS_TOKEN then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check the webhook provider, URL, customization, headers and ntfy access token then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
@@ -2451,15 +2501,87 @@ def webhook_retry_after_seconds(response: Any) -> float:
     return WEBHOOK_FALLBACK_RETRY_SECONDS
 
 
-# Builds one bounded Discord embed without allowing notification text to trigger mentions
-def build_webhook_payload(title: str, description: str, notification_type: str) -> dict:
+# Applies configured placeholders recursively to a webhook template
+def format_payload(template: Any, payload: dict) -> Any:
+    if isinstance(template, dict):
+        return {key: format_payload(value, payload) for key, value in template.items()}
+    if isinstance(template, list):
+        return [format_payload(value, payload) for value in template]
+    if isinstance(template, tuple):
+        return tuple(format_payload(value, payload) for value in template)
+    if isinstance(template, str):
+        if template == "{fields}":
+            return payload.get("fields", [])
+        if template == "{color}":
+            return payload.get("color", 0x1DB954)
+        try:
+            return template.format(**payload)
+        except KeyError:
+            return template
+    return template
+
+
+# Returns a configuration error for unsafe or unsupported webhook customization
+def validate_webhook_customization(provider: Any = None) -> Optional[str]:
+    selected_provider = normalized_webhook_provider(provider)
+    if selected_provider == "discord":
+        if not isinstance(WEBHOOK_USERNAME, str):
+            return "WEBHOOK_USERNAME must be a string"
+        if not isinstance(WEBHOOK_AVATAR_URL, str):
+            return "WEBHOOK_AVATAR_URL must be a string"
+        if WEBHOOK_AVATAR_URL.strip() and not validate_webhook_url(WEBHOOK_AVATAR_URL):
+            return "WEBHOOK_AVATAR_URL must contain a complete HTTPS link without embedded credentials"
+        if not isinstance(WEBHOOK_TEMPLATE, (dict, list, str)):
+            return "WEBHOOK_TEMPLATE must be a dictionary, list or string"
+    if not isinstance(WEBHOOK_TRANSFORMS, (list, tuple)):
+        return "WEBHOOK_TRANSFORMS must be a list or tuple"
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        if not isinstance(transform, (list, tuple)) or len(transform) < 2 or not isinstance(transform[0], str) or not isinstance(transform[1], str):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} must contain a field name and string method name"
+        if transform[1].startswith("_") or not callable(getattr("", transform[1], None)):
+            return f"WEBHOOK_TRANSFORMS entry {index + 1} uses an unsupported string method"
+    return None
+
+
+# Applies configured string transformations to one webhook value mapping
+def apply_webhook_transforms(payload: dict) -> dict:
+    transformed = dict(payload)
+    for index, transform in enumerate(WEBHOOK_TRANSFORMS):
+        field = transform[0]
+        method_name = transform[1]
+        if field not in transformed or not isinstance(transformed[field], str):
+            continue
+        try:
+            transformed[field] = getattr(transformed[field], method_name)(*transform[2:])
+        except Exception as exc:
+            raise ValueError(f"WEBHOOK_TRANSFORMS entry {index + 1} could not apply {field}.{method_name}") from exc
+    return transformed
+
+
+# Builds bounded placeholder values shared by webhook templates, headers and providers
+def build_webhook_values(title: str, description: str, notification_type: str, image_url: str = "") -> dict:
     colors = {"active": 0x1DB954, "inactive": 0x747F8D, "track": 0x1DB954, "song": 0x3498DB, "loop": 0x9B59B6, "error": 0xE74C3C}
     safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
     safe_description = sanitize_error_text(description)[:WEBHOOK_EMBED_DESCRIPTION_LIMIT]
-    embed = {"title": safe_title, "description": safe_description, "color": colors.get(notification_type, 0x1DB954), "footer": {"text": f"Spotify Monitor v{VERSION}"}, "timestamp": datetime.now().astimezone().isoformat()}
-    payload = {"allowed_mentions": {"parse": []}, "embeds": [embed]}
-    if isinstance(WEBHOOK_USERNAME, str) and WEBHOOK_USERNAME.strip():
-        payload["username"] = WEBHOOK_USERNAME.strip()[:80]
+    username = WEBHOOK_USERNAME.strip()[:80] if isinstance(WEBHOOK_USERNAME, str) else ""
+    avatar_url = WEBHOOK_AVATAR_URL.strip() if isinstance(WEBHOOK_AVATAR_URL, str) else ""
+    payload = {"title": safe_title, "description": safe_description, "version": VERSION, "image_url": str(image_url or ""), "fields": [], "fields_str": "", "color": colors.get(notification_type, 0x1DB954), "timestamp": datetime.now().astimezone().isoformat(), "username": username, "avatar_url": avatar_url}
+    return apply_webhook_transforms(payload)
+
+
+# Builds one customized Discord-format payload while keeping mentions disabled
+def build_webhook_payload(title: str, description: str, notification_type: str, image_url: str = "", payload_values: Optional[dict] = None) -> Any:
+    values = build_webhook_values(title, description, notification_type, image_url) if payload_values is None else payload_values
+    try:
+        payload = format_payload(WEBHOOK_TEMPLATE, values)
+    except Exception as exc:
+        raise ValueError("WEBHOOK_TEMPLATE could not be formatted with the supported placeholders") from exc
+    if isinstance(payload, dict):
+        if payload.get("username") == "":
+            payload.pop("username")
+        if payload.get("avatar_url") == "":
+            payload.pop("avatar_url")
+        payload["allowed_mentions"] = {"parse": []}
     return payload
 
 
@@ -2478,13 +2600,12 @@ def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     return safe_title, safe_message
 
 
-# Returns a safe configuration error for custom webhook headers or ntfy access tokens
-def validate_webhook_headers(provider: Any = None) -> Optional[str]:
-    selected_provider = normalized_webhook_provider(provider)
-    if not isinstance(WEBHOOK_HEADERS, dict):
+# Returns a safe validation error for one custom webhook header mapping
+def _validate_webhook_header_mapping(headers: Any) -> Optional[str]:
+    if not isinstance(headers, dict):
         return "WEBHOOK_HEADERS must be a dictionary of string header names and values"
     normalized_names = set()
-    for name, value in WEBHOOK_HEADERS.items():
+    for name, value in headers.items():
         if not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name):
             return "WEBHOOK_HEADERS contains an invalid HTTP header name"
         normalized_name = name.casefold()
@@ -2495,6 +2616,15 @@ def validate_webhook_headers(provider: Any = None) -> Optional[str]:
             return f"WEBHOOK_HEADERS value for {name} must be a string"
         if "\r" in value or "\n" in value:
             return f"WEBHOOK_HEADERS value for {name} must not contain line breaks"
+    return None
+
+
+# Returns a safe configuration error for custom webhook headers or ntfy access tokens
+def validate_webhook_headers(provider: Any = None) -> Optional[str]:
+    selected_provider = normalized_webhook_provider(provider)
+    header_error = _validate_webhook_header_mapping(WEBHOOK_HEADERS)
+    if header_error is not None:
+        return header_error
     if selected_provider == "ntfy":
         if not isinstance(NTFY_ACCESS_TOKEN, str):
             return "NTFY_ACCESS_TOKEN must be a string"
@@ -2506,12 +2636,19 @@ def validate_webhook_headers(provider: Any = None) -> Optional[str]:
     return None
 
 
-# Builds provider-specific headers while applying safe defaults and private ntfy authentication
-def build_webhook_headers(provider: str) -> dict:
+# Builds provider-specific headers while formatting placeholders and applying private ntfy authentication
+def build_webhook_headers(provider: str, payload: dict) -> dict:
     validation_error = validate_webhook_headers(provider)
     if validation_error is not None:
         raise ValueError(validation_error)
-    headers = dict(WEBHOOK_HEADERS)
+    try:
+        formatted_headers = format_payload(WEBHOOK_HEADERS, payload)
+    except Exception as exc:
+        raise ValueError("WEBHOOK_HEADERS could not be formatted with the supported placeholders") from exc
+    formatted_error = _validate_webhook_header_mapping(formatted_headers)
+    if formatted_error is not None:
+        raise ValueError(formatted_error)
+    headers = dict(cast(dict[str, str], formatted_headers))
     if not any(name.casefold() == "user-agent" for name in headers):
         headers["User-Agent"] = f"SpotifyMonitor/{VERSION}"
     if provider == "ntfy":
@@ -2597,14 +2734,23 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if not provider:
         print_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
         return 1
+    customization_error = validate_webhook_customization(provider)
+    if customization_error is not None:
+        print_recovery_error(context="webhook_config", detail=customization_error)
+        return 1
     header_error = validate_webhook_headers(provider)
     if header_error is not None:
         print_recovery_error(context="webhook_config", detail=header_error)
         return 1
-    request_headers = build_webhook_headers(provider)
+    try:
+        webhook_values = build_webhook_values(title, description, notification_type, image_url)
+        request_headers = build_webhook_headers(provider, webhook_values)
+        discord_payload = build_webhook_payload(title, description, notification_type, image_url, webhook_values) if provider == "discord" else None
+    except ValueError as exc:
+        print_recovery_error(context="webhook_config", detail=str(exc))
+        return 1
     sleep_func = time.sleep if sleeper is None else sleeper
-    discord_payload = build_webhook_payload(title, description, notification_type) if provider == "discord" else None
-    ntfy_title, ntfy_message = build_ntfy_webhook_message(title, description) if provider == "ntfy" else ("", "")
+    ntfy_title, ntfy_message = build_ntfy_webhook_message(str(webhook_values["title"]), str(webhook_values["description"])) if provider == "ntfy" else ("", "")
     ntfy_image = build_ntfy_image(image_url) if provider == "ntfy" and NTFY_IMAGES and image_url else None
     use_ntfy_image = ntfy_image is not None
     last_error: Any = None
@@ -2616,7 +2762,10 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
                 else:
                     response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=ntfy_message.encode("utf-8"), params={"title": ntfy_title}, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             else:
-                response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                if isinstance(discord_payload, str):
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), data=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
+                else:
+                    response = WEBHOOK_SESSION.post(str(WEBHOOK_URL).strip(), json=discord_payload, headers=request_headers, timeout=WEBHOOK_TIMEOUT_SECONDS)
             if 200 <= response.status_code <= 299:
                 return 0
             last_error = response
@@ -5232,6 +5381,10 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not validate_webhook_url():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+    customization_error = validate_webhook_customization(normalized_webhook_provider())
+    if customization_error is not None:
+        advice = classify_recovery_error(context="webhook_config", detail=customization_error)
+        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     header_error = validate_webhook_headers(normalized_webhook_provider())
     if header_error is not None:
         advice = classify_recovery_error(context="webhook_config", detail=header_error)
@@ -7435,6 +7588,39 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             continue
 
 
+# Applies validated one-run webhook command-line overrides to runtime settings
+def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION
+    if args.webhook_provider is not None:
+        WEBHOOK_PROVIDER = str(args.webhook_provider)
+    if args.webhook_url is not None:
+        if not validate_webhook_url(args.webhook_url):
+            parser.error("--webhook-url must contain a complete HTTPS link without embedded credentials")
+        WEBHOOK_URL = str(args.webhook_url).strip()
+        WEBHOOK_ENABLED = True
+    if args.webhook_enabled is not None:
+        WEBHOOK_ENABLED = args.webhook_enabled
+    if args.webhook_active is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_ACTIVE_NOTIFICATION = True
+    if args.webhook_inactive is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_INACTIVE_NOTIFICATION = True
+    if args.webhook_track is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_TRACK_NOTIFICATION = True
+    if args.webhook_song_changes is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_NOTIFICATION = True
+    if args.webhook_loop is True:
+        WEBHOOK_ENABLED = True
+        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
+    if args.webhook_errors is not None:
+        WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
+        if args.webhook_errors:
+            WEBHOOK_ENABLED = True
+
+
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES
 
@@ -7682,6 +7868,19 @@ def main():
         help="Disable the configured webhook alerts"
     )
     webhook_notify.add_argument(
+        "--webhook-url",
+        dest="webhook_url",
+        metavar="URL",
+        type=str,
+        help="Use one Discord webhook or ntfy topic URL for this run (may remain in shell history)"
+    )
+    webhook_notify.add_argument(
+        "--webhook-provider",
+        dest="webhook_provider",
+        choices=("discord", "ntfy"),
+        help="Webhook request format for this run (default: configured provider)"
+    )
+    webhook_notify.add_argument(
         "--webhook-active",
         dest="webhook_active",
         action="store_true",
@@ -7716,7 +7915,15 @@ def main():
         default=None,
         help="Send a webhook alert when the user plays a song on loop"
     )
-    webhook_notify.add_argument(
+    webhook_error_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_error_toggle.add_argument(
+        "--webhook-errors",
+        dest="webhook_errors",
+        action="store_true",
+        default=None,
+        help="Send webhook alerts when monitoring has a problem"
+    )
+    webhook_error_toggle.add_argument(
         "--no-webhook-error-notify",
         dest="webhook_errors",
         action="store_false",
@@ -7855,6 +8062,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7870,7 +8079,7 @@ def main():
             (args.force, "--force"),
         )
         set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_sp_dc_conflicts:
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
@@ -7902,6 +8111,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7917,7 +8128,7 @@ def main():
             (args.force, "--force"),
         )
         set_webhook_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_webhook_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_webhook_conflicts:
             parser.error("--set-webhook-url cannot be combined with " + ", ".join(set_webhook_conflicts))
@@ -7947,6 +8158,8 @@ def main():
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
             (args.oauth_app_creds, "--oauth-app-creds"),
+            (args.webhook_url, "--webhook-url"),
+            (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
@@ -7958,7 +8171,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -8181,25 +8394,7 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
-    if args.webhook_enabled is not None:
-        WEBHOOK_ENABLED = args.webhook_enabled
-    if args.webhook_active is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_ACTIVE_NOTIFICATION = True
-    if args.webhook_inactive is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_INACTIVE_NOTIFICATION = True
-    if args.webhook_track is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_TRACK_NOTIFICATION = True
-    if args.webhook_song_changes is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_NOTIFICATION = True
-    if args.webhook_loop is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
-    if args.webhook_errors is False:
-        WEBHOOK_ERROR_NOTIFICATION = False
+    apply_webhook_cli_overrides(args, parser)
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
@@ -8488,31 +8683,7 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
 
-    if args.webhook_enabled is not None:
-        WEBHOOK_ENABLED = args.webhook_enabled
-
-    if args.webhook_active is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_ACTIVE_NOTIFICATION = True
-
-    if args.webhook_inactive is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_INACTIVE_NOTIFICATION = True
-
-    if args.webhook_track is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_TRACK_NOTIFICATION = True
-
-    if args.webhook_song_changes is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_NOTIFICATION = True
-
-    if args.webhook_loop is True:
-        WEBHOOK_ENABLED = True
-        WEBHOOK_SONG_ON_LOOP_NOTIFICATION = True
-
-    if args.webhook_errors is False:
-        WEBHOOK_ERROR_NOTIFICATION = False
+    apply_webhook_cli_overrides(args, parser)
 
     if args.track_in_spotify is True:
         TRACK_SONGS = True
