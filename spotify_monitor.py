@@ -4414,7 +4414,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
 
 # Formats one startup summary row with aligned plain ASCII columns
 def _format_startup_summary_row(row: StartupSummaryRow) -> str:
-    return f"* {(row.label + ':'):<27}{row.value}\n"
+    return f"* {(row.label + ':'):<30}{row.value}\n"
 
 
 # Routes concise or complete startup rows independently to terminal and log destinations
