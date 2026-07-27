@@ -931,7 +931,8 @@ WEBHOOK_FALLBACK_RETRY_SECONDS = 1.0
 WEBHOOK_TIMEOUT_SECONDS = 10
 WEBHOOK_EMBED_TITLE_LIMIT = 256
 WEBHOOK_EMBED_DESCRIPTION_LIMIT = 4096
-NTFY_MESSAGE_LIMIT_BYTES = 4096
+NTFY_MESSAGE_LIMIT_BYTES = 4095
+NTFY_TRUNCATION_SUFFIX = "\n\n[Notification truncated to fit ntfy's 4 KB message limit]"
 NTFY_IMAGE_DOWNLOAD_LIMIT_BYTES = 5 * 1024 * 1024
 NTFY_IMAGE_DOWNLOAD_CHUNK_BYTES = 64 * 1024
 NTFY_IMAGE_PIXEL_LIMIT = 25_000_000
@@ -2615,17 +2616,20 @@ def build_webhook_payload(title: str, description: str, notification_type: str, 
 
 
 # Truncates text to a UTF-8 byte limit without returning a partial character
-def truncate_utf8_bytes(text: str, max_bytes: int) -> str:
+def truncate_utf8_bytes(text: str, max_bytes: int, suffix: str = "") -> str:
     encoded = text.encode("utf-8")
     if len(encoded) <= max_bytes:
         return text
-    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+    encoded_suffix = suffix.encode("utf-8")
+    if len(encoded_suffix) >= max_bytes:
+        return encoded_suffix[:max_bytes].decode("utf-8", errors="ignore")
+    return encoded[:max_bytes - len(encoded_suffix)].decode("utf-8", errors="ignore") + suffix
 
 
 # Builds one bounded ntfy title and message pair
 def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
-    safe_message = truncate_utf8_bytes(sanitize_error_text(description), NTFY_MESSAGE_LIMIT_BYTES)
+    safe_message = truncate_utf8_bytes(sanitize_error_text(description), NTFY_MESSAGE_LIMIT_BYTES, NTFY_TRUNCATION_SUFFIX)
     return safe_title, safe_message
 
 
