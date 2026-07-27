@@ -45,7 +45,7 @@ If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fal
 spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value"
 ```
 
-This command can expose the cookie through shell history or process listings. Use browser import locally or hidden `--set-sp-dc` entry in a container instead.
+This command can expose the cookie through shell history or process listings. Use browser import when available. For a manually extracted cookie, use the recommended `--set-sp-dc` command because its hidden prompt is the most secure entry method.
 
 If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use `-r`:
 
@@ -213,7 +213,7 @@ Firefox works inside Docker because its cookie database can be mounted as a read
 
 Do not add `:z` or `:Z` to the whole Firefox profile mount. Those suffixes can change SELinux labels on the host files. If SELinux blocks the read-only mount, close Firefox and copy `cookies.sqlite` to a dedicated directory before mounting that copy.
 
-After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the hidden [`--set-sp-dc`](configuration.md#manual-cookie-extraction) fallback.
+After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the recommended [`--set-sp-dc`](configuration.md#manual-cookie-extraction) command. Its hidden prompt is the most secure way to enter a manually extracted cookie.
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
 
