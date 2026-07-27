@@ -1,0 +1,17 @@
+[run]
+branch = True
+parallel = True
+patch = subprocess
+source =
+    spotify_monitor
+    debug
+omit =
+    */local/*
+
+[report]
+fail_under = 49
+precision = 1
+show_missing = True
+skip_empty = True
+omit =
+    */local/*
