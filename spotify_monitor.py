@@ -43,9 +43,10 @@ TARGET_USER_URI_ID = ""
 # - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie
 #   (use your web browser's dev console or "Cookie-Editor" by cgagnier to extract it easily: https://cookie-editor.com/)
 # - Provide the SP_DC_COOKIE secret using one of the following methods:
-#   - Pass it at runtime with -u or --spotify-dc-cookie
+#   - Recommended and most secure for manual entry: run Spotify Monitor with --set-sp-dc to use a hidden prompt, validate the cookie and save it to ".env"
+#   - Add it directly to ".env" file (SP_DC_COOKIE=...) for persistent use
 #   - Set it as an environment variable (e.g. export SP_DC_COOKIE=...)
-#   - Add it to ".env" file (SP_DC_COOKIE=...) for persistent use
+#   - Pass it at runtime with -u or --spotify-dc-cookie
 #   - Fallback: hard-code it in the code or config file
 SP_DC_COOKIE = "your_sp_dc_cookie_value"
 
@@ -5724,7 +5725,7 @@ def _build_help_epilog() -> str:
             "  # Open https://open.spotify.com/ in Firefox on the host and sign in first",
             f"  {_wizard_firefox_import_cmd(method, Path.cwd() / '.env', host_os='linux')}",
             "",
-            "  # Or enter the Spotify cookie through a hidden prompt",
+            "  # Or use the most secure manual method to enter the Spotify cookie",
             f"  {_wizard_set_sp_dc_cmd(method, Path.cwd() / '.env')}",
             "",
             "  # Host Spotify auto-play is unavailable by default inside containers",
@@ -5737,7 +5738,7 @@ def _build_help_epilog() -> str:
             "  # Then import Spotify login from Firefox (recommended for local installs)",
             f"  {_wizard_firefox_import_cmd(method)}",
             "",
-            "  # Or enter the Spotify cookie through a hidden prompt",
+            "  # Or use the most secure manual method to enter the Spotify cookie",
             f"  {_wizard_set_sp_dc_cmd(method)}",
             "",
         ))
