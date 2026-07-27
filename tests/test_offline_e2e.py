@@ -84,7 +84,14 @@ def test_cli_monitoring_iteration_against_local_spotify_fixture(offline_spotify_
         runtime["CLEAR_SCREEN"] = False
         runtime["check_internet"] = lambda *args, **kwargs: True
         runtime["spotify_get_access_token_from_sp_dc"] = lambda cookie: "offline-token"
-        runtime["spotify_get_friends_json"] = lambda token: requests.get({f"{server_url}/buddylist"!r}, headers={{"Authorization": f"Bearer {{token}}"}}, timeout=5).json()
+        friend_calls = []
+        # Fetches the initial fixture then exits before the primary polling request
+        def offline_get_friends(token):
+            if friend_calls:
+                raise SystemExit(0)
+            friend_calls.append(True)
+            return requests.get({f"{server_url}/buddylist"!r}, headers={{"Authorization": f"Bearer {{token}}"}}, timeout=5).json()
+        runtime["spotify_get_friends_json"] = offline_get_friends
         runtime["spotify_get_track_info"] = lambda token, uri: requests.get({f"{server_url}/track"!r}, headers={{"Authorization": f"Bearer {{token}}", "X-Track-Uri": uri}}, timeout=5).json()
         runtime["platform"].system = lambda: "Windows"
         runtime["time"].sleep = lambda seconds: (_ for _ in ()).throw(SystemExit(0))
