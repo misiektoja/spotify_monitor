@@ -190,6 +190,7 @@ def test_concise_summary_core_rows(monkeypatch):
     output = emit_to_string(summary_rows())
     lines = output.splitlines()
     assert lines[0].startswith("* Target:")
+    assert lines[0].index("target.user") == 32
     assert "target.user" in lines[0]
     assert "* Authentication:" in output and "Cookie mode" in output
     assert "* Polling interval:" in output and "30 seconds" in output
@@ -209,7 +210,7 @@ def test_concise_summary_notification_channels(monkeypatch, email_enabled, webho
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", webhook_category_enabled)
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", webhook_master_enabled)
     notification_lines = [line for line in emit_to_string(summary_rows()).splitlines() if line.startswith("* Notifications (")]
-    assert notification_lines == [f"* Notifications (email):     {expected_email}", f"* Notifications (webhook):   {expected_webhook}"]
+    assert notification_lines == [f"* Notifications (email):        {expected_email}", f"* Notifications (webhook):      {expected_webhook}"]
 
 
 # Verifies disabled advanced defaults stay out of the concise view
@@ -246,8 +247,10 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
     output = emit_to_string(summary_rows(), show_full=True)
     assert "Webhook enabled" in output
-    assert "Webhook provider:          discord" in output
-    assert "Webhook alerts:            active, errors" in output
+    provider_line = next(line for line in output.splitlines() if "Webhook provider:" in line)
+    alerts_line = next(line for line in output.splitlines() if "Webhook alerts:" in line)
+    assert provider_line.index("discord") == 32
+    assert alerts_line.index("active, errors") == 32
     assert "known-webhook-secret" not in output
 
 
@@ -282,6 +285,9 @@ def test_verbose_and_debug_terminal_receive_full_summary(monkeypatch, mode_name)
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, mode_name, True)
     output = emit_to_string(summary_rows(), show_full=bool(monitor.VERBOSE_MODE or monitor.DEBUG_MODE))
+    assert all(line.startswith("* ") for line in output.splitlines() if line)
+    error_retry_line = next(line for line in output.splitlines() if "Error retry timer:" in line)
+    assert error_retry_line.index("3 minutes") == 32
     assert "Error retry timer" in output
     assert "Notify active" in output
     assert "More details" not in output
