@@ -8,15 +8,11 @@ Version **3.2** adds flexible **webhook runtime controls and request customizati
 
 **Features and improvements**:
 
-- **NEW:** Added `--webhook-provider {discord,ntfy}` to override the configured request format for one run
-- **NEW:** Added `--webhook-url URL` for automation and one-time delivery checks while retaining the hidden `--set-webhook-url` command as the recommended way to save private destinations
-- **NEW:** Added `--webhook-errors` so configurations with error alerts disabled can enable them for one run. `--no-webhook-error-notify` remains available for the opposite override
-- **NEW:** Added `WEBHOOK_AVATAR_URL` and customizable `WEBHOOK_TEMPLATE` payloads for Discord-format integrations, plus `WEBHOOK_TRANSFORMS` and placeholder expansion in `WEBHOOK_HEADERS` for Discord and ntfy
-- **NEW:** Added `NTFY_SHORT` for compact ntfy activity alerts on smaller screens while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
-- **IMPROVE:** Added validation for webhook avatar URLs, templates and transformations during Doctor checks and before delivery. Expanded headers are validated again so placeholders cannot introduce invalid values or line breaks
-- **IMPROVE:** Split the startup notification summary into separate **email** and **webhook** rows then reused the same compact channel rollups in concise, verbose and logged views (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
-- **IMPROVE:** Shifted the concise and complete startup summary value column to align with detailed monitor output
-- **IMPROVE:** Added automatic webhook provider correction for standard Discord and `ntfy.sh` URLs before Doctor, test delivery or monitoring
+- **NEW:** Added one-run **webhook provider, URL and error-notification controls** while retaining `--set-webhook-url` as the recommended way to save private destinations
+- **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`
+- **NEW:** Added **compact ntfy activity alerts** through `NTFY_SHORT` while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
+- **IMPROVE:** Added **webhook request validation** during Doctor checks and delivery plus automatic provider correction for standard Discord and `ntfy.sh` URLs
+- **IMPROVE:** Split the startup notification summary into compact **email and webhook rows** across concise, verbose and logged views then aligned their values with detailed monitor output (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
 
 **Bug fixes**:
 
