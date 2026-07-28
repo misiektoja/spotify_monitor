@@ -12,7 +12,7 @@ Version **3.2** adds flexible **webhook runtime controls and request customizati
 - **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`
 - **NEW:** Added **compact ntfy activity alerts** through `NTFY_SHORT` while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
 - **IMPROVE:** Added **webhook request validation** during Doctor checks and delivery plus automatic provider correction for standard Discord and `ntfy.sh` URLs
-- **IMPROVE:** Split the startup notification summary into compact **email and webhook rows** across concise, verbose and logged views then aligned their values with detailed monitor output (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
+- **IMPROVE:** Split the startup notification summary into compact **email and webhook rows** with short labels and unstarred continuation lines across concise, verbose and logged views (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
 
 **Bug fixes**:
 
