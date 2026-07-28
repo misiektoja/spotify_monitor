@@ -291,7 +291,8 @@ MONITOR_MODE = "friend_activity"
 LASTFM_USERNAME = ""
 
 # Last.fm API key used for the read-only user.getRecentTracks request
-# Store this in .env as LASTFM_API_KEY rather than committing it to a config file
+# Recommended: run --set-lastfm-credentials and enter it through a hidden prompt
+# You can also store it in .env as LASTFM_API_KEY rather than committing it to a config file
 LASTFM_API_KEY = ""
 
 # How often to compare completed Spotify plays with Last.fm in seconds
@@ -1259,6 +1260,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the webhook URL in the private settings file", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
         return make_recovery_advice("webhook.invalid", "The webhook URL was not changed", recovery_fix_with_guide("Copy a fresh Discord or ntfy webhook URL then run --set-webhook-url again", WEBHOOK_GUIDE_URL), False, safe_detail)
 
+    if context == "set_lastfm_credentials":
+        if "interactive terminal" in message:
+            return make_recovery_advice("secret.missing", "--set-lastfm-credentials needs an interactive terminal", "Run --set-lastfm-credentials in a terminal window so the API key stays hidden while you paste it", False, safe_detail)
+        if any(term in message for term in ("dotenv", "file permissions", "writable path", "readable utf-8")):
+            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the Last.fm API key", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
+        return make_recovery_advice("secret.missing", "The Last.fm API key was not changed", "Run --set-lastfm-credentials again and enter the API key through the hidden prompt", False, safe_detail)
+
     if context == "config_missing":
         summary = "The requested configuration file was not found"
         if safe_detail:
@@ -1270,7 +1278,8 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         dependency = getattr(error, "name", None) or safe_detail or "required package"
         return make_recovery_advice("dependency.missing", f"A required dependency is missing: {dependency}", recovery_fix_with_guide("Install the project requirements then retry", INSTALLATION_GUIDE_URL), False, safe_detail)
     if context == "secret":
-        return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", recovery_fix_with_guide("Provide the required secret through a dotenv file, environment variable or supported command-line option", SECRETS_GUIDE_URL), False)
+        fix = "Run --set-lastfm-credentials from an interactive terminal" if "LASTFM_API_KEY" in safe_detail else "Provide the required secret through a dotenv file, environment variable or supported command-line option"
+        return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", recovery_fix_with_guide(fix, SECRETS_GUIDE_URL), False)
     if context == "target_missing":
         return make_recovery_advice("target.invalid", "No Spotify target was provided", recovery_fix_with_guide("Provide a positional user ID, spotify:user URI or Spotify profile URL or set TARGET_USER_URI_ID", QUICK_START_GUIDE_URL), False)
     if context == "target_invalid":
@@ -1647,6 +1656,11 @@ class BrowserCookieImportError(Exception):
 
 # Raised when a private webhook URL cannot be checked or saved safely
 class WebhookConfigurationError(Exception):
+    pass
+
+
+# Raised when a private Last.fm API key cannot be saved safely
+class LastfmConfigurationError(Exception):
     pass
 
 
@@ -2102,6 +2116,48 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     print(f"* Updated dotenv: {destination}")
     _wizard_print_command("Check authentication:", doctor_command)
     _wizard_print_command("Start monitoring after replacing SPOTIFY_USER_URI_ID:", monitor_command)
+    return str(destination)
+
+
+# Atomically stores one privately entered Last.fm API key
+def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise LastfmConfigurationError("--set-lastfm-credentials requires a dotenv destination. Replace '--env-file none' with a writable path.")
+    destination = (Path.cwd() / ".env" if env_file is None else Path(env_file).expanduser()).resolve()
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise LastfmConfigurationError("--set-lastfm-credentials requires an interactive terminal so the Last.fm API key stays hidden.")
+    prompt = input if input_func is None else input_func
+    try:
+        existing_key = _dotenv_contains_key(destination, "LASTFM_API_KEY")
+    except BrowserCookieImportError:
+        raise LastfmConfigurationError(f"Could not read dotenv destination '{destination}'. Check that it is a readable UTF-8 file.") from None
+    if existing_key:
+        try:
+            confirmed = prompt(f"Replace LASTFM_API_KEY in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            confirmed = False
+        if not confirmed:
+            raise LastfmConfigurationError("LASTFM_API_KEY replacement was cancelled. The dotenv file was not changed.")
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        api_key = hidden_prompt("Enter the Last.fm API key privately: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        raise LastfmConfigurationError("LASTFM_API_KEY entry was cancelled. The dotenv file was not changed.") from None
+    if not api_key or "\r" in api_key or "\n" in api_key:
+        raise LastfmConfigurationError("No valid Last.fm API key was entered. The dotenv file was not changed.")
+    try:
+        update_dotenv_file(destination, {"LASTFM_API_KEY": api_key})
+    except Exception:
+        raise LastfmConfigurationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
+    selected_config = config_path or find_config_file()
+    method = _wizard_install_method()
+    doctor_command = _wizard_action_command(method, "--scrobble-health --doctor", selected_config, destination)
+    monitor_command = _wizard_action_command(method, "--scrobble-health", selected_config, destination)
+    print(f"* Updated dotenv: {destination}")
+    print("* Saved: LASTFM_API_KEY")
+    _wizard_print_command("Check scrobble health setup:", doctor_command)
+    _wizard_print_command("Start scrobble health monitoring:", monitor_command)
     return str(destination)
 
 
@@ -8266,7 +8322,7 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
-    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -8290,13 +8346,13 @@ def main():
         sys.stdout.buffer.flush()
         sys.exit(0)
 
-    if "--version" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-webhook-url" not in sys.argv:
+    if "--version" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
         sys.exit(0)
 
     stdout_bck = sys.stdout
 
-    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--doctor", "--setup-scrobble-health"))
+    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--doctor", "--setup-scrobble-health"))
     clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
 
     print_startup_banner()
@@ -8341,6 +8397,12 @@ def main():
         dest="set_sp_dc",
         action="store_true",
         help="Privately validate and save SP_DC_COOKIE through a hidden prompt",
+    )
+    conf.add_argument(
+        "--set-lastfm-credentials",
+        dest="set_lastfm_credentials",
+        action="store_true",
+        help="Save LASTFM_API_KEY through a hidden prompt",
     )
     conf.add_argument(
         "--set-webhook-url",
@@ -8721,6 +8783,33 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.set_lastfm_credentials:
+        conflicts = []
+        argument_index = 1
+        while argument_index < len(sys.argv):
+            argument = sys.argv[argument_index]
+            if argument == "--set-lastfm-credentials":
+                argument_index += 1
+                continue
+            if argument in ("--config-file", "--env-file"):
+                argument_index += 2
+                continue
+            if argument.startswith("--config-file=") or argument.startswith("--env-file="):
+                argument_index += 1
+                continue
+            conflicts.append(argument if argument.startswith("-") else "SPOTIFY_USER_URI_ID")
+            argument_index += 1
+        if conflicts:
+            parser.error("--set-lastfm-credentials cannot be combined with " + ", ".join(conflicts))
+        if args.env_file is not None and args.env_file.casefold() == "none":
+            parser.error("--set-lastfm-credentials requires a writable dotenv destination and cannot use --env-file none")
+        try:
+            run_set_lastfm_credentials(env_file=args.env_file, config_path=args.config_file)
+        except LastfmConfigurationError as exc:
+            print_recovery_error(exc, "set_lastfm_credentials")
+            sys.exit(1)
+        sys.exit(0)
 
     if args.setup_scrobble_health:
         incompatible = [flag for enabled, flag in ((args.setup, "--setup"), (args.set_sp_dc, "--set-sp-dc"), (args.set_webhook_url, "--set-webhook-url"), (args.doctor, "--doctor"), (args.version, "--version"), (args.generate_config, "--generate-config"), (args.import_browser_cookie, "--import-browser-cookie"), (args.send_test_email, "--send-test-email"), (args.send_test_webhook, "--send-test-webhook"), (args.list_friends, "--list-friends"), (args.scrobble_health is not None, "--scrobble-health")) if enabled]
