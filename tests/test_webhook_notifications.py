@@ -92,6 +92,8 @@ def test_webhook_provider_detection(url, expected):
 
 # Verifies SIGHUP adopts rotated client credentials, clears auth caches and redetects ntfy
 def test_sighup_reload_clears_auth_caches_and_updates_webhook_provider(monkeypatch):
+    if not hasattr(monitor.signal, "SIGHUP"):
+        pytest.skip("SIGHUP is unavailable on Windows")
     replacements = {"REFRESH_TOKEN": "new-refresh-token", "WEBHOOK_URL": "https://ntfy.sh/new-private-topic"}
     monkeypatch.setattr(monitor, "DOTENV_FILE", "test.env")
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "client")
