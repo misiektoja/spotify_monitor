@@ -83,6 +83,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 - **Friend Activity**: Monitor songs listened by Spotify users in real-time.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
 - **Session Stats**: Display **duration, track counts** and **songs on loop**.
+- **Scrobble Health**: Detect when Spotify's six-month reauthorization stops plays reaching Last.fm even though Last.fm currently shows only a website banner and sends no email warning.
 
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
@@ -140,7 +141,10 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Most securely enter or replace a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
+| Most securely enter or replace `LASTFM_API_KEY` | Run `spotify_monitor --set-lastfm-credentials` and enter the key at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
+| Set up Spotify-to-Last.fm scrobble health alerts | Run `spotify_monitor --setup-scrobble-health` |
+| Start scrobble health monitoring from saved settings | Run `spotify_monitor --scrobble-health` |
 
 Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target.
 

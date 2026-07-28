@@ -33,7 +33,7 @@ If the same setting appears in more than one place, the item later in this list 
 4. Values from the selected `.env` file
 5. Command-line options
 
-The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` if you do not want automatic file discovery. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
+The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` if you do not want automatic file discovery. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
 You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
 
@@ -42,6 +42,46 @@ spotify_monitor --config-file spotify_monitor.conf
 ```
 
 A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.
+
+<a id="lastfm-scrobble-health"></a>
+## Last.fm Scrobble Health
+
+Scrobble health mode checks whether completed plays from the Spotify account represented by `SP_DC_COOKIE` appear on one Last.fm profile. It does not need a second Spotify account and it does not use Friend Activity. It needs:
+
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
+
+1. `TOKEN_SOURCE = "cookie"`
+2. `LASTFM_USERNAME` in `spotify_monitor.conf`
+3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
+4. A read-only Last.fm API key stored as `LASTFM_API_KEY` in `.env`
+
+The focused setup wizard collects these values through hidden prompts where appropriate:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+To enter or replace only the API key safely, run:
+
+```sh
+spotify_monitor --set-lastfm-credentials
+```
+
+The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
+
+The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
+
+| Setting | Default | Purpose |
+| --- | ---: | --- |
+| `SCROBBLE_HEALTH_CHECK_INTERVAL` | 120 seconds | Time between comparisons |
+| `SCROBBLE_HEALTH_DEAD_PERIOD` | 1200 seconds | Required age of the oldest unmatched play |
+| `SCROBBLE_HEALTH_MIN_UNMATCHED` | 5 plays | Required consecutive unmatched completed plays |
+| `SCROBBLE_HEALTH_MATCH_WINDOW` | 300 seconds | Allowed timestamp difference for the same artist and track |
+| `SCROBBLE_HEALTH_LOOKBACK` | 21600 seconds | Recent history included in each comparison |
+| `SCROBBLE_HEALTH_REPEAT_INTERVAL` | 86400 seconds | Reminder interval while an outage remains unresolved |
+| `SCROBBLE_HEALTH_STATE_FILE` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
+
+An operational Spotify or Last.fm request error does not count as a scrobbling outage. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source
@@ -282,7 +322,7 @@ spotify_monitor --send-test-email
 
 Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). Webhook alerts work with or without email. Run `spotify_monitor --setup`, choose webhook alerts and select Discord or ntfy.
 
-`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working. For a one-run override, use `--webhook-provider discord` or `--webhook-provider ntfy`.
+`WEBHOOK_PROVIDER` selects the request format. It defaults to `"discord"` so existing configurations keep working. Standard Discord and public `ntfy.sh` URLs automatically select the matching format if this configured value is stale. Self-hosted ntfy and compatible endpoints still use the configured provider. For an explicit one-run override, use `--webhook-provider discord` or `--webhook-provider ntfy`.
 
 <a id="discord"></a>
 ### Discord
@@ -298,7 +338,7 @@ If you are new to Discord, follow these steps to get your private webhook URL:
 spotify_monitor --set-webhook-url
 ```
 
-Paste the copied link at the hidden prompt. Spotify Monitor saves it in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
+Paste the copied link at the hidden prompt. Spotify Monitor saves only `WEBHOOK_URL` in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
 
 For a one-run override, `--webhook-url URL` uses a complete HTTPS destination without changing `.env`. The URL may remain visible in shell history or process listings, so prefer `--set-webhook-url` for normal setup.
 
@@ -315,7 +355,7 @@ For ntfy.sh or a self-hosted ntfy server:
 
 1. Choose a hard-to-guess topic such as `spotify-monitor-long-random-value`.
 2. In the setup wizard, paste either the bare ntfy.sh topic name or its complete topic URL such as `https://ntfy.sh/spotify-monitor-long-random-value`. A bare topic name is expanded to an ntfy.sh URL. For a self-hosted server, use the complete HTTPS topic URL.
-3. Set the provider in `spotify_monitor.conf`:
+3. Public `ntfy.sh` URLs are recognized automatically. Set the provider in `spotify_monitor.conf` for a self-hosted ntfy server:
 
 ```ini
 WEBHOOK_PROVIDER = "ntfy"
@@ -361,7 +401,7 @@ WEBHOOK_HEADERS = {
 }
 ```
 
-Header values support the same placeholders as `WEBHOOK_TEMPLATE`. The dictionary applies to Discord and ntfy requests. Spotify Monitor validates headers before and after placeholder expansion so formatted values cannot introduce invalid names, non-string values or line breaks. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header.
+Header values support the same placeholders as `WEBHOOK_TEMPLATE`. The dictionary applies to Discord and ntfy requests. Spotify Monitor validates headers before and after placeholder expansion so formatted values cannot introduce invalid names, non-string values or line breaks. For ntfy, Spotify Monitor sets `text/plain` for text alerts and `image/jpeg` for artwork attachments. Long ntfy text messages are visibly truncated below ntfy's 4 KB boundary so they remain notifications instead of temporary attachments. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication because a token inside `WEBHOOK_HEADERS` is easier to expose or commit accidentally. Basic authentication remains available through a custom `Authorization` header.
 
 ### Advanced Discord-format customization
 

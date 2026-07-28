@@ -1,7 +1,7 @@
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from dotenv import dotenv_values
@@ -82,6 +82,44 @@ def configure_webhook(monkeypatch):
 @pytest.mark.parametrize("url,expected", [("https://discord.com/api/webhooks/123/token", True), ("https://hooks.example.test/discord/path", True), ("http://discord.com/api/webhooks/123/token", False), ("https://user:password@example.test/hook", False), ("https://example.test", False), ("not-a-url", False), ("", False)])
 def test_webhook_url_validation(url, expected):
     assert monitor.validate_webhook_url(url) is expected
+
+
+@pytest.mark.parametrize("url,expected", [("https://discord.com/api/webhooks/123/token", "discord"), ("https://canary.discord.com/api/v10/webhooks/123/token", "discord"), ("https://ntfy.sh/private-topic", "ntfy"), ("https://ntfy.example.test/private-topic", ""), ("https://example.test/custom-hook", "")])
+# Verifies distinctive Discord and public ntfy URLs select the proper payload provider
+def test_webhook_provider_detection(url, expected):
+    assert monitor.detect_webhook_provider(url) == expected
+
+
+# Verifies SIGHUP adopts rotated client credentials, clears auth caches and redetects ntfy
+def test_sighup_reload_clears_auth_caches_and_updates_webhook_provider(monkeypatch):
+    if not hasattr(monitor.signal, "SIGHUP"):
+        pytest.skip("SIGHUP is unavailable on Windows")
+    replacements = {"REFRESH_TOKEN": "new-refresh-token", "WEBHOOK_URL": "https://ntfy.sh/new-private-topic"}
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "test.env")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "client")
+    monkeypatch.setattr(monitor, "LOGIN_REQUEST_BODY_FILE", "")
+    monkeypatch.setattr(monitor, "CLIENTTOKEN_REQUEST_BODY_FILE", "")
+    monkeypatch.setattr(monitor, "REFRESH_TOKEN", "old-refresh-token")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://discord.com/api/webhooks/123/old-token")
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "SP_CACHED_ACCESS_TOKEN", "cached-access")
+    monkeypatch.setattr(monitor, "SP_CACHED_REFRESH_TOKEN", "cached-refresh")
+    monkeypatch.setattr(monitor, "SP_ACCESS_TOKEN_EXPIRES_AT", 999)
+    monkeypatch.setattr(monitor, "SP_CACHED_CLIENT_ID", "cached-client-id")
+    monkeypatch.setattr(monitor, "SP_CACHED_OAUTH_APP_TOKEN", "cached-oauth")
+    monkeypatch.setattr(monitor, "SP_CACHED_CLIENT_TOKEN", "cached-client-token")
+    monkeypatch.setattr(monitor, "SP_CLIENT_TOKEN_EXPIRES_AT", 999)
+    with patch("dotenv.load_dotenv"), patch.object(monitor.os, "getenv", side_effect=replacements.get):
+        monitor.reload_secrets_signal_handler(monitor.signal.SIGHUP, None)
+    assert monitor.REFRESH_TOKEN == "new-refresh-token"
+    assert monitor.WEBHOOK_PROVIDER == "ntfy"
+    assert monitor.SP_CACHED_ACCESS_TOKEN is None
+    assert monitor.SP_CACHED_REFRESH_TOKEN is None
+    assert monitor.SP_ACCESS_TOKEN_EXPIRES_AT == 0
+    assert monitor.SP_CACHED_CLIENT_ID == ""
+    assert monitor.SP_CACHED_OAUTH_APP_TOKEN is None
+    assert monitor.SP_CACHED_CLIENT_TOKEN is None
+    assert monitor.SP_CLIENT_TOKEN_EXPIRES_AT == 0
 
 
 # Verifies ntfy input normalization preserves HTTPS URLs and expands only valid bare topics
@@ -402,12 +440,14 @@ def test_invalid_webhook_customization_is_rejected(monkeypatch, setting, value):
     webhook_post.assert_not_called()
 
 
-# Verifies ntfy message truncation respects its UTF-8 byte limit without splitting a character
-def test_ntfy_message_is_bounded_by_utf8_bytes():
-    title, message = monitor.build_ntfy_webhook_message("Title", ("a" * (monitor.NTFY_MESSAGE_LIMIT_BYTES - 1)) + "\U0001f3b5")
+# Verifies long ntfy messages stay below the server attachment boundary with a visible truncation marker
+def test_ntfy_message_stays_below_attachment_boundary():
+    title, message = monitor.build_ntfy_webhook_message("Title", ("a" * monitor.NTFY_MESSAGE_LIMIT_BYTES) + "\U0001f3b5")
     assert title == "Title"
-    assert len(message.encode("utf-8")) == monitor.NTFY_MESSAGE_LIMIT_BYTES - 1
-    assert not message.endswith("\U0001f3b5")
+    assert message.endswith(monitor.NTFY_TRUNCATION_SUFFIX)
+    assert len(message.encode("utf-8")) <= monitor.NTFY_MESSAGE_LIMIT_BYTES
+    assert len(message.encode("utf-8")) < 4096
+    assert "\ufffd" not in message
 
 
 # Verifies compact ntfy playback bodies preserve metadata and configured playlist suffixes
@@ -681,6 +721,27 @@ def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
     assert monitor.WEBHOOK_URL == url
     assert monitor.WEBHOOK_ENABLED is True
     assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
+    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+
+
+# Verifies a known ntfy URL corrects a stale configured provider before Doctor or test delivery
+def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
+    delivery = Mock(return_value=0)
+    url = "https://ntfy.sh/private-topic"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--webhook-url", url, "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 0
+    assert monitor.WEBHOOK_PROVIDER == "ntfy"
+    assert "Using ntfy" in capsys.readouterr().out
     delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
 
 

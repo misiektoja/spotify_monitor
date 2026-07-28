@@ -60,6 +60,20 @@ Use the tab that matches how you installed the tool. Copy and run only the comma
 
 Run interactive setup commands by themselves instead of including them in a multi-command paste.
 
+### Set up Last.fm scrobble health instead
+
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently shows only a website banner and sends no email warning, so the problem can remain unnoticed when someone rarely opens the website. Use the focused wizard to configure independent console, email or webhook alerts:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+The wizard asks for the Last.fm username and API key, configures the Spotify cookie account whose plays should be checked and offers the normal email or webhook destinations. It defaults to five consecutive missing completed plays plus a 20 minute dead period. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays.
+
+To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key because scrobble health does not need the Last.fm shared secret.
+
+For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
+
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt replace `${PWD}` with `%cd%`. Windows hosts must use Linux containers. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
 
 In this documentation, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.

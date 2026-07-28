@@ -76,6 +76,49 @@ By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.l
 
 Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
 
+<a id="scrobble-health-mode"></a>
+## Scrobble Health Mode
+
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. This mode can notify through the console, email or a webhook when the gap meets the configured evidence threshold.
+
+Run the focused wizard once:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
+
+When `MONITOR_MODE = "scrobble_health"` and `LASTFM_USERNAME` are saved, start the monitor with:
+
+```sh
+spotify_monitor --scrobble-health
+```
+
+You can override the saved Last.fm username for one run:
+
+```sh
+spotify_monitor --scrobble-health LASTFM_USERNAME
+```
+
+The mode reads the cookie owner's completed Spotify plays through the `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
+
+The console always reports outage and recovery transitions. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
+
+These one-run options override the most common thresholds:
+
+```sh
+spotify_monitor --scrobble-health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
+```
+
+Use focused Doctor checks before leaving it unattended:
+
+```sh
+spotify_monitor --scrobble-health --doctor
+```
+
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
+
 <a id="main-application-docker-image"></a>
 ## Container Operation
 
@@ -356,7 +399,7 @@ For example, this sends a webhook alert for every song change during one run:
 spotify_monitor <spotify_user_uri_id> --webhook-song-changes
 ```
 
-Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Use `--webhook-provider {discord,ntfy}` to override the configured request format. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Standard Discord and public `ntfy.sh` URLs automatically correct a stale configured provider. Use `--webhook-provider {discord,ntfy}` as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
 
 The recommended way to save a private destination is still the hidden `--set-webhook-url` command. For automation or one-time testing, `--webhook-url URL` overrides the destination without changing `.env`:
 

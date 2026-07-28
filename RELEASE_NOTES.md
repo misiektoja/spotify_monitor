@@ -4,7 +4,7 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.2 (TBD)
 
-Version **3.2** adds flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
+Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
 
 **Features and improvements**:
 
@@ -17,6 +17,18 @@ Version **3.2** adds flexible **webhook runtime controls and request customizati
 - **IMPROVE:** Made compact ntfy alerts preserve configured Spotify-owned playlist suffixes and separate session duration from song count with `&` for easier scanning (thanks [@tomballgithub](https://github.com/tomballgithub), [#47](https://github.com/misiektoja/spotify_monitor/pull/47))
 - **IMPROVE:** Split the concise startup notification summary into separate **email** and **webhook** rows so each channel's enabled alerts remain readable without wrapping on narrow terminals (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
 - **IMPROVE:** Shifted the concise and complete startup summary value column to align with detailed monitor output
+- **NEW:** Added restart-safe **Spotify-to-Last.fm scrobble health monitoring** because Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. The monitor includes a focused setup wizard, standalone hidden `LASTFM_API_KEY` entry through `--set-lastfm-credentials`, scoped recent-play access, conservative five-play outage detection, repeat reminders and recovery alerts
+- **NEW:** Added one-run **webhook provider, URL and error-notification controls** while retaining `--set-webhook-url` as the recommended way to save private destinations
+- **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`
+- **NEW:** Added **compact ntfy activity alerts** through `NTFY_SHORT` while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
+- **IMPROVE:** Added **webhook request validation** during Doctor checks and delivery plus automatic provider correction for standard Discord and `ntfy.sh` URLs
+- **IMPROVE:** Split the startup notification summary into compact **email and webhook rows** with short labels and unstarred continuation lines across concise, verbose and logged views (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
+
+**Bug fixes**:
+
+- **BUGFIX:** Applied terminal-width auto-detection when `TRUNCATE_CHARS = 999` comes from configuration while preserving `--truncate` precedence and skipping truncation when logging is disabled (thanks [@tomballgithub](https://github.com/tomballgithub), [#45](https://github.com/misiektoja/spotify_monitor/pull/45))
+- **BUGFIX:** Kept long ntfy text notifications below the server's 4 KB attachment boundary and added a visible truncation marker
+- **BUGFIX:** Made `SIGHUP` clear cached Spotify authentication after credential rotation and redetect Discord or ntfy when the private webhook destination changes
 
 # Changes in 3.1.1 (24 Jul 2026)
 
