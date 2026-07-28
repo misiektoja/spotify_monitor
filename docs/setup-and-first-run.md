@@ -62,13 +62,15 @@ Run interactive setup commands by themselves instead of including them in a mult
 
 ### Set up Last.fm scrobble health instead
 
-Use the focused wizard when the goal is to detect a disconnected Spotify Scrobbling integration rather than monitor a friend's activity:
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently shows only a website banner and sends no email warning, so the problem can remain unnoticed when someone rarely opens the website. Use the focused wizard to configure independent console, email or webhook alerts:
 
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
 
 The wizard asks for the Last.fm username and API key, configures the Spotify cookie account whose plays should be checked and offers the normal email or webhook destinations. It defaults to five consecutive missing completed plays plus a 20 minute dead period. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays.
+
+To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key because scrobble health does not need the Last.fm shared secret.
 
 For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
 
