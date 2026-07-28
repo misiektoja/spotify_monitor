@@ -875,6 +875,7 @@ if sys.version_info < (3, 9):
 import importlib.util
 import time
 import string
+import textwrap
 import json
 import os
 import configparser
@@ -4362,9 +4363,9 @@ def _startup_notification_categories() -> List[str]:
     settings = (
         (ACTIVE_NOTIFICATION, "active"),
         (INACTIVE_NOTIFICATION, "inactive"),
-        (TRACK_NOTIFICATION, "monitored tracks"),
-        (SONG_NOTIFICATION, "every song"),
-        (SONG_ON_LOOP_NOTIFICATION, "songs on loop"),
+        (TRACK_NOTIFICATION, "tracked"),
+        (SONG_NOTIFICATION, "songs"),
+        (SONG_ON_LOOP_NOTIFICATION, "loops"),
         (ERROR_NOTIFICATION, "errors"),
     )
     return [label for enabled, label in settings if enabled]
@@ -4375,9 +4376,9 @@ def _startup_webhook_notification_categories() -> List[str]:
     settings = (
         (WEBHOOK_ACTIVE_NOTIFICATION, "active"),
         (WEBHOOK_INACTIVE_NOTIFICATION, "inactive"),
-        (WEBHOOK_TRACK_NOTIFICATION, "monitored tracks"),
-        (WEBHOOK_SONG_NOTIFICATION, "every song"),
-        (WEBHOOK_SONG_ON_LOOP_NOTIFICATION, "songs on loop"),
+        (WEBHOOK_TRACK_NOTIFICATION, "tracked"),
+        (WEBHOOK_SONG_NOTIFICATION, "songs"),
+        (WEBHOOK_SONG_ON_LOOP_NOTIFICATION, "loops"),
         (WEBHOOK_ERROR_NOTIFICATION, "errors"),
     )
     return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
@@ -4426,7 +4427,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
 
 # Formats one startup summary row with aligned plain ASCII columns
 def _format_startup_summary_row(row: StartupSummaryRow) -> str:
-    return f"* {(row.label + ':'):<30}{row.value}\n"
+    prefix = f"* {(row.label + ':'):<30}"
+    if row.label in ("Notifications (email)", "Notifications (webhook)"):
+        return textwrap.fill(row.value, width=100, initial_indent=prefix, subsequent_indent=" " * len(prefix), break_long_words=False, break_on_hyphens=False) + "\n"
+    return f"{prefix}{row.value}\n"
 
 
 # Routes concise or complete startup rows independently to terminal and log destinations
