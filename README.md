@@ -83,7 +83,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 - **Friend Activity**: Monitor songs listened by Spotify users in real-time.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
 - **Session Stats**: Display **duration, track counts** and **songs on loop**.
-- **Scrobble Health**: Detect when completed Spotify plays stop reaching your Last.fm profile.
+- **Scrobble Health**: Detect when Spotify's six-month reauthorization stops plays reaching Last.fm even though Last.fm currently shows only a website banner and sends no email warning.
 
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
