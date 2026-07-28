@@ -9,7 +9,7 @@
 #   Linux Flatpak: docker compose run --rm -v "$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
 #   Windows PowerShell: docker compose run --rm -v "$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
 #   Windows Command Prompt: docker compose run --rm -v "%APPDATA%\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro" spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
-# Manual authentication fallback:
+# Recommended and most secure manual authentication entry:
 #   docker compose run --rm spotify_monitor --set-sp-dc --env-file /data/.env
 #   docker compose run --rm spotify_monitor --set-webhook-url --env-file /data/.env
 #   docker compose run --rm spotify_monitor --doctor --config-file /data/spotify_monitor.conf --env-file /data/.env

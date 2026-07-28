@@ -147,7 +147,7 @@ On Windows, configure Docker Desktop or another Docker-compatible runtime to use
 
 The `:z` suffix lets Docker relabel the mounted directory on hosts that use SELinux. If your Docker-compatible runtime reports that `:z` is invalid, remove only `:z` and keep the rest of the mount.
 
-The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. Firefox works inside a container when its cookie database is mounted read-only for the import command. Chrome, Brave and Chromium need the host password service to decrypt cookies. A container cannot use that service. See [Container Operation](usage.md#import-firefox-into-container-authentication) for the complete Firefox commands. Hidden `sp_dc` entry remains available as a fallback.
+The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. Firefox works inside a container when its cookie database is mounted read-only for the import command. Chrome, Brave and Chromium need the host password service to decrypt cookies. A container cannot use that service. See [Container Operation](usage.md#import-firefox-into-container-authentication) for the complete Firefox commands. If manual extraction is needed, the hidden `--set-sp-dc` command is the recommended and most secure entry method.
 
 <a id="docker-compose"></a>
 ### Install with Docker Compose

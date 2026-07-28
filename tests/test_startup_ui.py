@@ -162,7 +162,7 @@ def test_no_argument_welcome_uses_spaced_quick_start_blocks():
 def test_version_output_is_machine_friendly():
     result = run_cli("--version")
     assert result.returncode == 0
-    assert result.stdout.splitlines() == ["spotify_monitor.py v3.1.1"]
+    assert result.stdout.splitlines() == ["spotify_monitor.py v3.2"]
     assert monitor.STARTUP_BANNER.splitlines()[1] not in result.stdout
 
 
@@ -190,14 +190,39 @@ def test_concise_summary_core_rows(monkeypatch):
     output = emit_to_string(summary_rows())
     lines = output.splitlines()
     assert lines[0].startswith("* Target:")
+    assert lines[0].index("target.user") == 32
     assert "target.user" in lines[0]
     assert "* Authentication:" in output and "Cookie mode" in output
     assert "* Polling interval:" in output and "30 seconds" in output
-    assert "* Notifications:" in output and "Off" in output
     assert "* Output:" in output and "spotify_monitor_target.user.log" in output
     assert "* Config:" in output and "/data/spotify_monitor.conf" in output
     assert "* Dotenv:" in output and "/data/.env" in output
     assert "* Metadata backend:" in output and "web player" in output
+
+
+# Verifies concise and complete notification rows keep email and webhook states independent
+@pytest.mark.parametrize("email_enabled,webhook_category_enabled,webhook_master_enabled,expected_email,expected_webhook", [(False, False, False, "Off", "Off"), (True, False, False, "On (active, tracked)", "Off"), (False, True, True, "Off", "On (active, errors)"), (True, True, True, "On (active, tracked)", "On (active, errors)"), (False, True, False, "Off", "Off")])
+def test_startup_summary_notification_channels(monkeypatch, email_enabled, webhook_category_enabled, webhook_master_enabled, expected_email, expected_webhook):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", email_enabled)
+    monkeypatch.setattr(monitor, "TRACK_NOTIFICATION", email_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", webhook_category_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", webhook_category_enabled)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", webhook_master_enabled)
+    expected_lines = [f"* Notifications (email):        {expected_email}", f"* Notifications (webhook):      {expected_webhook}"]
+    for show_full in (False, True):
+        notification_lines = [line for line in emit_to_string(summary_rows(), show_full=show_full).splitlines() if line.startswith("* Notifications (")]
+        assert notification_lines == expected_lines
+
+
+# Verifies long notification rows wrap within 100 columns without starred continuation lines
+def test_long_notification_summary_rows_wrap_without_starred_continuations():
+    categories = "On (" + ", ".join(f"category-{index}" for index in range(12)) + ")"
+    formatted = monitor._format_startup_summary_row(monitor.StartupSummaryRow("Notifications (email)", categories))
+    lines = formatted.rstrip("\n").splitlines()
+    assert len(lines) > 1
+    assert all(len(line) <= 100 for line in lines)
+    assert not any(line.startswith("*") for line in lines[1:])
 
 
 # Verifies disabled advanced defaults stay out of the concise view
@@ -222,7 +247,7 @@ def test_concise_summary_shows_enabled_optional_settings(monkeypatch):
     monkeypatch.setattr(monitor, "SP_APP_CLIENT_ID", "known-oauth-client-secret")
     monkeypatch.setattr(monitor, "SP_APP_CLIENT_SECRET", "known-oauth-secret")
     output = emit_to_string(summary_rows())
-    for visible in ("On (active, monitored tracks)", "Spotify playback control", "Liveness output", "/data/tracks.csv", "/data/alerts.txt", "/data/active.flag", "80 chars", "Legacy OAuth cache"):
+    for visible in ("On (active, tracked)", "Spotify playback control", "Liveness output", "/data/tracks.csv", "/data/alerts.txt", "/data/active.flag", "80 chars", "Legacy OAuth cache"):
         assert visible in output
 
 
@@ -233,9 +258,9 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", True)
     monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
     output = emit_to_string(summary_rows(), show_full=True)
-    assert "Webhook enabled" in output
-    assert "Webhook provider:          discord" in output
-    assert "Webhook alerts:            active, errors" in output
+    assert "* Notifications (webhook):      On (active, errors)" in output
+    assert "Webhook enabled" not in output
+    assert "Webhook provider" not in output
     assert "known-webhook-secret" not in output
 
 
@@ -259,8 +284,10 @@ def test_default_terminal_is_concise_and_full_summary_reaches_log(monkeypatch, t
     terminal_output = terminal.getvalue()
     assert "Error retry timer" not in terminal_output
     assert "Error retry timer" in log_output
-    assert "Notify active" in log_output
-    assert "Notifications:" not in log_output
+    assert "* Notifications (email):" in log_output
+    assert "* Notifications (webhook):" in log_output
+    assert "Notify active" not in log_output
+    assert "Webhook enabled" not in log_output
     assert log_output.count("* Target:") == 1
 
 
@@ -270,8 +297,14 @@ def test_verbose_and_debug_terminal_receive_full_summary(monkeypatch, mode_name)
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, mode_name, True)
     output = emit_to_string(summary_rows(), show_full=bool(monitor.VERBOSE_MODE or monitor.DEBUG_MODE))
+    assert all(line.startswith("* ") for line in output.splitlines() if line)
+    error_retry_line = next(line for line in output.splitlines() if "Error retry timer:" in line)
+    assert error_retry_line.index("3 minutes") == 32
     assert "Error retry timer" in output
-    assert "Notify active" in output
+    assert "* Notifications (email):" in output
+    assert "* Notifications (webhook):" in output
+    assert "Notify active" not in output
+    assert "Webhook enabled" not in output
     assert "More details" not in output
 
 

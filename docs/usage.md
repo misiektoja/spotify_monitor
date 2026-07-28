@@ -45,7 +45,7 @@ If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fal
 spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value"
 ```
 
-This command can expose the cookie through shell history or process listings. Use browser import locally or hidden `--set-sp-dc` entry in a container instead.
+This command can expose the cookie through shell history or process listings. Use browser import when available. For a manually extracted cookie, use the recommended `--set-sp-dc` command because its hidden prompt is the most secure entry method.
 
 If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use `-r`:
 
@@ -75,6 +75,49 @@ You can monitor multiple Spotify friends by running multiple copies with separat
 By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable file logging with `DISABLE_LOGGING` or `-d`.
 
 Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
+
+<a id="scrobble-health-mode"></a>
+## Scrobble Health Mode
+
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. This mode can notify through the console, email or a webhook when the gap meets the configured evidence threshold.
+
+Run the focused wizard once:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
+
+When `MONITOR_MODE = "scrobble_health"` and `LASTFM_USERNAME` are saved, start the monitor with:
+
+```sh
+spotify_monitor --scrobble-health
+```
+
+You can override the saved Last.fm username for one run:
+
+```sh
+spotify_monitor --scrobble-health LASTFM_USERNAME
+```
+
+The mode reads the cookie owner's completed Spotify plays through the `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
+
+The console always reports outage and recovery transitions. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
+
+These one-run options override the most common thresholds:
+
+```sh
+spotify_monitor --scrobble-health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
+```
+
+Use focused Doctor checks before leaving it unattended:
+
+```sh
+spotify_monitor --scrobble-health --doctor
+```
+
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
 
 <a id="main-application-docker-image"></a>
 ## Container Operation
@@ -213,7 +256,7 @@ Firefox works inside Docker because its cookie database can be mounted as a read
 
 Do not add `:z` or `:Z` to the whole Firefox profile mount. Those suffixes can change SELinux labels on the host files. If SELinux blocks the read-only mount, close Firefox and copy `cookies.sqlite` to a dedicated directory before mounting that copy.
 
-After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the hidden [`--set-sp-dc`](configuration.md#manual-cookie-extraction) fallback.
+After import, normal Compose runs read `SP_DC_COOKIE` from the host `.env` file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the recommended [`--set-sp-dc`](configuration.md#manual-cookie-extraction) command. Its hidden prompt is the most secure way to enter a manually extracted cookie.
 
 Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need `TRACK_SONGS` or `--track-in-spotify`. The tool warns but does not disable the setting so custom host integration remains possible.
 
@@ -348,7 +391,7 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 | Monitored track, playlist or album plays | `WEBHOOK_TRACK_NOTIFICATION` | `--webhook-track` |
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
-| Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Disable with `--no-webhook-error-notify` |
+| Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Enable with `--webhook-errors` or disable with `--no-webhook-error-notify` |
 
 For example, this sends a webhook alert for every song change during one run:
 
@@ -356,7 +399,15 @@ For example, this sends a webhook alert for every song change during one run:
 spotify_monitor <spotify_user_uri_id> --webhook-song-changes
 ```
 
-Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Standard Discord and public `ntfy.sh` URLs automatically correct a stale configured provider. Use `--webhook-provider {discord,ntfy}` as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
+
+The recommended way to save a private destination is still the hidden `--set-webhook-url` command. For automation or one-time testing, `--webhook-url URL` overrides the destination without changing `.env`:
+
+```sh
+spotify_monitor <spotify_user_uri_id> --webhook-provider ntfy --webhook-url "https://ntfy.sh/your-private-topic" --webhook-song-changes
+```
+
+A URL passed on the command line may remain visible in shell history or process listings. See [Webhook Settings](configuration.md#webhook-settings) for the setup wizard, advanced payload templates and dynamic headers.
 
 <a id="csv-export"></a>
 ## CSV Export

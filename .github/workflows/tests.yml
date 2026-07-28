@@ -45,6 +45,38 @@ jobs:
       - name: Verify installed dependencies
         run: python -m pip check
 
+  quality:
+    name: Type and coverage checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install project quality dependencies
+        run: python -m pip install ".[test,legacy-oauth,browser]" -r debug/spotify_monitor_secret_grabber_docker/requirements.txt
+      - name: Run pyright with the selected interpreter
+        run: python -m pyright --pythonpath "$(command -v python)" spotify_monitor.py debug tests
+      - name: Run subprocess-aware branch coverage
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/local/coverage-data/.coverage
+        run: mkdir -p local/coverage-data && python -m coverage run -m pytest && python -m coverage combine local/coverage-data && python -m coverage report
+
+  docs-check:
+    name: Documentation strict build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install documentation dependencies
+        run: python -m pip install -r docs/requirements.txt
+      - name: Build documentation with strict validation
+        run: python -m mkdocs build --strict --site-dir local/docs-site
+
   windows-setup-smoke:
     name: Windows setup and startup smoke checks
     runs-on: windows-latest
@@ -57,7 +89,7 @@ jobs:
       - name: Install project test dependencies
         run: python -m pip install ".[test]"
       - name: Run setup and startup tests
-        run: python -m pytest tests/test_setup_wizard.py tests/test_install_method_commands.py tests/test_startup_ui.py tests/test_config_and_inputs.py
+        run: python -m pytest tests/test_setup_wizard.py tests/test_install_method_commands.py tests/test_startup_ui.py tests/test_config_and_inputs.py tests/test_packaging.py
 
   container-smoke:
     name: Main container smoke checks
