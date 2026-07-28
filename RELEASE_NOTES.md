@@ -4,7 +4,7 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.2 (TBD)
 
-Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
+Version **3.2** adds flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
 
 **Features and improvements**:
 
@@ -12,7 +12,6 @@ Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flex
 - **NEW:** Added one-run **webhook provider, URL and error-notification controls** while retaining `--set-webhook-url` as the recommended way to save private destinations
 - **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`
 - **NEW:** Added **compact ntfy activity alerts** through `NTFY_SHORT` while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
-- **IMPROVE:** Added standalone hidden entry for `LASTFM_API_KEY` through the same `--set-lastfm-credentials` argument used by lastfm_monitor
 - **IMPROVE:** Added **webhook request validation** during Doctor checks and delivery plus automatic provider correction for standard Discord and `ntfy.sh` URLs
 - **IMPROVE:** Split the startup notification summary into compact **email and webhook rows** with short labels and unstarred continuation lines across concise, verbose and logged views (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
 
