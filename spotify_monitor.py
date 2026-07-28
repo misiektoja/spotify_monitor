@@ -2272,6 +2272,18 @@ def truncate_string_per_line(message, truncate_width, tabsize=8):
     return '\n'.join(truncated_lines)
 
 
+# Resolves CLI and configured truncation settings while expanding the terminal-width sentinel
+def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
+    truncate_chars = configured_value if cli_value is None else cli_value
+    if logging_disabled:
+        return 0
+    if truncate_chars == 999:
+        terminal_size = shutil.get_terminal_size()
+        print(f"The detected terminal screen width is: {terminal_size.columns} characters\n")
+        return terminal_size.columns
+    return truncate_chars
+
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
@@ -9464,20 +9476,14 @@ def main():
             else:
                 FILE_SUFFIX = str(target_user_id)
 
-    if args.truncate:
-        if args.truncate != 999:
-            TRUNCATE_CHARS = args.truncate
-        else:
-            try:
-                terminal_size = shutil.get_terminal_size()
-                print(f"The detected terminal screen width is: {terminal_size.columns} characters\n")
-                TRUNCATE_CHARS = terminal_size.columns
-            except Exception as e:
-                print(f"Error: Cannot determine terminal screen width: {e}")
-                sys.exit(1)
-
     if args.disable_logging is True:
         DISABLE_LOGGING = True
+
+    try:
+        TRUNCATE_CHARS = resolve_truncate_chars(args.truncate, TRUNCATE_CHARS, DISABLE_LOGGING)
+    except OSError as e:
+        print(f"Error: Cannot determine terminal screen width: {e}")
+        sys.exit(1)
 
     if not DISABLE_LOGGING:
         try:

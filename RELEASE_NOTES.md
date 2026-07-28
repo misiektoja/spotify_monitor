@@ -17,6 +17,7 @@ Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flex
 
 **Bug fixes**:
 
+- **BUGFIX:** Applied terminal-width auto-detection when `TRUNCATE_CHARS = 999` comes from configuration while preserving `--truncate` precedence and skipping truncation when logging is disabled (thanks [@tomballgithub](https://github.com/tomballgithub), [#45](https://github.com/misiektoja/spotify_monitor/pull/45))
 - **BUGFIX:** Kept long ntfy text notifications below the server's 4 KB attachment boundary and added a visible truncation marker
 - **BUGFIX:** Made `SIGHUP` clear cached Spotify authentication after credential rotation and redetect Discord or ntfy when the private webhook destination changes
 
