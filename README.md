@@ -141,6 +141,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Most securely enter or replace a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
+| Most securely enter or replace `LASTFM_API_KEY` | Run `spotify_monitor --set-lastfm-credentials` and enter the key at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
 | Set up Spotify-to-Last.fm scrobble health alerts | Run `spotify_monitor --setup-scrobble-health` |
 | Start scrobble health monitoring from saved settings | Run `spotify_monitor --scrobble-health` |
