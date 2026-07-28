@@ -48,6 +48,8 @@ A Spotify developer app is not required. Cookie or client mode authenticates Fri
 
 Scrobble health mode checks whether completed plays from the Spotify account represented by `SP_DC_COOKIE` appear on one Last.fm profile. It does not need a second Spotify account and it does not use Friend Activity. It needs:
 
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
+
 1. `TOKEN_SOURCE = "cookie"`
 2. `LASTFM_USERNAME` in `spotify_monitor.conf`
 3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
@@ -58,6 +60,14 @@ The focused setup wizard collects these values through hidden prompts where appr
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
+
+To enter or replace only the API key safely, run:
+
+```sh
+spotify_monitor --set-lastfm-credentials
+```
+
+The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
 
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
