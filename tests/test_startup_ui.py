@@ -201,7 +201,7 @@ def test_concise_summary_core_rows(monkeypatch):
 
 
 # Verifies concise and complete notification rows keep email and webhook states independent
-@pytest.mark.parametrize("email_enabled,webhook_category_enabled,webhook_master_enabled,expected_email,expected_webhook", [(False, False, False, "Off", "Off"), (True, False, False, "On (active, monitored tracks)", "Off"), (False, True, True, "Off", "On (active, errors)"), (True, True, True, "On (active, monitored tracks)", "On (active, errors)"), (False, True, False, "Off", "Off")])
+@pytest.mark.parametrize("email_enabled,webhook_category_enabled,webhook_master_enabled,expected_email,expected_webhook", [(False, False, False, "Off", "Off"), (True, False, False, "On (active, tracked)", "Off"), (False, True, True, "Off", "On (active, errors)"), (True, True, True, "On (active, tracked)", "On (active, errors)"), (False, True, False, "Off", "Off")])
 def test_startup_summary_notification_channels(monkeypatch, email_enabled, webhook_category_enabled, webhook_master_enabled, expected_email, expected_webhook):
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", email_enabled)
@@ -213,6 +213,16 @@ def test_startup_summary_notification_channels(monkeypatch, email_enabled, webho
     for show_full in (False, True):
         notification_lines = [line for line in emit_to_string(summary_rows(), show_full=show_full).splitlines() if line.startswith("* Notifications (")]
         assert notification_lines == expected_lines
+
+
+# Verifies long notification rows wrap within 100 columns without starred continuation lines
+def test_long_notification_summary_rows_wrap_without_starred_continuations():
+    categories = "On (" + ", ".join(f"category-{index}" for index in range(12)) + ")"
+    formatted = monitor._format_startup_summary_row(monitor.StartupSummaryRow("Notifications (email)", categories))
+    lines = formatted.rstrip("\n").splitlines()
+    assert len(lines) > 1
+    assert all(len(line) <= 100 for line in lines)
+    assert not any(line.startswith("*") for line in lines[1:])
 
 
 # Verifies disabled advanced defaults stay out of the concise view
@@ -237,7 +247,7 @@ def test_concise_summary_shows_enabled_optional_settings(monkeypatch):
     monkeypatch.setattr(monitor, "SP_APP_CLIENT_ID", "known-oauth-client-secret")
     monkeypatch.setattr(monitor, "SP_APP_CLIENT_SECRET", "known-oauth-secret")
     output = emit_to_string(summary_rows())
-    for visible in ("On (active, monitored tracks)", "Spotify playback control", "Liveness output", "/data/tracks.csv", "/data/alerts.txt", "/data/active.flag", "80 chars", "Legacy OAuth cache"):
+    for visible in ("On (active, tracked)", "Spotify playback control", "Liveness output", "/data/tracks.csv", "/data/alerts.txt", "/data/active.flag", "80 chars", "Legacy OAuth cache"):
         assert visible in output
 
 
