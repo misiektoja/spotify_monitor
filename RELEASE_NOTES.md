@@ -8,6 +8,15 @@ Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flex
 
 **Features and improvements**:
 
+- **NEW:** Added `--webhook-provider {discord,ntfy}` to override the configured request format for one run
+- **NEW:** Added `--webhook-url URL` for automation and one-time delivery checks while retaining the hidden `--set-webhook-url` command as the recommended way to save private destinations
+- **NEW:** Added `--webhook-errors` so configurations with error alerts disabled can enable them for one run. `--no-webhook-error-notify` remains available for the opposite override
+- **NEW:** Added `WEBHOOK_AVATAR_URL` and customizable `WEBHOOK_TEMPLATE` payloads for Discord-format integrations, plus `WEBHOOK_TRANSFORMS` and placeholder expansion in `WEBHOOK_HEADERS` for Discord and ntfy
+- **NEW:** Added `NTFY_SHORT` for compact ntfy activity alerts on smaller screens while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
+- **IMPROVE:** Added validation for webhook avatar URLs, templates and transformations during Doctor checks and before delivery. Expanded headers are validated again so placeholders cannot introduce invalid values or line breaks
+- **IMPROVE:** Made compact ntfy alerts preserve configured Spotify-owned playlist suffixes and separate session duration from song count with `&` for easier scanning (thanks [@tomballgithub](https://github.com/tomballgithub), [#47](https://github.com/misiektoja/spotify_monitor/pull/47))
+- **IMPROVE:** Split the concise startup notification summary into separate **email** and **webhook** rows so each channel's enabled alerts remain readable without wrapping on narrow terminals (thanks [@tomballgithub](https://github.com/tomballgithub), [#46](https://github.com/misiektoja/spotify_monitor/pull/46))
+- **IMPROVE:** Shifted the concise and complete startup summary value column to align with detailed monitor output
 - **NEW:** Added restart-safe **Spotify-to-Last.fm scrobble health monitoring** because Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. The monitor includes a focused setup wizard, standalone hidden `LASTFM_API_KEY` entry through `--set-lastfm-credentials`, scoped recent-play access, conservative five-play outage detection, repeat reminders and recovery alerts
 - **NEW:** Added one-run **webhook provider, URL and error-notification controls** while retaining `--set-webhook-url` as the recommended way to save private destinations
 - **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`

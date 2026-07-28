@@ -383,7 +383,7 @@ For compact activity notifications on phones and smartwatches, enable the short 
 NTFY_SHORT = True
 ```
 
-The default is `False`. Compact playback alerts keep the event summary in the title and show the track, artist and album on separate lines. Playlist playback adds the playlist name in brackets. This setting affects only ntfy. Discord and email content remain unchanged. Error notifications use their complete text when no compact alternative is available.
+The default is `False`. Compact playback alerts keep the event summary in the title and show the track, artist and album on separate lines. Playlist playback adds the playlist name in brackets and preserves the configured Spotify-owned playlist suffix such as `(by Spotify)`. Compact session titles separate elapsed time from the song count with `&`. This setting affects only ntfy. Discord and email content remain unchanged. Error notifications use their complete text when no compact alternative is available.
 
 For a protected topic, the setup wizard can collect an ntfy access token through a hidden prompt. It saves the token in `.env` without displaying it. For manual setup, add the token to `.env`:
 
