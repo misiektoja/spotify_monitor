@@ -8412,7 +8412,7 @@ def main():
     if TRUNCATE_CHARS == 999:
         try:
             terminal_size = shutil.get_terminal_size()
-            print_to_screen(f"The detected terminal screen width is: {terminal_size.columns} characters\n")
+            print(f"The detected terminal screen width is: {terminal_size.columns} characters\n")
             TRUNCATE_CHARS = terminal_size.columns
         except Exception as e:
             print(f"Error: Cannot determine terminal screen width: {e}")
