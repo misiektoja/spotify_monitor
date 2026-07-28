@@ -33,7 +33,7 @@ If the same setting appears in more than one place, the item later in this list 
 4. Values from the selected `.env` file
 5. Command-line options
 
-The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` if you do not want automatic file discovery. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
+The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` if you do not want automatic file discovery. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
 You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
 
@@ -42,6 +42,36 @@ spotify_monitor --config-file spotify_monitor.conf
 ```
 
 A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.
+
+<a id="lastfm-scrobble-health"></a>
+## Last.fm Scrobble Health
+
+Scrobble health mode checks whether completed plays from the Spotify account represented by `SP_DC_COOKIE` appear on one Last.fm profile. It does not need a second Spotify account and it does not use Friend Activity. It needs:
+
+1. `TOKEN_SOURCE = "cookie"`
+2. `LASTFM_USERNAME` in `spotify_monitor.conf`
+3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
+4. A read-only Last.fm API key stored as `LASTFM_API_KEY` in `.env`
+
+The focused setup wizard collects these values through hidden prompts where appropriate:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
+
+| Setting | Default | Purpose |
+| --- | ---: | --- |
+| `SCROBBLE_HEALTH_CHECK_INTERVAL` | 120 seconds | Time between comparisons |
+| `SCROBBLE_HEALTH_DEAD_PERIOD` | 1200 seconds | Required age of the oldest unmatched play |
+| `SCROBBLE_HEALTH_MIN_UNMATCHED` | 5 plays | Required consecutive unmatched completed plays |
+| `SCROBBLE_HEALTH_MATCH_WINDOW` | 300 seconds | Allowed timestamp difference for the same artist and track |
+| `SCROBBLE_HEALTH_LOOKBACK` | 21600 seconds | Recent history included in each comparison |
+| `SCROBBLE_HEALTH_REPEAT_INTERVAL` | 86400 seconds | Reminder interval while an outage remains unresolved |
+| `SCROBBLE_HEALTH_STATE_FILE` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
+
+An operational Spotify or Last.fm request error does not count as a scrobbling outage. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source
