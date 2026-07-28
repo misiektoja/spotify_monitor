@@ -76,6 +76,45 @@ By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.l
 
 Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
 
+<a id="scrobble-health-mode"></a>
+## Scrobble Health Mode
+
+Run the focused wizard once:
+
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
+When `MONITOR_MODE = "scrobble_health"` and `LASTFM_USERNAME` are saved, start the monitor with:
+
+```sh
+spotify_monitor --scrobble-health
+```
+
+You can override the saved Last.fm username for one run:
+
+```sh
+spotify_monitor --scrobble-health LASTFM_USERNAME
+```
+
+The mode reads the cookie owner's completed Spotify plays through the `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
+
+The console always reports outage and recovery transitions. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
+
+These one-run options override the most common thresholds:
+
+```sh
+spotify_monitor --scrobble-health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
+```
+
+Use focused Doctor checks before leaving it unattended:
+
+```sh
+spotify_monitor --scrobble-health --doctor
+```
+
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
+
 <a id="main-application-docker-image"></a>
 ## Container Operation
 
