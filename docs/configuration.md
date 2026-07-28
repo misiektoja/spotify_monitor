@@ -59,6 +59,14 @@ The focused setup wizard collects these values through hidden prompts where appr
 spotify_monitor --setup-scrobble-health
 ```
 
+To enter or replace only the API key safely, use the same standalone argument as lastfm_monitor:
+
+```sh
+spotify_monitor --set-lastfm-credentials
+```
+
+The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
+
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
 | Setting | Default | Purpose |
