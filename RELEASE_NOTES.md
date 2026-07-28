@@ -17,6 +17,7 @@ Version **3.2** adds flexible **webhook runtime controls and request customizati
 **Bug fixes**:
 
 - **BUGFIX:** Kept long ntfy text notifications below the server's 4 KB attachment boundary and added a visible truncation marker
+- **BUGFIX:** Made `SIGHUP` clear cached Spotify authentication after credential rotation and redetect Discord or ntfy when the private webhook destination changes
 
 # Changes in 3.1.1 (24 Jul 2026)
 
