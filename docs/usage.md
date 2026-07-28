@@ -79,6 +79,8 @@ Spotify Friend Activity reports a track after the user finishes it. Spotify Moni
 <a id="scrobble-health-mode"></a>
 ## Scrobble Health Mode
 
+Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. This mode can notify through the console, email or a webhook when the gap meets the configured evidence threshold.
+
 Run the focused wizard once:
 
 ```sh
