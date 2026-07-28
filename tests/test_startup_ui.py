@@ -420,6 +420,28 @@ def test_startup_summaries_never_include_secrets(monkeypatch, tmp_path):
         assert secret not in combined
 
 
+# Verifies configured terminal-width autodetection resolves the sentinel before logging starts
+def test_configured_truncation_autodetects_terminal_width(monkeypatch, capsys):
+    monkeypatch.setattr(monitor.shutil, "get_terminal_size", lambda: Mock(columns=120))
+    assert monitor.resolve_truncate_chars(None, 999, False) == 120
+    assert capsys.readouterr().out == "The detected terminal screen width is: 120 characters\n\n"
+
+
+# Verifies CLI truncation values take precedence including an explicit zero
+@pytest.mark.parametrize(("cli_value", "configured_value", "expected"), ((0, 80, 0), (72, 999, 72), (None, 80, 80)))
+def test_cli_truncation_overrides_configured_value(cli_value, configured_value, expected):
+    assert monitor.resolve_truncate_chars(cli_value, configured_value, False) == expected
+
+
+# Verifies disabled logging suppresses truncation and terminal-width detection
+def test_disabled_logging_skips_truncation_autodetection(monkeypatch, capsys):
+    terminal_size = Mock(side_effect=AssertionError("terminal width should not be detected"))
+    monkeypatch.setattr(monitor.shutil, "get_terminal_size", terminal_size)
+    assert monitor.resolve_truncate_chars(None, 999, True) == 0
+    terminal_size.assert_not_called()
+    assert capsys.readouterr().out == ""
+
+
 # Verifies terminal-only and log-only routing retain truncation and tab semantics
 def test_logger_terminal_only_and_log_only(monkeypatch, tmp_path):
     terminal = io.StringIO()
