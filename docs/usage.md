@@ -85,6 +85,8 @@ Run the focused wizard once:
 spotify_monitor --setup-scrobble-health
 ```
 
+If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
+
 When `MONITOR_MODE = "scrobble_health"` and `LASTFM_USERNAME` are saved, start the monitor with:
 
 ```sh
