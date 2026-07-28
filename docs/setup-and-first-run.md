@@ -70,8 +70,6 @@ spotify_monitor --setup-scrobble-health
 
 The wizard asks for the Last.fm username and API key, configures the Spotify cookie account whose plays should be checked and offers the normal email or webhook destinations. It defaults to five consecutive missing completed plays plus a 20 minute dead period. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays.
 
-To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. This uses the same standalone argument as lastfm_monitor. It saves only the API key because scrobble health does not need the Last.fm shared secret.
-
 For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
 
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt replace `${PWD}` with `%cd%`. Windows hosts must use Linux containers. The `:z` suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only `:z`.
