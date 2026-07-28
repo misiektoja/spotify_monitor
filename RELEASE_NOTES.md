@@ -8,6 +8,7 @@ Version **3.2** adds flexible **webhook runtime controls and request customizati
 
 **Features and improvements**:
 
+- **NEW:** Added restart-safe **Spotify-to-Last.fm scrobble health monitoring** with a focused setup wizard, scoped recent-play access, conservative five-play outage detection, repeat reminders and recovery alerts
 - **NEW:** Added one-run **webhook provider, URL and error-notification controls** while retaining `--set-webhook-url` as the recommended way to save private destinations
 - **NEW:** Added **customizable Discord-format payloads** through `WEBHOOK_AVATAR_URL`, `WEBHOOK_TEMPLATE`, `WEBHOOK_TRANSFORMS` and placeholder-aware `WEBHOOK_HEADERS`
 - **NEW:** Added **compact ntfy activity alerts** through `NTFY_SHORT` while keeping Discord, email and error notification details unchanged (thanks [@tomballgithub](https://github.com/tomballgithub), [#44](https://github.com/misiektoja/spotify_monitor/pull/44))
