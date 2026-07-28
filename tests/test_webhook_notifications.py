@@ -410,15 +410,22 @@ def test_ntfy_message_is_bounded_by_utf8_bytes():
     assert not message.endswith("\U0001f3b5")
 
 
-# Verifies compact ntfy playback bodies preserve metadata with or without a playlist
-@pytest.mark.parametrize("playlist,expected", [("", "Track\nArtist\nAlbum"), ("Playlist", "Track\nArtist\nAlbum\n[Playlist]")])
-def test_short_ntfy_body_keeps_non_playlist_metadata(playlist, expected):
-    assert monitor.build_short_ntfy_body("Track", "Artist", "Album", playlist) == expected
+# Verifies compact ntfy playback bodies preserve metadata and configured playlist suffixes
+@pytest.mark.parametrize("playlist,playlist_suffix,expected", [("", "", "Track\nArtist\nAlbum"), ("Playlist", "", "Track\nArtist\nAlbum\n[Playlist]"), ("90s Pop", " (by Spotify)", "Track\nArtist\nAlbum\n[90s Pop (by Spotify)]")])
+def test_short_ntfy_body_keeps_playlist_metadata(playlist, playlist_suffix, expected):
+    assert monitor.build_short_ntfy_body("Track", "Artist", "Album", playlist, playlist_suffix) == expected
 
 
 # Verifies compact notification durations use abbreviated time units
 def test_short_ntfy_duration_uses_abbreviated_units():
     assert monitor.calculate_timespan(90061, 0, short=True) == "1 day, 1 hr, 1 min"
+
+
+# Verifies compact ntfy session titles separate duration from song count consistently
+@pytest.mark.parametrize("inactive,expected", [(False, "User (1 hr, 10 mins & 20 songs)"), (True, "User is inactive (after 1 hr, 10 mins & 20 songs)")])
+def test_short_ntfy_session_subject_uses_readable_separator(inactive, expected):
+    duration = monitor.calculate_timespan(4220, 0, show_seconds=False, short=True)
+    assert monitor.build_short_ntfy_session_subject("User", duration, 20, inactive=inactive) == expected
 
 
 # Verifies valid ntfy priority and tags are sent as native query parameters
