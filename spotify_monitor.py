@@ -295,33 +295,42 @@ SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 # For Friend Activity monitoring use the regular --setup wizard
 
 # Last.fm username whose recent scrobbles should contain this Spotify account's completed plays
+# Can also be set using --lastfm-username
 LASTFM_USERNAME = ""
 
 # Last.fm API key used for the read-only user.getRecentTracks request
 # Recommended: run --set-lastfm-credentials and enter it through a hidden prompt
 # You can also store it in .env as LASTFM_API_KEY rather than committing it to a config file
+# The --lastfm-api-key flag is available for file-free runs but may leave the key in shell history
 LASTFM_API_KEY = ""
 
 # How often to compare completed Spotify plays with Last.fm in seconds
+# Can also be set using --scrobble-check-interval
 SCROBBLE_HEALTH_CHECK_INTERVAL = 120
 
 # Minimum age of the oldest unmatched play before an outage alert in seconds
+# Can also be set using --scrobble-dead-period
 SCROBBLE_HEALTH_DEAD_PERIOD = 1200
 
 # Minimum number of consecutive unmatched completed Spotify plays required for an outage alert
+# Can also be set using --scrobble-min-unmatched
 SCROBBLE_HEALTH_MIN_UNMATCHED = 5
 
 # Maximum timestamp difference allowed when matching the same artist and track in seconds
+# Can also be set using --scrobble-match-window
 SCROBBLE_HEALTH_MATCH_WINDOW = 300
 
 # How far back to inspect recent Spotify plays and Last.fm scrobbles in seconds
+# Can also be set using --scrobble-lookback
 SCROBBLE_HEALTH_LOOKBACK = 21600
 
 # How often to repeat an unresolved outage alert in seconds
 # Set to 0 to disable reminders
+# Can also be set using --scrobble-repeat-interval
 SCROBBLE_HEALTH_REPEAT_INTERVAL = 86400
 
 # File used to preserve scrobble health state across restarts
+# Can also be set using --scrobble-state-file
 SCROBBLE_HEALTH_STATE_FILE = ".spotify-monitor-scrobble-health.json"
 
 # ----------------------------
@@ -6439,6 +6448,9 @@ def _build_help_epilog() -> str:
         "  # Start the separate Spotify-to-Last.fm scrobble health mode",
         f"  {prefix} --monitor-mode scrobble_health",
         "",
+        "  # File-free scrobble health run with required secrets set as environment variables",
+        f"  {prefix} --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username <lastfm_username>",
+        "",
         "  # Diagnose scrobble health and list recent Spotify and Last.fm history",
         f"  {prefix} --monitor-mode scrobble_health --doctor --verbose",
         "",
@@ -8661,7 +8673,7 @@ def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None) ->
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -8755,7 +8767,7 @@ def main():
         "--config-file",
         dest="config_file",
         metavar="PATH",
-        help="Path to a config file (mode-specific auto-search if omitted)",
+        help="Path to a config file (mode-specific auto-search if omitted, disable with 'none')",
     )
     conf.add_argument(
         "--generate-config",
@@ -8784,6 +8796,18 @@ def main():
         dest="monitor_mode",
         choices=["friend_activity", "scrobble_health"],
         help="Select the monitoring mode for this run (default: saved mode or friend_activity)",
+    )
+    monitor_mode_options.add_argument(
+        "--lastfm-username",
+        dest="lastfm_username",
+        metavar="USERNAME",
+        help="Last.fm profile to compare in scrobble_health mode",
+    )
+    monitor_mode_options.add_argument(
+        "--lastfm-api-key",
+        dest="lastfm_api_key",
+        metavar="API_KEY",
+        help="Last.fm API key for this run (may remain in shell history)",
     )
 
     # Token source
@@ -9040,6 +9064,27 @@ def main():
         type=int,
         help="Consecutive missing completed plays required for an outage alert",
     )
+    times.add_argument(
+        "--scrobble-match-window",
+        dest="scrobble_match_window",
+        metavar="SECONDS",
+        type=int,
+        help="Maximum timestamp difference when matching the same track",
+    )
+    times.add_argument(
+        "--scrobble-lookback",
+        dest="scrobble_lookback",
+        metavar="SECONDS",
+        type=int,
+        help="Recent Spotify and Last.fm history included in each comparison",
+    )
+    times.add_argument(
+        "--scrobble-repeat-interval",
+        dest="scrobble_repeat_interval",
+        metavar="SECONDS",
+        type=int,
+        help="Unresolved outage reminder interval, use 0 to disable reminders",
+    )
 
     # Listing
     listing = parser.add_argument_group("Listing")
@@ -9078,6 +9123,12 @@ def main():
         dest="flag_file",
         metavar="PATH",
         help="Path to flag file that is created when the user is active and deleted when inactive",
+    )
+    opts.add_argument(
+        "--scrobble-state-file",
+        dest="scrobble_state_file",
+        metavar="PATH",
+        help="File used to preserve scrobble health alert state across restarts",
     )
     opts.add_argument(
         "--user-agent",
@@ -9169,6 +9220,8 @@ def main():
             argument_index += 1
         if setup_scrobble_conflicts:
             parser.error("--setup-scrobble-health cannot be combined with " + ", ".join(setup_scrobble_conflicts))
+        if args.config_file is not None and args.config_file.casefold() == "none":
+            parser.error("--setup-scrobble-health requires a config destination and cannot use --config-file none")
         if args.env_file is not None and args.env_file.casefold() == "none":
             parser.error("--setup-scrobble-health requires a dotenv destination and cannot use --env-file none")
         run_scrobble_health_setup_wizard(args.config_file, args.env_file)
@@ -9198,9 +9251,15 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
+            (args.lastfm_username, "--lastfm-username"),
+            (args.lastfm_api_key, "--lastfm-api-key"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
+            (args.scrobble_match_window, "--scrobble-match-window"),
+            (args.scrobble_lookback, "--scrobble-lookback"),
+            (args.scrobble_repeat_interval, "--scrobble-repeat-interval"),
+            (args.scrobble_state_file, "--scrobble-state-file"),
             (args.monitor_list, "--monitor-list"),
             (args.csv_file, "--csv-file"),
             (args.flag_file, "--flag-file"),
@@ -9251,9 +9310,15 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
+            (args.lastfm_username, "--lastfm-username"),
+            (args.lastfm_api_key, "--lastfm-api-key"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
+            (args.scrobble_match_window, "--scrobble-match-window"),
+            (args.scrobble_lookback, "--scrobble-lookback"),
+            (args.scrobble_repeat_interval, "--scrobble-repeat-interval"),
+            (args.scrobble_state_file, "--scrobble-state-file"),
             (args.monitor_list, "--monitor-list"),
             (args.csv_file, "--csv-file"),
             (args.flag_file, "--flag-file"),
@@ -9302,9 +9367,15 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
+            (args.lastfm_username, "--lastfm-username"),
+            (args.lastfm_api_key, "--lastfm-api-key"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
+            (args.scrobble_match_window, "--scrobble-match-window"),
+            (args.scrobble_lookback, "--scrobble-lookback"),
+            (args.scrobble_repeat_interval, "--scrobble-repeat-interval"),
+            (args.scrobble_state_file, "--scrobble-state-file"),
             (args.monitor_list, "--monitor-list"),
             (args.csv_file, "--csv-file"),
             (args.flag_file, "--flag-file"),
@@ -9319,6 +9390,8 @@ def main():
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
         if setup_conflicts:
             parser.error("--setup cannot be combined with " + ", ".join(setup_conflicts))
+        if args.config_file is not None and args.config_file.casefold() == "none":
+            parser.error("--setup requires a config destination and cannot use --config-file none")
         if args.env_file is not None and args.env_file.casefold() == "none":
             parser.error("--setup requires a dotenv destination and cannot use --env-file none")
         run_setup_wizard(args.user_id, args.config_file, args.env_file)
@@ -9352,11 +9425,14 @@ def main():
 
     doctor_startup_checks = []
 
-    if args.config_file:
+    config_discovery_disabled = args.config_file is not None and args.config_file.casefold() == "none"
+    if config_discovery_disabled:
+        CLI_CONFIG_PATH = None
+    elif args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
     scrobble_health_cli_mode = args.monitor_mode == "scrobble_health"
-    cfg_path = find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH)
+    cfg_path = None if config_discovery_disabled else (find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH))
 
     if not cfg_path and CLI_CONFIG_PATH:
         advice = classify_recovery_error(context="config_missing", detail=f"Configuration file not found: {CLI_CONFIG_PATH}")
@@ -9381,6 +9457,8 @@ def main():
         print_recovery_error(context="config_invalid", detail=str(exc))
         sys.exit(1)
     scrobble_health_mode = MONITOR_MODE == "scrobble_health"
+    if args.lastfm_username is not None:
+        LASTFM_USERNAME = args.lastfm_username
     scrobble_health_username = str(LASTFM_USERNAME).strip() if scrobble_health_mode else ""
 
     if len(sys.argv) == 1 and not TARGET_USER_URI_ID and not scrobble_health_username:
@@ -9483,11 +9561,10 @@ def main():
                 print(render_recovery_error(RecoveryError(advice)))
                 sys.exit(1)
 
-    if env_path:
-        for secret in SECRET_KEYS:
-            val = os.getenv(secret)
-            if val is not None:
-                globals()[secret] = val
+    for secret in SECRET_KEYS:
+        val = os.getenv(secret)
+        if val is not None:
+            globals()[secret] = val
 
     if args.token_source:
         TOKEN_SOURCE = args.token_source
@@ -9509,6 +9586,8 @@ def main():
 
     if args.spotify_dc_cookie:
         SP_DC_COOKIE = args.spotify_dc_cookie
+    if args.lastfm_api_key is not None:
+        LASTFM_API_KEY = args.lastfm_api_key
 
     if args.login_request_body_file:
         LOGIN_REQUEST_BODY_FILE = os.path.expanduser(args.login_request_body_file)
@@ -9533,15 +9612,25 @@ def main():
         SPOTIFY_INACTIVITY_CHECK = args.offline_timer
     if args.disappeared_timer is not None:
         SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
-    for value, option in ((args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched")):
+    for value, option in ((args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched"), (args.scrobble_match_window, "--scrobble-match-window"), (args.scrobble_lookback, "--scrobble-lookback")):
         if value is not None and value <= 0:
             parser.error(f"{option} must be greater than zero")
+    if args.scrobble_repeat_interval is not None and args.scrobble_repeat_interval < 0:
+        parser.error("--scrobble-repeat-interval must be zero or greater")
     if args.scrobble_check_interval is not None:
         SCROBBLE_HEALTH_CHECK_INTERVAL = args.scrobble_check_interval
     if args.scrobble_dead_period is not None:
         SCROBBLE_HEALTH_DEAD_PERIOD = args.scrobble_dead_period
     if args.scrobble_min_unmatched is not None:
         SCROBBLE_HEALTH_MIN_UNMATCHED = args.scrobble_min_unmatched
+    if args.scrobble_match_window is not None:
+        SCROBBLE_HEALTH_MATCH_WINDOW = args.scrobble_match_window
+    if args.scrobble_lookback is not None:
+        SCROBBLE_HEALTH_LOOKBACK = args.scrobble_lookback
+    if args.scrobble_repeat_interval is not None:
+        SCROBBLE_HEALTH_REPEAT_INTERVAL = args.scrobble_repeat_interval
+    if args.scrobble_state_file is not None:
+        SCROBBLE_HEALTH_STATE_FILE = args.scrobble_state_file
     if args.monitor_list:
         MONITOR_LIST_FILE = os.path.expanduser(args.monitor_list)
     elif MONITOR_LIST_FILE:
@@ -9635,7 +9724,7 @@ def main():
             print_recovery_error(context="config_invalid", detail="Scrobble health mode requires TOKEN_SOURCE='cookie'")
             sys.exit(1)
         if is_missing_or_placeholder(LASTFM_API_KEY):
-            print_recovery_error(context="secret", detail="LASTFM_API_KEY is missing. Store a Last.fm API key in the selected dotenv file.")
+            print_recovery_error(context="secret", detail="LASTFM_API_KEY is missing. Use --lastfm-api-key, an environment variable or a selected dotenv file.")
             sys.exit(1)
         if SCROBBLE_HEALTH_STATE_FILE:
             SCROBBLE_HEALTH_STATE_FILE = os.path.expanduser(SCROBBLE_HEALTH_STATE_FILE)
