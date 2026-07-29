@@ -188,7 +188,7 @@ def test_scrobble_health_cli_selects_isolated_default_files(monkeypatch):
     friend_config_finder = Mock(side_effect=AssertionError("Friend Activity config discovery used"))
     dotenv_finder = Mock(return_value="")
     doctor_mock = Mock(return_value=0)
-    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--scrobble-health", "lastfm-user", "--doctor"])
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--doctor"])
     monkeypatch.setattr(monitor, "clear_screen", lambda enabled: None)
     monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
     monkeypatch.setattr(monitor, "find_config_file", friend_config_finder)
@@ -197,7 +197,7 @@ def test_scrobble_health_cli_selects_isolated_default_files(monkeypatch):
     monkeypatch.setattr(monitor, "run_scrobble_health_doctor", doctor_mock)
     monkeypatch.setattr(monitor, "MONITOR_MODE", "friend_activity")
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
-    monkeypatch.setattr(monitor, "LASTFM_USERNAME", "")
+    monkeypatch.setattr(monitor, "LASTFM_USERNAME", "lastfm-user")
     with pytest.raises(SystemExit) as error:
         monitor.main()
     assert error.value.code == 0
@@ -332,7 +332,8 @@ def test_scrobble_health_setup_offers_local_start_after_doctor(monkeypatch):
         doctor_mock.assert_called_once_with("lastfm-user", str(config_path), str(env_path))
         launch_mock.assert_called_once()
         arguments = launch_mock.call_args.args[0]
-        assert "--scrobble-health" in arguments
+        mode_index = arguments.index("--monitor-mode")
+        assert arguments[mode_index:mode_index + 2] == ["--monitor-mode", "scrobble_health"]
         assert arguments[-4:] == ["--config-file", str(config_path), "--env-file", str(env_path)]
     finally:
         for path in (config_path, env_path):
@@ -360,20 +361,24 @@ def test_scrobble_health_setup_review_edits_thresholds(monkeypatch):
                 path.unlink()
 
 
-# Confirms explicit and shortcut monitoring mode overrides have symmetric behavior
+# Confirms explicit monitoring mode selection overrides either saved direction
 def test_select_monitor_mode_supports_both_runtime_directions():
     assert monitor.select_monitor_mode("friend_activity") == "friend_activity"
     assert monitor.select_monitor_mode("scrobble_health", cli_mode="friend_activity") == "friend_activity"
     assert monitor.select_monitor_mode("friend_activity", cli_mode="scrobble_health") == "scrobble_health"
-    assert monitor.select_monitor_mode("friend_activity", scrobble_health="") == "scrobble_health"
 
 
-# Confirms conflicting or unknown monitoring mode selections fail clearly
-def test_select_monitor_mode_rejects_ambiguous_or_unknown_values():
-    with pytest.raises(ValueError, match="cannot be combined"):
-        monitor.select_monitor_mode("friend_activity", cli_mode="scrobble_health", scrobble_health="")
+# Confirms an unknown saved monitoring mode fails clearly
+def test_select_monitor_mode_rejects_unknown_value():
     with pytest.raises(ValueError, match="MONITOR_MODE must be"):
         monitor.select_monitor_mode("unknown")
+
+
+# Confirms the removed scrobble health shortcut is rejected
+def test_scrobble_health_shortcut_is_not_accepted():
+    result = run_cli("--scrobble-health")
+    assert result.returncode == 2
+    assert "unrecognized arguments: --scrobble-health" in result.stderr
 
 
 # Confirms the first check is visible while later routine checks require verbose mode
