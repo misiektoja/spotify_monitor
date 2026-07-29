@@ -42,7 +42,7 @@ spotify_monitor --doctor <spotify_user_uri_id> --env-file /path/.env-spotify_mon
 spotify_monitor --doctor <spotify_user_uri_id> --token-source client
 ```
 
-For scrobble health, focused Doctor reports how many recent plays each service returned plus the current comparison status. Add `--verbose` to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:
+For scrobble health, focused Doctor shows live progress while it checks the environment, configuration, Spotify recent plays, Last.fm scrobbles and notifications. Its final report includes how many recent plays each service returned plus the current comparison status. Add `--verbose` to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health --doctor --verbose
