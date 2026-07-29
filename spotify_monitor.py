@@ -1010,6 +1010,12 @@ from urllib3.util.retry import Retry
 # Cap server-provided Retry-After to avoid long blocking sleeps on 429 responses
 MAX_RETRY_AFTER_SECONDS = 60
 
+# Limit scrobble health to one immediate HTTP retry before its monitoring loop backs off
+SCROBBLE_HEALTH_HTTP_RETRIES = 1
+
+# Require three consecutive failed comparisons before sending an operational alert
+SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES = 3
+
 # Keep webhook delivery independent from Spotify API retries and long server timers
 WEBHOOK_MAX_ATTEMPTS = 2
 WEBHOOK_MAX_RETRY_AFTER_SECONDS = 5.0
@@ -1354,7 +1360,10 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
-        return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide("Wait before retrying and increase -c or --check-interval to reduce request frequency", INTERVALS_GUIDE_URL), True, safe_detail)
+        rate_limit_fix = "Wait before retrying and increase -c or --check-interval to reduce request frequency"
+        if context == "scrobble_health":
+            rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
+        return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide(rate_limit_fix, INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
         return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", "Wait and retry later. Run --doctor if the failure continues", True, safe_detail)
     if status == 404 and context.startswith("target"):
@@ -2265,6 +2274,23 @@ web_player_retry = CappedRetry(
 
 web_player_adapter = HTTPAdapter(max_retries=web_player_retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
+
+# Scrobble health uses one bounded automatic retry then returns control to its slower monitoring backoff
+scrobble_health_retry = CappedRetry(
+    total=SCROBBLE_HEALTH_HTTP_RETRIES,
+    connect=SCROBBLE_HEALTH_HTTP_RETRIES,
+    read=SCROBBLE_HEALTH_HTTP_RETRIES,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET", "HEAD", "OPTIONS"],
+    raise_on_status=False,
+    respect_retry_after_header=True
+)
+
+scrobble_health_adapter = HTTPAdapter(max_retries=scrobble_health_retry, pool_connections=10, pool_maxsize=10)
+SCROBBLE_HEALTH_SESSION = req.Session()
+SCROBBLE_HEALTH_SESSION.mount("https://", scrobble_health_adapter)
+SCROBBLE_HEALTH_SESSION.mount("http://", scrobble_health_adapter)
 
 
 # Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
@@ -3843,7 +3869,7 @@ def spotify_get_scrobble_access_token(sp_dc: str, session: Optional[req.Session]
     now = time.time()
     if SP_CACHED_SCROBBLE_ACCESS_TOKEN and now < SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT - 60:
         return SP_CACHED_SCROBBLE_ACCESS_TOKEN
-    request_session = SESSION if session is None else session
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
     client_id = "cfe923b2d660439caf2b557b21f31221"
     redirect_uri = "https://developer.spotify.com"
     verifier = secrets.token_urlsafe(64)[:96]
@@ -3900,7 +3926,7 @@ def spotify_get_scrobble_access_token(sp_dc: str, session: Optional[req.Session]
 # Fetches completed plays from the Spotify account represented by the configured cookie
 def spotify_get_recent_plays(sp_dc: str, session: Optional[req.Session] = None) -> List[SpotifyPlay]:
     global SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT
-    request_session = SESSION if session is None else session
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
     url = "https://api.spotify.com/v1/me/player/recently-played"
     for attempt in range(2):
         access_token = spotify_get_scrobble_access_token(sp_dc, request_session)
@@ -3939,7 +3965,7 @@ def spotify_get_recent_plays(sp_dc: str, session: Optional[req.Session] = None) 
 
 # Fetches completed recent scrobbles from one public Last.fm profile
 def lastfm_get_recent_scrobbles(username: str, api_key: str, session: Optional[req.Session] = None) -> List[LastfmScrobble]:
-    request_session = SESSION if session is None else session
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
     url = "https://ws.audioscrobbler.com/2.0/"
     params = {"method": "user.getRecentTracks", "user": username, "api_key": api_key, "limit": 50, "format": "json"}
     debug_print(f"HTTP GET {url} [Last.fm recent scrobbles] user={username!r}")
@@ -4157,6 +4183,7 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
 def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
     state = load_scrobble_health_state(state_path)
     operational_error_notified = False
+    operational_error_failures = 0
     first_successful_check = True
     print(f"* Scrobble health monitoring started for Last.fm profile {username}.")
     print(f"* Checking now then every {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}. Press Ctrl+C to stop.")
@@ -4199,12 +4226,19 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                     print_cur_ts("\nTimestamp:\t\t\t")
             first_successful_check = False
             operational_error_notified = False
+            operational_error_failures = 0
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
-            print_recovery_error(exc, "network", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
-            if not operational_error_notified and (ERROR_NOTIFICATION or webhook_event_enabled("error")):
+            operational_error_failures += 1
+            print_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
+            failure_word = "failure" if operational_error_failures == 1 else "failures"
+            print(f"* Scrobble health has {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
+            notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
+            if operational_error_failures < SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
+                print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
+            if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and not operational_error_notified and notifications_enabled:
                 subject = "spotify_monitor: scrobble health check error"
-                body = f"The Spotify-to-Last.fm comparison could not run. Existing outage state was preserved.\n\n{sanitize_error_text(exc)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                body = f"The Spotify-to-Last.fm comparison failed {operational_error_failures} consecutive times. Existing outage state was preserved.\n\n{sanitize_error_text(exc)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                 send_notification_channels("error", subject, body, email_enabled=ERROR_NOTIFICATION)
                 operational_error_notified = True
             print_cur_ts("Timestamp:\t\t\t")
