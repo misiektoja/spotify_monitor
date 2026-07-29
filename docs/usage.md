@@ -87,7 +87,7 @@ Run the focused wizard once:
 spotify_monitor --setup-scrobble-health
 ```
 
-The focused wizard lets you review each section before saving. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
+The focused wizard lets you review each section before saving. It links to [Last.fm API account management](https://www.last.fm/api/accounts) before key entry. Duration prompts show seconds plus a readable equivalent. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
 
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
