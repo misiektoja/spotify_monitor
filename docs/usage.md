@@ -97,7 +97,15 @@ The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.con
 spotify_monitor --monitor-mode scrobble_health
 ```
 
-Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config. Use `--config-file` when you want to select another saved scrobble health configuration.
+Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config or pass `--lastfm-username` for one run. Use `--config-file` when you want to select another saved scrobble health configuration.
+
+No config or dotenv file is required. Disable both automatic searches and supply the required values directly:
+
+```sh
+spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME --lastfm-api-key LASTFM_API_KEY --spotify-dc-cookie SP_DC_COOKIE
+```
+
+The API key and cookie may remain visible in shell history or process listings. For a safer file-free run, provide `LASTFM_API_KEY` and `SP_DC_COOKIE` as process environment variables while retaining `--config-file none --env-file none`.
 
 To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
 
@@ -109,10 +117,10 @@ The mode reads the cookie owner's completed Spotify plays through the `user-read
 
 The console prints the first comparison and explains its result. Every visible monitoring event includes the same human-readable timestamp and separator used by Friend Activity, so console logs show when startup, checks, outages, recoveries or errors occurred. Later routine checks appear only with `--verbose`. Outages, recoveries and operational errors remain visible in normal output. Outage messages use the same human-readable date format for the oldest missing play and every recent missing play. Email and webhook bodies include the notification timestamp. An idle result means Spotify has no completed plays from the configured recent-history period to compare with Last.fm yet. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
 
-These one-run options override the most common thresholds:
+Scrobble-specific settings have one-run options, so every comparison control can be changed without a config file:
 
 ```sh
-spotify_monitor --monitor-mode scrobble_health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
+spotify_monitor --monitor-mode scrobble_health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180 --scrobble-match-window 240 --scrobble-lookback 18000 --scrobble-repeat-interval 0 --scrobble-state-file scrobble-state.json
 ```
 
 Use focused Doctor checks before leaving it unattended:
