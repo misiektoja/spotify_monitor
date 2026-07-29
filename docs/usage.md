@@ -87,9 +87,17 @@ Run the focused wizard once:
 spotify_monitor --setup-scrobble-health
 ```
 
-The focused wizard lets you review each section before saving. It links to [Last.fm API account management](https://www.last.fm/api/accounts) before key entry. Duration prompts show seconds plus a readable equivalent. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
+The focused wizard lets you review each section before saving. It links to [Last.fm API account management](https://www.last.fm/api/accounts), the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), Spotify's [app creation guide](https://developer.spotify.com/documentation/web-api/concepts/apps) and its [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow). It shows the exact redirect URI to register, asks only for the app Client ID and authorizes read-only `user-read-recently-played` access. A Client Secret and Spotify cookie are not used by this mode. Duration prompts show seconds plus a readable equivalent. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
 
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
+
+To authorize again after the Spotify refresh token expires or is revoked, run:
+
+```sh
+spotify_monitor --authorize-scrobble-health
+```
+
+The command reuses the app Client ID and redirect URI from the selected config then saves the new `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file. It opens the authorization page for local installs or prints the URL for Docker. In either case, paste the complete redirected URL from the browser address bar when prompted.
 
 The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health`. Select the mode to discover those files:
 
@@ -99,13 +107,13 @@ spotify_monitor --monitor-mode scrobble_health
 
 Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config or pass `--lastfm-username` for one run. Use `--config-file` when you want to select another saved scrobble health configuration.
 
-No config or dotenv file is required. With the API key and cookie already available as environment variables, select only the mode and profile:
+No config or dotenv file is required. With `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REFRESH_TOKEN` already available as environment variables, select only the mode and profile:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
 ```
 
-You can pass the credentials with `--lastfm-api-key` and `--spotify-dc-cookie` instead. The values may remain visible in shell history or process listings.
+You can pass the credentials with `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token` instead. Use `--scrobble-redirect-uri` when the app does not register the default `http://127.0.0.1:8888/callback`. Private values may remain visible in shell history or process listings.
 
 To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
 
@@ -113,7 +121,7 @@ To run Friend Activity with a scrobble health config, select Friend Activity and
 spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
 
-The mode reads the cookie owner's completed Spotify plays through the `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
+The mode reads the authorized Spotify account's completed plays through the official `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
 
 The console prints the first comparison and explains its result. Every visible monitoring event includes the same human-readable timestamp and separator used by Friend Activity, so console logs show when startup, checks, outages, recoveries or errors occurred. Later routine checks appear only with `--verbose`. Outages, recoveries and operational errors remain visible in normal output. Outage messages use the same human-readable date format for the oldest missing play and every recent missing play. Email and webhook bodies include the notification timestamp. An idle result means Spotify has no completed plays from the configured recent-history period to compare with Last.fm yet. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
 
@@ -129,7 +137,7 @@ Use focused Doctor checks before leaving it unattended:
 spotify_monitor --monitor-mode scrobble_health --doctor
 ```
 
-Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. After a successful check it prints the exact monitoring command for the detected installation and preserves the selected configuration plus dotenv paths. Docker and Docker Compose output uses the matching container command and `/data` paths.
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. If Spotify rotates the refresh token during that check, Doctor atomically updates only `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file so later monitoring can continue. After a successful check it prints the monitoring command for the detected installation and preserves the selected configuration plus dotenv paths. Docker and Docker Compose output uses the matching container command and `/data` paths. Private values originally passed through `--lastfm-api-key` or `--scrobble-refresh-token` are represented by uppercase placeholders so Doctor never repeats them on screen.
 
 To inspect the actual histories instead of only their counts, add `--verbose`:
 
@@ -511,7 +519,7 @@ For scrobble health, set the time between successful comparisons through `SCROBB
 spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 ```
 
-Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate HTTP retry first and sends an operational email or webhook only after three consecutive failed comparisons. It never waits more than 60 seconds for one server-provided `Retry-After` value.
+Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate retry for transient server errors and sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
