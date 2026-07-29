@@ -71,7 +71,7 @@ def test_set_lastfm_credentials_updates_only_api_key(monkeypatch, capsys):
         replace = Mock(wraps=os.replace)
         monkeypatch.setattr(monitor.os, "replace", replace)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
-        monkeypatch.setattr(monitor, "find_config_file", lambda: None)
+        monkeypatch.setattr(monitor, "find_scrobble_health_config_file", lambda: None)
 
         result = monitor.run_set_lastfm_credentials(env_file=destination, interactive=True, input_func=lambda prompt: "y", getpass_func=lambda prompt: secret)
 
@@ -87,6 +87,19 @@ def test_set_lastfm_credentials_updates_only_api_key(monkeypatch, capsys):
             assert destination.stat().st_mode & 0o777 == 0o600
     finally:
         cleanup_destination(destination)
+
+
+# Verifies standalone Last.fm entry defaults to the isolated scrobble health dotenv file
+def test_set_lastfm_credentials_uses_scrobble_health_default(monkeypatch):
+    update_mock = Mock(return_value={})
+    monkeypatch.chdir(PROJECT_ROOT / "local")
+    monkeypatch.setattr(monitor, "_dotenv_contains_key", lambda path, key: False)
+    monkeypatch.setattr(monitor, "update_dotenv_file", update_mock)
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "find_scrobble_health_config_file", lambda: None)
+    destination = monitor.run_set_lastfm_credentials(interactive=True, getpass_func=lambda prompt: "private-key")
+    assert destination == str((PROJECT_ROOT / "local" / ".env.scrobble_health").resolve())
+    assert update_mock.call_args.args[0] == Path(destination)
 
 
 # Verifies declined replacement leaves the existing key unchanged
