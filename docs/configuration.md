@@ -79,6 +79,8 @@ The easiest setup is the focused wizard. It selects scrobble health as the saved
 spotify_monitor --setup-scrobble-health
 ```
 
+Before hidden API-key entry, the wizard shows the [Last.fm API accounts page](https://www.last.fm/api/accounts) where you can create or view a key. Its comparison interval and dead-period prompts show both seconds and a compact duration. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`.
+
 For Friend Activity monitoring use the regular `spotify_monitor --setup` wizard instead.
 
 To enter or replace only the API key safely, run:
