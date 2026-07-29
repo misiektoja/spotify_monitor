@@ -139,7 +139,7 @@ def test_scrobble_health_setup_uses_normal_startup_clear(monkeypatch):
     clear_mock.assert_called_once_with(bool(monitor.CLEAR_SCREEN))
 
 
-@pytest.mark.parametrize("arguments", [("--token-source", "client"), ("--spotify-dc-cookie", "private-cookie"), ("--webhook-url", "https://example.test/private"), ("--scrobble-dead-period", "10"), ("--debug",), ("--browser", "firefox"), ("--notify-active",), ("--track-in-spotify",)])
+@pytest.mark.parametrize("arguments", [("--token-source", "client"), ("--spotify-dc-cookie", "private-cookie"), ("--lastfm-username", "lastfm-user"), ("--lastfm-api-key", "private-api-key"), ("--webhook-url", "https://example.test/private"), ("--scrobble-dead-period", "10"), ("--scrobble-match-window", "10"), ("--scrobble-state-file", "state.json"), ("--debug",), ("--browser", "firefox"), ("--notify-active",), ("--track-in-spotify",)])
 # Confirms focused setup rejects unrelated options instead of silently ignoring them
 def test_scrobble_health_setup_rejects_unrelated_cli_options(arguments):
     result = run_cli("--setup-scrobble-health", *arguments)
@@ -153,6 +153,13 @@ def test_scrobble_health_setup_accepts_file_options():
     assert result.returncode == 1
     assert "needs an interactive terminal" in result.stdout
     assert "cannot be combined with" not in result.stderr
+
+
+# Confirms focused setup cannot disable the config file it must create
+def test_scrobble_health_setup_rejects_disabled_config_destination():
+    result = run_cli("--setup-scrobble-health", "--config-file", "none")
+    assert result.returncode == 2
+    assert "requires a config destination and cannot use --config-file none" in result.stderr
 
 
 # Confirms focused setup requests isolated default destinations
@@ -205,6 +212,68 @@ def test_scrobble_health_cli_selects_isolated_default_files(monkeypatch):
     friend_config_finder.assert_not_called()
     dotenv_finder.assert_called_once_with(filename=monitor.SCROBBLE_HEALTH_DOTENV_FILENAME)
     doctor_mock.assert_called_once()
+
+
+# Confirms every core scrobble health value can be supplied without config or dotenv files
+def test_scrobble_health_cli_supports_file_free_runtime_configuration(monkeypatch):
+    config_finder = Mock(side_effect=AssertionError("Config discovery should be disabled"))
+    dotenv_finder = Mock(side_effect=AssertionError("Dotenv discovery should be disabled"))
+    captured = {}
+    monkeypatch.setenv("LASTFM_API_KEY", "ignored-environment-api-key")
+    monkeypatch.setenv("SP_DC_COOKIE", "ignored-environment-cookie")
+
+    # Captures effective runtime values after all command-line overrides
+    def run_doctor(username, config_path=None, env_path=None, startup_checks=()):
+        captured.update({"username": username, "config_path": config_path, "env_path": env_path, "api_key": monitor.LASTFM_API_KEY, "cookie": monitor.SP_DC_COOKIE, "check_interval": monitor.SCROBBLE_HEALTH_CHECK_INTERVAL, "dead_period": monitor.SCROBBLE_HEALTH_DEAD_PERIOD, "min_unmatched": monitor.SCROBBLE_HEALTH_MIN_UNMATCHED, "match_window": monitor.SCROBBLE_HEALTH_MATCH_WINDOW, "lookback": monitor.SCROBBLE_HEALTH_LOOKBACK, "repeat_interval": monitor.SCROBBLE_HEALTH_REPEAT_INTERVAL, "state_file": monitor.SCROBBLE_HEALTH_STATE_FILE})
+        return 0
+
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "private-api-key", "--spotify-dc-cookie", "private-cookie", "--scrobble-check-interval", "180", "--scrobble-dead-period", "1500", "--scrobble-min-unmatched", "7", "--scrobble-match-window", "240", "--scrobble-lookback", "18000", "--scrobble-repeat-interval", "0", "--scrobble-state-file", "local/health-state.json", "--doctor"])
+    monkeypatch.setattr(monitor, "clear_screen", lambda enabled: None)
+    monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
+    monkeypatch.setattr(monitor, "find_config_file", config_finder)
+    monkeypatch.setattr(monitor, "find_scrobble_health_config_file", config_finder)
+    monkeypatch.setattr(dotenv, "find_dotenv", dotenv_finder)
+    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", run_doctor)
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "friend_activity")
+    monkeypatch.setattr(monitor, "LASTFM_USERNAME", "")
+    monkeypatch.setattr(monitor, "LASTFM_API_KEY", "")
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 0
+    assert captured == {"username": "lastfm-user", "config_path": None, "env_path": None, "api_key": "private-api-key", "cookie": "private-cookie", "check_interval": 180, "dead_period": 1500, "min_unmatched": 7, "match_window": 240, "lookback": 18000, "repeat_interval": 0, "state_file": "local/health-state.json"}
+    config_finder.assert_not_called()
+    dotenv_finder.assert_not_called()
+
+
+# Confirms process environment secrets work when dotenv discovery is disabled
+def test_scrobble_health_cli_loads_environment_without_dotenv(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("LASTFM_API_KEY", "environment-api-key")
+    monkeypatch.setenv("SP_DC_COOKIE", "environment-cookie")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--doctor"])
+    monkeypatch.setattr(monitor, "clear_screen", lambda enabled: None)
+    monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
+    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", lambda username, config_path=None, env_path=None, startup_checks=(): (captured.update({"api_key": monitor.LASTFM_API_KEY, "cookie": monitor.SP_DC_COOKIE}) or 0))
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "friend_activity")
+    monkeypatch.setattr(monitor, "LASTFM_USERNAME", "")
+    monkeypatch.setattr(monitor, "LASTFM_API_KEY", "")
+    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "")
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+    assert error.value.code == 0
+    assert captured == {"api_key": "environment-api-key", "cookie": "environment-cookie"}
+
+
+@pytest.mark.parametrize(("option", "value", "message"), [("--scrobble-match-window", "0", "must be greater than zero"), ("--scrobble-lookback", "-1", "must be greater than zero"), ("--scrobble-repeat-interval", "-1", "must be zero or greater")])
+# Confirms new scrobble timing options reject unsafe bounds
+def test_scrobble_health_cli_rejects_invalid_extended_timers(option, value, message):
+    result = run_cli("--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "api-key", "--spotify-dc-cookie", "cookie", option, value, "--doctor")
+    assert result.returncode == 2
+    assert f"{option} {message}" in result.stderr
 
 
 # Confirms scrobble health secret reload keeps using the isolated dotenv default
