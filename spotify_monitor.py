@@ -304,6 +304,27 @@ LASTFM_USERNAME = ""
 # The --lastfm-api-key flag is available for file-free runs but may leave the key in shell history
 LASTFM_API_KEY = ""
 
+# Client ID from an app created in the Spotify Developer Dashboard
+# The app must allow the redirect URI below and authorize user-read-recently-played through PKCE
+# The app owner needs Spotify Premium in Development Mode
+# Dashboard: https://developer.spotify.com/dashboard
+# App creation guide: https://developer.spotify.com/documentation/web-api/concepts/apps
+# PKCE guide: https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow
+# Easiest setup and reauthorization: run --setup-scrobble-health or --authorize-scrobble-health
+# Can also be set using --scrobble-client-id
+SPOTIFY_SCROBBLE_CLIENT_ID = ""
+
+# Exact redirect URI registered in the Spotify app settings
+# Spotify permits HTTP only for explicit loopback IP addresses such as 127.0.0.1
+# Can also be set using --scrobble-redirect-uri
+SPOTIFY_SCROBBLE_REDIRECT_URI = "http://127.0.0.1:8888/callback"
+
+# Private PKCE refresh token for read-only Spotify recent-play access
+# The setup and authorization commands save this in .env.scrobble_health
+# Spotify refresh tokens expire after six months, so rerun --authorize-scrobble-health when prompted
+# The --scrobble-refresh-token flag is available for file-free runs but may leave it in shell history
+SPOTIFY_SCROBBLE_REFRESH_TOKEN = ""
+
 # How often to compare completed Spotify plays with Last.fm in seconds
 # Can also be set using --scrobble-check-interval
 SCROBBLE_HEALTH_CHECK_INTERVAL = 120
@@ -762,6 +783,9 @@ SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 MONITOR_MODE = ""
 LASTFM_USERNAME = ""
 LASTFM_API_KEY = ""
+SPOTIFY_SCROBBLE_CLIENT_ID = ""
+SPOTIFY_SCROBBLE_REDIRECT_URI = ""
+SPOTIFY_SCROBBLE_REFRESH_TOKEN = ""
 SCROBBLE_HEALTH_CHECK_INTERVAL = 0
 SCROBBLE_HEALTH_DEAD_PERIOD = 0
 SCROBBLE_HEALTH_MIN_UNMATCHED = 0
@@ -827,7 +851,10 @@ SCROBBLE_HEALTH_CONFIG_FILENAME = "spotify_monitor_scrobble_health.conf"
 SCROBBLE_HEALTH_DOTENV_FILENAME = ".env.scrobble_health"
 
 # List of secret keys to load from env/config
-SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN", "LASTFM_API_KEY")
+SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN", "LASTFM_API_KEY", "SPOTIFY_SCROBBLE_REFRESH_TOKEN")
+
+# Non-secret Spotify recent-play app settings also supported through environment variables
+ENVIRONMENT_SETTING_KEYS = ("SPOTIFY_SCROBBLE_CLIENT_ID", "SPOTIFY_SCROBBLE_REDIRECT_URI")
 
 # Config values that must retain safe template defaults during generated output
 SENSITIVE_CONFIG_KEYS = frozenset((*SECRET_KEYS, "WEBHOOK_HEADERS"))
@@ -861,9 +888,10 @@ SP_CACHED_WEB_ACCESS_TOKEN = None
 SP_WEB_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_WEB_CLIENT_ID = ""
 
-# Separate cache for the scoped token used to read the cookie owner's completed plays
+# Separate cache for the user-owned PKCE token used to read completed plays
 SP_CACHED_SCROBBLE_ACCESS_TOKEN = None
 SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT = 0
+SP_CACHED_SCROBBLE_AUTH_FINGERPRINT = ""
 
 # Caches dynamically discovered persisted-query hashes for public metadata
 SP_CACHED_PLAYLIST_QUERY_HASH = ""
@@ -932,7 +960,16 @@ SECRETS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#storing-secrets"
 INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 OAUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-oauth-app"
+SCROBBLE_AUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-recent-play-authorization"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
+SPOTIFY_DEVELOPER_DASHBOARD_URL = "https://developer.spotify.com/dashboard"
+SPOTIFY_APPS_GUIDE_URL = "https://developer.spotify.com/documentation/web-api/concepts/apps"
+SPOTIFY_PKCE_GUIDE_URL = "https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow"
+SPOTIFY_QUOTA_GUIDE_URL = "https://developer.spotify.com/documentation/web-api/concepts/quota-modes"
+SPOTIFY_SCROBBLE_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
+SPOTIFY_SCROBBLE_TOKEN_URL = "https://accounts.spotify.com/api/token"
+SPOTIFY_SCROBBLE_RECENT_URL = "https://api.spotify.com/v1/me/player/recently-played"
+SPOTIFY_SCROBBLE_SCOPE = "user-read-recently-played"
 LASTFM_API_ACCOUNTS_URL = "https://www.last.fm/api/accounts"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
 
@@ -976,11 +1013,12 @@ from email.mime.text import MIMEText
 import argparse
 import csv
 import getpass
-from urllib.parse import quote_plus, quote, unquote, urljoin, urlparse, urlsplit
+from urllib.parse import parse_qs, quote_plus, quote, unquote, urlencode, urljoin, urlparse, urlsplit
 import subprocess
 import platform
 import re
 import ipaddress
+import webbrowser
 from html import escape
 import base64
 import hashlib
@@ -1075,7 +1113,7 @@ CHROMIUM_USER_DATA_DIRS = {
 TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID."
 
 # Stable machine-readable recovery categories exposed to tests and future renderers
-RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
+RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
 
 
 # Stores one stable recovery category with safe user-facing guidance
@@ -1180,7 +1218,7 @@ def known_secret_values(extra_values: Sequence[Any] = ()) -> List[str]:
         for key, value in webhook_headers.items():
             if isinstance(key, str) and key.casefold() == "authorization" and isinstance(value, str) and value:
                 values.append(value)
-    for key in ("SP_CACHED_ACCESS_TOKEN", "SP_CACHED_REFRESH_TOKEN", "SP_CACHED_CLIENT_TOKEN", "SP_CACHED_OAUTH_APP_TOKEN", "SP_CACHED_WEB_ACCESS_TOKEN"):
+    for key in ("SP_CACHED_ACCESS_TOKEN", "SP_CACHED_REFRESH_TOKEN", "SP_CACHED_CLIENT_TOKEN", "SP_CACHED_OAUTH_APP_TOKEN", "SP_CACHED_WEB_ACCESS_TOKEN", "SP_CACHED_SCROBBLE_ACCESS_TOKEN"):
         value = globals().get(key)
         if isinstance(value, str) and value:
             values.append(value)
@@ -1196,7 +1234,7 @@ def sanitize_error_text(value: Any, extra_secrets: Sequence[Any] = ()) -> str:
     for secret in known_secret_values(extra_secrets):
         text = text.replace(secret, "<redacted>")
     patterns = (
-        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD|WEBHOOK_URL|NTFY_ACCESS_TOKEN)\b\s*=\s*).*$", r"\1<redacted>"),
+        (r"(?m)(\b(?:SP_DC_COOKIE|REFRESH_TOKEN|SPOTIFY_SCROBBLE_REFRESH_TOKEN|SP_APP_CLIENT_ID|SP_APP_CLIENT_SECRET|SMTP_PASSWORD|WEBHOOK_URL|NTFY_ACCESS_TOKEN)\b\s*=\s*).*$", r"\1<redacted>"),
         (r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?bearer\s+)[^\s,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(cookie\s*[:=][^\r\n]*?sp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
         (r"(?i)(\bsp_dc\s*=\s*)[^\s;,;'\"}]+", r"\1<redacted>"),
@@ -1260,6 +1298,24 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     message = raw_message
     status = recovery_http_status(error)
 
+    if isinstance(error, SpotifyQuotaExceededError):
+        wait_text = f" Spotify requested a wait of {display_time(error.retry_after)}." if error.retry_after is not None else ""
+        fix = f"Wait for the user-owned Spotify app quota to recover and increase --scrobble-check-interval if this repeats.{wait_text} Development Mode quota is shared across apps owned by the same developer account"
+        return make_recovery_advice("spotify.quota_exceeded", "Spotify recent-play application quota is exhausted", recovery_fix_with_guide(fix, SPOTIFY_QUOTA_GUIDE_URL), True, safe_detail)
+    if isinstance(error, SpotifyScrobbleAuthorizationError):
+        if context == "authorize_scrobble_health":
+            if "interactive terminal" in raw_message:
+                fix = "Run the command in an interactive terminal so it can open authorization and accept the redirected URL"
+            elif "client id" in raw_message:
+                fix = f"Run --setup-scrobble-health or create an app at {SPOTIFY_DEVELOPER_DASHBOARD_URL} then pass its Client ID with --scrobble-client-id"
+            elif "redirect uri" in raw_message:
+                fix = "Register the exact redirect URI in the Spotify app settings then pass the same value with --scrobble-redirect-uri"
+            else:
+                fix = "Check the Spotify app settings then retry --authorize-scrobble-health"
+            return make_recovery_advice("auth.scrobble_expired", safe_detail or "Spotify recent-play authorization did not complete", recovery_fix_with_guide(fix, SCROBBLE_AUTH_GUIDE_URL), False, safe_detail)
+        fix = "Run --authorize-scrobble-health to grant read-only recent-play access again"
+        return make_recovery_advice("auth.scrobble_expired", safe_detail or "Spotify recent-play authorization is missing or expired", recovery_fix_with_guide(fix, SCROBBLE_AUTH_GUIDE_URL), False, safe_detail)
+
     if context == "browser_import":
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
             return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", COOKIE_GUIDE_URL), True, safe_detail)
@@ -1307,7 +1363,12 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         dependency = getattr(error, "name", None) or safe_detail or "required package"
         return make_recovery_advice("dependency.missing", f"A required dependency is missing: {dependency}", recovery_fix_with_guide("Install the project requirements then retry", INSTALLATION_GUIDE_URL), False, safe_detail)
     if context == "secret":
-        fix = "Run --set-lastfm-credentials from an interactive terminal" if "LASTFM_API_KEY" in safe_detail else "Provide the required secret through a dotenv file, environment variable or supported command-line option"
+        if "LASTFM_API_KEY" in safe_detail:
+            fix = "Run --set-lastfm-credentials from an interactive terminal"
+        elif "SPOTIFY_SCROBBLE_REFRESH_TOKEN" in safe_detail:
+            fix = "Run --authorize-scrobble-health from an interactive terminal"
+        else:
+            fix = "Provide the required secret through a dotenv file, environment variable or supported command-line option"
         return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", recovery_fix_with_guide(fix, SECRETS_GUIDE_URL), False)
     if context == "target_missing":
         return make_recovery_advice("target.invalid", "No Spotify target was provided", recovery_fix_with_guide("Provide a positional user ID, spotify:user URI or Spotify profile URL or set TARGET_USER_URI_ID", QUICK_START_GUIDE_URL), False)
@@ -1694,6 +1755,19 @@ class WebhookConfigurationError(Exception):
 # Raised when a private Last.fm API key cannot be saved safely
 class LastfmConfigurationError(Exception):
     pass
+
+
+# Raised when scrobble-health PKCE authorization cannot be completed or persisted
+class SpotifyScrobbleAuthorizationError(Exception):
+    pass
+
+
+# Carries a Spotify application quota delay without exposing OAuth credentials
+class SpotifyQuotaExceededError(Exception):
+    # Initializes one quota failure with the server-provided retry delay
+    def __init__(self, retry_after: Optional[int] = None):
+        self.retry_after = retry_after
+        super().__init__("Spotify application quota is exhausted")
 
 
 # Returns a user-facing label for one supported browser
@@ -2194,6 +2268,60 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
     return str(destination)
 
 
+# Prints the Spotify app creation requirements used by setup and reauthorization
+def print_spotify_scrobble_app_guidance(redirect_uri: str) -> None:
+    print("\nSpotify recent-play app\n")
+    print("Scrobble health needs a Spotify app owned by you so its API quota is not shared with every Spotify Monitor user.")
+    print("The Spotify account that owns a Development Mode app must have Premium.")
+    print(f"1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}")
+    print("2. Create an app or open an existing app and select Web API.")
+    print(f"3. Add this exact Redirect URI in the app settings: {redirect_uri}")
+    print("4. Copy the Client ID. A Client Secret is not needed and should not be entered here.")
+    print("5. If authorizing a different Spotify account, add that account under the app's User Management.")
+    print(f"Spotify app guide: {SPOTIFY_APPS_GUIDE_URL}")
+    print(f"PKCE guide: {SPOTIFY_PKCE_GUIDE_URL}\n")
+
+
+# Authorizes recent-play access and atomically saves the private refresh token
+def run_authorize_scrobble_health(client_id: Optional[str] = None, redirect_uri: Optional[str] = None, env_file=None, config_path=None, interactive=None, input_func=None, browser_open_func=None, session: Optional[req.Session] = None) -> str:
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise SpotifyScrobbleAuthorizationError("--authorize-scrobble-health requires a dotenv destination and cannot use --env-file none")
+    destination = (Path.cwd() / SCROBBLE_HEALTH_DOTENV_FILENAME if env_file is None else Path(env_file).expanduser()).resolve()
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise SpotifyScrobbleAuthorizationError("--authorize-scrobble-health requires an interactive terminal")
+    selected_client_id = validate_spotify_scrobble_client_id(client_id or SPOTIFY_SCROBBLE_CLIENT_ID)
+    selected_redirect_uri = validate_spotify_scrobble_redirect_uri(redirect_uri or SPOTIFY_SCROBBLE_REDIRECT_URI)
+    prompt = input if input_func is None else input_func
+    try:
+        existing_authorization = _dotenv_contains_key(destination, "SPOTIFY_SCROBBLE_REFRESH_TOKEN")
+    except BrowserCookieImportError:
+        raise SpotifyScrobbleAuthorizationError(f"Could not read dotenv destination '{destination}'. Check that it is a readable UTF-8 file") from None
+    if existing_authorization:
+        try:
+            confirmed = prompt(f"Replace the saved Spotify recent-play authorization in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            confirmed = False
+        if not confirmed:
+            raise SpotifyScrobbleAuthorizationError("Spotify recent-play reauthorization was cancelled. The dotenv file was not changed")
+    print_spotify_scrobble_app_guidance(selected_redirect_uri)
+    token_data = spotify_authorize_scrobble_health(selected_client_id, selected_redirect_uri, input_func=prompt, browser_open_func=browser_open_func, session=session)
+    try:
+        update_dotenv_file(destination, {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": token_data["refresh_token"]})
+    except Exception:
+        raise SpotifyScrobbleAuthorizationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions") from None
+    selected_config = config_path or find_scrobble_health_config_file()
+    method = _wizard_install_method()
+    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", selected_config, destination)
+    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", selected_config, destination)
+    print("\n* Spotify recent-play authorization succeeded")
+    print(f"* Updated dotenv: {destination}")
+    print("* Saved: SPOTIFY_SCROBBLE_REFRESH_TOKEN")
+    _wizard_print_command("Check scrobble health setup:", doctor_command)
+    _wizard_print_command("Start scrobble health monitoring:", monitor_command)
+    return str(destination)
+
+
 # Checks and safely stores one privately entered webhook URL
 def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
     try:
@@ -2275,13 +2403,13 @@ web_player_retry = CappedRetry(
 web_player_adapter = HTTPAdapter(max_retries=web_player_retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
 
-# Scrobble health uses one bounded automatic retry then returns control to its slower monitoring backoff
+# Scrobble health retries transient server failures once while returning quota responses to its monitoring loop
 scrobble_health_retry = CappedRetry(
     total=SCROBBLE_HEALTH_HTTP_RETRIES,
     connect=SCROBBLE_HEALTH_HTTP_RETRIES,
     read=SCROBBLE_HEALTH_HTTP_RETRIES,
     backoff_factor=1,
-    status_forcelist=[429, 500, 502, 503, 504],
+    status_forcelist=[500, 502, 503, 504],
     allowed_methods=["GET", "HEAD", "OPTIONS"],
     raise_on_status=False,
     respect_retry_after_header=True
@@ -3326,14 +3454,14 @@ def decrease_inactivity_check_signal_handler(sig, frame):
 # from login & client token requests body files
 def reload_secrets_signal_handler(sig, frame):
     global DEVICE_ID, SYSTEM_ID, USER_URI_ID, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL
-    global SP_CACHED_ACCESS_TOKEN, SP_CACHED_REFRESH_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_OAUTH_APP_TOKEN, SP_CACHED_CLIENT_TOKEN, SP_CLIENT_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, WEBHOOK_PROVIDER
+    global SP_CACHED_ACCESS_TOKEN, SP_CACHED_REFRESH_TOKEN, SP_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_CLIENT_ID, SP_CACHED_OAUTH_APP_TOKEN, SP_CACHED_CLIENT_TOKEN, SP_CLIENT_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_AUTH_FINGERPRINT, WEBHOOK_PROVIDER
 
     sig_name = signal.Signals(sig).name
 
     print(f"* Signal {sig_name} received\n")
 
     suffix = "\n" if TOKEN_SOURCE == 'client' else ""
-    auth_values_before = (REFRESH_TOKEN, SP_DC_COOKIE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, DEVICE_ID, SYSTEM_ID, USER_URI_ID)
+    auth_values_before = (REFRESH_TOKEN, SP_DC_COOKIE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, DEVICE_ID, SYSTEM_ID, USER_URI_ID)
     webhook_url_changed = False
 
     # disable autoscan if DOTENV_FILE set to none
@@ -3358,14 +3486,14 @@ def reload_secrets_signal_handler(sig, frame):
             print(f"* python-dotenv not installed, skipping env-var reload{suffix}")
 
     if env_path:
-        for secret in SECRET_KEYS:
-            old_val = globals().get(secret)
-            val = os.getenv(secret)
+        for environment_key in (*SECRET_KEYS, *ENVIRONMENT_SETTING_KEYS):
+            old_val = globals().get(environment_key)
+            val = os.getenv(environment_key)
             if val is not None and val != old_val:
-                globals()[secret] = val
-                if secret == "WEBHOOK_URL":
+                globals()[environment_key] = val
+                if environment_key == "WEBHOOK_URL":
                     webhook_url_changed = True
-                print(f"* Reloaded {secret} from {env_path}{suffix}")
+                print(f"* Reloaded {environment_key} from {env_path}{suffix}")
 
     if TOKEN_SOURCE == 'client':
 
@@ -3404,7 +3532,7 @@ def reload_secrets_signal_handler(sig, frame):
             else:
                 print(f"* Error: Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}) does not exist")
 
-    auth_values_after = (REFRESH_TOKEN, SP_DC_COOKIE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, DEVICE_ID, SYSTEM_ID, USER_URI_ID)
+    auth_values_after = (REFRESH_TOKEN, SP_DC_COOKIE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, DEVICE_ID, SYSTEM_ID, USER_URI_ID)
     if auth_values_after != auth_values_before:
         SP_CACHED_ACCESS_TOKEN = None
         SP_CACHED_REFRESH_TOKEN = None
@@ -3415,6 +3543,7 @@ def reload_secrets_signal_handler(sig, frame):
         SP_CLIENT_TOKEN_EXPIRES_AT = 0
         SP_CACHED_SCROBBLE_ACCESS_TOKEN = None
         SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT = 0
+        SP_CACHED_SCROBBLE_AUTH_FINGERPRINT = ""
         print(f"* Cleared cached Spotify authentication after secret reload{suffix}")
     if webhook_url_changed:
         detected_provider = detect_webhook_provider(WEBHOOK_URL)
@@ -3863,81 +3992,237 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
     return SP_CACHED_ACCESS_TOKEN
 
 
-# Creates a scoped Spotify token that can read the cookie owner's recent completed plays
-def spotify_get_scrobble_access_token(sp_dc: str, session: Optional[req.Session] = None) -> str:
-    global SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT
+# Validates one Spotify application Client ID without treating it as a secret
+def validate_spotify_scrobble_client_id(client_id: str) -> str:
+    selected = str(client_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9]{16,128}", selected):
+        raise SpotifyScrobbleAuthorizationError("Spotify recent-play Client ID must contain 16 to 128 letters or numbers")
+    return selected
+
+
+# Validates one Spotify OAuth redirect URI against current loopback and HTTPS requirements
+def validate_spotify_scrobble_redirect_uri(redirect_uri: str) -> str:
+    selected = str(redirect_uri or "").strip()
+    parsed = urlparse(selected)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise SpotifyScrobbleAuthorizationError("Spotify redirect URI cannot contain credentials, a query string or a fragment")
+    loopback_http = parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "::1")
+    secure_remote = parsed.scheme == "https" and bool(parsed.hostname)
+    if not loopback_http and not secure_remote:
+        raise SpotifyScrobbleAuthorizationError("Spotify redirect URI must use HTTPS or an explicit http://127.0.0.1 loopback address")
+    if parsed.hostname == "localhost":
+        raise SpotifyScrobbleAuthorizationError("Spotify does not allow localhost as a redirect URI. Use 127.0.0.1")
+    return selected
+
+
+# Returns the structured Spotify Web API error reason when one is available
+def spotify_scrobble_error_reason(response: Any) -> str:
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return ""
+    error_data = payload.get("error") if isinstance(payload, dict) else None
+    reason = error_data.get("reason") if isinstance(error_data, dict) else None
+    return str(reason or "").strip().upper()
+
+
+# Returns a nonnegative Retry-After delay from one Spotify response
+def spotify_scrobble_retry_after(response: Any) -> Optional[int]:
+    value = getattr(response, "headers", {}).get("Retry-After")
+    try:
+        return max(0, int(value)) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+# Returns a Spotify OAuth error code and safe description from one token response
+def spotify_scrobble_oauth_error(response: Any) -> tuple[str, str]:
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return "", ""
+    if not isinstance(payload, dict):
+        return "", ""
+    error_code = payload.get("error")
+    if not isinstance(error_code, str):
+        return "", ""
+    return error_code.strip(), sanitize_error_text(payload.get("error_description") or "")
+
+
+# Raises a quota-aware error for one unsuccessful Spotify recent-play response
+def spotify_raise_scrobble_http_error(response: Any) -> None:
+    if getattr(response, "status_code", None) == 429 and spotify_scrobble_error_reason(response) == "QUOTA_EXCEEDED":
+        raise SpotifyQuotaExceededError(spotify_scrobble_retry_after(response))
+    response.raise_for_status()
+
+
+# Builds one state-protected Spotify PKCE authorization URL
+def spotify_build_scrobble_authorization_url(client_id: str, redirect_uri: str, verifier: str, state: str) -> str:
+    selected_client_id = validate_spotify_scrobble_client_id(client_id)
+    selected_redirect_uri = validate_spotify_scrobble_redirect_uri(redirect_uri)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
+    params = {"response_type": "code", "client_id": selected_client_id, "scope": SPOTIFY_SCROBBLE_SCOPE, "redirect_uri": selected_redirect_uri, "state": state, "code_challenge": challenge, "code_challenge_method": "S256"}
+    return f"{SPOTIFY_SCROBBLE_AUTHORIZE_URL}?{urlencode(params)}"
+
+
+# Extracts and validates the authorization code from one pasted Spotify callback URL
+def spotify_parse_scrobble_callback(callback_url: str, redirect_uri: str, expected_state: str) -> str:
+    selected_redirect_uri = validate_spotify_scrobble_redirect_uri(redirect_uri)
+    expected = urlparse(selected_redirect_uri)
+    callback = urlparse(str(callback_url or "").strip())
+    try:
+        expected_location = (expected.scheme, expected.hostname, expected.port, expected.path or "/")
+        callback_location = (callback.scheme, callback.hostname, callback.port, callback.path or "/")
+    except ValueError:
+        raise SpotifyScrobbleAuthorizationError(f"Paste the complete redirected URL beginning with {selected_redirect_uri}") from None
+    if callback_location != expected_location:
+        raise SpotifyScrobbleAuthorizationError(f"Paste the complete redirected URL beginning with {selected_redirect_uri}")
+    parameters = parse_qs(callback.query)
+    returned_state = parameters.get("state", [""])[0]
+    if not secrets.compare_digest(str(returned_state), expected_state):
+        raise SpotifyScrobbleAuthorizationError("Spotify authorization returned an invalid state value. Start authorization again")
+    authorization_error = parameters.get("error", [""])[0]
+    if authorization_error:
+        raise SpotifyScrobbleAuthorizationError(f"Spotify authorization was not completed: {authorization_error}")
+    code = parameters.get("code", [""])[0]
+    if not code:
+        raise SpotifyScrobbleAuthorizationError("Spotify redirected without an authorization code")
+    return code
+
+
+# Exchanges one Spotify PKCE authorization code for access and refresh tokens
+def spotify_exchange_scrobble_authorization_code(client_id: str, redirect_uri: str, code: str, verifier: str, session: Optional[req.Session] = None) -> dict:
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
+    token_data = {"client_id": validate_spotify_scrobble_client_id(client_id), "grant_type": "authorization_code", "code": code, "redirect_uri": validate_spotify_scrobble_redirect_uri(redirect_uri), "code_verifier": verifier}
+    debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health PKCE token exchange]")
+    response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    if response.status_code == 429 or response.status_code >= 500:
+        spotify_raise_scrobble_http_error(response)
+    oauth_error, oauth_description = spotify_scrobble_oauth_error(response)
+    if oauth_error == "invalid_client":
+        raise SpotifyScrobbleAuthorizationError("Spotify rejected the recent-play Client ID. Copy it again from the Developer Dashboard")
+    if oauth_error:
+        suffix = f": {oauth_description}" if oauth_description else ""
+        raise SpotifyScrobbleAuthorizationError(f"Spotify authorization was rejected ({oauth_error}){suffix}")
+    spotify_raise_scrobble_http_error(response)
+    payload = response.json()
+    access_token = payload.get("access_token") if isinstance(payload, dict) else None
+    refresh_token = payload.get("refresh_token") if isinstance(payload, dict) else None
+    granted_scopes = set(str(payload.get("scope", "")).split()) if isinstance(payload, dict) else set()
+    if not isinstance(access_token, str) or not access_token or not isinstance(refresh_token, str) or not refresh_token:
+        raise SpotifyScrobbleAuthorizationError("Spotify did not return complete recent-play credentials")
+    if SPOTIFY_SCROBBLE_SCOPE not in granted_scopes:
+        raise SpotifyScrobbleAuthorizationError(f"Spotify did not grant the required {SPOTIFY_SCROBBLE_SCOPE} scope")
+    try:
+        expires_in = max(60, int(payload.get("expires_in", 3600)))
+    except (TypeError, ValueError):
+        expires_in = 3600
+    return {"access_token": access_token, "refresh_token": refresh_token, "expires_in": expires_in}
+
+
+# Guides one interactive Spotify PKCE authorization without requiring a local callback server
+def spotify_authorize_scrobble_health(client_id: str, redirect_uri: str, input_func=None, browser_open_func=None, session: Optional[req.Session] = None) -> dict:
+    prompt = input if input_func is None else input_func
+    open_browser = webbrowser.open if browser_open_func is None else browser_open_func
+    verifier = secrets.token_urlsafe(72)[:96]
+    state = secrets.token_urlsafe(24)
+    authorization_url = spotify_build_scrobble_authorization_url(client_id, redirect_uri, verifier, state)
+    print("\nSpotify recent-play authorization\n")
+    print("Open this URL in a browser and approve read-only access to recently played tracks:")
+    print(f"\n{authorization_url}\n")
+    try:
+        opened = bool(open_browser(authorization_url, new=2))
+    except Exception:
+        opened = False
+    if opened:
+        print("The authorization page was opened in your browser.")
+    else:
+        print("Open the URL manually in a browser on this computer or the Docker host.")
+    print(f"Spotify will redirect to {redirect_uri}. The page may not load because no web server is required.")
+    print("Copy the complete URL from the browser address bar after the redirect.")
+    try:
+        callback_url = prompt("Paste the complete redirected URL: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        raise SpotifyScrobbleAuthorizationError("Spotify recent-play authorization was cancelled") from None
+    code = spotify_parse_scrobble_callback(callback_url, redirect_uri, state)
+    return spotify_exchange_scrobble_authorization_code(client_id, redirect_uri, code, verifier, session)
+
+
+# Persists a rotated Spotify recent-play refresh token when a selected dotenv file is available
+def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
+    if not DOTENV_FILE or str(DOTENV_FILE).casefold() == "none":
+        return False
+    try:
+        update_dotenv_file(DOTENV_FILE, {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": refresh_token})
+        verbose_print(f"Saved a rotated Spotify recent-play refresh token in {DOTENV_FILE}")
+        return True
+    except Exception as exc:
+        print(f"* Warning: Spotify rotated the recent-play refresh token but '{DOTENV_FILE}' could not be updated: {sanitize_error_text(exc)}")
+        return False
+
+
+# Refreshes and caches a user-owned Spotify recent-play access token
+def spotify_get_scrobble_access_token(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> str:
+    global SPOTIFY_SCROBBLE_REFRESH_TOKEN, SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_AUTH_FINGERPRINT
+    selected_client_id = validate_spotify_scrobble_client_id(client_id or SPOTIFY_SCROBBLE_CLIENT_ID)
+    selected_refresh_token = str(refresh_token or SPOTIFY_SCROBBLE_REFRESH_TOKEN).strip()
+    if not selected_refresh_token:
+        raise SpotifyScrobbleAuthorizationError("Spotify recent-play refresh token is missing")
+    auth_fingerprint = hashlib.sha256(f"{selected_client_id}\0{selected_refresh_token}".encode("utf-8")).hexdigest()
     now = time.time()
-    if SP_CACHED_SCROBBLE_ACCESS_TOKEN and now < SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT - 60:
+    if SP_CACHED_SCROBBLE_ACCESS_TOKEN and SP_CACHED_SCROBBLE_AUTH_FINGERPRINT == auth_fingerprint and now < SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT - 60:
         return SP_CACHED_SCROBBLE_ACCESS_TOKEN
     request_session = SCROBBLE_HEALTH_SESSION if session is None else session
-    client_id = "cfe923b2d660439caf2b557b21f31221"
-    redirect_uri = "https://developer.spotify.com"
-    verifier = secrets.token_urlsafe(64)[:96]
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
-    params = {
-        "response_type": "code",
-        "client_id": client_id,
-        "scope": "user-read-recently-played",
-        "redirect_uri": redirect_uri,
-        "code_challenge": challenge,
-        "code_challenge_method": "S256",
-        "response_mode": "web_message",
-        "prompt": "none",
-    }
-    headers = {
-        "Accept": "application/json,text/plain,*/*",
-        "Cookie": f"sp_dc={sp_dc}",
-        "Referer": "https://developer.spotify.com/",
-        "User-Agent": USER_AGENT,
-    }
-    auth_url = "https://accounts.spotify.com/oauth2/v2/auth"
-    debug_print(f"HTTP GET {auth_url} [scrobble health authorization]")
-    response = request_session.get(auth_url, params=params, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    response.raise_for_status()
-    code_match = re.search(r'"code"\s*:\s*"([^"]+)"', response.text)
-    if code_match is None:
-        error_match = re.search(r'"error"\s*:\s*"([^"]+)"', response.text)
-        detail = unquote(error_match.group(1)) if error_match else "authorization code was not returned"
-        raise RuntimeError(f"Spotify recent-play authorization failed: {detail}")
-    token_url = "https://accounts.spotify.com/api/token"
-    token_data = {
-        "client_id": client_id,
-        "grant_type": "authorization_code",
-        "code": unquote(code_match.group(1)),
-        "redirect_uri": redirect_uri,
-        "code_verifier": verifier,
-    }
-    debug_print(f"HTTP POST {token_url} [scrobble health token exchange]")
-    token_response = request_session.post(token_url, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
-    token_response.raise_for_status()
-    payload = token_response.json()
-    access_token = payload.get("access_token")
+    token_data = {"client_id": selected_client_id, "grant_type": "refresh_token", "refresh_token": selected_refresh_token}
+    debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health token refresh]")
+    response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    if response.status_code == 429 or response.status_code >= 500:
+        spotify_raise_scrobble_http_error(response)
+    oauth_error, oauth_description = spotify_scrobble_oauth_error(response)
+    if oauth_error == "invalid_grant":
+        raise SpotifyScrobbleAuthorizationError("Spotify recent-play authorization expired or was revoked")
+    if oauth_error == "invalid_client":
+        raise SpotifyScrobbleAuthorizationError("Spotify rejected the recent-play Client ID. Copy it again from the Developer Dashboard")
+    if oauth_error:
+        suffix = f": {oauth_description}" if oauth_description else ""
+        raise SpotifyScrobbleAuthorizationError(f"Spotify recent-play token refresh was rejected ({oauth_error}){suffix}")
+    spotify_raise_scrobble_http_error(response)
+    payload = response.json()
+    access_token = payload.get("access_token") if isinstance(payload, dict) else None
     if not isinstance(access_token, str) or not access_token:
-        raise RuntimeError("Spotify recent-play token exchange did not return an access token")
+        raise SpotifyScrobbleAuthorizationError("Spotify recent-play token refresh did not return an access token")
+    rotated_refresh_token = payload.get("refresh_token") if isinstance(payload, dict) else None
+    if isinstance(rotated_refresh_token, str) and rotated_refresh_token and rotated_refresh_token != selected_refresh_token:
+        SPOTIFY_SCROBBLE_REFRESH_TOKEN = rotated_refresh_token
+        persist_spotify_scrobble_refresh_token(rotated_refresh_token)
+        auth_fingerprint = hashlib.sha256(f"{selected_client_id}\0{rotated_refresh_token}".encode("utf-8")).hexdigest()
     try:
         expires_in = max(60, int(payload.get("expires_in", 3600)))
     except (TypeError, ValueError):
         expires_in = 3600
     SP_CACHED_SCROBBLE_ACCESS_TOKEN = access_token
     SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT = now + expires_in
+    SP_CACHED_SCROBBLE_AUTH_FINGERPRINT = auth_fingerprint
     return access_token
 
 
-# Fetches completed plays from the Spotify account represented by the configured cookie
-def spotify_get_recent_plays(sp_dc: str, session: Optional[req.Session] = None) -> List[SpotifyPlay]:
-    global SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT
+# Fetches completed plays through the user's own Spotify recent-play authorization
+def spotify_get_recent_plays(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> List[SpotifyPlay]:
+    global SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_AUTH_FINGERPRINT
     request_session = SCROBBLE_HEALTH_SESSION if session is None else session
-    url = "https://api.spotify.com/v1/me/player/recently-played"
     for attempt in range(2):
-        access_token = spotify_get_scrobble_access_token(sp_dc, request_session)
+        access_token = spotify_get_scrobble_access_token(client_id, refresh_token, request_session)
         headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
-        debug_print(f"HTTP GET {url} [scrobble health recent plays]")
-        response = request_session.get(url, params={"limit": 50}, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        debug_print(f"HTTP GET {SPOTIFY_SCROBBLE_RECENT_URL} [scrobble health recent plays]")
+        response = request_session.get(SPOTIFY_SCROBBLE_RECENT_URL, params={"limit": 50}, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         if response.status_code == 401 and attempt == 0:
             SP_CACHED_SCROBBLE_ACCESS_TOKEN = None
             SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT = 0
+            SP_CACHED_SCROBBLE_AUTH_FINGERPRINT = ""
             continue
-        response.raise_for_status()
+        if response.status_code == 403:
+            raise SpotifyScrobbleAuthorizationError(f"Spotify recent-play authorization does not have the required {SPOTIFY_SCROBBLE_SCOPE} scope")
+        spotify_raise_scrobble_http_error(response)
         payload = response.json()
         plays: List[SpotifyPlay] = []
         for item in payload.get("items", []):
@@ -3960,7 +4245,7 @@ def spotify_get_recent_plays(sp_dc: str, session: Optional[req.Session] = None) 
             uri = uri_value if isinstance(uri_value, str) else ""
             plays.append(SpotifyPlay(played_at, artist_name, track_name, duration_ms, uri))
         return sorted(plays, key=lambda play: play.played_at)
-    raise RuntimeError("Spotify recent-play request remained unauthorized after token refresh")
+    raise SpotifyScrobbleAuthorizationError("Spotify recent-play request remained unauthorized after token refresh")
 
 
 # Fetches completed recent scrobbles from one public Last.fm profile
@@ -4194,7 +4479,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 print("* Running scrobble health check ...", flush=True)
             else:
                 verbose_print("Running scrobble health check ...")
-            spotify_plays = spotify_get_recent_plays(SP_DC_COOKIE)
+            spotify_plays = spotify_get_recent_plays()
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
             next_state, action = transition_scrobble_health_state(state, evaluation)
@@ -4230,7 +4515,8 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
             operational_error_failures += 1
-            print_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
+            recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
+            print(render_recovery_error(RecoveryError(recovery_advice, exc)))
             failure_word = "failure" if operational_error_failures == 1 else "failures"
             print(f"* Scrobble health has {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
             notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
@@ -4238,7 +4524,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
             if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and not operational_error_notified and notifications_enabled:
                 subject = "spotify_monitor: scrobble health check error"
-                body = f"The Spotify-to-Last.fm comparison failed {operational_error_failures} consecutive times. Existing outage state was preserved.\n\n{sanitize_error_text(exc)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                body = f"The Spotify-to-Last.fm comparison failed {operational_error_failures} consecutive times. Existing outage state was preserved.\n\n{recovery_advice.summary}\nTo fix: {recovery_advice.fix}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                 send_notification_channels("error", subject, body, email_enabled=ERROR_NOTIFICATION)
                 operational_error_notified = True
             print_cur_ts("Timestamp:\t\t\t")
@@ -5021,7 +5307,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         return [
             StartupSummaryRow("Mode", "Spotify-to-Last.fm scrobble health", concise=True),
             StartupSummaryRow("Last.fm profile", str(target), concise=True),
-            StartupSummaryRow("Authentication", "Cookie mode with recent-play scope", concise=True),
+            StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
             StartupSummaryRow("Outage evidence", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
             StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
@@ -5856,13 +6142,13 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
         else:
             checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
 
-    if TOKEN_SOURCE not in ("cookie", "client"):
+    if MONITOR_MODE != "scrobble_health" and TOKEN_SOURCE not in ("cookie", "client"):
         advice = classify_recovery_error(context="config_invalid", detail=f"TOKEN_SOURCE must be cookie or client, not {TOKEN_SOURCE!r}")
         checks.append(make_doctor_check("Configuration", "FAIL", "TOKEN_SOURCE is invalid", advice.detail, advice))
-    else:
+    elif MONITOR_MODE != "scrobble_health":
         checks.append(make_doctor_check("Configuration", "PASS", f"TOKEN_SOURCE is {TOKEN_SOURCE}"))
 
-    if TOKEN_SOURCE == "cookie":
+    if MONITOR_MODE != "scrobble_health" and TOKEN_SOURCE == "cookie":
         totp_bytes_valid = bool(TOTP_SECRET_CIPHER_BYTES) and all(isinstance(value, int) and not isinstance(value, bool) for value in TOTP_SECRET_CIPHER_BYTES)
         totp_version_valid = isinstance(TOTP_VERSION, int) and not isinstance(TOTP_VERSION, bool) and TOTP_VERSION > 0
         if totp_bytes_valid and totp_version_valid:
@@ -6135,7 +6421,8 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     if not email_ready and not webhook_ready:
         return []
     print("\nOptional delivery tests\n")
-    print("Doctor will not write files. Each approved test sends one real message.\n")
+    write_notice = "Doctor may safely update a rotated Spotify recent-play refresh token. Each approved test sends one real message." if MONITOR_MODE == "scrobble_health" else "Doctor will not write files. Each approved test sends one real message."
+    print(f"{write_notice}\n")
     results: List[DoctorCheck] = []
     if email_ready:
         if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
@@ -6192,7 +6479,8 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = ["Doctor", "", "No files will be written. In an interactive terminal, real email and webhook tests are offered separately and run only after approval."]
+    write_notice = "A rotated Spotify recent-play refresh token may be updated in the selected dotenv file." if MONITOR_MODE == "scrobble_health" else "No files will be written."
+    lines = ["Doctor", "", f"{write_notice} In an interactive terminal, real email and webhook tests are offered separately and run only after approval."]
     sections = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
     for section in sections:
         section_checks = [item for item in report.checks if item.section == section]
@@ -6264,21 +6552,25 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
         report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
         if progress is not None:
             progress("Spotify recent plays")
-        if TOKEN_SOURCE != "cookie":
-            advice = classify_recovery_error(context="config_invalid", detail="Scrobble health mode requires TOKEN_SOURCE='cookie'")
-            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Scrobble health requires cookie authentication", advice.detail, advice))
-        elif is_missing_or_placeholder(SP_DC_COOKIE, ("your_sp_dc_cookie_value",)):
-            advice = classify_recovery_error(context="secret", detail="SP_DC_COOKIE is missing or still a placeholder")
-            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "SP_DC_COOKIE is missing", advice.detail, advice))
+        try:
+            validate_spotify_scrobble_client_id(SPOTIFY_SCROBBLE_CLIENT_ID)
+            validate_spotify_scrobble_redirect_uri(SPOTIFY_SCROBBLE_REDIRECT_URI)
+        except SpotifyScrobbleAuthorizationError as exc:
+            advice = classify_recovery_error(exc, "scrobble_health")
+            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play app settings are incomplete", advice.detail, advice))
         else:
-            try:
-                spotify_plays = spotify_get_recent_plays(SP_DC_COOKIE)
-                spotify_recent_access_ok = True
-                report.checks.append(make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded", f"{len(spotify_plays)} completed play(s) returned"))
-            except Exception as exc:
-                advice = classify_recovery_error(exc, "cookie_auth")
-                report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play access failed", advice.detail, advice))
-                spotify_plays = []
+            if is_missing_or_placeholder(SPOTIFY_SCROBBLE_REFRESH_TOKEN):
+                advice = classify_recovery_error(context="secret", detail="SPOTIFY_SCROBBLE_REFRESH_TOKEN is missing")
+                report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play authorization is missing", advice.detail, advice))
+            else:
+                try:
+                    spotify_plays = spotify_get_recent_plays()
+                    spotify_recent_access_ok = True
+                    report.checks.append(make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded", f"{len(spotify_plays)} completed play(s) returned through the user-owned app"))
+                except Exception as exc:
+                    advice = classify_recovery_error(exc, "scrobble_health")
+                    report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play access failed", advice.detail, advice))
+                    spotify_plays = []
         if progress is not None:
             progress("Last.fm scrobbles")
         if not username:
@@ -6443,15 +6735,25 @@ def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[s
 
 
 # Prints the install-aware scrobble health command after a successful Doctor run
-def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None) -> None:
+def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None, client_id: Optional[str] = None, redirect_uri: Optional[str] = None, include_api_key_placeholder: bool = False, include_refresh_token_placeholder: bool = False) -> None:
     method = _wizard_install_method()
     action = "--monitor-mode scrobble_health"
     if username:
         action += f" --lastfm-username {_wizard_quote_argument(username)}"
+    if client_id:
+        action += f" --scrobble-client-id {_wizard_quote_argument(client_id)}"
+    if redirect_uri:
+        action += f" --scrobble-redirect-uri {_wizard_quote_argument(redirect_uri)}"
+    if include_api_key_placeholder:
+        action += " --lastfm-api-key LASTFM_API_KEY"
+    if include_refresh_token_placeholder:
+        action += " --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN"
     command = _wizard_action_command(method, action, config_path, env_path)
     print("\nNext steps\n")
     print("After Doctor passes, start scrobble health monitoring:")
     print(f"    {command}\n")
+    if include_api_key_placeholder or include_refresh_token_placeholder:
+        print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
@@ -6509,6 +6811,9 @@ def _build_help_epilog() -> str:
         "",
         "  # Guided setup for Spotify-to-Last.fm scrobble health monitoring",
         f"  {prefix} --setup-scrobble-health",
+        "",
+        "  # Reauthorize the user-owned Spotify app for scrobble health",
+        f"  {prefix} --authorize-scrobble-health",
         "",
         "  # Start the separate Spotify-to-Last.fm scrobble health mode",
         f"  {prefix} --monitor-mode scrobble_health",
@@ -7378,17 +7683,55 @@ def _wizard_collect_scrobble_health_threshold_section(state: ScrobbleHealthSetup
     state.config_values["SCROBBLE_HEALTH_MIN_UNMATCHED"] = _wizard_ask_positive_int("Consecutive missing completed plays required for an alert", int(state.config_values.get("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED)))
 
 
-# Collects the Last.fm API key and cookie authentication for scrobble health
+# Collects the Last.fm API key plus user-owned Spotify PKCE authorization
 def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState, method: str) -> None:
-    for key in ("LASTFM_API_KEY", "SP_DC_COOKIE"):
+    for key in ("LASTFM_API_KEY", "SPOTIFY_SCROBBLE_REFRESH_TOKEN"):
         state.secret_updates.pop(key, None)
     existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path)
     if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
         print(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
         api_key = _wizard_ask_secret("Last.fm API key")
         _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
-    state.auth = _wizard_collect_cookie_auth(method, state.env_path, state.secret_updates)
-    state.config_values["TOKEN_SOURCE"] = "cookie"
+    current_redirect_uri = str(state.config_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or SPOTIFY_SCROBBLE_REDIRECT_URI)
+    while True:
+        redirect_uri = _wizard_ask_text("Spotify app Redirect URI to register", default=current_redirect_uri, required=True)
+        try:
+            redirect_uri = validate_spotify_scrobble_redirect_uri(redirect_uri)
+            break
+        except SpotifyScrobbleAuthorizationError as exc:
+            print(f"  {exc}.")
+    print_spotify_scrobble_app_guidance(redirect_uri)
+    while True:
+        client_id = _wizard_ask_text("Spotify app Client ID", default=str(state.config_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or SPOTIFY_SCROBBLE_CLIENT_ID), required=True)
+        try:
+            client_id = validate_spotify_scrobble_client_id(client_id)
+            break
+        except SpotifyScrobbleAuthorizationError as exc:
+            print(f"  {exc}.")
+    state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] = client_id
+    state.config_values["SPOTIFY_SCROBBLE_REDIRECT_URI"] = redirect_uri
+    existing_refresh_token = _wizard_existing_secret("SPOTIFY_SCROBBLE_REFRESH_TOKEN", state.env_path)
+    baseline_client_id = str(state.baseline_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or "")
+    baseline_redirect_uri = str(state.baseline_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or "")
+    existing_matches_app = existing_refresh_token and client_id == baseline_client_id and redirect_uri == baseline_redirect_uri
+    authorize_now = True
+    if existing_matches_app:
+        authorize_now = _wizard_ask_yes_no("Replace the existing Spotify recent-play authorization?", default=False)
+    elif not _wizard_ask_yes_no("Authorize Spotify recent-play access now?", default=True):
+        authorize_now = False
+    if authorize_now:
+        while True:
+            try:
+                token_data = spotify_authorize_scrobble_health(client_id, redirect_uri, input_func=_wizard_input, browser_open_func=webbrowser.open if method in ("manual", "pip") else lambda *args, **kwargs: False)
+                _wizard_queue_secret(state.secret_updates, state.env_path, "SPOTIFY_SCROBBLE_REFRESH_TOKEN", token_data["refresh_token"])
+                state.auth = {"complete": True, "validated": False, "source": "user-owned Spotify app with PKCE"}
+                return
+            except (SpotifyScrobbleAuthorizationError, req.RequestException, ValueError) as exc:
+                print(f"\nSpotify recent-play authorization did not complete: {sanitize_error_text(exc)}")
+            recovery = _wizard_ask_choice("What should setup do?", [("Retry Spotify authorization", "Open a fresh state-protected authorization URL."), ("Finish with incomplete authorization", "Save the app settings then authorize later.")])
+            if recovery != 0:
+                break
+    state.auth = {"complete": bool(existing_matches_app and not authorize_now), "validated": False, "source": "existing user-owned Spotify app authorization" if existing_matches_app and not authorize_now else "Spotify recent-play authorization not completed"}
 
 
 # Collects email settings and maps their enabled state to scrobble health alerts
@@ -7443,12 +7786,9 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
     print(f"  Missing-play threshold: {state.config_values['SCROBBLE_HEALTH_MIN_UNMATCHED']}")
     print(f"  Dead period: {_wizard_format_duration(int(state.config_values['SCROBBLE_HEALTH_DEAD_PERIOD']))}")
     print(f"  Comparison interval: {_wizard_format_duration(int(state.config_values['SCROBBLE_HEALTH_CHECK_INTERVAL']))}")
-    print(f"  Spotify authentication: {state.auth['source']}")
+    print(f"  Spotify recent-play app: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
-    if state.auth.get("mount_required"):
-        print("  Required action: run the host-specific Firefox import command shown after saving")
-    if state.auth.get("host_os"):
-        print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
+    print(f"  Spotify redirect URI: {state.config_values['SPOTIFY_SCROBBLE_REDIRECT_URI']}")
     print(f"  Email outage and recovery alerts: {'enabled' if state.config_values.get('SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
     print(f"  Email operational error alerts: {'enabled' if state.config_values.get('ERROR_NOTIFICATION') else 'disabled'}")
     print(f"  Webhook outage and recovery alerts: {'enabled' if state.config_values.get('WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
@@ -7461,7 +7801,7 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
 
 # Opens one selected scrobble health section then returns to the summary
 def _wizard_edit_scrobble_health_setup_section(state: ScrobbleHealthSetupState, method: str) -> None:
-    section = _wizard_ask_choice("Which setup section should be changed?", [("Last.fm profile", "Change the profile whose scrobbles are checked."), ("Alert thresholds", "Change comparison timing and missing-play evidence."), ("Authentication", "Change the Last.fm API key or Spotify cookie authentication."), ("Email notifications", "Change SMTP details and outage email alerts."), ("Webhook alerts", "Change Discord or ntfy outage alerts."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Last.fm profile", "Change the profile whose scrobbles are checked."), ("Alert thresholds", "Change comparison timing and missing-play evidence."), ("Authentication", "Change the Last.fm API key or Spotify recent-play authorization."), ("Email notifications", "Change SMTP details and outage email alerts."), ("Webhook alerts", "Change Discord or ntfy outage alerts."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
     if section == 0:
         print()
         _wizard_collect_scrobble_health_profile_section(state)
@@ -7692,6 +8032,8 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print("\nSpotify-to-Last.fm Scrobble Health Setup\n")
     print("This mode compares completed plays from your Spotify account with your public Last.fm recent tracks.")
     print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
+    print("Spotify recent-play access uses a user-owned Developer app with read-only PKCE authorization.")
+    print("A Spotify cookie is not used by this mode.")
     print("Secrets go to the dotenv file and non-secret settings go to the config file.\n")
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
@@ -7701,10 +8043,11 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         "TOKEN_SOURCE": "cookie",
         "TARGET_USER_URI_ID": "",
         "DOTENV_FILE": str(env_path),
+        "SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:8888/callback",
         "SCROBBLE_HEALTH_NOTIFICATION": True,
         "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
     })
-    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
+    initial_auth = {"complete": False, "validated": False, "source": "not configured"}
     state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, LASTFM_USERNAME, initial_auth, [], [])
     _wizard_collect_scrobble_health_profile_section(state)
     _wizard_collect_scrobble_health_threshold_section(state)
@@ -7741,42 +8084,28 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
-    if auth.get("browser") and method not in ("docker", "compose"):
-        print()
-        auth = _wizard_finish_browser_import(auth, env_path)
     doctor_failed = False
     doctor_ran = False
     print()
-    if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
+    if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It may update a rotated Spotify refresh token and offers real delivery tests only with separate approval.", default=True):
         doctor_ran = True
         if _wizard_load_effective_setup(config_path, env_path):
             doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path)) != 0
         else:
             doctor_failed = True
-    host_os = auth.get("host_os")
-    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, env_path, host_os=host_os)
-    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, env_path, host_os=host_os)
+    authorize_command = _wizard_action_command(method, "--authorize-scrobble-health", config_path, env_path)
+    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, env_path)
+    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, env_path)
     print("\nNext steps\n")
     if not auth["complete"]:
-        print("Setup was saved. Spotify authentication still needs to be completed.\n")
-        if method in ("docker", "compose") and auth.get("browser") and host_os:
-            host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
-            print(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n")
-            _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path))
-            _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path))
-        elif method in ("docker", "compose"):
-            _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
-            print("Run setup again to select a host-specific Firefox import command.\n")
-        else:
-            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
-            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
-        cookie_guide_url = CONTAINER_FIREFOX_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
-        print(f"Cookie guide: {cookie_guide_url}\n")
+        print("Setup was saved. Spotify recent-play authorization still needs to be completed.\n")
+        _wizard_print_command("Authorize the user-owned Spotify app:", authorize_command)
+        print(f"Authorization guide: {SCROBBLE_AUTH_GUIDE_URL}\n")
         _wizard_print_command("After authentication succeeds, verify scrobble health setup:", doctor_command)
     else:
         _wizard_print_command("Check scrobble health setup again:", doctor_command)
     start_label = "After Doctor passes, start scrobble health monitoring:" if not auth["complete"] or doctor_failed or not doctor_ran else "Start scrobble health monitoring:"
-    compose_uses_default_files = method == "compose" and _wizard_container_path(config_path) == f"/data/{DEFAULT_CONFIG_FILENAME}" and _wizard_container_path(env_path) == "/data/.env"
+    compose_uses_default_files = method == "compose" and _wizard_container_path(config_path) == f"/data/{SCROBBLE_HEALTH_CONFIG_FILENAME}" and _wizard_container_path(env_path) == f"/data/{SCROBBLE_HEALTH_DOTENV_FILENAME}"
     if method == "compose" and compose_uses_default_files:
         _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
@@ -8777,9 +9106,9 @@ def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None) ->
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
-    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -8803,13 +9132,13 @@ def main():
         sys.stdout.buffer.flush()
         sys.exit(0)
 
-    if "--version" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
+    if "--version" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         print(f"{os.path.basename(sys.argv[0])} v{VERSION}")
         sys.exit(0)
 
     stdout_bck = sys.stdout
 
-    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--doctor"))
+    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--authorize-scrobble-health", "--doctor"))
     clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
 
     print_startup_banner()
@@ -8848,6 +9177,12 @@ def main():
         dest="setup_scrobble_health",
         action="store_true",
         help="Run the focused Spotify-to-Last.fm scrobble health setup wizard",
+    )
+    conf.add_argument(
+        "--authorize-scrobble-health",
+        dest="authorize_scrobble_health",
+        action="store_true",
+        help="Authorize or reauthorize the user-owned Spotify app used by scrobble health mode",
     )
     conf.add_argument(
         "--set-sp-dc",
@@ -8912,6 +9247,24 @@ def main():
         dest="lastfm_api_key",
         metavar="API_KEY",
         help="Last.fm API key for this run (may remain in shell history)",
+    )
+    monitor_mode_options.add_argument(
+        "--scrobble-client-id",
+        dest="scrobble_client_id",
+        metavar="CLIENT_ID",
+        help="Spotify Developer app Client ID for scrobble health mode",
+    )
+    monitor_mode_options.add_argument(
+        "--scrobble-redirect-uri",
+        dest="scrobble_redirect_uri",
+        metavar="URI",
+        help="Spotify Developer app redirect URI for scrobble health authorization",
+    )
+    monitor_mode_options.add_argument(
+        "--scrobble-refresh-token",
+        dest="scrobble_refresh_token",
+        metavar="TOKEN",
+        help="Spotify recent-play refresh token for this run (may remain in shell history)",
     )
 
     # Token source
@@ -9331,11 +9684,33 @@ def main():
         run_scrobble_health_setup_wizard(args.config_file, args.env_file)
         sys.exit(0)
 
+    if args.authorize_scrobble_health:
+        authorize_scrobble_conflicts = []
+        argument_index = 1
+        while argument_index < len(sys.argv):
+            argument = sys.argv[argument_index]
+            if argument == "--authorize-scrobble-health":
+                argument_index += 1
+                continue
+            if argument in ("--config-file", "--env-file", "--scrobble-client-id", "--scrobble-redirect-uri"):
+                argument_index += 2
+                continue
+            if any(argument.startswith(f"{option}=") for option in ("--config-file", "--env-file", "--scrobble-client-id", "--scrobble-redirect-uri")):
+                argument_index += 1
+                continue
+            authorize_scrobble_conflicts.append(argument if argument.startswith("-") else "SPOTIFY_USER_URI_ID")
+            argument_index += 1
+        if authorize_scrobble_conflicts:
+            parser.error("--authorize-scrobble-health cannot be combined with " + ", ".join(authorize_scrobble_conflicts))
+        if args.env_file is not None and args.env_file.casefold() == "none":
+            parser.error("--authorize-scrobble-health requires a writable dotenv destination and cannot use --env-file none")
+
     if args.set_sp_dc:
         set_sp_dc_conflicts = []
         conflict_values = (
             (args.user_id, "SPOTIFY_USER_URI_ID"),
             (args.setup, "--setup"),
+            (args.authorize_scrobble_health, "--authorize-scrobble-health"),
             (args.set_webhook_url, "--set-webhook-url"),
             (args.doctor, "--doctor"),
             (args.version, "--version"),
@@ -9357,6 +9732,9 @@ def main():
             (args.monitor_mode, "--monitor-mode"),
             (args.lastfm_username, "--lastfm-username"),
             (args.lastfm_api_key, "--lastfm-api-key"),
+            (args.scrobble_client_id, "--scrobble-client-id"),
+            (args.scrobble_redirect_uri, "--scrobble-redirect-uri"),
+            (args.scrobble_refresh_token, "--scrobble-refresh-token"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9394,6 +9772,7 @@ def main():
         conflict_values = (
             (args.user_id, "SPOTIFY_USER_URI_ID"),
             (args.setup, "--setup"),
+            (args.authorize_scrobble_health, "--authorize-scrobble-health"),
             (args.set_sp_dc, "--set-sp-dc"),
             (args.doctor, "--doctor"),
             (args.version, "--version"),
@@ -9416,6 +9795,9 @@ def main():
             (args.monitor_mode, "--monitor-mode"),
             (args.lastfm_username, "--lastfm-username"),
             (args.lastfm_api_key, "--lastfm-api-key"),
+            (args.scrobble_client_id, "--scrobble-client-id"),
+            (args.scrobble_redirect_uri, "--scrobble-redirect-uri"),
+            (args.scrobble_refresh_token, "--scrobble-refresh-token"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9455,6 +9837,7 @@ def main():
             (args.version, "--version"),
             (args.generate_config, "--generate-config"),
             (args.import_browser_cookie, "--import-browser-cookie"),
+            (args.authorize_scrobble_health, "--authorize-scrobble-health"),
             (args.set_sp_dc, "--set-sp-dc"),
             (args.set_webhook_url, "--set-webhook-url"),
             (args.send_test_email, "--send-test-email"),
@@ -9473,6 +9856,9 @@ def main():
             (args.monitor_mode, "--monitor-mode"),
             (args.lastfm_username, "--lastfm-username"),
             (args.lastfm_api_key, "--lastfm-api-key"),
+            (args.scrobble_client_id, "--scrobble-client-id"),
+            (args.scrobble_redirect_uri, "--scrobble-redirect-uri"),
+            (args.scrobble_refresh_token, "--scrobble-refresh-token"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9535,7 +9921,7 @@ def main():
     elif args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
-    scrobble_health_cli_mode = args.monitor_mode == "scrobble_health"
+    scrobble_health_cli_mode = args.monitor_mode == "scrobble_health" or args.authorize_scrobble_health
     cfg_path = None if config_discovery_disabled else (find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH))
 
     if not cfg_path and CLI_CONFIG_PATH:
@@ -9556,7 +9942,8 @@ def main():
                 sys.exit(1)
 
     try:
-        MONITOR_MODE = select_monitor_mode(MONITOR_MODE, args.monitor_mode)
+        requested_monitor_mode = "scrobble_health" if args.authorize_scrobble_health else args.monitor_mode
+        MONITOR_MODE = select_monitor_mode(MONITOR_MODE, requested_monitor_mode)
     except ValueError as exc:
         print_recovery_error(context="config_invalid", detail=str(exc))
         sys.exit(1)
@@ -9586,7 +9973,7 @@ def main():
         sys.exit(0)
 
     target_user_id = scrobble_health_username or None
-    if not args.list_friends and not args.send_test_email and not args.send_test_webhook and not args.doctor:
+    if not args.list_friends and not args.send_test_email and not args.send_test_webhook and not args.doctor and not args.authorize_scrobble_health:
         if scrobble_health_mode:
             if args.user_id is not None:
                 parser.error("The positional Spotify target cannot be used in scrobble_health mode")
@@ -9627,7 +10014,7 @@ def main():
                     advice = classify_recovery_error(context="config_missing", detail=f"Dotenv file not found: {env_path}")
                     if args.doctor:
                         doctor_startup_checks.append(make_doctor_check("Configuration", "FAIL", "The requested dotenv file was not found", advice.detail, advice))
-                    else:
+                    elif not args.authorize_scrobble_health:
                         print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                     env_path = None
                 else:
@@ -9665,10 +10052,10 @@ def main():
                 print(render_recovery_error(RecoveryError(advice)))
                 sys.exit(1)
 
-    for secret in SECRET_KEYS:
-        val = os.getenv(secret)
+    for environment_key in (*SECRET_KEYS, *ENVIRONMENT_SETTING_KEYS):
+        val = os.getenv(environment_key)
         if val is not None:
-            globals()[secret] = val
+            globals()[environment_key] = val
 
     if args.token_source:
         TOKEN_SOURCE = args.token_source
@@ -9692,6 +10079,12 @@ def main():
         SP_DC_COOKIE = args.spotify_dc_cookie
     if args.lastfm_api_key is not None:
         LASTFM_API_KEY = args.lastfm_api_key
+    if args.scrobble_client_id is not None:
+        SPOTIFY_SCROBBLE_CLIENT_ID = args.scrobble_client_id
+    if args.scrobble_redirect_uri is not None:
+        SPOTIFY_SCROBBLE_REDIRECT_URI = args.scrobble_redirect_uri
+    if args.scrobble_refresh_token is not None:
+        SPOTIFY_SCROBBLE_REFRESH_TOKEN = args.scrobble_refresh_token
 
     if args.login_request_body_file:
         LOGIN_REQUEST_BODY_FILE = os.path.expanduser(args.login_request_body_file)
@@ -9761,6 +10154,14 @@ def main():
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
+    if args.authorize_scrobble_health:
+        try:
+            run_authorize_scrobble_health(SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, env_file=env_path or DOTENV_FILE or None, config_path=cfg_path or CLI_CONFIG_PATH)
+        except (BrowserCookieImportError, SpotifyScrobbleAuthorizationError, OSError, req.RequestException) as exc:
+            print_recovery_error(exc, "authorize_scrobble_health")
+            sys.exit(1)
+        sys.exit(0)
+
     if args.doctor:
         doctor_config = cfg_path or CLI_CONFIG_PATH
         command_config = "none" if args.config_file is not None and args.config_file.casefold() == "none" else doctor_config
@@ -9772,7 +10173,7 @@ def main():
             doctor_exit = run_doctor(doctor_target, doctor_config, env_path, doctor_startup_checks)
         if doctor_exit == 0:
             if scrobble_health_mode:
-                _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username)
+                _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None)
             else:
                 command_target = args.user_id if args.user_id is not None else None
                 target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
@@ -9826,16 +10227,22 @@ def main():
         SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
 
     if scrobble_health_mode:
-        if TOKEN_SOURCE != "cookie":
-            print_recovery_error(context="config_invalid", detail="Scrobble health mode requires TOKEN_SOURCE='cookie'")
-            sys.exit(1)
         if is_missing_or_placeholder(LASTFM_API_KEY):
             print_recovery_error(context="secret", detail="LASTFM_API_KEY is missing. Use --lastfm-api-key, an environment variable or a selected dotenv file.")
+            sys.exit(1)
+        try:
+            SPOTIFY_SCROBBLE_CLIENT_ID = validate_spotify_scrobble_client_id(SPOTIFY_SCROBBLE_CLIENT_ID)
+            SPOTIFY_SCROBBLE_REDIRECT_URI = validate_spotify_scrobble_redirect_uri(SPOTIFY_SCROBBLE_REDIRECT_URI)
+        except SpotifyScrobbleAuthorizationError as exc:
+            print_recovery_error(exc, "auth.scrobble_expired")
+            sys.exit(1)
+        if is_missing_or_placeholder(SPOTIFY_SCROBBLE_REFRESH_TOKEN):
+            print_recovery_error(context="secret", detail="SPOTIFY_SCROBBLE_REFRESH_TOKEN is missing. Run --setup-scrobble-health or --authorize-scrobble-health.")
             sys.exit(1)
         if SCROBBLE_HEALTH_STATE_FILE:
             SCROBBLE_HEALTH_STATE_FILE = os.path.expanduser(SCROBBLE_HEALTH_STATE_FILE)
 
-    if TOKEN_SOURCE == "client":
+    elif TOKEN_SOURCE == "client":
         login_request_body_file_param = False
         if args.login_request_body_file:
             LOGIN_REQUEST_BODY_FILE = os.path.expanduser(args.login_request_body_file)
