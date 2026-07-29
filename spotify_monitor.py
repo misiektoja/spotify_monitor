@@ -933,6 +933,7 @@ INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 OAUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-oauth-app"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
+LASTFM_API_ACCOUNTS_URL = "https://www.last.fm/api/accounts"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
 
 STARTUP_BANNER = r"""
@@ -2162,6 +2163,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         if not confirmed:
             raise LastfmConfigurationError("LASTFM_API_KEY replacement was cancelled. The dotenv file was not changed.")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    print(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
     try:
         api_key = hidden_prompt("Enter the Last.fm API key privately: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -6619,6 +6621,42 @@ def _wizard_ask_positive_int(question: str, default: int) -> int:
         print("  Enter a positive whole number.")
 
 
+# Converts a duration to a compact seconds plus human-readable wizard label
+def _wizard_format_duration(seconds: int) -> str:
+    remaining = seconds
+    parts = []
+    for suffix, count in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        value, remaining = divmod(remaining, count)
+        if value:
+            parts.append(f"{value}{suffix}")
+    raw = f"{seconds}s"
+    readable = " ".join(parts) or raw
+    return raw if readable == raw else f"{raw} - {readable}"
+
+
+# Parses one positive whole-number duration with an optional time unit
+def _wizard_parse_duration(value: str) -> Optional[int]:
+    match = re.fullmatch(r"([1-9]\d*)\s*([a-z]*)", value.strip().casefold())
+    if not match:
+        return None
+    unit_seconds = {"": 1, "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600, "d": 86400, "day": 86400, "days": 86400}
+    multiplier = unit_seconds.get(match.group(2))
+    return int(match.group(1)) * multiplier if multiplier is not None else None
+
+
+# Prompts until the user provides a positive duration or accepts the readable default
+def _wizard_ask_duration(question: str, default: int) -> int:
+    prompt_text = f"{question} [{_wizard_format_duration(default)}]: "
+    while True:
+        value = _wizard_input(prompt_text).strip()
+        if not value:
+            return default
+        parsed = _wizard_parse_duration(value)
+        if parsed is not None:
+            return parsed
+        print("  Enter a positive duration such as 120, 120s, 2m, 1h or 1d.")
+
+
 # Reads a required secret through getpass without echoing the entered value
 def _wizard_ask_secret(question: str) -> str:
     while True:
@@ -6926,7 +6964,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 return result
             continue
         if action == "manual":
-            print(f"Find the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}")
+            print(f"\nFind the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}")
             print()
             cookie = _wizard_ask_secret("Existing sp_dc value")
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
@@ -7266,12 +7304,14 @@ def _wizard_review_setup(state: WizardSetupState, method: str) -> bool:
 def _wizard_collect_scrobble_health_profile_section(state: ScrobbleHealthSetupState) -> None:
     state.username = _wizard_ask_text("Last.fm username", default=state.username or LASTFM_USERNAME, required=True)
     state.config_values["LASTFM_USERNAME"] = state.username
+    print()
 
 
 # Collects scrobble health timing and evidence thresholds
 def _wizard_collect_scrobble_health_threshold_section(state: ScrobbleHealthSetupState) -> None:
-    state.config_values["SCROBBLE_HEALTH_CHECK_INTERVAL"] = _wizard_ask_positive_int("Comparison interval in seconds", int(state.config_values.get("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL)))
-    state.config_values["SCROBBLE_HEALTH_DEAD_PERIOD"] = _wizard_ask_positive_int("Dead period before an alert in seconds", int(state.config_values.get("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD)))
+    state.config_values["SCROBBLE_HEALTH_CHECK_INTERVAL"] = _wizard_ask_duration("Comparison interval (seconds or use s/m/h/d)", int(state.config_values.get("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL)))
+    state.config_values["SCROBBLE_HEALTH_DEAD_PERIOD"] = _wizard_ask_duration("Dead period before an alert", int(state.config_values.get("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD)))
+    print()
     state.config_values["SCROBBLE_HEALTH_MIN_UNMATCHED"] = _wizard_ask_positive_int("Consecutive missing completed plays required for an alert", int(state.config_values.get("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED)))
 
 
@@ -7281,6 +7321,7 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
         state.secret_updates.pop(key, None)
     existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path)
     if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
+        print(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
         api_key = _wizard_ask_secret("Last.fm API key")
         _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
     state.auth = _wizard_collect_cookie_auth(method, state.env_path, state.secret_updates)
@@ -7337,8 +7378,8 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
     print("\nSetup summary\n")
     print(f"  Last.fm user: {state.username}")
     print(f"  Missing-play threshold: {state.config_values['SCROBBLE_HEALTH_MIN_UNMATCHED']}")
-    print(f"  Dead period: {state.config_values['SCROBBLE_HEALTH_DEAD_PERIOD']} seconds")
-    print(f"  Comparison interval: {state.config_values['SCROBBLE_HEALTH_CHECK_INTERVAL']} seconds")
+    print(f"  Dead period: {_wizard_format_duration(int(state.config_values['SCROBBLE_HEALTH_DEAD_PERIOD']))}")
+    print(f"  Comparison interval: {_wizard_format_duration(int(state.config_values['SCROBBLE_HEALTH_CHECK_INTERVAL']))}")
     print(f"  Spotify authentication: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
     if state.auth.get("mount_required"):
