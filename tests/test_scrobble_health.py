@@ -580,13 +580,55 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
-    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=KeyboardInterrupt))
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
     assert delivery_mock.call_args.args[2].endswith("\n\nTimestamp: ALERT-TIMESTAMP")
+    assert "comparison failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert output.count("Operational alert deferred until 3 consecutive check failures.") == 2
+    assert delivery_mock.call_count == 1
     assert output.rindex("Sending webhook notification") < output.rindex("CONSOLE-TIMESTAMP")
-    assert timestamp_mock.call_count == 2
+    assert timestamp_mock.call_count == 4
+
+
+# Confirms a successful comparison resets the operational alert failure counter
+def test_scrobble_health_monitor_resets_operational_error_failures_after_success(monkeypatch, capsys):
+    spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], RuntimeError("failure 2"), RuntimeError("failure 3"), RuntimeError("failure 4")])
+    delivery_mock = Mock()
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", spotify_mock)
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
+    monkeypatch.setattr(monitor, "get_cur_ts", lambda prefix="": f"{prefix}ALERT-TIMESTAMP")
+    monkeypatch.setattr(monitor, "print_cur_ts", Mock())
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, None, None, KeyboardInterrupt]))
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+    output = capsys.readouterr().out
+    assert output.count("Scrobble health has 1 consecutive check failure.") == 2
+    assert "Scrobble health has 3 consecutive check failures." in output
+    assert delivery_mock.call_count == 1
+    assert "comparison failed 3 consecutive times" in delivery_mock.call_args.args[2]
+
+
+# Confirms scrobble health uses a smaller capped retry budget than Friend Activity
+def test_scrobble_health_http_retries_are_bounded():
+    assert monitor.retry.total == 5
+    assert monitor.scrobble_health_retry.total == 1
+    response = Mock(headers={"Retry-After": "7200"})
+    assert monitor.scrobble_health_retry.get_retry_after(response) == monitor.MAX_RETRY_AFTER_SECONDS
+
+
+# Confirms rate-limit guidance names the scrobble health interval option
+def test_scrobble_health_rate_limit_guidance_uses_mode_specific_interval():
+    response = Mock(status_code=429)
+    error = monitor.req.HTTPError("429 Client Error", response=response)
+    advice = monitor.classify_recovery_error(error, "scrobble_health")
+    assert "--scrobble-check-interval" in advice.fix
+    assert "-c or --check-interval" not in advice.fix
 
 
 # Confirms a matched recent play produces a healthy comparison
