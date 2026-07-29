@@ -99,13 +99,13 @@ spotify_monitor --monitor-mode scrobble_health
 
 Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config or pass `--lastfm-username` for one run. Use `--config-file` when you want to select another saved scrobble health configuration.
 
-No config or dotenv file is required. Disable both automatic searches and supply the required values directly:
+No config or dotenv file is required. With the API key and cookie already available as environment variables, select only the mode and profile:
 
 ```sh
-spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME --lastfm-api-key LASTFM_API_KEY --spotify-dc-cookie SP_DC_COOKIE
+spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
 ```
 
-The API key and cookie may remain visible in shell history or process listings. For a safer file-free run, provide `LASTFM_API_KEY` and `SP_DC_COOKIE` as process environment variables while retaining `--config-file none --env-file none`.
+You can pass the credentials with `--lastfm-api-key` and `--spotify-dc-cookie` instead. The values may remain visible in shell history or process listings.
 
 To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
 
