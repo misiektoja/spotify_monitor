@@ -143,8 +143,10 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | Most securely enter or replace a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 | Most securely enter or replace `LASTFM_API_KEY` | Run `spotify_monitor --set-lastfm-credentials` and enter the key at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
-| Set up Spotify-to-Last.fm scrobble health alerts | Run `spotify_monitor --setup-scrobble-health` |
+| Set up Spotify-to-Last.fm scrobble health alerts in separate default files | Run `spotify_monitor --setup-scrobble-health` |
 | Start scrobble health monitoring from saved settings | Run `spotify_monitor --scrobble-health` |
+| Compare recent Spotify plays with Last.fm scrobbles | Run `spotify_monitor --scrobble-health --doctor --verbose` |
+| Select the monitoring mode for one run | Run `spotify_monitor --monitor-mode friend_activity TARGET` or `spotify_monitor --monitor-mode scrobble_health` |
 
 Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target.
 
