@@ -202,10 +202,10 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   python3 spotify_monitor.py --setup-scrobble-health
 
   # Start the separate Spotify-to-Last.fm scrobble health mode
-  python3 spotify_monitor.py --scrobble-health
+  python3 spotify_monitor.py --monitor-mode scrobble_health
 
   # Diagnose scrobble health and list recent Spotify and Last.fm history
-  python3 spotify_monitor.py --scrobble-health --doctor --verbose
+  python3 spotify_monitor.py --monitor-mode scrobble_health --doctor --verbose
 
   # Select Friend Activity for this run
   python3 spotify_monitor.py --monitor-mode friend_activity <spotify_user_id>
