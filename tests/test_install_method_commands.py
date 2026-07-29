@@ -84,6 +84,15 @@ def test_container_action_commands_include_paths_and_target(tmp_path, monkeypatc
     assert command == "docker compose run --rm spotify_monitor --doctor target.user --config-file /data/spotify_monitor.conf --env-file /data/.env"
 
 
+@pytest.mark.parametrize(("method", "prefix"), [("docker", 'docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor'), ("compose", "docker compose run --rm spotify_monitor")])
+# Verifies scrobble Doctor prints a complete command for both container installation types
+def test_scrobble_health_doctor_monitoring_command_matches_container_install(monkeypatch, capsys, method, prefix):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: method)
+    monkeypatch.setattr(monitor.os, "getuid", lambda: 10001, raising=False)
+    monitor._wizard_print_scrobble_health_monitor_after_doctor("/data/spotify_monitor_scrobble_health.conf", "/data/.env.scrobble_health")
+    assert f'{prefix} --monitor-mode scrobble_health --config-file /data/spotify_monitor_scrobble_health.conf --env-file /data/.env.scrobble_health' in capsys.readouterr().out
+
+
 # Verifies container setup defaults always target the bind-mounted data directory
 @pytest.mark.parametrize("method", ["docker", "compose"])
 def test_container_setup_destinations_use_data_mount(tmp_path, monkeypatch, method):
