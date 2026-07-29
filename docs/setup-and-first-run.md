@@ -74,7 +74,7 @@ Like regular setup, the focused wizard lets you review or change each section be
 
 To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key in `.env.scrobble_health` by default because scrobble health does not need the Last.fm shared secret.
 
-Saved files are optional. For a one-off or externally managed run, pass `--config-file none --env-file none`, select `--monitor-mode scrobble_health` then provide `--lastfm-username`, `--lastfm-api-key` and `--spotify-dc-cookie`. Private command-line values may remain in shell history or process listings, so process environment variables are safer when persistence is not needed.
+Saved files are optional. For a one-off or externally managed run, select `--monitor-mode scrobble_health` then provide `--lastfm-username` plus the required credentials through CLI options or environment variables. Private command-line values may remain in shell history or process listings, so process environment variables are safer when persistence is not needed.
 
 For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
 
