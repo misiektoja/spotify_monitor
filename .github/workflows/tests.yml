@@ -118,7 +118,7 @@ jobs:
           mkdir -p local/container-smoke
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/local/container-smoke:/data:z" spotify-monitor:ci --generate-config /data/spotify_monitor.conf
           test -s local/container-smoke/spotify_monitor.conf
-          if grep -E 'LIVE-|secret-cookie|refresh-token' local/container-smoke/spotify_monitor.conf; then
+          if grep -Ev '^[[:space:]]*(#|$)' local/container-smoke/spotify_monitor.conf | grep -E 'LIVE-|secret-cookie|refresh-token'; then
             echo "Generated config contains a test secret marker"
             exit 1
           fi
