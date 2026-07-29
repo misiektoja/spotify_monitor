@@ -45,7 +45,7 @@ spotify_monitor --doctor <spotify_user_uri_id> --token-source client
 For scrobble health, focused Doctor reports how many recent plays each service returned plus the current comparison status. Add `--verbose` to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:
 
 ```sh
-spotify_monitor --scrobble-health --doctor --verbose
+spotify_monitor --monitor-mode scrobble_health --doctor --verbose
 ```
 
 Track titles and listening timestamps appear only in this verbose diagnostic output. Spotify and Last.fm can timestamp different points in the same playback, so matched rows can have different times. Cookies, API keys and other private credentials remain hidden.
