@@ -80,8 +80,8 @@ def test_set_lastfm_credentials_updates_only_api_key(monkeypatch, capsys):
         assert destination.read_text(encoding="utf-8").startswith("# keep\nUNRELATED=stay\n")
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay", "LASTFM_API_KEY": secret}
         assert secret not in output
-        assert "--scrobble-health --doctor" in output
-        assert "--scrobble-health" in output
+        assert "--monitor-mode scrobble_health --doctor" in output
+        assert "--monitor-mode scrobble_health" in output
         replace.assert_called_once()
         if os.name == "posix":
             assert destination.stat().st_mode & 0o777 == 0o600
@@ -135,7 +135,7 @@ def test_set_lastfm_credentials_rejects_invalid_input_without_leak(capsys):
         cleanup_destination(destination)
 
 
-@pytest.mark.parametrize("arguments", [("--setup",), ("--setup-scrobble-health",), ("--set-sp-dc",), ("--set-webhook-url",), ("--doctor",), ("--version",), ("--generate-config",), ("--list-friends",), ("--send-test-email",), ("--scrobble-health",), ("target.user",)])
+@pytest.mark.parametrize("arguments", [("--setup",), ("--setup-scrobble-health",), ("--set-sp-dc",), ("--set-webhook-url",), ("--doctor",), ("--version",), ("--generate-config",), ("--list-friends",), ("--send-test-email",), ("--monitor-mode", "scrobble_health"), ("target.user",)])
 # Verifies unrelated actions conflict with private Last.fm setup
 def test_set_lastfm_credentials_argument_conflicts(arguments):
     result = run_cli("--set-lastfm-credentials", *arguments)
