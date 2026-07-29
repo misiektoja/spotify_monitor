@@ -129,7 +129,7 @@ Use focused Doctor checks before leaving it unattended:
 spotify_monitor --monitor-mode scrobble_health --doctor
 ```
 
-Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. After a successful check it prints the exact monitoring command for the detected installation and preserves the selected configuration plus dotenv paths. Docker and Docker Compose output uses the matching container command and `/data` paths.
 
 To inspect the actual histories instead of only their counts, add `--verbose`:
 
