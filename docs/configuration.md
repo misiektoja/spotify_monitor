@@ -89,17 +89,13 @@ spotify_monitor --set-lastfm-credentials
 
 The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Without `--env-file`, it uses `.env.scrobble_health`. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
 
-Config and dotenv files are optional. This command disables both automatic searches and supplies every required value directly:
+Config and dotenv files are optional. With `LASTFM_API_KEY` and `SP_DC_COOKIE` already available as environment variables, only the profile needs a runtime option:
 
 ```sh
-spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME --lastfm-api-key LASTFM_API_KEY --spotify-dc-cookie SP_DC_COOKIE
+spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
 ```
 
-Private values passed as arguments may remain visible in shell history or process listings. A safer file-free form uses process environment variables:
-
-```sh
-LASTFM_API_KEY="your_lastfm_api_key" SP_DC_COOKIE="your_sp_dc_cookie" spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME
-```
+You can pass the credentials with `--lastfm-api-key` and `--spotify-dc-cookie` instead. Private values passed as arguments may remain visible in shell history or process listings.
 
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
