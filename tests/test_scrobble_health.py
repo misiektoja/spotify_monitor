@@ -38,7 +38,15 @@ def install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, yes_no
     monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: True)
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=lambda question, default=True: next(answers)))
     monkeypatch.setattr(monitor, "_wizard_ask_choice", Mock(side_effect=lambda question, options: next(choices)))
-    monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda method, path, updates: dict(auth))
+    # Supplies stable app settings without opening a real browser during broader setup tests
+    def collect_auth(state, selected_method):
+        state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] = "a" * 32
+        state.config_values["SPOTIFY_SCROBBLE_REDIRECT_URI"] = "http://127.0.0.1:8888/callback"
+        state.auth = dict(auth)
+        if auth.get("complete"):
+            state.secret_updates["SPOTIFY_SCROBBLE_REFRESH_TOKEN"] = "private-refresh-token"
+
+    monkeypatch.setattr(monitor, "_wizard_collect_scrobble_health_auth_section", collect_auth)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda values, updates, path, scrobble_health=False: [])
     monkeypatch.setattr(monitor, "_wizard_collect_webhook", lambda values, updates, path, scrobble_health=False: [])
 
@@ -53,26 +61,87 @@ def lastfm_scrobble(timestamp, track="Track", artist="Artist"):
     return monitor.LastfmScrobble(float(timestamp), artist, track)
 
 
-# Confirms silent PKCE authorization asks only for recent-play access
-def test_spotify_get_scrobble_access_token_uses_cookie_and_minimal_scope(monkeypatch):
-    auth_response = Mock(text='{"code":"authorization%2Fcode"}')
-    auth_response.raise_for_status.return_value = None
-    token_response = Mock()
+# Confirms user-owned PKCE authorization asks only for recent-play access
+def test_spotify_build_scrobble_authorization_url_uses_minimal_scope():
+    authorization_url = monitor.spotify_build_scrobble_authorization_url("a" * 32, "http://127.0.0.1:8888/callback", "verifier", "state-value")
+    parameters = monitor.parse_qs(monitor.urlparse(authorization_url).query)
+    assert parameters["client_id"] == ["a" * 32]
+    assert parameters["redirect_uri"] == ["http://127.0.0.1:8888/callback"]
+    assert parameters["scope"] == ["user-read-recently-played"]
+    assert parameters["state"] == ["state-value"]
+    assert parameters["code_challenge_method"] == ["S256"]
+    assert "client_secret" not in parameters
+
+
+# Confirms pasted callbacks must match the registered redirect and authorization state
+def test_spotify_parse_scrobble_callback_validates_redirect_and_state():
+    redirect_uri = "http://127.0.0.1:8888/callback"
+    assert monitor.spotify_parse_scrobble_callback(f"{redirect_uri}?code=authorization-code&state=expected", redirect_uri, "expected") == "authorization-code"
+    with pytest.raises(monitor.SpotifyScrobbleAuthorizationError, match="invalid state"):
+        monitor.spotify_parse_scrobble_callback(f"{redirect_uri}?code=authorization-code&state=wrong", redirect_uri, "expected")
+    with pytest.raises(monitor.SpotifyScrobbleAuthorizationError, match="complete redirected URL"):
+        monitor.spotify_parse_scrobble_callback("http://127.0.0.1:9999/callback?code=authorization-code&state=expected", redirect_uri, "expected")
+
+
+# Confirms refresh-token authorization uses the user's Spotify app and caches the result
+def test_spotify_get_scrobble_access_token_uses_user_owned_app(monkeypatch):
+    token_response = Mock(status_code=200)
     token_response.raise_for_status.return_value = None
-    token_response.json.return_value = {"access_token": "scoped-token", "expires_in": 3600}
+    token_response.json.return_value = {"access_token": "scoped-token", "refresh_token": "rotated-refresh", "expires_in": 3600}
     session = Mock()
-    session.get.return_value = auth_response
     session.post.return_value = token_response
     monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", None)
     monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 0)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "")
     monkeypatch.setattr(monitor, "USER_AGENT", "test-agent")
+    persistence = Mock(return_value=True)
+    monkeypatch.setattr(monitor, "persist_spotify_scrobble_refresh_token", persistence)
 
-    token = monitor.spotify_get_scrobble_access_token("private-cookie", session)
+    token = monitor.spotify_get_scrobble_access_token("a" * 32, "private-refresh", session)
 
     assert token == "scoped-token"
-    assert session.get.call_args.kwargs["params"]["scope"] == "user-read-recently-played"
-    assert session.get.call_args.kwargs["headers"]["Cookie"] == "sp_dc=private-cookie"
-    assert session.post.call_args.kwargs["data"]["code"] == "authorization/code"
+    assert session.post.call_args.kwargs["data"] == {"client_id": "a" * 32, "grant_type": "refresh_token", "refresh_token": "private-refresh"}
+    persistence.assert_called_once_with("rotated-refresh")
+
+
+# Confirms an expired Spotify grant points to standalone reauthorization
+def test_spotify_get_scrobble_access_token_reports_expired_grant(monkeypatch):
+    response = Mock(status_code=400)
+    response.json.return_value = {"error": "invalid_grant", "error_description": "Refresh token revoked"}
+    session = Mock()
+    session.post.return_value = response
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", None)
+    monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 0)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "")
+    with pytest.raises(monitor.SpotifyScrobbleAuthorizationError, match="expired or was revoked") as error:
+        monitor.spotify_get_scrobble_access_token("a" * 32, "private-refresh", session)
+    advice = monitor.classify_recovery_error(error.value, "scrobble_health")
+    assert "--authorize-scrobble-health" in advice.fix
+
+
+# Confirms standalone authorization guides app creation and stores only the private refresh token
+def test_run_authorize_scrobble_health_guides_and_saves(monkeypatch, capsys):
+    artifact_root = PROJECT_ROOT / "local"
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    env_path = artifact_root / f"test-scrobble-authorize-{os.getpid()}.env"
+    config_path = artifact_root / f"test-scrobble-authorize-{os.getpid()}.conf"
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+    monkeypatch.setattr(monitor, "_dotenv_contains_key", lambda path, key: False)
+    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", lambda *args, **kwargs: {"access_token": "access-token", "refresh_token": "private-refresh-token", "expires_in": 3600})
+    try:
+        result = monitor.run_authorize_scrobble_health("a" * 32, "http://127.0.0.1:8888/callback", env_file=env_path, config_path=config_path, interactive=True)
+        values = dotenv.dotenv_values(env_path, interpolate=False)
+        output = capsys.readouterr().out
+        assert result == str(env_path)
+        assert values == {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": "private-refresh-token"}
+        assert monitor.SPOTIFY_DEVELOPER_DASHBOARD_URL in output
+        assert monitor.SPOTIFY_APPS_GUIDE_URL in output
+        assert monitor.SPOTIFY_PKCE_GUIDE_URL in output
+        assert "--monitor-mode scrobble_health --doctor" in output
+    finally:
+        for path in (config_path, env_path):
+            if path.exists():
+                path.unlink()
 
 
 # Confirms Spotify recent-play parsing keeps only completed track-shaped records
@@ -82,9 +151,9 @@ def test_spotify_get_recent_plays_parses_completed_tracks(monkeypatch):
     response.json.return_value = {"items": [{"played_at": "2026-07-28T10:00:00.000Z", "track": {"name": "Track", "artists": [{"name": "Artist"}], "duration_ms": 123000, "uri": "spotify:track:1"}}, {"played_at": "invalid", "track": {"name": "Ignored", "artists": [{"name": "Artist"}]}}]}
     session = Mock()
     session.get.return_value = response
-    monkeypatch.setattr(monitor, "spotify_get_scrobble_access_token", lambda cookie, selected_session: "token")
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_access_token", lambda client_id, refresh_token, selected_session: "token")
 
-    plays = monitor.spotify_get_recent_plays("cookie", session)
+    plays = monitor.spotify_get_recent_plays("a" * 32, "private-refresh", session)
 
     assert [(play.artist, play.track, play.duration_ms, play.uri) for play in plays] == [("Artist", "Track", 123000, "spotify:track:1")]
 
@@ -106,7 +175,7 @@ def test_lastfm_get_recent_scrobbles_ignores_now_playing():
 def test_scrobble_health_setup_wizard_writes_mode(monkeypatch, capsys):
     config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-setup-{os.getpid()}.conf"
     env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-setup-{os.getpid()}.env"
-    auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE", "mount_required": False, "host_os": None}
+    auth = {"complete": True, "validated": False, "source": "user-owned Spotify app with PKCE"}
     install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False, False))
 
     try:
@@ -162,6 +231,15 @@ def test_scrobble_health_setup_rejects_disabled_config_destination():
     result = run_cli("--setup-scrobble-health", "--config-file", "none")
     assert result.returncode == 2
     assert "requires a config destination and cannot use --config-file none" in result.stderr
+
+
+# Confirms standalone reauthorization accepts only app settings plus file destinations
+def test_scrobble_health_authorize_accepts_guided_options():
+    result = run_cli("--authorize-scrobble-health", "--config-file", "none", "--env-file", "local/test-authorize.env", "--scrobble-client-id", "a" * 32, "--scrobble-redirect-uri", "http://127.0.0.1:8888/callback")
+    assert result.returncode == 1
+    assert "requires an interactive terminal" in result.stdout
+    assert "does not exist" not in result.stdout
+    assert "cannot be combined with" not in result.stderr
 
 
 # Confirms focused setup requests isolated default destinations
@@ -222,14 +300,14 @@ def test_scrobble_health_cli_supports_file_free_runtime_configuration(monkeypatc
     dotenv_finder = Mock(side_effect=AssertionError("Dotenv discovery should be disabled"))
     captured = {}
     monkeypatch.setenv("LASTFM_API_KEY", "ignored-environment-api-key")
-    monkeypatch.setenv("SP_DC_COOKIE", "ignored-environment-cookie")
+    monkeypatch.setenv("SPOTIFY_SCROBBLE_REFRESH_TOKEN", "ignored-environment-refresh-token")
 
     # Captures effective runtime values after all command-line overrides
     def run_doctor(username, config_path=None, env_path=None, startup_checks=()):
-        captured.update({"username": username, "config_path": config_path, "env_path": env_path, "api_key": monitor.LASTFM_API_KEY, "cookie": monitor.SP_DC_COOKIE, "check_interval": monitor.SCROBBLE_HEALTH_CHECK_INTERVAL, "dead_period": monitor.SCROBBLE_HEALTH_DEAD_PERIOD, "min_unmatched": monitor.SCROBBLE_HEALTH_MIN_UNMATCHED, "match_window": monitor.SCROBBLE_HEALTH_MATCH_WINDOW, "lookback": monitor.SCROBBLE_HEALTH_LOOKBACK, "repeat_interval": monitor.SCROBBLE_HEALTH_REPEAT_INTERVAL, "state_file": monitor.SCROBBLE_HEALTH_STATE_FILE})
+        captured.update({"username": username, "config_path": config_path, "env_path": env_path, "api_key": monitor.LASTFM_API_KEY, "client_id": monitor.SPOTIFY_SCROBBLE_CLIENT_ID, "redirect_uri": monitor.SPOTIFY_SCROBBLE_REDIRECT_URI, "refresh_token": monitor.SPOTIFY_SCROBBLE_REFRESH_TOKEN, "check_interval": monitor.SCROBBLE_HEALTH_CHECK_INTERVAL, "dead_period": monitor.SCROBBLE_HEALTH_DEAD_PERIOD, "min_unmatched": monitor.SCROBBLE_HEALTH_MIN_UNMATCHED, "match_window": monitor.SCROBBLE_HEALTH_MATCH_WINDOW, "lookback": monitor.SCROBBLE_HEALTH_LOOKBACK, "repeat_interval": monitor.SCROBBLE_HEALTH_REPEAT_INTERVAL, "state_file": monitor.SCROBBLE_HEALTH_STATE_FILE})
         return 0
 
-    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "private-api-key", "--spotify-dc-cookie", "private-cookie", "--scrobble-check-interval", "180", "--scrobble-dead-period", "1500", "--scrobble-min-unmatched", "7", "--scrobble-match-window", "240", "--scrobble-lookback", "18000", "--scrobble-repeat-interval", "0", "--scrobble-state-file", "local/health-state.json", "--doctor"])
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "private-api-key", "--scrobble-client-id", "a" * 32, "--scrobble-redirect-uri", "http://127.0.0.1:8888/callback", "--scrobble-refresh-token", "private-refresh-token", "--scrobble-check-interval", "180", "--scrobble-dead-period", "1500", "--scrobble-min-unmatched", "7", "--scrobble-match-window", "240", "--scrobble-lookback", "18000", "--scrobble-repeat-interval", "0", "--scrobble-state-file", "local/health-state.json", "--doctor"])
     monkeypatch.setattr(monitor, "clear_screen", lambda enabled: None)
     monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
     monkeypatch.setattr(monitor, "find_config_file", config_finder)
@@ -244,7 +322,7 @@ def test_scrobble_health_cli_supports_file_free_runtime_configuration(monkeypatc
     with pytest.raises(SystemExit) as error:
         monitor.main()
     assert error.value.code == 0
-    assert captured == {"username": "lastfm-user", "config_path": None, "env_path": None, "api_key": "private-api-key", "cookie": "private-cookie", "check_interval": 180, "dead_period": 1500, "min_unmatched": 7, "match_window": 240, "lookback": 18000, "repeat_interval": 0, "state_file": "local/health-state.json"}
+    assert captured == {"username": "lastfm-user", "config_path": None, "env_path": None, "api_key": "private-api-key", "client_id": "a" * 32, "redirect_uri": "http://127.0.0.1:8888/callback", "refresh_token": "private-refresh-token", "check_interval": 180, "dead_period": 1500, "min_unmatched": 7, "match_window": 240, "lookback": 18000, "repeat_interval": 0, "state_file": "local/health-state.json"}
     config_finder.assert_not_called()
     dotenv_finder.assert_not_called()
 
@@ -253,27 +331,31 @@ def test_scrobble_health_cli_supports_file_free_runtime_configuration(monkeypatc
 def test_scrobble_health_cli_loads_environment_without_dotenv(monkeypatch):
     captured = {}
     monkeypatch.setenv("LASTFM_API_KEY", "environment-api-key")
-    monkeypatch.setenv("SP_DC_COOKIE", "environment-cookie")
+    monkeypatch.setenv("SPOTIFY_SCROBBLE_CLIENT_ID", "b" * 32)
+    monkeypatch.setenv("SPOTIFY_SCROBBLE_REDIRECT_URI", "http://127.0.0.1:9999/callback")
+    monkeypatch.setenv("SPOTIFY_SCROBBLE_REFRESH_TOKEN", "environment-refresh-token")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--doctor"])
     monkeypatch.setattr(monitor, "clear_screen", lambda enabled: None)
     monkeypatch.setattr(monitor, "print_startup_banner", lambda: None)
-    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", lambda username, config_path=None, env_path=None, startup_checks=(): (captured.update({"api_key": monitor.LASTFM_API_KEY, "cookie": monitor.SP_DC_COOKIE}) or 0))
+    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", lambda username, config_path=None, env_path=None, startup_checks=(): (captured.update({"api_key": monitor.LASTFM_API_KEY, "client_id": monitor.SPOTIFY_SCROBBLE_CLIENT_ID, "redirect_uri": monitor.SPOTIFY_SCROBBLE_REDIRECT_URI, "refresh_token": monitor.SPOTIFY_SCROBBLE_REFRESH_TOKEN}) or 0))
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
     monkeypatch.setattr(monitor, "MONITOR_MODE", "friend_activity")
     monkeypatch.setattr(monitor, "LASTFM_USERNAME", "")
     monkeypatch.setattr(monitor, "LASTFM_API_KEY", "")
-    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_CLIENT_ID", "")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REDIRECT_URI", "")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REFRESH_TOKEN", "")
     with pytest.raises(SystemExit) as error:
         monitor.main()
     assert error.value.code == 0
-    assert captured == {"api_key": "environment-api-key", "cookie": "environment-cookie"}
+    assert captured == {"api_key": "environment-api-key", "client_id": "b" * 32, "redirect_uri": "http://127.0.0.1:9999/callback", "refresh_token": "environment-refresh-token"}
 
 
 @pytest.mark.parametrize(("option", "value", "message"), [("--scrobble-match-window", "0", "must be greater than zero"), ("--scrobble-lookback", "-1", "must be greater than zero"), ("--scrobble-repeat-interval", "-1", "must be zero or greater")])
 # Confirms new scrobble timing options reject unsafe bounds
 def test_scrobble_health_cli_rejects_invalid_extended_timers(option, value, message):
-    result = run_cli("--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "api-key", "--spotify-dc-cookie", "cookie", option, value, "--doctor")
+    result = run_cli("--monitor-mode", "scrobble_health", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "api-key", "--scrobble-client-id", "a" * 32, "--scrobble-refresh-token", "refresh-token", option, value, "--doctor")
     assert result.returncode == 2
     assert f"{option} {message}" in result.stderr
 
@@ -324,7 +406,9 @@ def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", secret_prompt)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
-    monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda method, path, updates: {"complete": True, "source": "existing SP_DC_COOKIE"})
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "a" * 32 if "Client ID" in question else default)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", lambda *args, **kwargs: {"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600})
     monitor._wizard_collect_scrobble_health_auth_section(state, "manual")
     assert guidance_before_prompt == [f"\nCreate or view your Last.fm API account: {monitor.LASTFM_API_ACCOUNTS_URL}\n"]
     secret_prompt.assert_called_once_with("Last.fm API key")
@@ -363,8 +447,8 @@ def test_scrobble_health_setup_collects_focused_webhook_flags(monkeypatch):
 
 # Confirms the focused summary reports outage and operational flags independently
 def test_scrobble_health_setup_summary_distinguishes_notification_flags(capsys):
-    config_values = {"SCROBBLE_HEALTH_MIN_UNMATCHED": 5, "SCROBBLE_HEALTH_DEAD_PERIOD": 1200, "SCROBBLE_HEALTH_CHECK_INTERVAL": 300, "SCROBBLE_HEALTH_NOTIFICATION": False, "ERROR_NOTIFICATION": True, "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True, "WEBHOOK_ERROR_NOTIFICATION": False}
-    auth = {"complete": True, "source": "existing SP_DC_COOKIE", "mount_required": False, "host_os": None}
+    config_values = {"SCROBBLE_HEALTH_MIN_UNMATCHED": 5, "SCROBBLE_HEALTH_DEAD_PERIOD": 1200, "SCROBBLE_HEALTH_CHECK_INTERVAL": 300, "SCROBBLE_HEALTH_NOTIFICATION": False, "ERROR_NOTIFICATION": True, "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True, "WEBHOOK_ERROR_NOTIFICATION": False, "SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:8888/callback"}
+    auth = {"complete": True, "source": "user-owned Spotify app with PKCE", "mount_required": False, "host_os": None}
     state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, config_values, {}, "lastfm-user", auth, ["operational errors"], ["scrobble outage and recovery"])
     monitor._wizard_print_scrobble_health_setup_summary(state, "manual")
     output = capsys.readouterr().out
@@ -382,7 +466,6 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
     env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-partial-{os.getpid()}.env"
     auth = {"complete": True, "validated": False, "browser": None, "source": "private manual entry", "mount_required": False, "host_os": None}
     install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False,))
-    monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda method, path, updates: (updates.update({"SP_DC_COOKIE": "private-value"}) or dict(auth)))
     monkeypatch.setattr(monitor, "update_dotenv_file", Mock(side_effect=OSError("write failed")))
     try:
         with pytest.raises(SystemExit) as error:
@@ -392,7 +475,7 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
         output = capsys.readouterr().out
         assert "Configuration was saved but dotenv destination" in output
         assert "Setup remains incomplete" in output
-        assert "private-value" not in output
+        assert "private-refresh-token" not in output
     finally:
         if config_path.exists():
             config_path.unlink()
@@ -409,7 +492,7 @@ def test_scrobble_health_setup_orders_incomplete_authentication_steps(monkeypatc
             monitor.run_scrobble_health_setup_wizard()
         assert error.value.code == 0
         output = capsys.readouterr().out
-        auth_index = output.index("Import Spotify login from Firefox")
+        auth_index = output.index("Authorize the user-owned Spotify app:")
         doctor_index = output.index("After authentication succeeds, verify scrobble health setup:")
         monitor_index = output.index("After Doctor passes, start scrobble health monitoring:")
         assert auth_index < doctor_index < monitor_index
@@ -423,8 +506,8 @@ def test_scrobble_health_setup_orders_incomplete_authentication_steps(monkeypatc
 def test_scrobble_health_setup_offers_local_start_after_doctor(monkeypatch):
     config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-start-{os.getpid()}.conf"
     env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-start-{os.getpid()}.env"
-    auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE", "mount_required": False, "host_os": None}
-    install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False, True, True))
+    auth = {"complete": True, "validated": False, "source": "user-owned Spotify app with PKCE"}
+    install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (True, True))
     doctor_mock = Mock(return_value=0)
     launch_mock = Mock(return_value=0)
     monkeypatch.setattr(monitor, "_wizard_load_effective_setup", Mock(return_value=True))
@@ -450,7 +533,7 @@ def test_scrobble_health_setup_offers_local_start_after_doctor(monkeypatch):
 def test_scrobble_health_setup_review_edits_thresholds(monkeypatch):
     config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-review-{os.getpid()}.conf"
     env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-review-{os.getpid()}.env"
-    auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE", "mount_required": False, "host_os": None}
+    auth = {"complete": True, "validated": False, "source": "user-owned Spotify app with PKCE"}
     install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False, False), choice_answers=(1, 1, 0), positive_answers=(120, 1200, 5, 180, 1800, 7))
     try:
         with pytest.raises(SystemExit) as error:
@@ -491,13 +574,13 @@ def test_scrobble_health_monitor_prints_first_check_and_hides_normal_repeats(mon
     state = {"status": "healthy", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1000, latest_spotify_at=1000, latest_lastfm_at=1000)
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
-    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda cookie: [spotify_play(1000)])
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1000)])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
     monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
-    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "private-cookie")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REFRESH_TOKEN", "private-refresh-token")
     monkeypatch.setattr(monitor, "LASTFM_API_KEY", "private-api-key")
     monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
@@ -511,7 +594,7 @@ def test_scrobble_health_monitor_prints_first_check_and_hides_normal_repeats(mon
     assert output.count("Timestamp:") == 2
     assert "Press Ctrl+C to stop.\n\nTimestamp:" in output
     assert "Next check in 2 minutes.\n\nTimestamp:" in output
-    assert "private-cookie" not in output
+    assert "private-refresh-token" not in output
     assert "private-api-key" not in output
 
 
@@ -520,7 +603,7 @@ def test_scrobble_health_monitor_prints_repeated_checks_in_verbose_mode(monkeypa
     state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("idle")
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
-    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda cookie: [])
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
     monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
@@ -618,8 +701,19 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
 def test_scrobble_health_http_retries_are_bounded():
     assert monitor.retry.total == 5
     assert monitor.scrobble_health_retry.total == 1
-    response = Mock(headers={"Retry-After": "7200"})
-    assert monitor.scrobble_health_retry.get_retry_after(response) == monitor.MAX_RETRY_AFTER_SECONDS
+    assert 429 not in monitor.scrobble_health_retry.status_forcelist
+
+
+# Confirms Spotify's structured quota response preserves a bounded diagnostic delay
+def test_scrobble_health_recognizes_spotify_quota_exhaustion():
+    response = Mock(status_code=429, headers={"Retry-After": "7200"})
+    response.json.return_value = {"error": {"status": 429, "message": "Too many requests", "reason": "QUOTA_EXCEEDED"}}
+    with pytest.raises(monitor.SpotifyQuotaExceededError) as error:
+        monitor.spotify_raise_scrobble_http_error(response)
+    assert error.value.retry_after == 7200
+    advice = monitor.classify_recovery_error(error.value, "scrobble_health")
+    assert "increase --scrobble-check-interval" in advice.fix
+    assert monitor.SPOTIFY_QUOTA_GUIDE_URL in advice.fix
 
 
 # Confirms rate-limit guidance names the scrobble health interval option
@@ -666,14 +760,15 @@ def test_scrobble_health_doctor_verbose_lists_recent_history(monkeypatch, capsys
     current_time = time.time()
     spotify_plays = [spotify_play(current_time, "Diagnostic Track")]
     lastfm_scrobbles = [lastfm_scrobble(current_time, "Diagnostic Track")]
-    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
-    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "private-cookie")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_CLIENT_ID", "a" * 32)
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REFRESH_TOKEN", "private-refresh-token")
     monkeypatch.setattr(monitor, "LASTFM_API_KEY", "private-api-key")
     monkeypatch.setattr(monitor, "doctor_check_environment", lambda: [])
     monkeypatch.setattr(monitor, "doctor_check_configuration", lambda config_path=None, env_path=None, startup_checks=(): [])
     monkeypatch.setattr(monitor, "doctor_check_notifications", lambda: [])
     monkeypatch.setattr(monitor, "doctor_check_webhook_notifications", lambda: [])
-    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda cookie: spotify_plays)
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: spotify_plays)
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: lastfm_scrobbles)
     monkeypatch.setattr(monitor, "_doctor_offer_notification_tests", lambda report: [])
     monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
@@ -695,14 +790,15 @@ def test_scrobble_health_doctor_reports_interactive_progress(monkeypatch):
     progress = Mock()
     clear_progress = Mock()
     monkeypatch.setattr(monitor.sys, "stdout", stream)
-    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
-    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "private-cookie")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_CLIENT_ID", "a" * 32)
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_REFRESH_TOKEN", "private-refresh-token")
     monkeypatch.setattr(monitor, "LASTFM_API_KEY", "private-api-key")
     monkeypatch.setattr(monitor, "doctor_check_environment", lambda: [])
     monkeypatch.setattr(monitor, "doctor_check_configuration", lambda config_path=None, env_path=None, startup_checks=(): [])
     monkeypatch.setattr(monitor, "doctor_check_notifications", lambda: [])
     monkeypatch.setattr(monitor, "doctor_check_webhook_notifications", lambda: [])
-    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda cookie: [])
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "_doctor_offer_notification_tests", lambda report: [])
     monkeypatch.setattr(monitor, "_doctor_progress", progress)
