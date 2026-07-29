@@ -7,7 +7,7 @@ Examples on this page use the PyPI command `spotify_monitor`. Manual script, Doc
 
 You can pass most settings as command-line options or save them in a configuration file for later runs.
 
-The easiest way to create this file is `spotify_monitor --setup`. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first. Replacement builds a fresh configuration from defaults, so settings that are not shown by the wizard are reset unless you restore them from the backup.
+The easiest way to create this file is `spotify_monitor --setup`. The wizard checks the settings before saving. If you approve replacement of an existing file, it saves a timestamped backup first. Replacement builds a fresh configuration from defaults, so settings that are not shown by the wizard are reset unless you restore them from the backup. Friend Activity setup defaults to `spotify_monitor.conf` plus `.env`. The focused scrobble health wizard defaults to `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health` so both modes can be configured independently in the same directory.
 
 To edit every available setting yourself, generate a default configuration file:
 
@@ -43,6 +43,24 @@ spotify_monitor --config-file spotify_monitor.conf
 
 A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.
 
+<a id="monitoring-mode"></a>
+## Monitoring Mode
+
+Spotify Monitor has two independent monitoring modes:
+
+| Mode | Saved `MONITOR_MODE` value | What it monitors | Easiest setup |
+| --- | --- | --- | --- |
+| Friend Activity | `"friend_activity"` | A followed Spotify user's completed tracks, presence and listening sessions | `spotify_monitor --setup` |
+| Scrobble health | `"scrobble_health"` | Whether this Spotify account's completed plays reach one Last.fm profile | `spotify_monitor --setup-scrobble-health` |
+
+Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. `--scrobble-health [LASTFM_USERNAME]` is a shortcut that selects scrobble health and can also override the saved Last.fm username.
+
+For example, this runs Friend Activity even when the selected config saves scrobble health as `MONITOR_MODE`:
+
+```sh
+spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
+```
+
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health
 
@@ -51,15 +69,17 @@ Scrobble health mode checks whether completed plays from the Spotify account rep
 Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
 
 1. `TOKEN_SOURCE = "cookie"`
-2. `LASTFM_USERNAME` in `spotify_monitor.conf`
+2. `LASTFM_USERNAME` in `spotify_monitor_scrobble_health.conf`
 3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
-4. A read-only Last.fm API key stored as `LASTFM_API_KEY` in `.env`
+4. A read-only Last.fm API key stored as `LASTFM_API_KEY` in `.env.scrobble_health`
 
-The focused setup wizard collects these values through hidden prompts where appropriate:
+The easiest setup is the focused wizard. It selects scrobble health as the saved mode and collects these values through hidden prompts where appropriate:
 
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
+
+For Friend Activity monitoring use the regular `spotify_monitor --setup` wizard instead.
 
 To enter or replace only the API key safely, run:
 
@@ -67,7 +87,7 @@ To enter or replace only the API key safely, run:
 spotify_monitor --set-lastfm-credentials
 ```
 
-The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
+The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Without `--env-file`, it uses `.env.scrobble_health`. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
 
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
@@ -471,7 +491,7 @@ If the webhook service temporarily refuses a message, Spotify Monitor tries once
 <a id="storing-secrets"></a>
 ## Storing Secrets
 
-A `.env` file is a plain text file that holds private values separately from regular configuration. Store `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` there. Do not commit this file or share it.
+A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
 
 You can use operating system environment variables instead of a file. Set them with `export` on Linux, Unix, macOS or WSL:
 
@@ -509,7 +529,7 @@ WEBHOOK_URL="https://discord.com/api/webhooks/your_id/your_token"
 NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 ```
 
-By default, Spotify Monitor looks for `.env` in the current directory. If it is not there, the search continues in each parent directory.
+By default, Friend Activity looks for `.env` while an explicit scrobble health run looks for `.env.scrobble_health`. The search starts in the current directory then continues in each parent directory.
 
 Browser import does not use the parent-directory search when choosing where to write. Without `--env-file`, it writes to `.env` in the current directory.
 
