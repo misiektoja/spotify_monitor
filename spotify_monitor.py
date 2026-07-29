@@ -6220,41 +6220,55 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
     lastfm_scrobbles: List[LastfmScrobble] = []
     evaluation: Optional[ScrobbleHealthEvaluation] = None
     spotify_recent_access_ok = False
-    report.checks.extend(doctor_check_environment())
-    report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
-    if TOKEN_SOURCE != "cookie":
-        advice = classify_recovery_error(context="config_invalid", detail="Scrobble health mode requires TOKEN_SOURCE='cookie'")
-        report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Scrobble health requires cookie authentication", advice.detail, advice))
-    elif is_missing_or_placeholder(SP_DC_COOKIE, ("your_sp_dc_cookie_value",)):
-        advice = classify_recovery_error(context="secret", detail="SP_DC_COOKIE is missing or still a placeholder")
-        report.checks.append(make_doctor_check("Scrobble health", "FAIL", "SP_DC_COOKIE is missing", advice.detail, advice))
-    else:
-        try:
-            spotify_plays = spotify_get_recent_plays(SP_DC_COOKIE)
-            spotify_recent_access_ok = True
-            report.checks.append(make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded", f"{len(spotify_plays)} completed play(s) returned"))
-        except Exception as exc:
-            advice = classify_recovery_error(exc, "cookie_auth")
-            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play access failed", advice.detail, advice))
-            spotify_plays = []
-    if not username:
-        advice = classify_recovery_error(context="config_invalid", detail="LASTFM_USERNAME is missing")
-        report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm username is missing", advice.detail, advice))
-    elif is_missing_or_placeholder(LASTFM_API_KEY):
-        advice = classify_recovery_error(context="secret", detail="LASTFM_API_KEY is missing")
-        report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm API key is missing", advice.detail, advice))
-    else:
-        try:
-            lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
-            report.checks.append(make_doctor_check("Scrobble health", "PASS", "Last.fm recent-track access succeeded", f"{len(lastfm_scrobbles)} completed scrobble(s) returned for {username}"))
-            if spotify_recent_access_ok:
-                evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
-                report.checks.append(make_doctor_check("Scrobble health", "PASS", f"Current comparison status is {evaluation.status}", f"{len(evaluation.unmatched)} trailing unmatched completed play(s)"))
-        except Exception as exc:
-            advice = classify_recovery_error(exc, "network")
-            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm recent-track access failed", advice.detail, advice))
-    report.checks.extend(doctor_check_notifications())
-    report.checks.extend(doctor_check_webhook_notifications())
+    progress = _doctor_progress if sys.stdout.isatty() else None
+    try:
+        if progress is not None:
+            progress("environment")
+        report.checks.extend(doctor_check_environment())
+        if progress is not None:
+            progress("configuration")
+        report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+        if progress is not None:
+            progress("Spotify recent plays")
+        if TOKEN_SOURCE != "cookie":
+            advice = classify_recovery_error(context="config_invalid", detail="Scrobble health mode requires TOKEN_SOURCE='cookie'")
+            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Scrobble health requires cookie authentication", advice.detail, advice))
+        elif is_missing_or_placeholder(SP_DC_COOKIE, ("your_sp_dc_cookie_value",)):
+            advice = classify_recovery_error(context="secret", detail="SP_DC_COOKIE is missing or still a placeholder")
+            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "SP_DC_COOKIE is missing", advice.detail, advice))
+        else:
+            try:
+                spotify_plays = spotify_get_recent_plays(SP_DC_COOKIE)
+                spotify_recent_access_ok = True
+                report.checks.append(make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded", f"{len(spotify_plays)} completed play(s) returned"))
+            except Exception as exc:
+                advice = classify_recovery_error(exc, "cookie_auth")
+                report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Spotify recent-play access failed", advice.detail, advice))
+                spotify_plays = []
+        if progress is not None:
+            progress("Last.fm scrobbles")
+        if not username:
+            advice = classify_recovery_error(context="config_invalid", detail="LASTFM_USERNAME is missing")
+            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm username is missing", advice.detail, advice))
+        elif is_missing_or_placeholder(LASTFM_API_KEY):
+            advice = classify_recovery_error(context="secret", detail="LASTFM_API_KEY is missing")
+            report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm API key is missing", advice.detail, advice))
+        else:
+            try:
+                lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
+                report.checks.append(make_doctor_check("Scrobble health", "PASS", "Last.fm recent-track access succeeded", f"{len(lastfm_scrobbles)} completed scrobble(s) returned for {username}"))
+                if spotify_recent_access_ok:
+                    evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
+                    report.checks.append(make_doctor_check("Scrobble health", "PASS", f"Current comparison status is {evaluation.status}", f"{len(evaluation.unmatched)} trailing unmatched completed play(s)"))
+            except Exception as exc:
+                advice = classify_recovery_error(exc, "network")
+                report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm recent-track access failed", advice.detail, advice))
+        if progress is not None:
+            progress("notifications")
+        report.checks.extend(doctor_check_notifications())
+        report.checks.extend(doctor_check_webhook_notifications())
+    finally:
+        _doctor_progress_clear()
     print(render_doctor_report(report))
     if VERBOSE_MODE and evaluation is not None:
         print()
