@@ -144,7 +144,7 @@ def test_help_banner_once_and_raw_epilog():
     assert "Path to a config file (mode-specific auto-search if omitted, disable with 'none')" in result.stdout
     assert "--scrobble-health" not in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health" in result.stdout
-    assert f"{prefix} --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username <lastfm_username>" in result.stdout
+    assert f"{prefix} --monitor-mode scrobble_health --lastfm-username <lastfm_username>" in result.stdout
     assert "Last.fm API key for this run (may remain in shell history)" in result.stdout
     assert "--scrobble-match-window" in result.stdout
     assert "--scrobble-lookback" in result.stdout
