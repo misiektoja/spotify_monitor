@@ -339,7 +339,7 @@ def test_scrobble_health_setup_spaces_profile_duration_and_evidence_prompts(monk
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: (print(question) or default))
     monitor._wizard_collect_scrobble_health_profile_section(state)
     monitor._wizard_collect_scrobble_health_threshold_section(state)
-    assert capsys.readouterr().out == "Last.fm username\n\nComparison interval (enter seconds or add s for seconds, m for minutes, h for hours or d for days)\nDead period before an alert\n\nConsecutive missing completed plays required for an alert\n"
+    assert capsys.readouterr().out == "Last.fm username\n\nComparison interval (seconds or use s/m/h/d)\nDead period before an alert\n\nConsecutive missing completed plays required for an alert\n"
 
 
 # Confirms focused webhook setup enables only scrobble-relevant alert flags
