@@ -204,8 +204,8 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Start the separate Spotify-to-Last.fm scrobble health mode
   python3 spotify_monitor.py --monitor-mode scrobble_health
 
-  # File-free scrobble health run with required secrets set as environment variables
-  python3 spotify_monitor.py --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username <lastfm_username>
+  # Start scrobble health with a Last.fm profile selected for this run
+  python3 spotify_monitor.py --monitor-mode scrobble_health --lastfm-username <lastfm_username>
 
   # Diagnose scrobble health and list recent Spotify and Last.fm history
   python3 spotify_monitor.py --monitor-mode scrobble_health --doctor --verbose
