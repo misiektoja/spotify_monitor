@@ -145,6 +145,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
 | Set up Spotify-to-Last.fm scrobble health alerts in separate default files | Run `spotify_monitor --setup-scrobble-health` |
 | Start scrobble health monitoring from saved settings | Run `spotify_monitor --monitor-mode scrobble_health` |
+| Start scrobble health without config or dotenv files | Run `spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME --lastfm-api-key LASTFM_API_KEY --spotify-dc-cookie SP_DC_COOKIE` |
 | Compare recent Spotify plays with Last.fm scrobbles | Run `spotify_monitor --monitor-mode scrobble_health --doctor --verbose` |
 | Select the monitoring mode for one run | Run `spotify_monitor --monitor-mode friend_activity TARGET` or `spotify_monitor --monitor-mode scrobble_health` |
 
