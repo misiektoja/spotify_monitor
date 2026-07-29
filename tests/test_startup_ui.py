@@ -140,6 +140,11 @@ def test_help_banner_once_and_raw_epilog():
     assert f"{prefix} --set-sp-dc" in result.stdout
     assert f"{prefix} --set-webhook-url" in result.stdout
     assert f"{prefix} --send-test-webhook" in result.stdout
+    assert "Select the monitoring mode for this run (default: saved mode or friend_activity)" in result.stdout
+    assert "Select scrobble_health mode and its default files for this run" in result.stdout
+    assert f"{prefix} --scrobble-health" in result.stdout
+    assert f"{prefix} --scrobble-health --doctor --verbose" in result.stdout
+    assert f"{prefix} --monitor-mode friend_activity <spotify_user_id>" in result.stdout
     assert f"\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
@@ -170,7 +175,14 @@ def test_version_output_is_machine_friendly():
 def test_generate_config_output_is_machine_friendly():
     result = run_cli("--generate-config")
     assert result.returncode == 0
-    assert result.stdout.startswith("# Select the method used to obtain the Spotify access token")
+    assert result.stdout.startswith("# Select one of two independent monitoring modes:")
+    assert "#   friend_activity - monitors a followed Spotify user's completed tracks, presence and sessions" in result.stdout
+    assert "#                     Run --setup to configure the target, Spotify authentication and notifications" in result.stdout
+    assert "#                     Run --setup-scrobble-health to configure Spotify, Last.fm and alerts" in result.stdout
+    assert "# Use --monitor-mode to override this value for one run" in result.stdout
+    assert "# The --scrobble-health shortcut selects scrobble_health and can also override LASTFM_USERNAME" in result.stdout
+    assert "# Easiest setup: run --setup-scrobble-health" in result.stdout
+    assert "# For Friend Activity monitoring use the regular --setup wizard" in result.stdout
     assert monitor.STARTUP_BANNER.splitlines()[1] not in result.stdout
     assert "VERBOSE_MODE = False" in result.stdout
 
