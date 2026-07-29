@@ -87,23 +87,33 @@ Run the focused wizard once:
 spotify_monitor --setup-scrobble-health
 ```
 
+The focused wizard lets you review each section before saving. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
+
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
-When `MONITOR_MODE = "scrobble_health"` and `LASTFM_USERNAME` are saved, start the monitor with:
+The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health`. Start with the shortcut, which discovers those files:
 
 ```sh
 spotify_monitor --scrobble-health
 ```
 
-You can override the saved Last.fm username for one run:
+You can also select the mode through `--monitor-mode scrobble_health`. The shorter `--scrobble-health` option is equivalent and can override the saved Last.fm username:
 
 ```sh
+spotify_monitor --monitor-mode scrobble_health
+spotify_monitor --scrobble-health
 spotify_monitor --scrobble-health LASTFM_USERNAME
+```
+
+To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
+
+```sh
+spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
 
 The mode reads the cookie owner's completed Spotify plays through the `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
 
-The console always reports outage and recovery transitions. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
+The console prints the first comparison and explains its result. Every visible monitoring event includes the same human-readable timestamp and separator used by Friend Activity, so console logs show when startup, checks, outages, recoveries or errors occurred. Later routine checks appear only with `--verbose`. Outages, recoveries and operational errors remain visible in normal output. Outage messages use the same human-readable date format for the oldest missing play and every recent missing play. Email and webhook bodies include the notification timestamp. An idle result means Spotify has no completed plays from the configured recent-history period to compare with Last.fm yet. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
 
 These one-run options override the most common thresholds:
 
@@ -118,6 +128,14 @@ spotify_monitor --scrobble-health --doctor
 ```
 
 Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
+
+To inspect the actual histories instead of only their counts, add `--verbose`:
+
+```sh
+spotify_monitor --scrobble-health --doctor --verbose
+```
+
+The verbose focused report lists recent Spotify plays with `MATCHED` or `NOT MATCHED` markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times. Normal Doctor output does not display listening history.
 
 <a id="main-application-docker-image"></a>
 ## Container Operation
