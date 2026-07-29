@@ -92,6 +92,15 @@ def test_report_markers_and_sections(monkeypatch):
     assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
 
 
+# Verifies reports omit sections that have no checks
+def test_report_omits_empty_sections():
+    report = monitor.DoctorReport([monitor.make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded")])
+    rendered = monitor.render_doctor_report(report)
+    assert "\nScrobble health\n" in rendered
+    for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications"):
+        assert f"\n{section}\n" not in rendered
+
+
 # Verifies a clean report returns success
 def test_zero_failures_returns_success(monkeypatch, capsys):
     configure_valid_doctor(monkeypatch)
