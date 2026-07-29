@@ -33,7 +33,7 @@ If the same setting appears in more than one place, the item later in this list 
 4. Values from the selected `.env` file
 5. Command-line options
 
-The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` if you do not want automatic file discovery. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
+The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
 You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
 
@@ -53,7 +53,7 @@ Spotify Monitor has two independent monitoring modes:
 | Friend Activity | `"friend_activity"` | A followed Spotify user's completed tracks, presence and listening sessions | `spotify_monitor --setup` |
 | Scrobble health | `"scrobble_health"` | Whether this Spotify account's completed plays reach one Last.fm profile | `spotify_monitor --setup-scrobble-health` |
 
-Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. Selecting scrobble health on the command line also selects its mode-specific default config and dotenv filenames. Save the Last.fm username as `LASTFM_USERNAME` in the scrobble health config.
+Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. Selecting scrobble health on the command line also selects its mode-specific default config and dotenv filenames. Save the Last.fm username as `LASTFM_USERNAME` or pass `--lastfm-username` for one run.
 
 For example, this runs Friend Activity even when the selected config saves scrobble health as `MONITOR_MODE`:
 
@@ -68,10 +68,10 @@ Scrobble health mode checks whether completed plays from the Spotify account rep
 
 Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
 
-1. `TOKEN_SOURCE = "cookie"`
-2. `LASTFM_USERNAME` in `spotify_monitor_scrobble_health.conf`
+1. The `cookie` token source, which is the built-in default
+2. A Last.fm profile from `LASTFM_USERNAME` or `--lastfm-username`
 3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
-4. A read-only Last.fm API key stored as `LASTFM_API_KEY` in `.env.scrobble_health`
+4. A read-only Last.fm API key from `LASTFM_API_KEY` or `--lastfm-api-key`
 
 The easiest setup is the focused wizard. It selects scrobble health as the saved mode and collects these values through hidden prompts where appropriate:
 
@@ -89,17 +89,29 @@ spotify_monitor --set-lastfm-credentials
 
 The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Without `--env-file`, it uses `.env.scrobble_health`. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
 
+Config and dotenv files are optional. This command disables both automatic searches and supplies every required value directly:
+
+```sh
+spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME --lastfm-api-key LASTFM_API_KEY --spotify-dc-cookie SP_DC_COOKIE
+```
+
+Private values passed as arguments may remain visible in shell history or process listings. A safer file-free form uses process environment variables:
+
+```sh
+LASTFM_API_KEY="your_lastfm_api_key" SP_DC_COOKIE="your_sp_dc_cookie" spotify_monitor --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username LASTFM_USERNAME
+```
+
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
-| Setting | Default | Purpose |
-| --- | ---: | --- |
-| `SCROBBLE_HEALTH_CHECK_INTERVAL` | 120 seconds | Time between comparisons |
-| `SCROBBLE_HEALTH_DEAD_PERIOD` | 1200 seconds | Required age of the oldest unmatched play |
-| `SCROBBLE_HEALTH_MIN_UNMATCHED` | 5 plays | Required consecutive unmatched completed plays |
-| `SCROBBLE_HEALTH_MATCH_WINDOW` | 300 seconds | Allowed timestamp difference for the same artist and track |
-| `SCROBBLE_HEALTH_LOOKBACK` | 21600 seconds | Recent history included in each comparison |
-| `SCROBBLE_HEALTH_REPEAT_INTERVAL` | 86400 seconds | Reminder interval while an outage remains unresolved |
-| `SCROBBLE_HEALTH_STATE_FILE` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
+| Setting | One-run option | Default | Purpose |
+| --- | --- | ---: | --- |
+| `SCROBBLE_HEALTH_CHECK_INTERVAL` | `--scrobble-check-interval` | 120 seconds | Time between comparisons |
+| `SCROBBLE_HEALTH_DEAD_PERIOD` | `--scrobble-dead-period` | 1200 seconds | Required age of the oldest unmatched play |
+| `SCROBBLE_HEALTH_MIN_UNMATCHED` | `--scrobble-min-unmatched` | 5 plays | Required consecutive unmatched completed plays |
+| `SCROBBLE_HEALTH_MATCH_WINDOW` | `--scrobble-match-window` | 300 seconds | Allowed timestamp difference for the same artist and track |
+| `SCROBBLE_HEALTH_LOOKBACK` | `--scrobble-lookback` | 21600 seconds | Recent history included in each comparison |
+| `SCROBBLE_HEALTH_REPEAT_INTERVAL` | `--scrobble-repeat-interval` | 86400 seconds | Reminder interval while an outage remains unresolved |
+| `SCROBBLE_HEALTH_STATE_FILE` | `--scrobble-state-file` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
 
 An operational Spotify or Last.fm request error does not count as a scrobbling outage. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
 
@@ -491,12 +503,13 @@ If the webhook service temporarily refuses a message, Spotify Monitor tries once
 <a id="storing-secrets"></a>
 ## Storing Secrets
 
-A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
+A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `LASTFM_API_KEY`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
 
 You can use operating system environment variables instead of a file. Set them with `export` on Linux, Unix, macOS or WSL:
 
 ```sh
 export SP_DC_COOKIE="your_sp_dc_cookie_value"
+export LASTFM_API_KEY="your_lastfm_api_key"
 export REFRESH_TOKEN="your_spotify_app_refresh_token"
 export SP_APP_CLIENT_ID="your_spotify_app_client_id"
 export SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
@@ -521,6 +534,7 @@ If you installed from PyPI or downloaded only `spotify_monitor.py`, `.env.exampl
 
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
+LASTFM_API_KEY="your_lastfm_api_key"
 REFRESH_TOKEN="your_spotify_app_refresh_token"
 SP_APP_CLIENT_ID="your_spotify_app_client_id"
 SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
