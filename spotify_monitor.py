@@ -27,6 +27,15 @@ VERSION = "3.2"
 # ---------------------------
 
 CONFIG_BLOCK = """
+# Select one of two independent monitoring modes:
+#   friend_activity - monitors a followed Spotify user's completed tracks, presence and sessions
+#                     Run --setup to configure the target, Spotify authentication and notifications
+#   scrobble_health - compares this Spotify account's completed plays with one Last.fm profile
+#                     Run --setup-scrobble-health to configure Spotify, Last.fm and alerts
+# Use --monitor-mode to override this value for one run
+# The --scrobble-health shortcut selects scrobble_health and can also override LASTFM_USERNAME
+MONITOR_MODE = "friend_activity"
+
 # Select the method used to obtain the Spotify access token
 # Available options:
 #   cookie - uses the sp_dc cookie to retrieve a token via the Spotify web endpoint (recommended)
@@ -282,9 +291,9 @@ SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 # Last.fm Scrobble Health Mode
 # ----------------------------
 
-# Monitoring mode: "friend_activity" or "scrobble_health"
-# The --scrobble-health option overrides this value
-MONITOR_MODE = "friend_activity"
+# Settings in this section apply only when MONITOR_MODE = "scrobble_health"
+# Easiest setup: run --setup-scrobble-health
+# For Friend Activity monitoring use the regular --setup wizard
 
 # Last.fm username whose recent scrobbles should contain this Spotify account's completed plays
 # Can also be supplied as the optional value of --scrobble-health
@@ -802,8 +811,13 @@ SPOTIFY_SUFFIX = ""
 
 exec(CONFIG_BLOCK, globals())
 
-# Default name for the optional config file
+# Default filenames for Friend Activity setup and discovery
 DEFAULT_CONFIG_FILENAME = "spotify_monitor.conf"
+DEFAULT_DOTENV_FILENAME = ".env"
+
+# Default filenames for isolated scrobble health setup and discovery
+SCROBBLE_HEALTH_CONFIG_FILENAME = "spotify_monitor_scrobble_health.conf"
+SCROBBLE_HEALTH_DOTENV_FILENAME = ".env.scrobble_health"
 
 # List of secret keys to load from env/config
 SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN", "LASTFM_API_KEY")
@@ -1116,6 +1130,7 @@ class ScrobbleHealthEvaluation:
     latest_match_at: float = 0
     latest_spotify_at: float = 0
     latest_lastfm_at: float = 0
+    matches: tuple[tuple[SpotifyPlay, LastfmScrobble], ...] = ()
 
 
 # Stores one startup setting and its output routing
@@ -2123,7 +2138,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
 def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None) -> str:
     if env_file is not None and str(env_file).casefold() == "none":
         raise LastfmConfigurationError("--set-lastfm-credentials requires a dotenv destination. Replace '--env-file none' with a writable path.")
-    destination = (Path.cwd() / ".env" if env_file is None else Path(env_file).expanduser()).resolve()
+    destination = (Path.cwd() / SCROBBLE_HEALTH_DOTENV_FILENAME if env_file is None else Path(env_file).expanduser()).resolve()
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
     if not terminal_is_interactive:
         raise LastfmConfigurationError("--set-lastfm-credentials requires an interactive terminal so the Last.fm API key stays hidden.")
@@ -2150,7 +2165,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         update_dotenv_file(destination, {"LASTFM_API_KEY": api_key})
     except Exception:
         raise LastfmConfigurationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
-    selected_config = config_path or find_config_file()
+    selected_config = config_path or find_scrobble_health_config_file()
     method = _wizard_install_method()
     doctor_command = _wizard_action_command(method, "--scrobble-health --doctor", selected_config, destination)
     monitor_command = _wizard_action_command(method, "--scrobble-health", selected_config, destination)
@@ -3292,16 +3307,17 @@ def reload_secrets_signal_handler(sig, frame):
         env_path = None
     else:
         # reload .env if python-dotenv is installed
+        default_dotenv_filename = SCROBBLE_HEALTH_DOTENV_FILENAME if MONITOR_MODE == "scrobble_health" else DEFAULT_DOTENV_FILENAME
         try:
             from dotenv import load_dotenv, find_dotenv
             if DOTENV_FILE:
                 env_path = DOTENV_FILE
             else:
-                env_path = find_dotenv()
+                env_path = find_dotenv(filename=default_dotenv_filename)
             if env_path:
                 load_dotenv(env_path, override=True, interpolate=False)
             else:
-                print(f"* No .env file found, skipping env-var reload{suffix}")
+                print(f"* No {default_dotenv_filename if not DOTENV_FILE else 'dotenv'} file found, skipping env-var reload{suffix}")
         except ImportError:
             env_path = None
             print(f"* python-dotenv not installed, skipping env-var reload{suffix}")
@@ -3981,6 +3997,7 @@ def evaluate_scrobble_health(spotify_plays: Sequence[SpotifyPlay], lastfm_scrobb
         return ScrobbleHealthEvaluation("idle", latest_lastfm_at=latest_lastfm)
     unused_scrobbles = set(range(len(recent_scrobbles)))
     matched_play_indexes: set[int] = set()
+    matched_pairs: List[tuple[SpotifyPlay, LastfmScrobble]] = []
     for play_index, play in enumerate(recent_plays):
         play_key = (normalize_scrobble_text(play.artist), normalize_scrobble_text(play.track))
         candidates = [index for index in unused_scrobbles if (normalize_scrobble_text(recent_scrobbles[index].artist), normalize_scrobble_text(recent_scrobbles[index].track)) == play_key and scrobble_time_distance(play, recent_scrobbles[index]) <= selected_match_window]
@@ -3989,6 +4006,7 @@ def evaluate_scrobble_health(spotify_plays: Sequence[SpotifyPlay], lastfm_scrobb
         matched_index = min(candidates, key=lambda index: scrobble_time_distance(play, recent_scrobbles[index]))
         unused_scrobbles.remove(matched_index)
         matched_play_indexes.add(play_index)
+        matched_pairs.append((play, recent_scrobbles[matched_index]))
     latest_match_at = max((recent_plays[index].played_at for index in matched_play_indexes), default=0)
     unmatched = tuple(play for index, play in enumerate(recent_plays) if index not in matched_play_indexes and play.played_at > latest_match_at)
     latest_spotify = recent_plays[-1].played_at
@@ -3999,7 +4017,42 @@ def evaluate_scrobble_health(spotify_plays: Sequence[SpotifyPlay], lastfm_scrobb
         status = "broken"
     else:
         status = "suspect"
-    return ScrobbleHealthEvaluation(status, unmatched, latest_match_at, latest_spotify, latest_lastfm)
+    return ScrobbleHealthEvaluation(status, unmatched, latest_match_at, latest_spotify, latest_lastfm, tuple(matched_pairs))
+
+
+# Formats one play timestamp in the machine's local timezone for Doctor output
+def format_scrobble_history_timestamp(timestamp: float) -> str:
+    try:
+        return datetime.fromtimestamp(timestamp).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    except (OSError, OverflowError, ValueError):
+        return f"timestamp {timestamp:g}"
+
+
+# Renders recent Spotify and Last.fm histories with the comparison result for verbose Doctor output
+def render_scrobble_history_comparison(spotify_plays: Sequence[SpotifyPlay], lastfm_scrobbles: Sequence[LastfmScrobble], evaluation: ScrobbleHealthEvaluation, limit: int = 10, now: Optional[float] = None) -> str:
+    current_time = time.time() if now is None else now
+    cutoff = current_time - SCROBBLE_HEALTH_LOOKBACK
+    recent_spotify = sorted((play for play in spotify_plays if play.played_at >= cutoff), key=lambda play: play.played_at, reverse=True)
+    recent_lastfm = sorted((scrobble for scrobble in lastfm_scrobbles if scrobble.played_at >= cutoff - SCROBBLE_HEALTH_MATCH_WINDOW), key=lambda scrobble: scrobble.played_at, reverse=True)
+    matched_scrobbles = {play: scrobble for play, scrobble in evaluation.matches}
+    selected_limit = max(1, limit)
+    lines = ["Recent history comparison", f"Comparison period: last {display_time(SCROBBLE_HEALTH_LOOKBACK)}", f"Timestamp matching tolerance: {display_time(SCROBBLE_HEALTH_MATCH_WINDOW)}", "Timestamp note: Spotify and Last.fm may record different points in the same track's playback.", "", f"Spotify recently played (showing {min(len(recent_spotify), selected_limit)} of {len(recent_spotify)} considered):"]
+    if recent_spotify:
+        for play in recent_spotify[:selected_limit]:
+            matched = matched_scrobbles.get(play)
+            status = "MATCHED" if matched is not None else "NOT MATCHED"
+            lines.append(f"[{status}] {format_scrobble_history_timestamp(play.played_at)} | {play.artist} - {play.track}")
+            if matched is not None:
+                lines.append(f"          Last.fm timestamp: {format_scrobble_history_timestamp(matched.played_at)}")
+    else:
+        lines.append("No completed Spotify plays were returned for this comparison period.")
+    lines.extend(("", f"Last.fm recent scrobbles (showing {min(len(recent_lastfm), selected_limit)} of {len(recent_lastfm)} considered):"))
+    if recent_lastfm:
+        for scrobble in recent_lastfm[:selected_limit]:
+            lines.append(f"{format_scrobble_history_timestamp(scrobble.played_at)} | {scrobble.artist} - {scrobble.track}")
+    else:
+        lines.append("No completed Last.fm scrobbles were returned for this comparison period.")
+    return sanitize_error_text("\n".join(lines))
 
 
 # Loads a persisted scrobble health state while ignoring malformed or unsupported data
@@ -4072,28 +4125,39 @@ def transition_scrobble_health_state(state: dict, evaluation: ScrobbleHealthEval
 def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthEvaluation, action: str) -> None:
     profile_url = f"https://www.last.fm/user/{quote(username, safe='')}"
     settings_url = "https://www.last.fm/settings/applications"
+    notification_timestamp = get_cur_ts()
     if action == "recovery":
         subject = f"spotify_monitor: Last.fm scrobbling recovered for {username}"
-        body = f"A completed Spotify play was confirmed on the Last.fm profile again.\n\nProfile: {profile_url}"
+        message = f"Spotify scrobbling is working again. A recent Spotify play was found on the Last.fm profile.\n\nProfile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
         count = len(evaluation.unmatched)
-        oldest = datetime.fromtimestamp(evaluation.unmatched[0].played_at).astimezone().isoformat(timespec="minutes") if evaluation.unmatched else "unknown"
-        examples = "\n".join(f"- {play.artist} - {play.track}" for play in evaluation.unmatched[-5:])
+        oldest = get_date_from_ts(evaluation.unmatched[0].played_at) if evaluation.unmatched else "unknown"
+        examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in evaluation.unmatched[-5:])
         reminder = " This is a repeat reminder because the outage is still unresolved." if action == "outage_reminder" else ""
         subject = f"spotify_monitor: Spotify scrobbling may be disconnected for {username}"
-        body = f"{count} consecutive completed Spotify plays were not found on Last.fm. The oldest missing play was recorded by Spotify at {oldest}.{reminder}\n\nRecent missing plays:\n{examples}\n\nReauthorize Spotify Scrobbling: {settings_url}\nLast.fm profile: {profile_url}"
+        message = f"{count} consecutive completed Spotify plays were not found on Last.fm. The oldest missing play was recorded by Spotify at {oldest}.{reminder}\n\nRecent missing plays:\n{examples}\n\nReauthorize Spotify Scrobbling: {settings_url}\nLast.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
-    print(f"* {subject}\n{body}\n")
+    body = f"{message}\n\nTimestamp: {notification_timestamp}"
+    print(f"* {subject}\n{message}")
     send_notification_channels("scrobble_health", subject, body, email_enabled=SCROBBLE_HEALTH_NOTIFICATION, ntfy_priority=4, ntfy_tags=ntfy_tags)
+    print_cur_ts("\nTimestamp:\t\t\t")
 
 
 # Runs the continuous Spotify-to-Last.fm scrobble health comparison
 def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
     state = load_scrobble_health_state(state_path)
     operational_error_notified = False
+    first_successful_check = True
+    print(f"* Scrobble health monitoring started for Last.fm profile {username}.")
+    print(f"* Checking now then every {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}. Press Ctrl+C to stop.")
+    print_cur_ts("\nTimestamp:\t\t\t")
     while True:
         try:
+            if first_successful_check:
+                print("* Running scrobble health check ...", flush=True)
+            else:
+                verbose_print("Running scrobble health check ...")
             spotify_plays = spotify_get_recent_plays(SP_DC_COOKIE)
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
@@ -4103,16 +4167,38 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if next_state != state:
                 save_scrobble_health_state(state_path, next_state)
                 state = next_state
-            verbose_print(f"Scrobble health: {evaluation.status}, trailing unmatched plays: {len(evaluation.unmatched)}")
+            unmatched_count = len(evaluation.unmatched)
+            play_word = "play" if unmatched_count == 1 else "plays"
+            missing_verb = "has" if unmatched_count == 1 else "have"
+            state_verb = "is" if unmatched_count == 1 else "are"
+            threshold_verb = "meets" if unmatched_count == 1 else "meet"
+            if evaluation.status == "idle":
+                result = f"Idle. Spotify reported no completed plays from the last {display_time(SCROBBLE_HEALTH_LOOKBACK)}, so there is nothing to compare with Last.fm yet."
+            elif evaluation.status == "healthy":
+                result = "Healthy. Recent completed Spotify plays were found on Last.fm."
+            elif evaluation.status == "suspect":
+                result = f"Waiting. {unmatched_count} recent Spotify {play_word} {missing_verb} not appeared on Last.fm yet, but the alert threshold has not been reached."
+            else:
+                result = f"Possible outage. {unmatched_count} consecutive Spotify {play_word} {state_verb} missing from Last.fm and {threshold_verb} the alert threshold."
+            result_message = f"Scrobble health result: {result} Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}."
+            if first_successful_check:
+                print(f"* {result_message}")
+                print_cur_ts("\nTimestamp:\t\t\t")
+            else:
+                verbose_print(result_message)
+                if VERBOSE_MODE:
+                    print_cur_ts("\nTimestamp:\t\t\t")
+            first_successful_check = False
             operational_error_notified = False
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
             print_recovery_error(exc, "network", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
             if not operational_error_notified and (ERROR_NOTIFICATION or webhook_event_enabled("error")):
                 subject = "spotify_monitor: scrobble health check error"
-                body = f"The Spotify-to-Last.fm comparison could not run. Existing outage state was preserved.\n\n{sanitize_error_text(exc)}"
+                body = f"The Spotify-to-Last.fm comparison could not run. Existing outage state was preserved.\n\n{sanitize_error_text(exc)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                 send_notification_channels("error", subject, body, email_enabled=ERROR_NOTIFICATION)
                 operational_error_notified = True
+            print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
 
 
@@ -5561,14 +5647,14 @@ def spotify_win_play_song(sp_track_uri_id, method=SPOTIFY_WINDOWS_PLAYING_METHOD
         getattr(os, "startfile")(spotify_convert_uri_to_url(f"spotify:track:{sp_track_uri_id}"))
 
 
-# Finds an optional config file
-def find_config_file(cli_path=None):
+# Finds one optional config file using the selected default filename
+def _find_config_file(cli_path, default_filename):
     """
     Search for an optional config file in:
       1) CLI-provided path (must exist if given)
-      2) ./{DEFAULT_CONFIG_FILENAME}
-      3) ~/.{DEFAULT_CONFIG_FILENAME}
-      4) script-directory/{DEFAULT_CONFIG_FILENAME}
+      2) ./{default_filename}
+      3) ~/.{default_filename}
+      4) script-directory/{default_filename}
     """
 
     if cli_path:
@@ -5576,15 +5662,25 @@ def find_config_file(cli_path=None):
         return str(p) if p.is_file() else None
 
     candidates = [
-        Path.cwd() / DEFAULT_CONFIG_FILENAME,
-        Path.home() / f".{DEFAULT_CONFIG_FILENAME}",
-        Path(__file__).parent / DEFAULT_CONFIG_FILENAME,
+        Path.cwd() / default_filename,
+        Path.home() / f".{default_filename}",
+        Path(__file__).parent / default_filename,
     ]
 
     for p in candidates:
         if p.is_file():
             return str(p)
     return None
+
+
+# Finds the optional Friend Activity config file
+def find_config_file(cli_path=None):
+    return _find_config_file(cli_path, DEFAULT_CONFIG_FILENAME)
+
+
+# Finds the optional scrobble health config file
+def find_scrobble_health_config_file(cli_path=None):
+    return _find_config_file(cli_path, SCROBBLE_HEALTH_CONFIG_FILENAME)
 
 
 # Loads one UTF-8 Python config atomically and optionally collects structured failures
@@ -6109,6 +6205,8 @@ def run_doctor(target_value=None, config_path=None, env_path=None, startup_check
 def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = ()) -> int:
     report = DoctorReport()
     spotify_plays: List[SpotifyPlay] = []
+    lastfm_scrobbles: List[LastfmScrobble] = []
+    evaluation: Optional[ScrobbleHealthEvaluation] = None
     spotify_recent_access_ok = False
     report.checks.extend(doctor_check_environment())
     report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
@@ -6146,6 +6244,9 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
     report.checks.extend(doctor_check_notifications())
     report.checks.extend(doctor_check_webhook_notifications())
     print(render_doctor_report(report))
+    if VERBOSE_MODE and evaluation is not None:
+        print()
+        print(render_scrobble_history_comparison(spotify_plays, lastfm_scrobbles, evaluation))
     delivery_checks = _doctor_offer_notification_tests(report)
     return 1 if any(check.status == "FAIL" for check in (*report.checks, *delivery_checks)) else 0
 
@@ -6337,6 +6438,15 @@ def _build_help_epilog() -> str:
         "  # Guided setup for Spotify-to-Last.fm scrobble health monitoring",
         f"  {prefix} --setup-scrobble-health",
         "",
+        "  # Start the separate Spotify-to-Last.fm scrobble health mode",
+        f"  {prefix} --scrobble-health",
+        "",
+        "  # Diagnose scrobble health and list recent Spotify and Last.fm history",
+        f"  {prefix} --scrobble-health --doctor --verbose",
+        "",
+        "  # Select Friend Activity for this run",
+        f"  {prefix} --monitor-mode friend_activity <spotify_user_id>",
+        "",
     ]
     if method in ("docker", "compose"):
         sections.extend((
@@ -6513,12 +6623,12 @@ def _wizard_ask_secret(question: str) -> str:
 
 
 # Resolves setup destinations without searching parent directories
-def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] = None):
+def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] = None, default_config_filename: str = DEFAULT_CONFIG_FILENAME, default_env_filename: str = DEFAULT_DOTENV_FILENAME):
     if env_file is not None and str(env_file).casefold() == "none":
         raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
     default_root = Path("/data") if method in ("docker", "compose") else Path.cwd()
-    config_path = Path(config_file) if config_file is not None else default_root / DEFAULT_CONFIG_FILENAME
-    env_path = Path(env_file) if env_file is not None else default_root / ".env"
+    config_path = Path(config_file) if config_file is not None else default_root / default_config_filename
+    env_path = Path(env_file) if env_file is not None else default_root / default_env_filename
     config_path = _wizard_validate_destination(method or "manual", config_path, "Configuration destination")
     env_path = _wizard_validate_destination(method or "manual", env_path, "Dotenv destination")
     return config_path, env_path
@@ -6588,11 +6698,13 @@ def _wizard_validate_smtp(values: dict, password: str) -> Optional[RecoveryAdvic
         globals().update(previous)
 
 
-# Collects SMTP settings and notification flags without opening a connection
-def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
+# Collects SMTP settings and mode-appropriate notification flags without opening a connection
+def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
     if not _wizard_ask_yes_no("Configure email notifications?", default=False):
         config_values.update({name: False for name in notification_names})
+        if scrobble_health:
+            config_values["SCROBBLE_HEALTH_NOTIFICATION"] = False
         return []
     while True:
         smtp_values = {
@@ -6611,6 +6723,15 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
         print("  Re-enter the SMTP settings.")
     _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
     config_values.update(smtp_values)
+    if scrobble_health:
+        selected = {
+            "SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Email when scrobbling appears disconnected or recovers?", default=True),
+            "ERROR_NOTIFICATION": _wizard_ask_yes_no("Email when a scrobble health check cannot run?", default=True),
+        }
+        config_values.update({name: False for name in notification_names})
+        config_values.update(selected)
+        labels = {"SCROBBLE_HEALTH_NOTIFICATION": "scrobble outage and recovery", "ERROR_NOTIFICATION": "operational errors"}
+        return [labels[name] for name in ("SCROBBLE_HEALTH_NOTIFICATION", "ERROR_NOTIFICATION") if selected[name]]
     preset = _wizard_ask_choice("Which email notifications should be enabled?", [("Status and errors, recommended", "Active, inactive and error notifications."), ("Every supported event", "Enables all email notification types."), ("Custom", "Choose each notification type separately.")])
     if preset == 0:
         selected = {"ACTIVE_NOTIFICATION": True, "INACTIVE_NOTIFICATION": True, "TRACK_NOTIFICATION": False, "SONG_NOTIFICATION": False, "SONG_ON_LOOP_NOTIFICATION": False, "ERROR_NOTIFICATION": True}
@@ -6650,12 +6771,14 @@ def _wizard_collect_ntfy_access_token(secret_updates: dict, env_path: Path) -> N
         _wizard_queue_secret(secret_updates, env_path, "NTFY_ACCESS_TOKEN", token)
 
 
-# Collects hidden webhook secrets and alert choices without sending a message
-def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path) -> List[str]:
+# Collects hidden webhook secrets and mode-appropriate alert choices without sending a message
+def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
     if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=False):
         config_values["WEBHOOK_ENABLED"] = False
         config_values.update({name: False for name in notification_names})
+        if scrobble_health:
+            config_values["WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION"] = False
         return []
     provider_choice = _wizard_ask_choice("Which webhook service should receive alerts?", [("Discord", "Sends a Discord embed to one channel webhook."), ("ntfy", "Sends a native notification to one ntfy topic URL.")])
     provider = "discord" if provider_choice == 0 else "ntfy"
@@ -6687,6 +6810,15 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
         _wizard_collect_ntfy_access_token(secret_updates, env_path)
     config_values["WEBHOOK_ENABLED"] = True
     config_values["WEBHOOK_USERNAME"] = "Spotify Monitor"
+    if scrobble_health:
+        selected = {
+            "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Send a webhook when scrobbling appears disconnected or recovers?", default=True),
+            "WEBHOOK_ERROR_NOTIFICATION": _wizard_ask_yes_no("Send a webhook when a scrobble health check cannot run?", default=True),
+        }
+        config_values.update({name: False for name in notification_names})
+        config_values.update(selected)
+        labels = {"WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": "scrobble outage and recovery", "WEBHOOK_ERROR_NOTIFICATION": "operational errors"}
+        return [labels[name] for name in ("WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION") if selected[name]]
     preset = _wizard_ask_choice("Which webhook alerts should be sent?", [("Status and errors, recommended", "Alerts when the user becomes active, becomes inactive or monitoring has a problem."), ("Every supported alert", "Also sends tracked-song, every-song and loop alerts."), ("Custom", "Choose each webhook alert separately.")])
     if preset == 0:
         selected = {"WEBHOOK_ACTIVE_NOTIFICATION": True, "WEBHOOK_INACTIVE_NOTIFICATION": True, "WEBHOOK_TRACK_NOTIFICATION": False, "WEBHOOK_SONG_NOTIFICATION": False, "WEBHOOK_SONG_ON_LOOP_NOTIFICATION": False, "WEBHOOK_ERROR_NOTIFICATION": True}
@@ -6962,8 +7094,22 @@ class WizardSetupState:
     enabled_webhooks: List[str]
 
 
+# Holds editable scrobble health answers until the user explicitly saves them
+@dataclass
+class ScrobbleHealthSetupState:
+    config_path: Path
+    env_path: Path
+    baseline_values: dict
+    config_values: dict
+    secret_updates: dict
+    username: str
+    auth: dict
+    enabled_notifications: List[str]
+    enabled_webhooks: List[str]
+
+
 # Restores one editable section to its setup-start values and drops pending secrets
-def _wizard_reset_section(state: WizardSetupState, config_keys: Sequence[str], secret_keys: Sequence[str]) -> None:
+def _wizard_reset_section(state: Union[WizardSetupState, ScrobbleHealthSetupState], config_keys: Sequence[str], secret_keys: Sequence[str]) -> None:
     for key in config_keys:
         if key in state.baseline_values:
             state.config_values[key] = state.baseline_values[key]
@@ -7099,6 +7245,138 @@ def _wizard_review_setup(state: WizardSetupState, method: str) -> bool:
             return True
         if action == 1:
             _wizard_edit_setup_section(state, method)
+            continue
+        print()
+        if _wizard_ask_yes_no("Discard all entered answers and exit?", default=False):
+            return False
+        print("  Setup answers retained.")
+
+
+# Collects the Last.fm profile using the current answer as its default
+def _wizard_collect_scrobble_health_profile_section(state: ScrobbleHealthSetupState) -> None:
+    state.username = _wizard_ask_text("Last.fm username", default=state.username or LASTFM_USERNAME, required=True)
+    state.config_values["LASTFM_USERNAME"] = state.username
+
+
+# Collects scrobble health timing and evidence thresholds
+def _wizard_collect_scrobble_health_threshold_section(state: ScrobbleHealthSetupState) -> None:
+    state.config_values["SCROBBLE_HEALTH_CHECK_INTERVAL"] = _wizard_ask_positive_int("Comparison interval in seconds", int(state.config_values.get("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL)))
+    state.config_values["SCROBBLE_HEALTH_DEAD_PERIOD"] = _wizard_ask_positive_int("Dead period before an alert in seconds", int(state.config_values.get("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD)))
+    state.config_values["SCROBBLE_HEALTH_MIN_UNMATCHED"] = _wizard_ask_positive_int("Consecutive missing completed plays required for an alert", int(state.config_values.get("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED)))
+
+
+# Collects the Last.fm API key and cookie authentication for scrobble health
+def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState, method: str) -> None:
+    for key in ("LASTFM_API_KEY", "SP_DC_COOKIE"):
+        state.secret_updates.pop(key, None)
+    existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path)
+    if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
+        api_key = _wizard_ask_secret("Last.fm API key")
+        _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
+    state.auth = _wizard_collect_cookie_auth(method, state.env_path, state.secret_updates)
+    state.config_values["TOKEN_SOURCE"] = "cookie"
+
+
+# Collects email settings and maps their enabled state to scrobble health alerts
+def _wizard_collect_scrobble_health_email_section(state: ScrobbleHealthSetupState) -> None:
+    _wizard_reset_section(state, WIZARD_EMAIL_CONFIG_KEYS, ("SMTP_PASSWORD",))
+    state.enabled_notifications = _wizard_collect_email(state.config_values, state.secret_updates, state.env_path, scrobble_health=True)
+
+
+# Collects webhook settings and maps their enabled state to scrobble health alerts
+def _wizard_collect_scrobble_health_webhook_section(state: ScrobbleHealthSetupState) -> None:
+    _wizard_reset_section(state, WIZARD_WEBHOOK_CONFIG_KEYS, ("WEBHOOK_URL", "NTFY_ACCESS_TOKEN"))
+    state.enabled_webhooks = _wizard_collect_webhook(state.config_values, state.secret_updates, state.env_path, scrobble_health=True)
+
+
+# Lets scrobble health setup change output files and recollect dotenv-backed answers
+def _wizard_collect_scrobble_health_destination_section(state: ScrobbleHealthSetupState, method: str) -> None:
+    while True:
+        config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
+        try:
+            selected_config = _wizard_validate_destination(method, config_text, "Configuration destination")
+            break
+        except ValueError as exc:
+            print(f"  {exc}.")
+    if selected_config != state.config_path:
+        state.config_path = _wizard_choose_config_destination(selected_config)
+    while True:
+        env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True)
+        if env_text.casefold() == "none":
+            print("  Setup needs a writable dotenv file and cannot use 'none'.")
+            continue
+        try:
+            selected_env = _wizard_validate_destination(method, env_text, "Dotenv destination")
+            break
+        except ValueError as exc:
+            print(f"  {exc}.")
+    state.config_values["DOTENV_FILE"] = str(selected_env)
+    if selected_env == state.env_path:
+        return
+    state.env_path = selected_env
+    print("  The dotenv destination changed. Re-enter authentication and notification settings that may contain secrets.")
+    _wizard_collect_scrobble_health_auth_section(state, method)
+    print()
+    _wizard_collect_scrobble_health_email_section(state)
+    print()
+    _wizard_collect_scrobble_health_webhook_section(state)
+
+
+# Prints the current editable scrobble health answers without exposing secrets
+def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState, method: str) -> None:
+    print("\nSetup summary\n")
+    print(f"  Last.fm user: {state.username}")
+    print(f"  Missing-play threshold: {state.config_values['SCROBBLE_HEALTH_MIN_UNMATCHED']}")
+    print(f"  Dead period: {state.config_values['SCROBBLE_HEALTH_DEAD_PERIOD']} seconds")
+    print(f"  Comparison interval: {state.config_values['SCROBBLE_HEALTH_CHECK_INTERVAL']} seconds")
+    print(f"  Spotify authentication: {state.auth['source']}")
+    print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
+    if state.auth.get("mount_required"):
+        print("  Required action: run the host-specific Firefox import command shown after saving")
+    if state.auth.get("host_os"):
+        print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
+    print(f"  Email outage and recovery alerts: {'enabled' if state.config_values.get('SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
+    print(f"  Email operational error alerts: {'enabled' if state.config_values.get('ERROR_NOTIFICATION') else 'disabled'}")
+    print(f"  Webhook outage and recovery alerts: {'enabled' if state.config_values.get('WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
+    print(f"  Webhook operational error alerts: {'enabled' if state.config_values.get('WEBHOOK_ERROR_NOTIFICATION') else 'disabled'}")
+    print("  Console outage alerts: enabled")
+    print(f"  Configuration: {state.config_path}")
+    print(f"  Dotenv: {state.env_path}")
+    print(f"  Install method: {method}")
+
+
+# Opens one selected scrobble health section then returns to the summary
+def _wizard_edit_scrobble_health_setup_section(state: ScrobbleHealthSetupState, method: str) -> None:
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Last.fm profile", "Change the profile whose scrobbles are checked."), ("Alert thresholds", "Change comparison timing and missing-play evidence."), ("Authentication", "Change the Last.fm API key or Spotify cookie authentication."), ("Email notifications", "Change SMTP details and outage email alerts."), ("Webhook alerts", "Change Discord or ntfy outage alerts."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    if section == 0:
+        print()
+        _wizard_collect_scrobble_health_profile_section(state)
+    elif section == 1:
+        print()
+        _wizard_collect_scrobble_health_threshold_section(state)
+    elif section == 2:
+        print()
+        _wizard_collect_scrobble_health_auth_section(state, method)
+    elif section == 3:
+        print()
+        _wizard_collect_scrobble_health_email_section(state)
+    elif section == 4:
+        print()
+        _wizard_collect_scrobble_health_webhook_section(state)
+    elif section == 5:
+        print()
+        _wizard_collect_scrobble_health_destination_section(state, method)
+
+
+# Reviews editable scrobble health answers until the user saves or confirms a discard
+def _wizard_review_scrobble_health_setup(state: ScrobbleHealthSetupState, method: str) -> bool:
+    while True:
+        _wizard_print_scrobble_health_setup_summary(state, method)
+        action = _wizard_ask_choice("What would you like to do?", [("Save settings", "Write the displayed settings to the selected files."), ("Review or change settings", "Edit one section without losing the other answers."), ("Discard answers and exit", "Leave the destination files unchanged.")])
+        if action == 0:
+            return True
+        if action == 1:
+            _wizard_edit_scrobble_health_setup_section(state, method)
             continue
         print()
         if _wizard_ask_yes_no("Discard all entered answers and exit?", default=False):
@@ -7288,10 +7566,12 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
 def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     if not sys.stdin.isatty():
         print("The scrobble health setup wizard needs an interactive terminal (TTY).")
+        print("Run --setup-scrobble-health from an interactive shell or use --generate-config and edit the files manually.")
+        print(f"Guide: {QUICK_START_GUIDE_URL}")
         raise SystemExit(1)
     method = _wizard_install_method()
     try:
-        config_path, env_path = _wizard_destinations(config_file, env_file, method=method)
+        config_path, env_path = _wizard_destinations(config_file, env_file, method=method, default_config_filename=SCROBBLE_HEALTH_CONFIG_FILENAME, default_env_filename=SCROBBLE_HEALTH_DOTENV_FILENAME)
     except ValueError as exc:
         print(f"Setup cannot start: {exc}")
         raise SystemExit(1) from None
@@ -7300,69 +7580,103 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
     print("Secrets go to the dotenv file and non-secret settings go to the config file.\n")
     config_path = _wizard_choose_config_destination(config_path)
-    username = _wizard_ask_text("Last.fm username", default=LASTFM_USERNAME, required=True)
-    check_interval = _wizard_ask_positive_int("Comparison interval in seconds", SCROBBLE_HEALTH_CHECK_INTERVAL)
-    dead_period = _wizard_ask_positive_int("Dead period before an alert in seconds", SCROBBLE_HEALTH_DEAD_PERIOD)
-    min_unmatched = _wizard_ask_positive_int("Consecutive missing completed plays required for an alert", SCROBBLE_HEALTH_MIN_UNMATCHED)
-    secret_updates: dict = {}
-    existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", env_path)
-    if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
-        api_key = _wizard_ask_secret("Last.fm API key")
-        _wizard_queue_secret(secret_updates, env_path, "LASTFM_API_KEY", api_key)
-    auth = _wizard_collect_cookie_auth(method, env_path, secret_updates)
+    baseline_values = dict(globals())
     config_values = dict(globals())
     config_values.update({
         "MONITOR_MODE": "scrobble_health",
         "TOKEN_SOURCE": "cookie",
         "TARGET_USER_URI_ID": "",
-        "LASTFM_USERNAME": username,
         "DOTENV_FILE": str(env_path),
-        "SCROBBLE_HEALTH_CHECK_INTERVAL": check_interval,
-        "SCROBBLE_HEALTH_DEAD_PERIOD": dead_period,
-        "SCROBBLE_HEALTH_MIN_UNMATCHED": min_unmatched,
         "SCROBBLE_HEALTH_NOTIFICATION": True,
         "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
     })
+    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
+    state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, LASTFM_USERNAME, initial_auth, [], [])
+    _wizard_collect_scrobble_health_profile_section(state)
+    _wizard_collect_scrobble_health_threshold_section(state)
+    _wizard_collect_scrobble_health_auth_section(state, method)
     print()
-    enabled_email = _wizard_collect_email(config_values, secret_updates, env_path)
-    config_values["SCROBBLE_HEALTH_NOTIFICATION"] = bool(enabled_email)
+    _wizard_collect_scrobble_health_email_section(state)
     print()
-    enabled_webhook = _wizard_collect_webhook(config_values, secret_updates, env_path)
-    config_values["WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION"] = bool(enabled_webhook)
-    print("\nSetup summary\n")
-    print(f"  Last.fm user: {username}")
-    print(f"  Missing-play threshold: {min_unmatched}")
-    print(f"  Dead period: {dead_period} seconds")
-    print(f"  Comparison interval: {check_interval} seconds")
-    print(f"  Spotify authentication: {auth['source']}")
-    print(f"  Email outage alerts: {'enabled' if enabled_email else 'disabled'}")
-    print(f"  Webhook outage alerts: {'enabled' if enabled_webhook else 'disabled'}")
-    print(f"  Console outage alerts: enabled")
-    print(f"  Configuration: {config_path}")
-    print(f"  Dotenv: {env_path}")
-    if not _wizard_ask_yes_no("Save this scrobble health setup?", default=True):
+    _wizard_collect_scrobble_health_webhook_section(state)
+    if not _wizard_review_scrobble_health_setup(state, method):
         print("Setup cancelled. Destination files were not changed.")
         raise SystemExit(1)
+    config_path = state.config_path
+    env_path = state.env_path
+    config_values = state.config_values
+    secret_updates = state.secret_updates
+    username = state.username
+    auth = state.auth
+    config_content = generate_config_with_current_values(config_values)
     try:
-        write_status = write_config_file(config_path, generate_config_with_current_values(config_values))
-        update_status = update_dotenv_file(env_path, secret_updates) if secret_updates or not env_path.exists() else None
-    except Exception as exc:
-        print(f"Setup could not save all files: {sanitize_error_text(exc)}")
+        write_status = write_config_file(config_path, config_content)
+    except Exception:
+        print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
         raise SystemExit(1) from None
     print("\nSaved files\n")
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup: {write_status['backup_path']}")
-    if update_status is not None:
-        print(f"  Dotenv: {update_status['path']}")
+    if secret_updates or not env_path.exists():
+        try:
+            update_status = update_dotenv_file(env_path, secret_updates)
+            label = "Secrets" if secret_updates else "Dotenv"
+            print(f"  {label + ':':<15}{update_status['path']}")
+        except Exception:
+            print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
+            print("Setup remains incomplete.")
+            raise SystemExit(1) from None
     if auth.get("browser") and method not in ("docker", "compose"):
         print()
         auth = _wizard_finish_browser_import(auth, env_path)
-    print("\nNext step\n")
-    prefix = _wizard_cmd_prefix(method)
-    print(f"  {prefix} --config-file {_wizard_quote_argument(str(config_path))} --env-file {_wizard_quote_argument(str(env_path))} --scrobble-health\n")
+    doctor_failed = False
+    doctor_ran = False
+    print()
+    if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
+        doctor_ran = True
+        if _wizard_load_effective_setup(config_path, env_path):
+            doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path)) != 0
+        else:
+            doctor_failed = True
+    host_os = auth.get("host_os")
+    doctor_command = _wizard_action_command(method, "--scrobble-health --doctor", config_path, env_path, host_os=host_os)
+    monitor_command = _wizard_action_command(method, "--scrobble-health", config_path, env_path, host_os=host_os)
+    print("\nNext steps\n")
     if not auth["complete"]:
-        print("Spotify authentication is incomplete. Import or save SP_DC_COOKIE before starting.")
+        print("Setup was saved. Spotify authentication still needs to be completed.\n")
+        if method in ("docker", "compose") and auth.get("browser") and host_os:
+            host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
+            print(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n")
+            _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path))
+            _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, host_os=host_os, config_path=config_path))
+        elif method in ("docker", "compose"):
+            _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
+            print("Run setup again to select a host-specific Firefox import command.\n")
+        else:
+            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path, exact=True))
+            _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, exact=True, config_path=config_path))
+        cookie_guide_url = CONTAINER_FIREFOX_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
+        print(f"Cookie guide: {cookie_guide_url}\n")
+        _wizard_print_command("After authentication succeeds, verify scrobble health setup:", doctor_command)
+    else:
+        _wizard_print_command("Check scrobble health setup again:", doctor_command)
+    start_label = "After Doctor passes, start scrobble health monitoring:" if not auth["complete"] or doctor_failed or not doctor_ran else "Start scrobble health monitoring:"
+    compose_uses_default_files = method == "compose" and _wizard_container_path(config_path) == f"/data/{DEFAULT_CONFIG_FILENAME}" and _wizard_container_path(env_path) == "/data/.env"
+    if method == "compose" and compose_uses_default_files:
+        _wizard_print_command(start_label, "docker compose up --no-log-prefix")
+    else:
+        _wizard_print_command(start_label, monitor_command)
+    local_ready = method in ("manual", "pip") and auth["complete"] and doctor_ran and not doctor_failed
+    if local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True):
+        exec_args = _wizard_local_command_args(method, exact=True)
+        exec_args.extend(("--scrobble-health", "--config-file", str(config_path), "--env-file", str(env_path)))
+        sys.stdout.flush()
+        raise SystemExit(_wizard_launch_monitor(exec_args))
+    if method in ("manual", "pip") and auth["complete"] and not doctor_ran:
+        print("Monitoring was not offered because scrobble health Doctor has not passed. Run the Doctor command first.")
+    if doctor_failed:
+        print("Setup was saved but is not ready. Fix the Doctor failures then rerun the Doctor command.")
     raise SystemExit(0)
 
 
@@ -8339,6 +8653,17 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
             print(f"* Warning: Configured webhook provider did not match the URL. Using {detected_provider}.")
 
 
+# Resolves one monitoring mode from config plus mutually exclusive command-line overrides
+def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None, scrobble_health: Optional[str] = None) -> str:
+    if cli_mode is not None and scrobble_health is not None:
+        raise ValueError("--monitor-mode cannot be combined with --scrobble-health")
+    selected_mode = cli_mode or ("scrobble_health" if scrobble_health is not None else str(configured_mode).strip())
+    if selected_mode not in ("friend_activity", "scrobble_health"):
+        raise ValueError(f"MONITOR_MODE must be friend_activity or scrobble_health, not {selected_mode!r}")
+    return selected_mode
+
+
+# Parses command-line options then starts the selected command or monitoring mode
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, ALARM_TIMEOUT, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT
 
@@ -8372,7 +8697,7 @@ def main():
 
     stdout_bck = sys.stdout
 
-    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--doctor", "--setup-scrobble-health"))
+    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--doctor"))
     clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
 
     print_startup_banner()
@@ -8434,7 +8759,7 @@ def main():
         "--config-file",
         dest="config_file",
         metavar="PATH",
-        help="Location of the optional config file",
+        help="Path to a config file (mode-specific auto-search if omitted)",
     )
     conf.add_argument(
         "--generate-config",
@@ -8448,7 +8773,7 @@ def main():
         "--env-file",
         dest="env_file",
         metavar="PATH",
-        help="Path to optional dotenv file (auto-search if not set, disable with 'none')",
+        help="Path to a dotenv file (mode-specific auto-search if omitted, disable with 'none')",
     )
     conf.add_argument(
         "--doctor",
@@ -8457,13 +8782,21 @@ def main():
         help="Run preflight checks with separately approved delivery tests then exit",
     )
 
-    parser.add_argument(
+    monitor_mode_options = parser.add_argument_group("Monitoring mode")
+    monitor_mode_options.add_argument(
+        "--monitor-mode",
+        dest="monitor_mode",
+        choices=["friend_activity", "scrobble_health"],
+        help="Select the monitoring mode for this run (default: saved mode or friend_activity)",
+    )
+
+    monitor_mode_options.add_argument(
         "--scrobble-health",
         dest="scrobble_health",
         nargs="?",
         const="",
         metavar="LASTFM_USERNAME",
-        help="Monitor whether this Spotify account's completed plays reach Last.fm",
+        help="Select scrobble_health mode and its default files for this run, optionally override LASTFM_USERNAME",
     )
 
     # Token source
@@ -8832,11 +9165,23 @@ def main():
         sys.exit(0)
 
     if args.setup_scrobble_health:
-        incompatible = [flag for enabled, flag in ((args.setup, "--setup"), (args.set_sp_dc, "--set-sp-dc"), (args.set_webhook_url, "--set-webhook-url"), (args.doctor, "--doctor"), (args.version, "--version"), (args.generate_config, "--generate-config"), (args.import_browser_cookie, "--import-browser-cookie"), (args.send_test_email, "--send-test-email"), (args.send_test_webhook, "--send-test-webhook"), (args.list_friends, "--list-friends"), (args.scrobble_health is not None, "--scrobble-health")) if enabled]
-        if args.user_id is not None:
-            incompatible.append("SPOTIFY_USER_URI_ID")
-        if incompatible:
-            parser.error("--setup-scrobble-health cannot be combined with " + ", ".join(incompatible))
+        setup_scrobble_conflicts = []
+        argument_index = 1
+        while argument_index < len(sys.argv):
+            argument = sys.argv[argument_index]
+            if argument == "--setup-scrobble-health":
+                argument_index += 1
+                continue
+            if argument in ("--config-file", "--env-file"):
+                argument_index += 2
+                continue
+            if argument.startswith("--config-file=") or argument.startswith("--env-file="):
+                argument_index += 1
+                continue
+            setup_scrobble_conflicts.append(argument if argument.startswith("-") else "SPOTIFY_USER_URI_ID")
+            argument_index += 1
+        if setup_scrobble_conflicts:
+            parser.error("--setup-scrobble-health cannot be combined with " + ", ".join(setup_scrobble_conflicts))
         if args.env_file is not None and args.env_file.casefold() == "none":
             parser.error("--setup-scrobble-health requires a dotenv destination and cannot use --env-file none")
         run_scrobble_health_setup_wizard(args.config_file, args.env_file)
@@ -8865,6 +9210,7 @@ def main():
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_mode, "--monitor-mode"),
             (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
@@ -8918,6 +9264,7 @@ def main():
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_mode, "--monitor-mode"),
             (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
@@ -8969,6 +9316,7 @@ def main():
             (args.check_interval, "--check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
+            (args.monitor_mode, "--monitor-mode"),
             (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
@@ -9023,7 +9371,8 @@ def main():
     if args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
-    cfg_path = find_config_file(CLI_CONFIG_PATH)
+    scrobble_health_cli_mode = args.scrobble_health is not None or args.monitor_mode == "scrobble_health"
+    cfg_path = find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH)
 
     if not cfg_path and CLI_CONFIG_PATH:
         advice = classify_recovery_error(context="config_missing", detail=f"Configuration file not found: {CLI_CONFIG_PATH}")
@@ -9042,9 +9391,14 @@ def main():
             else:
                 sys.exit(1)
 
-    scrobble_health_mode = args.scrobble_health is not None or MONITOR_MODE == "scrobble_health"
-    if scrobble_health_mode:
-        MONITOR_MODE = "scrobble_health"
+    try:
+        MONITOR_MODE = select_monitor_mode(MONITOR_MODE, args.monitor_mode, args.scrobble_health)
+    except ValueError as exc:
+        if args.monitor_mode is not None and args.scrobble_health is not None:
+            parser.error(str(exc))
+        print_recovery_error(context="config_invalid", detail=str(exc))
+        sys.exit(1)
+    scrobble_health_mode = MONITOR_MODE == "scrobble_health"
     scrobble_health_username = str(args.scrobble_health or LASTFM_USERNAME).strip() if scrobble_health_mode else ""
 
     if len(sys.argv) == 1 and not TARGET_USER_URI_ID and not scrobble_health_username:
@@ -9071,9 +9425,9 @@ def main():
     if not args.list_friends and not args.send_test_email and not args.send_test_webhook and not args.doctor:
         if scrobble_health_mode:
             if args.user_id is not None:
-                parser.error("The positional Spotify target cannot be used with --scrobble-health")
+                parser.error("The positional Spotify target cannot be used in scrobble_health mode")
             if not scrobble_health_username:
-                parser.error("--scrobble-health needs a Last.fm username or configured LASTFM_USERNAME")
+                parser.error("Scrobble health mode needs a Last.fm username or configured LASTFM_USERNAME")
             if any(character.isspace() or ord(character) < 32 for character in scrobble_health_username):
                 parser.error("The Last.fm username cannot contain whitespace or control characters")
         else:
@@ -9121,7 +9475,8 @@ def main():
                         raise ValueError(f"Dotenv syntax error near line {line_number}")
                     load_dotenv(env_path, override=True, interpolate=False)
             else:
-                env_path = find_dotenv() or None
+                default_dotenv_filename = SCROBBLE_HEALTH_DOTENV_FILENAME if scrobble_health_mode else DEFAULT_DOTENV_FILENAME
+                env_path = find_dotenv(filename=default_dotenv_filename) or None
                 if env_path:
                     with open(env_path, "r", encoding="utf-8") as dotenv_file:
                         bindings = list(parse_stream(dotenv_file))
@@ -9130,6 +9485,7 @@ def main():
                         line_number = malformed[0].original.line
                         raise ValueError(f"Dotenv syntax error near line {line_number}")
                     load_dotenv(env_path, override=True, interpolate=False)
+                    DOTENV_FILE = env_path
         except ImportError as exc:
             env_path = DOTENV_FILE if DOTENV_FILE else None
             advice = classify_recovery_error(exc, "dependency", "python-dotenv is required to load dotenv files")
