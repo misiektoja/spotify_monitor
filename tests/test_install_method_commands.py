@@ -210,6 +210,9 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
   # Guided setup for Spotify-to-Last.fm scrobble health monitoring
   python3 spotify_monitor.py --setup-scrobble-health
 
+  # Reauthorize the user-owned Spotify app for scrobble health
+  python3 spotify_monitor.py --authorize-scrobble-health
+
   # Start the separate Spotify-to-Last.fm scrobble health mode
   python3 spotify_monitor.py --monitor-mode scrobble_health
 
