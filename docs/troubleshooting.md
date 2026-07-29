@@ -19,6 +19,7 @@ The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers in these sections:
 * Metadata
 * Connectivity
 * Target
+* Scrobble health
 * Notifications
 * Summary
 
@@ -40,6 +41,14 @@ spotify_monitor --doctor <spotify_user_uri_id> --config-file spotify_monitor.con
 spotify_monitor --doctor <spotify_user_uri_id> --env-file /path/.env-spotify_monitor
 spotify_monitor --doctor <spotify_user_uri_id> --token-source client
 ```
+
+For scrobble health, focused Doctor reports how many recent plays each service returned plus the current comparison status. Add `--verbose` to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:
+
+```sh
+spotify_monitor --scrobble-health --doctor --verbose
+```
+
+Track titles and listening timestamps appear only in this verbose diagnostic output. Spotify and Last.fm can timestamp different points in the same playback, so matched rows can have different times. Cookies, API keys and other private credentials remain hidden.
 
 Each failed check includes a `To fix:` action. For local cookie authentication failures, open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account used for monitoring. Then run:
 
