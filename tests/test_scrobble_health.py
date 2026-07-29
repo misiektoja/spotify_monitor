@@ -646,6 +646,30 @@ def test_scrobble_health_doctor_verbose_lists_recent_history(monkeypatch, capsys
     assert "Artist - Diagnostic Track" in verbose_output
 
 
+# Confirms focused Doctor reports each live check while an interactive user waits
+def test_scrobble_health_doctor_reports_interactive_progress(monkeypatch):
+    stream = Mock()
+    stream.isatty.return_value = True
+    progress = Mock()
+    clear_progress = Mock()
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "private-cookie")
+    monkeypatch.setattr(monitor, "LASTFM_API_KEY", "private-api-key")
+    monkeypatch.setattr(monitor, "doctor_check_environment", lambda: [])
+    monkeypatch.setattr(monitor, "doctor_check_configuration", lambda config_path=None, env_path=None, startup_checks=(): [])
+    monkeypatch.setattr(monitor, "doctor_check_notifications", lambda: [])
+    monkeypatch.setattr(monitor, "doctor_check_webhook_notifications", lambda: [])
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda cookie: [])
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
+    monkeypatch.setattr(monitor, "_doctor_offer_notification_tests", lambda report: [])
+    monkeypatch.setattr(monitor, "_doctor_progress", progress)
+    monkeypatch.setattr(monitor, "_doctor_progress_clear", clear_progress)
+    assert monitor.run_scrobble_health_doctor("lastfm-user") == 0
+    assert [call.args[0] for call in progress.call_args_list] == ["environment", "configuration", "Spotify recent plays", "Last.fm scrobbles", "notifications"]
+    clear_progress.assert_called_once_with()
+
+
 # Confirms matching tolerates Last.fm using an estimated track-start timestamp
 def test_evaluate_scrobble_health_matches_estimated_track_start():
     evaluation = monitor.evaluate_scrobble_health([spotify_play(900)], [lastfm_scrobble(720)], now=1000, dead_period=100, min_unmatched=5, match_window=10, lookback=1000)
