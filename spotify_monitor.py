@@ -6390,7 +6390,7 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     if target:
         parts.append(_wizard_quote_argument(target))
     if config_path is not None:
-        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+        selected_config = "none" if str(config_path).casefold() == "none" else _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
         parts.extend(("--config-file", _wizard_quote_argument(selected_config)))
     if env_path is not None:
         selected_env = "none" if str(env_path).casefold() == "none" else _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
@@ -6405,6 +6405,18 @@ def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[s
     command = _wizard_action_command(method, "", config_path, env_path, command_target)
     print("\nNext steps\n")
     print("After Doctor passes, start monitoring:")
+    print(f"    {command}\n")
+
+
+# Prints the install-aware scrobble health command after a successful Doctor run
+def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None) -> None:
+    method = _wizard_install_method()
+    action = "--monitor-mode scrobble_health"
+    if username:
+        action += f" --lastfm-username {_wizard_quote_argument(username)}"
+    command = _wizard_action_command(method, action, config_path, env_path)
+    print("\nNext steps\n")
+    print("After Doctor passes, start scrobble health monitoring:")
     print(f"    {command}\n")
 
 
@@ -9716,19 +9728,21 @@ def main():
         TRACK_SONGS = True
 
     if args.doctor:
+        doctor_config = cfg_path or CLI_CONFIG_PATH
+        command_config = "none" if args.config_file is not None and args.config_file.casefold() == "none" else doctor_config
+        command_env = "none" if args.env_file is not None and args.env_file.casefold() == "none" else env_path
         if scrobble_health_mode:
-            doctor_exit = run_scrobble_health_doctor(scrobble_health_username, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks)
+            doctor_exit = run_scrobble_health_doctor(scrobble_health_username, doctor_config, env_path, doctor_startup_checks)
         else:
             doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
-            doctor_exit = run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks)
+            doctor_exit = run_doctor(doctor_target, doctor_config, env_path, doctor_startup_checks)
         if doctor_exit == 0:
             if scrobble_health_mode:
-                print("Start monitoring with --monitor-mode scrobble_health.")
+                _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username)
             else:
                 command_target = args.user_id if args.user_id is not None else None
                 target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
-                selected_env = "none" if args.env_file is not None and args.env_file.casefold() == "none" else env_path
-                _wizard_print_monitor_after_doctor(cfg_path or CLI_CONFIG_PATH, selected_env, command_target, target_is_saved=target_is_saved)
+                _wizard_print_monitor_after_doctor(command_config, command_env, command_target, target_is_saved=target_is_saved)
         sys.exit(doctor_exit)
 
     if args.send_test_webhook:
