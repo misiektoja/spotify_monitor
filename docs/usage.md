@@ -505,6 +505,14 @@ The polling interval is the number of seconds between Friend Activity checks. Se
 spotify_monitor <spotify_user_uri_id> -c 20
 ```
 
+For scrobble health, set the time between successful comparisons through `SCROBBLE_HEALTH_CHECK_INTERVAL` or `--scrobble-check-interval`:
+
+```sh
+spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
+```
+
+Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate HTTP retry first and sends an operational email or webhook only after three consecutive failed comparisons. It never waits more than 60 seconds for one server-provided `Retry-After` value.
+
 The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
 ```sh
