@@ -68,13 +68,25 @@ Spotify's six-month reauthorization requirement can disconnect Spotify Scrobblin
 spotify_monitor --setup-scrobble-health
 ```
 
-The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, links to [Last.fm API account management](https://www.last.fm/api/accounts), configures the Spotify cookie account whose plays should be checked and offers email or webhook alerts only for outages, recovery and operational errors. It defaults to five consecutive missing completed plays plus a 20 minute dead period. Duration prompts show seconds plus a readable equivalent such as `120s - 2m`. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays. Use the regular `--setup` wizard instead for Friend Activity monitoring.
+The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, links to [Last.fm API account management](https://www.last.fm/api/accounts) and guides you through a user-owned app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). The app owner needs Spotify Premium in Development Mode. Select Web API, register the exact redirect URI shown by the wizard then copy the Client ID. A Client Secret is not needed. Spotify Monitor requests only `user-read-recently-played` through PKCE, opens or prints the authorization URL then asks you to paste the complete redirected URL from the browser address bar. The redirect page may fail to load because Spotify Monitor does not need to run a callback web server.
+
+Authorize the Spotify account whose completed plays should be checked. A separate Spotify account is not required. If that account is different from the app owner, add it under the app's User Management first. See Spotify's [app creation guide](https://developer.spotify.com/documentation/web-api/concepts/apps) and [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) for the corresponding Dashboard screens.
+
+The wizard offers email or webhook alerts only for outages, recovery and operational errors. It defaults to five consecutive missing completed plays plus a 20 minute dead period. Duration prompts show seconds plus a readable equivalent such as `120s - 2m`. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Use the regular `--setup` wizard instead for Friend Activity monitoring.
 
 Like regular setup, the focused wizard lets you review or change each section before saving. It defaults to `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health` so its settings and private values do not replace the Friend Activity files. Pass `--config-file` or `--env-file` to choose another destination. With complete local authentication it can run the focused Doctor checks then start monitoring immediately. If authentication remains incomplete, it prints the exact authentication command before the Doctor and monitoring commands. Once monitoring starts, the console prints the first check and its result with the same timestamp separator used by Friend Activity. Later routine results appear with `--verbose` while outages, recoveries and errors remain visible normally.
 
 To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key in `.env.scrobble_health` by default because scrobble health does not need the Last.fm shared secret.
 
-Saved files are optional. For a one-off or externally managed run, select `--monitor-mode scrobble_health` then provide `--lastfm-username` plus the required credentials through CLI options or environment variables. Private command-line values may remain in shell history or process listings, so process environment variables are safer when persistence is not needed.
+To grant access again after the Spotify authorization expires or is revoked, run:
+
+```sh
+spotify_monitor --authorize-scrobble-health
+```
+
+The command reuses the saved Client ID and redirect URI then replaces only `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. It also prints the matching Doctor and monitoring commands. Spotify refresh tokens expire after six months, so this reauthorization is separate from reconnecting Spotify Scrobbling on Last.fm when the monitor detects an outage.
+
+Saved files are optional. For a one-off or externally managed run, select `--monitor-mode scrobble_health` then provide `--lastfm-username`, `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token`. The redirect URI defaults to `http://127.0.0.1:8888/callback` and can be overridden with `--scrobble-redirect-uri`. The same private values can come from environment variables. Private command-line values may remain in shell history or process listings, so process environment variables are safer when persistence is not needed.
 
 For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
 
