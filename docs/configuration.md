@@ -53,7 +53,7 @@ Spotify Monitor has two independent monitoring modes:
 | Friend Activity | `"friend_activity"` | A followed Spotify user's completed tracks, presence and listening sessions | `spotify_monitor --setup` |
 | Scrobble health | `"scrobble_health"` | Whether this Spotify account's completed plays reach one Last.fm profile | `spotify_monitor --setup-scrobble-health` |
 
-Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. `--scrobble-health [LASTFM_USERNAME]` is a shortcut that selects scrobble health and can also override the saved Last.fm username.
+Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. Selecting scrobble health on the command line also selects its mode-specific default config and dotenv filenames. Save the Last.fm username as `LASTFM_USERNAME` in the scrobble health config.
 
 For example, this runs Friend Activity even when the selected config saves scrobble health as `MONITOR_MODE`:
 
