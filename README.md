@@ -144,8 +144,9 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 | Most securely enter or replace `LASTFM_API_KEY` | Run `spotify_monitor --set-lastfm-credentials` and enter the key at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
 | Set up Spotify-to-Last.fm scrobble health alerts in separate default files | Run `spotify_monitor --setup-scrobble-health` |
+| Reauthorize Spotify recent-play access for scrobble health | Run `spotify_monitor --authorize-scrobble-health` |
 | Start scrobble health monitoring from saved settings | Run `spotify_monitor --monitor-mode scrobble_health` |
-| Start scrobble health without saved settings | Provide credentials through CLI options or environment variables then run `spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME` |
+| Start scrobble health without saved settings | Provide the Last.fm API key, Spotify app Client ID and Spotify refresh token through CLI options or environment variables then run `spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME` |
 | Compare recent Spotify plays with Last.fm scrobbles | Run `spotify_monitor --monitor-mode scrobble_health --doctor --verbose` |
 | Select the monitoring mode for one run | Run `spotify_monitor --monitor-mode friend_activity TARGET` or `spotify_monitor --monitor-mode scrobble_health` |
 
