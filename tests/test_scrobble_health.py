@@ -33,6 +33,7 @@ def install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, yes_no
     monkeypatch.setattr(monitor, "_wizard_destinations", lambda config_file, env_file, method=None, **kwargs: (config_path, env_path))
     monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path: path)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "lastfm-user")
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: next(positive_values) if positive_values is not None else default)
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: next(positive_values) if positive_values is not None else default)
     monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: True)
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=lambda question, default=True: next(answers)))
@@ -309,6 +310,38 @@ def test_scrobble_health_setup_collects_focused_email_flags(monkeypatch):
     assert secret_updates["SMTP_PASSWORD"] == "private-password"
 
 
+# Confirms focused setup links to Last.fm API account management before key entry
+def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {}, {}, "lastfm-user", {}, [], [])
+    guidance_before_prompt = []
+
+    # Captures wizard output at the moment hidden key entry begins
+    def ask_secret(question):
+        guidance_before_prompt.append(capsys.readouterr().out)
+        return "private-api-key"
+
+    secret_prompt = Mock(side_effect=ask_secret)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", secret_prompt)
+    monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
+    monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda method, path, updates: {"complete": True, "source": "existing SP_DC_COOKIE"})
+    monitor._wizard_collect_scrobble_health_auth_section(state, "manual")
+    assert guidance_before_prompt == [f"\nCreate or view your Last.fm API account: {monitor.LASTFM_API_ACCOUNTS_URL}\n"]
+    secret_prompt.assert_called_once_with("Last.fm API key")
+    assert state.secret_updates["LASTFM_API_KEY"] == "private-api-key"
+
+
+# Confirms focused setup separates profile, duration prompts and missing-play evidence
+def test_scrobble_health_setup_spaces_profile_duration_and_evidence_prompts(monkeypatch, capsys):
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {}, {}, "lastfm-user", {}, [], [])
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: (print(question) or "lastfm-user"))
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: (print(question) or default))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: (print(question) or default))
+    monitor._wizard_collect_scrobble_health_profile_section(state)
+    monitor._wizard_collect_scrobble_health_threshold_section(state)
+    assert capsys.readouterr().out == "Last.fm username\n\nComparison interval (enter seconds or add s for seconds, m for minutes, h for hours or d for days)\nDead period before an alert\n\nConsecutive missing completed plays required for an alert\n"
+
+
 # Confirms focused webhook setup enables only scrobble-relevant alert flags
 def test_scrobble_health_setup_collects_focused_webhook_flags(monkeypatch):
     config_values = {}
@@ -335,6 +368,8 @@ def test_scrobble_health_setup_summary_distinguishes_notification_flags(capsys):
     state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, config_values, {}, "lastfm-user", auth, ["operational errors"], ["scrobble outage and recovery"])
     monitor._wizard_print_scrobble_health_setup_summary(state, "manual")
     output = capsys.readouterr().out
+    assert "Dead period: 1200s - 20m" in output
+    assert "Comparison interval: 300s - 5m" in output
     assert "Email outage and recovery alerts: disabled" in output
     assert "Email operational error alerts: enabled" in output
     assert "Webhook outage and recovery alerts: enabled" in output
