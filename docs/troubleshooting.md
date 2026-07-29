@@ -11,7 +11,7 @@ Before a long monitoring run, check the current configuration:
 spotify_monitor --doctor
 ```
 
-The report uses `[PASS]`, `[WARN]` and `[FAIL]` markers in these sections:
+The report shows only sections relevant to the checks it performed. It uses `[PASS]`, `[WARN]` and `[FAIL]` markers in these possible sections:
 
 * Environment
 * Configuration
