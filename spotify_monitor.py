@@ -33,7 +33,6 @@ CONFIG_BLOCK = """
 #   scrobble_health - compares this Spotify account's completed plays with one Last.fm profile
 #                     Run --setup-scrobble-health to configure Spotify, Last.fm and alerts
 # Use --monitor-mode to override this value for one run
-# The --scrobble-health shortcut selects scrobble_health and can also override LASTFM_USERNAME
 MONITOR_MODE = "friend_activity"
 
 # Select the method used to obtain the Spotify access token
@@ -296,7 +295,6 @@ SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 # For Friend Activity monitoring use the regular --setup wizard
 
 # Last.fm username whose recent scrobbles should contain this Spotify account's completed plays
-# Can also be supplied as the optional value of --scrobble-health
 LASTFM_USERNAME = ""
 
 # Last.fm API key used for the read-only user.getRecentTracks request
@@ -2167,8 +2165,8 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         raise LastfmConfigurationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
     selected_config = config_path or find_scrobble_health_config_file()
     method = _wizard_install_method()
-    doctor_command = _wizard_action_command(method, "--scrobble-health --doctor", selected_config, destination)
-    monitor_command = _wizard_action_command(method, "--scrobble-health", selected_config, destination)
+    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", selected_config, destination)
+    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", selected_config, destination)
     print(f"* Updated dotenv: {destination}")
     print("* Saved: LASTFM_API_KEY")
     _wizard_print_command("Check scrobble health setup:", doctor_command)
@@ -6439,10 +6437,10 @@ def _build_help_epilog() -> str:
         f"  {prefix} --setup-scrobble-health",
         "",
         "  # Start the separate Spotify-to-Last.fm scrobble health mode",
-        f"  {prefix} --scrobble-health",
+        f"  {prefix} --monitor-mode scrobble_health",
         "",
         "  # Diagnose scrobble health and list recent Spotify and Last.fm history",
-        f"  {prefix} --scrobble-health --doctor --verbose",
+        f"  {prefix} --monitor-mode scrobble_health --doctor --verbose",
         "",
         "  # Select Friend Activity for this run",
         f"  {prefix} --monitor-mode friend_activity <spotify_user_id>",
@@ -7640,8 +7638,8 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         else:
             doctor_failed = True
     host_os = auth.get("host_os")
-    doctor_command = _wizard_action_command(method, "--scrobble-health --doctor", config_path, env_path, host_os=host_os)
-    monitor_command = _wizard_action_command(method, "--scrobble-health", config_path, env_path, host_os=host_os)
+    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, env_path, host_os=host_os)
+    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, env_path, host_os=host_os)
     print("\nNext steps\n")
     if not auth["complete"]:
         print("Setup was saved. Spotify authentication still needs to be completed.\n")
@@ -7670,7 +7668,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     local_ready = method in ("manual", "pip") and auth["complete"] and doctor_ran and not doctor_failed
     if local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True):
         exec_args = _wizard_local_command_args(method, exact=True)
-        exec_args.extend(("--scrobble-health", "--config-file", str(config_path), "--env-file", str(env_path)))
+        exec_args.extend(("--monitor-mode", "scrobble_health", "--config-file", str(config_path), "--env-file", str(env_path)))
         sys.stdout.flush()
         raise SystemExit(_wizard_launch_monitor(exec_args))
     if method in ("manual", "pip") and auth["complete"] and not doctor_ran:
@@ -8653,11 +8651,9 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
             print(f"* Warning: Configured webhook provider did not match the URL. Using {detected_provider}.")
 
 
-# Resolves one monitoring mode from config plus mutually exclusive command-line overrides
-def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None, scrobble_health: Optional[str] = None) -> str:
-    if cli_mode is not None and scrobble_health is not None:
-        raise ValueError("--monitor-mode cannot be combined with --scrobble-health")
-    selected_mode = cli_mode or ("scrobble_health" if scrobble_health is not None else str(configured_mode).strip())
+# Resolves one monitoring mode from config plus an optional command-line selection
+def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None) -> str:
+    selected_mode = cli_mode or str(configured_mode).strip()
     if selected_mode not in ("friend_activity", "scrobble_health"):
         raise ValueError(f"MONITOR_MODE must be friend_activity or scrobble_health, not {selected_mode!r}")
     return selected_mode
@@ -8788,15 +8784,6 @@ def main():
         dest="monitor_mode",
         choices=["friend_activity", "scrobble_health"],
         help="Select the monitoring mode for this run (default: saved mode or friend_activity)",
-    )
-
-    monitor_mode_options.add_argument(
-        "--scrobble-health",
-        dest="scrobble_health",
-        nargs="?",
-        const="",
-        metavar="LASTFM_USERNAME",
-        help="Select scrobble_health mode and its default files for this run, optionally override LASTFM_USERNAME",
     )
 
     # Token source
@@ -9211,7 +9198,6 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
-            (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9265,7 +9251,6 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
-            (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9317,7 +9302,6 @@ def main():
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
-            (args.scrobble_health, "--scrobble-health"),
             (args.scrobble_check_interval, "--scrobble-check-interval"),
             (args.scrobble_dead_period, "--scrobble-dead-period"),
             (args.scrobble_min_unmatched, "--scrobble-min-unmatched"),
@@ -9371,7 +9355,7 @@ def main():
     if args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
-    scrobble_health_cli_mode = args.scrobble_health is not None or args.monitor_mode == "scrobble_health"
+    scrobble_health_cli_mode = args.monitor_mode == "scrobble_health"
     cfg_path = find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH)
 
     if not cfg_path and CLI_CONFIG_PATH:
@@ -9392,14 +9376,12 @@ def main():
                 sys.exit(1)
 
     try:
-        MONITOR_MODE = select_monitor_mode(MONITOR_MODE, args.monitor_mode, args.scrobble_health)
+        MONITOR_MODE = select_monitor_mode(MONITOR_MODE, args.monitor_mode)
     except ValueError as exc:
-        if args.monitor_mode is not None and args.scrobble_health is not None:
-            parser.error(str(exc))
         print_recovery_error(context="config_invalid", detail=str(exc))
         sys.exit(1)
     scrobble_health_mode = MONITOR_MODE == "scrobble_health"
-    scrobble_health_username = str(args.scrobble_health or LASTFM_USERNAME).strip() if scrobble_health_mode else ""
+    scrobble_health_username = str(LASTFM_USERNAME).strip() if scrobble_health_mode else ""
 
     if len(sys.argv) == 1 and not TARGET_USER_URI_ID and not scrobble_health_username:
         _wizard_welcome()
@@ -9594,7 +9576,7 @@ def main():
             doctor_exit = run_doctor(doctor_target, cfg_path or CLI_CONFIG_PATH, env_path, doctor_startup_checks)
         if doctor_exit == 0:
             if scrobble_health_mode:
-                print("Start monitoring with --scrobble-health.")
+                print("Start monitoring with --monitor-mode scrobble_health.")
             else:
                 command_target = args.user_id if args.user_id is not None else None
                 target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
