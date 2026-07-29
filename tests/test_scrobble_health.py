@@ -128,6 +128,7 @@ def test_scrobble_health_setup_uses_normal_startup_clear(monkeypatch):
     clear_mock = Mock()
     output = Mock()
     output.isatty.return_value = True
+    output.fileno.return_value = 1
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--setup-scrobble-health"])
     monkeypatch.setattr(monitor.sys, "stdout", output)
     monkeypatch.setattr(monitor, "clear_screen", clear_mock)
