@@ -6161,8 +6161,11 @@ def render_doctor_report(report: DoctorReport) -> str:
     lines = ["Doctor", "", "No files will be written. In an interactive terminal, real email and webhook tests are offered separately and run only after approval."]
     sections = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
     for section in sections:
+        section_checks = [item for item in report.checks if item.section == section]
+        if not section_checks:
+            continue
         lines.extend(("", section))
-        for check in (item for item in report.checks if item.section == section):
+        for check in section_checks:
             lines.append(f"[{'PASS' if check.status == 'PASS' else check.status}] {check.label}")
             if check.detail:
                 lines.append(check.detail)
