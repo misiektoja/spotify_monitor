@@ -91,19 +91,13 @@ The focused wizard lets you review each section before saving. Its notification 
 
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
-The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health`. Start with the shortcut, which discovers those files:
-
-```sh
-spotify_monitor --scrobble-health
-```
-
-You can also select the mode through `--monitor-mode scrobble_health`. The shorter `--scrobble-health` option is equivalent and can override the saved Last.fm username:
+The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health`. Select the mode to discover those files:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health
-spotify_monitor --scrobble-health
-spotify_monitor --scrobble-health LASTFM_USERNAME
 ```
+
+Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config. Use `--config-file` when you want to select another saved scrobble health configuration.
 
 To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
 
@@ -118,13 +112,13 @@ The console prints the first comparison and explains its result. Every visible m
 These one-run options override the most common thresholds:
 
 ```sh
-spotify_monitor --scrobble-health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
+spotify_monitor --monitor-mode scrobble_health --scrobble-min-unmatched 7 --scrobble-dead-period 1800 --scrobble-check-interval 180
 ```
 
 Use focused Doctor checks before leaving it unattended:
 
 ```sh
-spotify_monitor --scrobble-health --doctor
+spotify_monitor --monitor-mode scrobble_health --doctor
 ```
 
 Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state.
@@ -132,7 +126,7 @@ Doctor verifies scoped Spotify recent-play access and Last.fm recent-track acces
 To inspect the actual histories instead of only their counts, add `--verbose`:
 
 ```sh
-spotify_monitor --scrobble-health --doctor --verbose
+spotify_monitor --monitor-mode scrobble_health --doctor --verbose
 ```
 
 The verbose focused report lists recent Spotify plays with `MATCHED` or `NOT MATCHED` markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times. Normal Doctor output does not display listening history.
