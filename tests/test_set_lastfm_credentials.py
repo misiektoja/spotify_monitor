@@ -80,6 +80,7 @@ def test_set_lastfm_credentials_updates_only_api_key(monkeypatch, capsys):
         assert destination.read_text(encoding="utf-8").startswith("# keep\nUNRELATED=stay\n")
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay", "LASTFM_API_KEY": secret}
         assert secret not in output
+        assert monitor.LASTFM_API_ACCOUNTS_URL in output
         assert "--monitor-mode scrobble_health --doctor" in output
         assert "--monitor-mode scrobble_health" in output
         replace.assert_called_once()
