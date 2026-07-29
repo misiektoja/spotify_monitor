@@ -111,7 +111,7 @@ The default alert requires five consecutive unmatched completed plays. The oldes
 | `SCROBBLE_HEALTH_REPEAT_INTERVAL` | `--scrobble-repeat-interval` | 86400 seconds | Reminder interval while an outage remains unresolved |
 | `SCROBBLE_HEALTH_STATE_FILE` | `--scrobble-state-file` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
 
-An operational Spotify or Last.fm request error does not count as a scrobbling outage. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
+An operational Spotify or Last.fm request error does not count as a scrobbling outage. Scrobble health makes one bounded immediate HTTP retry then waits for `SPOTIFY_ERROR_INTERVAL`, which is three minutes by default, before its next comparison. It sends an operational email or webhook only after three consecutive comparison failures. A successful comparison resets that failure count. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source
