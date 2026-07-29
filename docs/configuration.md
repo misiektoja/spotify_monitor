@@ -33,7 +33,7 @@ If the same setting appears in more than one place, the item later in this list 
 4. Values from the selected `.env` file
 5. Command-line options
 
-The `.env` layer applies only to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SMTP_PASSWORD` and `WEBHOOK_URL`. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
+The `.env` layer applies to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `SMTP_PASSWORD` and `WEBHOOK_URL`. It also accepts the non-secret `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` settings for externally managed runs. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
 You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
 
@@ -64,14 +64,14 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health
 
-Scrobble health mode checks whether completed plays from the Spotify account represented by `SP_DC_COOKIE` appear on one Last.fm profile. It does not need a second Spotify account and it does not use Friend Activity. It needs:
-
 Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
 
-1. The `cookie` token source, which is the built-in default
-2. A Last.fm profile from `LASTFM_USERNAME` or `--lastfm-username`
-3. `SP_DC_COOKIE` for the Spotify account whose plays should be checked
-4. A read-only Last.fm API key from `LASTFM_API_KEY` or `--lastfm-api-key`
+Scrobble health checks whether completed plays from one Spotify account appear on one Last.fm profile. It uses Spotify's official recently-played endpoint rather than Friend Activity or `SP_DC_COOKIE`. It does not need a second Spotify account. It needs:
+
+1. A Last.fm profile from `LASTFM_USERNAME` or `--lastfm-username`
+2. A read-only Last.fm API key from `LASTFM_API_KEY` or `--lastfm-api-key`
+3. A user-owned Spotify Developer app Client ID from `SPOTIFY_SCROBBLE_CLIENT_ID` or `--scrobble-client-id`
+4. A PKCE refresh token from `SPOTIFY_SCROBBLE_REFRESH_TOKEN` or `--scrobble-refresh-token`
 
 The easiest setup is the focused wizard. It selects scrobble health as the saved mode and collects these values through hidden prompts where appropriate:
 
@@ -83,6 +83,32 @@ Before hidden API-key entry, the wizard shows the [Last.fm API accounts page](ht
 
 For Friend Activity monitoring use the regular `spotify_monitor --setup` wizard instead.
 
+<a id="spotify-recent-play-authorization"></a>
+### Spotify Recent-play Authorization
+
+Scrobble health uses a Spotify app owned by you. This avoids placing every Spotify Monitor user behind one shared Development Mode quota. Spotify reports quota exhaustion as `QUOTA_EXCEEDED`, which the monitor treats as an operational failure rather than evidence of missing scrobbles.
+
+The focused setup wizard guides these steps:
+
+1. Sign in to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with an account that has Spotify Premium.
+2. Create an app or open an existing app then select Web API.
+3. Add the exact redirect URI shown by setup. The default is `http://127.0.0.1:8888/callback`. Spotify allows HTTP for an explicit loopback IP address but not `localhost`. Use HTTPS for a non-loopback redirect.
+4. Copy the Client ID into setup. Do not enter the Client Secret because PKCE does not use it.
+5. If another Spotify account will be authorized, add it under the app's User Management.
+6. Approve the read-only `user-read-recently-played` scope. After Spotify redirects, copy the complete URL from the browser address bar and paste it into setup. The browser page itself does not need to load.
+
+Spotify documents the Dashboard flow in [Creating an App](https://developer.spotify.com/documentation/web-api/concepts/apps) and the authorization exchange in [Authorization Code with PKCE Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow).
+
+The Client ID and redirect URI are non-secret settings saved in `spotify_monitor_scrobble_health.conf`. The refresh token is private and setup saves it as `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. A Client Secret is never requested or stored.
+
+To grant access again after the authorization expires or is revoked, run:
+
+```sh
+spotify_monitor --authorize-scrobble-health
+```
+
+The command reuses the saved app settings, opens or prints a new state-protected authorization URL then replaces only the saved refresh token. Spotify refresh tokens expire after six months. A running process can load a replaced token after `SIGHUP` or you can restart it. This authorization is separate from reconnecting Spotify Scrobbling at [Last.fm connected applications](https://www.last.fm/settings/applications).
+
 To enter or replace only the API key safely, run:
 
 ```sh
@@ -91,13 +117,13 @@ spotify_monitor --set-lastfm-credentials
 
 The command hides the key while you type or paste it. It confirms before replacing an existing value then updates only `LASTFM_API_KEY` in the selected dotenv file. Without `--env-file`, it uses `.env.scrobble_health`. Spotify Monitor does not request the Last.fm shared secret because scrobble health uses only the read-only `user.getRecentTracks` API method.
 
-Config and dotenv files are optional. With `LASTFM_API_KEY` and `SP_DC_COOKIE` already available as environment variables, only the profile needs a runtime option:
+Config and dotenv files are optional. With `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REFRESH_TOKEN` already available as environment variables, only the profile needs a runtime option:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
 ```
 
-You can pass the credentials with `--lastfm-api-key` and `--spotify-dc-cookie` instead. Private values passed as arguments may remain visible in shell history or process listings.
+You can pass the credentials with `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token` instead. Use `--scrobble-redirect-uri` if the app does not register the default redirect. Private values passed as arguments may remain visible in shell history or process listings.
 
 The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This deliberately tolerates short Last.fm delays and occasional missing scrobbles. The relevant settings are:
 
@@ -111,7 +137,7 @@ The default alert requires five consecutive unmatched completed plays. The oldes
 | `SCROBBLE_HEALTH_REPEAT_INTERVAL` | `--scrobble-repeat-interval` | 86400 seconds | Reminder interval while an outage remains unresolved |
 | `SCROBBLE_HEALTH_STATE_FILE` | `--scrobble-state-file` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
 
-An operational Spotify or Last.fm request error does not count as a scrobbling outage. Scrobble health makes one bounded immediate HTTP retry then waits for `SPOTIFY_ERROR_INTERVAL`, which is three minutes by default, before its next comparison. It sends an operational email or webhook only after three consecutive comparison failures. A successful comparison resets that failure count. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
+An operational Spotify or Last.fm request error does not count as a scrobbling outage. Scrobble health makes one bounded immediate retry for transient server errors then waits for `SPOTIFY_ERROR_INTERVAL`, which is three minutes by default, before its next comparison. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A `QUOTA_EXCEEDED` response explains that the user-owned app quota is exhausted and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes). The monitor sends an operational email or webhook only after three consecutive comparison failures. A successful comparison resets that failure count. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source
@@ -501,13 +527,16 @@ If the webhook service temporarily refuses a message, Spotify Monitor tries once
 <a id="storing-secrets"></a>
 ## Storing Secrets
 
-A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `LASTFM_API_KEY`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
+A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
 
 You can use operating system environment variables instead of a file. Set them with `export` on Linux, Unix, macOS or WSL:
 
 ```sh
 export SP_DC_COOKIE="your_sp_dc_cookie_value"
 export LASTFM_API_KEY="your_lastfm_api_key"
+export SPOTIFY_SCROBBLE_CLIENT_ID="your_spotify_recent_play_client_id"
+export SPOTIFY_SCROBBLE_REDIRECT_URI="http://127.0.0.1:8888/callback"
+export SPOTIFY_SCROBBLE_REFRESH_TOKEN="your_spotify_recent_play_refresh_token"
 export REFRESH_TOKEN="your_spotify_app_refresh_token"
 export SP_APP_CLIENT_ID="your_spotify_app_client_id"
 export SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
@@ -528,11 +557,14 @@ If you cloned the repository, you can copy the included example then fill in onl
 test -e .env || cp .env.example .env
 ```
 
-If you installed from PyPI or downloaded only `spotify_monitor.py`, `.env.example` will not be in your current directory. Create a plain text file named `.env` in the directory where you run Spotify Monitor then add only the values you use. `REFRESH_TOKEN` is for advanced client mode. Spotify app credentials are optional legacy metadata credentials.
+If you installed from PyPI or downloaded only `spotify_monitor.py`, `.env.example` will not be in your current directory. Create a plain text file named `.env` in the directory where you run Spotify Monitor then add only the values you use. `REFRESH_TOKEN` is for advanced client mode. `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` are optional legacy metadata credentials. `SPOTIFY_SCROBBLE_CLIENT_ID` is the separate non-secret app identifier used by scrobble health.
 
 ```ini
 SP_DC_COOKIE="your_sp_dc_cookie_value"
 LASTFM_API_KEY="your_lastfm_api_key"
+SPOTIFY_SCROBBLE_CLIENT_ID="your_spotify_recent_play_client_id"
+SPOTIFY_SCROBBLE_REDIRECT_URI="http://127.0.0.1:8888/callback"
+SPOTIFY_SCROBBLE_REFRESH_TOKEN="your_spotify_recent_play_refresh_token"
 REFRESH_TOKEN="your_spotify_app_refresh_token"
 SP_APP_CLIENT_ID="your_spotify_app_client_id"
 SP_APP_CLIENT_SECRET="your_spotify_app_client_secret"
