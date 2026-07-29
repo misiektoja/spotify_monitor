@@ -93,6 +93,15 @@ def test_container_setup_destinations_use_data_mount(tmp_path, monkeypatch, meth
     assert env_path == Path("/data/.env")
 
 
+# Verifies scrobble health setup uses isolated defaults inside the data mount
+@pytest.mark.parametrize("method", ["docker", "compose"])
+def test_scrobble_health_setup_destinations_use_isolated_data_files(tmp_path, monkeypatch, method):
+    monkeypatch.chdir(tmp_path)
+    config_path, env_path = monitor._wizard_destinations(method=method, default_config_filename=monitor.SCROBBLE_HEALTH_CONFIG_FILENAME, default_env_filename=monitor.SCROBBLE_HEALTH_DOTENV_FILENAME)
+    assert config_path == Path("/data/spotify_monitor_scrobble_health.conf")
+    assert env_path == Path("/data/.env.scrobble_health")
+
+
 # Verifies temporary container paths outside the bind mount are rejected
 @pytest.mark.parametrize("method", ["docker", "compose"])
 def test_container_setup_rejects_destinations_outside_data(method):
@@ -191,6 +200,15 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
 
   # Guided setup for Spotify-to-Last.fm scrobble health monitoring
   python3 spotify_monitor.py --setup-scrobble-health
+
+  # Start the separate Spotify-to-Last.fm scrobble health mode
+  python3 spotify_monitor.py --scrobble-health
+
+  # Diagnose scrobble health and list recent Spotify and Last.fm history
+  python3 spotify_monitor.py --scrobble-health --doctor --verbose
+
+  # Select Friend Activity for this run
+  python3 spotify_monitor.py --monitor-mode friend_activity <spotify_user_id>
 
   # Open https://open.spotify.com/ in Firefox and sign in first
   # Then import Spotify login from Firefox (recommended for local installs)
