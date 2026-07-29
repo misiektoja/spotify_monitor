@@ -2273,12 +2273,12 @@ def print_spotify_scrobble_app_guidance(redirect_uri: str) -> None:
     print("\nSpotify recent-play app\n")
     print("Scrobble health needs a Spotify app owned by you so its API quota is not shared with every Spotify Monitor user.")
     print("The Spotify account that owns a Development Mode app must have Premium.")
-    print(f"1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}")
+    print(f"\n1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}")
     print("2. Create an app or open an existing app and select Web API.")
     print(f"3. Add this exact Redirect URI in the app settings: {redirect_uri}")
     print("4. Copy the Client ID. A Client Secret is not needed and should not be entered here.")
     print("5. If authorizing a different Spotify account, add that account under the app's User Management.")
-    print(f"Spotify app guide: {SPOTIFY_APPS_GUIDE_URL}")
+    print(f"\nSpotify app guide: {SPOTIFY_APPS_GUIDE_URL}")
     print(f"PKCE guide: {SPOTIFY_PKCE_GUIDE_URL}\n")
 
 
@@ -8031,9 +8031,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         raise SystemExit(1) from None
     print("\nSpotify-to-Last.fm Scrobble Health Setup\n")
     print("This mode compares completed plays from your Spotify account with your public Last.fm recent tracks.")
-    print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
-    print("Spotify recent-play access uses a user-owned Developer app with read-only PKCE authorization.")
-    print("A Spotify cookie is not used by this mode.")
+    print("\nFive consecutive missing plays and a 20 minute dead period are the default alert threshold.")
     print("Secrets go to the dotenv file and non-secret settings go to the config file.\n")
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
