@@ -109,6 +109,9 @@ def test_sighup_reload_clears_auth_caches_and_updates_webhook_provider(monkeypat
     monkeypatch.setattr(monitor, "SP_CACHED_OAUTH_APP_TOKEN", "cached-oauth")
     monkeypatch.setattr(monitor, "SP_CACHED_CLIENT_TOKEN", "cached-client-token")
     monkeypatch.setattr(monitor, "SP_CLIENT_TOKEN_EXPIRES_AT", 999)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", "cached-scrobble-token")
+    monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 999)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "cached-scrobble-auth")
     with patch("dotenv.load_dotenv"), patch.object(monitor.os, "getenv", side_effect=replacements.get):
         monitor.reload_secrets_signal_handler(monitor.signal.SIGHUP, None)
     assert monitor.REFRESH_TOKEN == "new-refresh-token"
@@ -120,6 +123,9 @@ def test_sighup_reload_clears_auth_caches_and_updates_webhook_provider(monkeypat
     assert monitor.SP_CACHED_OAUTH_APP_TOKEN is None
     assert monitor.SP_CACHED_CLIENT_TOKEN is None
     assert monitor.SP_CLIENT_TOKEN_EXPIRES_AT == 0
+    assert monitor.SP_CACHED_SCROBBLE_ACCESS_TOKEN is None
+    assert monitor.SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT == 0
+    assert monitor.SP_CACHED_SCROBBLE_AUTH_FINGERPRINT == ""
 
 
 # Verifies ntfy input normalization preserves HTTPS URLs and expands only valid bare topics
