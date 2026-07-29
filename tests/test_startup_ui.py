@@ -141,8 +141,15 @@ def test_help_banner_once_and_raw_epilog():
     assert f"{prefix} --set-webhook-url" in result.stdout
     assert f"{prefix} --send-test-webhook" in result.stdout
     assert "Select the monitoring mode for this run (default: saved mode or friend_activity)" in result.stdout
+    assert "Path to a config file (mode-specific auto-search if omitted, disable with 'none')" in result.stdout
     assert "--scrobble-health" not in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health" in result.stdout
+    assert f"{prefix} --monitor-mode scrobble_health --config-file none --env-file none --lastfm-username <lastfm_username>" in result.stdout
+    assert "Last.fm API key for this run (may remain in shell history)" in result.stdout
+    assert "--scrobble-match-window" in result.stdout
+    assert "--scrobble-lookback" in result.stdout
+    assert "--scrobble-repeat-interval" in result.stdout
+    assert "--scrobble-state-file" in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health --doctor --verbose" in result.stdout
     assert f"{prefix} --monitor-mode friend_activity <spotify_user_id>" in result.stdout
     assert f"\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
