@@ -5,7 +5,7 @@
 
 This page assumes Spotify Monitor is already installed (see [Installation](installation.md)). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose), finish that method's steps then return here.
 
-Then use the interactive setup wizard. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
+Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
 For a local install, the wizard can check the setup and start monitoring immediately.
 
@@ -68,9 +68,11 @@ Spotify's six-month reauthorization requirement can disconnect Spotify Scrobblin
 spotify_monitor --setup-scrobble-health
 ```
 
-The wizard asks for the Last.fm username and API key, configures the Spotify cookie account whose plays should be checked and offers the normal email or webhook destinations. It defaults to five consecutive missing completed plays plus a 20 minute dead period. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays.
+The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, configures the Spotify cookie account whose plays should be checked and offers email or webhook alerts only for outages, recovery and operational errors. It defaults to five consecutive missing completed plays plus a 20 minute dead period. A separate Spotify account is not required because the cookie owner grants read-only access to its own recent plays. Use the regular `--setup` wizard instead for Friend Activity monitoring.
 
-To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key because scrobble health does not need the Last.fm shared secret.
+Like regular setup, the focused wizard lets you review or change each section before saving. It defaults to `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health` so its settings and private values do not replace the Friend Activity files. Pass `--config-file` or `--env-file` to choose another destination. With complete local authentication it can run the focused Doctor checks then start monitoring immediately. If authentication remains incomplete, it prints the exact authentication command before the Doctor and monitoring commands. Once monitoring starts, the console prints the first check and its result with the same timestamp separator used by Friend Activity. Later routine results appear with `--verbose` while outages, recoveries and errors remain visible normally.
+
+To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key in `.env.scrobble_health` by default because scrobble health does not need the Last.fm shared secret.
 
 For Docker Compose use `docker compose run --rm spotify_monitor --setup-scrobble-health`. For a direct Docker image replace `--setup` in the matching command above with `--setup-scrobble-health`.
 
