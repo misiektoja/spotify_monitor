@@ -417,7 +417,11 @@ def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
     secret_prompt.assert_called_once_with("Last.fm API key")
     assert text_questions == ["Spotify app Client ID"]
     assert authorize.call_args.args[:2] == ("a" * 32, redirect_uri)
-    assert f"Add this exact Redirect URI in the app settings: {redirect_uri}" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "2. Create an app or open an existing app." in output
+    assert f"3. Add this exact Redirect URI in the app settings: {redirect_uri}" in output
+    assert "4. Select Web API in API/SDKs section, click Save." in output
+    assert "5. Copy the Client ID. A Client Secret is not needed and should not be entered here." in output
     assert state.secret_updates["LASTFM_API_KEY"] == "private-api-key"
 
 
@@ -484,8 +488,7 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
         output = capsys.readouterr().out
         assert "Configuration was saved but dotenv destination" in output
         assert "Setup remains incomplete" in output
-        assert "Values in brackets are recommended defaults. Press Enter to use the displayed default." in output
-        assert "In [Y/n] and [y/N], the capital Y or N is the default." in output
+        assert "Press Enter to accept the shown default. Ctrl+C cancels." in output
         assert "Secrets go to the dotenv file. Non-secret settings go to the config file." in output
         assert f"Detected install method: manual\nConfiguration:          {config_path}\nDotenv:                 {env_path}\n" in output
         assert "private-refresh-token" not in output
