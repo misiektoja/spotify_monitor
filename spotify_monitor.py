@@ -2274,10 +2274,11 @@ def print_spotify_scrobble_app_guidance(redirect_uri: str) -> None:
     print("Scrobble health needs a Spotify app owned by you so its API quota is not shared with every Spotify Monitor user.")
     print("The Spotify account that owns a Development Mode app must have Premium.")
     print(f"\n1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}")
-    print("2. Create an app or open an existing app and select Web API.")
+    print("2. Create an app or open an existing app.")
     print(f"3. Add this exact Redirect URI in the app settings: {redirect_uri}")
-    print("4. Copy the Client ID. A Client Secret is not needed and should not be entered here.")
-    print("5. If authorizing a different Spotify account, add that account under the app's User Management.")
+    print("4. Select Web API in API/SDKs section, click Save.")
+    print("5. Copy the Client ID. A Client Secret is not needed and should not be entered here.")
+    print("6. If authorizing a different Spotify account, add that account under the app's User Management.")
     print(f"\nSpotify app guide: {SPOTIFY_APPS_GUIDE_URL}")
     print(f"PKCE guide: {SPOTIFY_PKCE_GUIDE_URL}\n")
 
@@ -5300,8 +5301,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
-    notification_state_email =   "On (" + ", ".join(enabled_notifications) + ")" if enabled_notifications else "Off"
-    notification_state_webhook = "On (" + ", ".join(enabled_webhooks)      + ")" if enabled_webhooks      else "Off"
+    notification_state_email = "On (" + ", ".join(enabled_notifications) + ")" if enabled_notifications else "Off"
+    notification_state_webhook = "On (" + ", ".join(enabled_webhooks) + ")" if enabled_webhooks else "Off"
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     if MONITOR_MODE == "scrobble_health":
         return [
@@ -6923,8 +6924,7 @@ def _wizard_install_chromium_dependency(method: str) -> bool:
 
 # Explains how setup displays and accepts recommended prompt defaults
 def _wizard_print_default_guidance() -> None:
-    print("\nValues in brackets are recommended defaults. Press Enter to use the displayed default.")
-    print("In [Y/n] and [y/N], the capital Y or N is the default. Ctrl+C cancels setup.\n")
+    print("\nPress Enter to accept the shown default. Ctrl+C cancels.\n")
 
 
 # Prints the installation method and output files shared by both setup wizards
