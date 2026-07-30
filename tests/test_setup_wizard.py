@@ -309,6 +309,8 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert "cookie-private-value" not in output
         assert "authentication has not been validated" in output
         assert "Setup Wizard\n\nThis asks a few questions" in output
+        assert "Values in brackets are recommended defaults. Press Enter to use the displayed default." in output
+        assert "In [Y/n] and [y/N], the capital Y or N is the default." in output
         assert "The monitoring account must follow the target. Setup checks this after authentication is saved." in output
         assert "If needed, the tool offers to follow the target. The target must also share listening activity." in output
         assert "Uses exported Protobuf request bodies.\n\nHow should cookie authentication be configured?" in output
