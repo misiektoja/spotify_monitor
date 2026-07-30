@@ -6923,8 +6923,15 @@ def _wizard_install_chromium_dependency(method: str) -> bool:
 
 # Explains how setup displays and accepts recommended prompt defaults
 def _wizard_print_default_guidance() -> None:
-    print("Values in brackets are recommended defaults. Press Enter to use the displayed default.")
+    print("\nValues in brackets are recommended defaults. Press Enter to use the displayed default.")
     print("In [Y/n] and [y/N], the capital Y or N is the default. Ctrl+C cancels setup.\n")
+
+
+# Prints the installation method and output files shared by both setup wizards
+def _wizard_print_setup_destinations(method: str, config_path: Path, env_path: Path) -> None:
+    print(f"Detected install method: {method}")
+    print(f"Configuration:          {config_path}")
+    print(f"Dotenv:                 {env_path}\n")
 
 
 # Reads one setup line and exits cleanly when Ctrl+C or Ctrl+D cancels input
@@ -7798,8 +7805,8 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
     print(f"  Webhook outage and recovery alerts: {'enabled' if state.config_values.get('WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
     print(f"  Webhook operational error alerts: {'enabled' if state.config_values.get('WEBHOOK_ERROR_NOTIFICATION') else 'disabled'}")
     print("  Console outage alerts: enabled")
-    print(f"  Configuration: {state.config_path}")
-    print(f"  Dotenv: {state.env_path}")
+    print(f"  Config destination: {state.config_path}")
+    print(f"  Dotenv destination: {state.env_path}")
     print(f"  Install method: {method}")
 
 
@@ -7891,9 +7898,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print("The monitoring account must follow the target. Setup checks this after authentication is saved.")
     print("If needed, the tool offers to follow the target. The target must also share listening activity.")
     print(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n")
-    print(f"Detected install method: {method}")
-    print(f"Configuration:          {config_path}")
-    print(f"Dotenv:                 {env_path}\n")
+    _wizard_print_setup_destinations(method, config_path, env_path)
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
     initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
@@ -8037,7 +8042,8 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print("This mode compares completed plays from your Spotify account with your public Last.fm recent tracks.")
     _wizard_print_default_guidance()
     print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
-    print("Secrets go to the dotenv file and non-secret settings go to the config file.\n")
+    print("Secrets go to the dotenv file. Non-secret settings go to the config file.\n")
+    _wizard_print_setup_destinations(method, config_path, env_path)
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
     config_values = dict(globals())
@@ -8112,6 +8118,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
         _wizard_print_command(start_label, monitor_command)
+    print(f"Guide: {SCROBBLE_AUTH_GUIDE_URL}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and doctor_ran and not doctor_failed
     if local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True):
         exec_args = _wizard_local_command_args(method, exact=True)
