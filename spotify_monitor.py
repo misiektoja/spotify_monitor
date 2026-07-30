@@ -6921,6 +6921,12 @@ def _wizard_install_chromium_dependency(method: str) -> bool:
     return False
 
 
+# Explains how setup displays and accepts recommended prompt defaults
+def _wizard_print_default_guidance() -> None:
+    print("Values in brackets are recommended defaults. Press Enter to use the displayed default.")
+    print("In [Y/n] and [y/N], the capital Y or N is the default. Ctrl+C cancels setup.\n")
+
+
 # Reads one setup line and exits cleanly when Ctrl+C or Ctrl+D cancels input
 def _wizard_input(prompt_text: str) -> str:
     try:
@@ -7692,14 +7698,12 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
         print(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
         api_key = _wizard_ask_secret("Last.fm API key")
         _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
-    current_redirect_uri = str(state.config_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or SPOTIFY_SCROBBLE_REDIRECT_URI)
-    while True:
-        redirect_uri = _wizard_ask_text("Spotify app Redirect URI to register", default=current_redirect_uri, required=True)
-        try:
-            redirect_uri = validate_spotify_scrobble_redirect_uri(redirect_uri)
-            break
-        except SpotifyScrobbleAuthorizationError as exc:
-            print(f"  {exc}.")
+    try:
+        redirect_uri = validate_spotify_scrobble_redirect_uri(str(state.config_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or SPOTIFY_SCROBBLE_REDIRECT_URI))
+    except SpotifyScrobbleAuthorizationError as exc:
+        print(f"\nThe configured Spotify app Redirect URI is invalid: {exc}.")
+        print("Update SPOTIFY_SCROBBLE_REDIRECT_URI in the config file then rerun setup.")
+        raise SystemExit(1) from None
     print_spotify_scrobble_app_guidance(redirect_uri)
     while True:
         client_id = _wizard_ask_text("Spotify app Client ID", default=str(state.config_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or SPOTIFY_SCROBBLE_CLIENT_ID), required=True)
@@ -7881,7 +7885,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         raise SystemExit(1) from None
     print("\nSetup Wizard\n")
     print("This asks a few questions and writes a ready-to-run configuration.")
-    print("Press Enter to accept the shown default. Ctrl+C cancels.\n")
+    _wizard_print_default_guidance()
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
     print("Cookie mode is recommended. Client mode is advanced.\n")
     print("The monitoring account must follow the target. Setup checks this after authentication is saved.")
@@ -8031,7 +8035,8 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         raise SystemExit(1) from None
     print("\nSpotify-to-Last.fm Scrobble Health Setup\n")
     print("This mode compares completed plays from your Spotify account with your public Last.fm recent tracks.")
-    print("\nFive consecutive missing plays and a 20 minute dead period are the default alert threshold.")
+    _wizard_print_default_guidance()
+    print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
     print("Secrets go to the dotenv file and non-secret settings go to the config file.\n")
     config_path = _wizard_choose_config_destination(config_path)
     baseline_values = dict(globals())
@@ -8041,7 +8046,6 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         "TOKEN_SOURCE": "cookie",
         "TARGET_USER_URI_ID": "",
         "DOTENV_FILE": str(env_path),
-        "SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:8888/callback",
         "SCROBBLE_HEALTH_NOTIFICATION": True,
         "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
     })
