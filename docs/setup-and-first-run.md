@@ -7,7 +7,7 @@ This page assumes Spotify Monitor is already installed (see [Installation](insta
 
 Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
-Both setup wizards explain their prompt notation at the beginning. Values in brackets are recommended defaults that you can accept with Enter. For `[Y/n]` and `[y/N]`, the capital letter is the default.
+Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup.
 
 For a local install, the wizard can check the setup and start monitoring immediately.
 
@@ -70,7 +70,7 @@ Spotify's six-month reauthorization requirement can disconnect Spotify Scrobblin
 spotify_monitor --setup-scrobble-health
 ```
 
-The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, links to [Last.fm API account management](https://www.last.fm/api/accounts) and guides you through a user-owned app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). The app owner needs Spotify Premium in Development Mode. Select Web API, register the recommended `http://127.0.0.1:8888/callback` redirect URI shown by the wizard then copy the Client ID. The wizard uses this redirect automatically instead of asking you to choose one. A Client Secret is not needed. Spotify Monitor requests only `user-read-recently-played` through PKCE, opens or prints the authorization URL then asks you to paste the complete redirected URL from the browser address bar. The redirect page may fail to load because Spotify Monitor does not need to run a callback web server.
+The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, links to [Last.fm API account management](https://www.last.fm/api/accounts) and guides you through a user-owned app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). The app owner needs Spotify Premium in Development Mode. Create or open an app, add the recommended `http://127.0.0.1:8888/callback` redirect URI, select Web API in the API/SDKs section and save the app before copying its Client ID. The wizard uses this redirect automatically instead of asking you to choose one. A Client Secret is not needed. Spotify Monitor requests only `user-read-recently-played` through PKCE, opens or prints the authorization URL then asks you to paste the complete redirected URL from the browser address bar. The redirect page may fail to load because Spotify Monitor does not need to run a callback web server.
 
 Authorize the Spotify account whose completed plays should be checked. A separate Spotify account is not required. If that account is different from the app owner, add it under the app's User Management first. See Spotify's [app creation guide](https://developer.spotify.com/documentation/web-api/concepts/apps) and [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) for the corresponding Dashboard screens.
 
