@@ -92,14 +92,14 @@ The focused setup wizard guides these steps:
 
 1. Sign in to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with an account that has Spotify Premium.
 2. Create an app or open an existing app then select Web API.
-3. Add the exact redirect URI shown by setup. The default is `http://127.0.0.1:8888/callback`. Spotify allows HTTP for an explicit loopback IP address but not `localhost`. Use HTTPS for a non-loopback redirect.
+3. Add the exact `http://127.0.0.1:8888/callback` redirect URI shown by setup. The wizard uses this recommended loopback value automatically instead of asking you to choose one. Spotify allows HTTP for an explicit loopback IP address but not `localhost`.
 4. Copy the Client ID into setup. Do not enter the Client Secret because PKCE does not use it.
 5. If another Spotify account will be authorized, add it under the app's User Management.
 6. Approve the read-only `user-read-recently-played` scope. After Spotify redirects, copy the complete URL from the browser address bar and paste it into setup. The browser page itself does not need to load.
 
 Spotify documents the Dashboard flow in [Creating an App](https://developer.spotify.com/documentation/web-api/concepts/apps) and the authorization exchange in [Authorization Code with PKCE Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow).
 
-The Client ID and redirect URI are non-secret settings saved in `spotify_monitor_scrobble_health.conf`. The refresh token is private and setup saves it as `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. A Client Secret is never requested or stored.
+The Client ID and redirect URI are non-secret settings saved in `spotify_monitor_scrobble_health.conf`. Advanced setups can change `SPOTIFY_SCROBBLE_REDIRECT_URI` in that file then run authorization again. Use HTTPS for a non-loopback redirect. The refresh token is private and setup saves it as `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. A Client Secret is never requested or stored.
 
 To grant access again after the authorization expires or is revoked, run:
 
