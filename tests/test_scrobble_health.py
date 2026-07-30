@@ -464,6 +464,9 @@ def test_scrobble_health_setup_summary_distinguishes_notification_flags(capsys):
     assert "Email operational error alerts: enabled" in output
     assert "Webhook outage and recovery alerts: enabled" in output
     assert "Webhook operational error alerts: disabled" in output
+    assert "Config destination: config.conf" in output
+    assert "Dotenv destination: .env" in output
+    assert "Install method: manual" in output
 
 
 # Confirms focused setup reports when dotenv failure leaves the config saved
@@ -483,6 +486,8 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
         assert "Setup remains incomplete" in output
         assert "Values in brackets are recommended defaults. Press Enter to use the displayed default." in output
         assert "In [Y/n] and [y/N], the capital Y or N is the default." in output
+        assert "Secrets go to the dotenv file. Non-secret settings go to the config file." in output
+        assert f"Detected install method: manual\nConfiguration:          {config_path}\nDotenv:                 {env_path}\n" in output
         assert "private-refresh-token" not in output
     finally:
         if config_path.exists():
@@ -504,6 +509,7 @@ def test_scrobble_health_setup_orders_incomplete_authentication_steps(monkeypatc
         doctor_index = output.index("After authentication succeeds, verify scrobble health setup:")
         monitor_index = output.index("After Doctor passes, start scrobble health monitoring:")
         assert auth_index < doctor_index < monitor_index
+        assert f"Guide: {monitor.SCROBBLE_AUTH_GUIDE_URL}" in output
     finally:
         for path in (config_path, env_path):
             if path.exists():
