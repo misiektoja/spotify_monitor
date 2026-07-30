@@ -392,10 +392,12 @@ def test_scrobble_health_setup_collects_focused_email_flags(monkeypatch):
     assert secret_updates["SMTP_PASSWORD"] == "private-password"
 
 
-# Confirms focused setup links to Last.fm API account management before key entry
+# Confirms focused setup guides API entry without asking for the configured redirect URI
 def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
-    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {}, {}, "lastfm-user", {}, [], [])
+    redirect_uri = "http://127.0.0.1:9999/callback"
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {"SPOTIFY_SCROBBLE_REDIRECT_URI": redirect_uri}, {}, "lastfm-user", {}, [], [])
     guidance_before_prompt = []
+    text_questions = []
 
     # Captures wizard output at the moment hidden key entry begins
     def ask_secret(question):
@@ -403,15 +405,19 @@ def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
         return "private-api-key"
 
     secret_prompt = Mock(side_effect=ask_secret)
+    authorize = Mock(return_value={"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600})
     monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", secret_prompt)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
-    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "a" * 32 if "Client ID" in question else default)
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: (text_questions.append(question) or "a" * 32))
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
-    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", lambda *args, **kwargs: {"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600})
+    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", authorize)
     monitor._wizard_collect_scrobble_health_auth_section(state, "manual")
     assert guidance_before_prompt == [f"\nCreate or view your Last.fm API account: {monitor.LASTFM_API_ACCOUNTS_URL}\n"]
     secret_prompt.assert_called_once_with("Last.fm API key")
+    assert text_questions == ["Spotify app Client ID"]
+    assert authorize.call_args.args[:2] == ("a" * 32, redirect_uri)
+    assert f"Add this exact Redirect URI in the app settings: {redirect_uri}" in capsys.readouterr().out
     assert state.secret_updates["LASTFM_API_KEY"] == "private-api-key"
 
 
@@ -475,6 +481,8 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
         output = capsys.readouterr().out
         assert "Configuration was saved but dotenv destination" in output
         assert "Setup remains incomplete" in output
+        assert "Values in brackets are recommended defaults. Press Enter to use the displayed default." in output
+        assert "In [Y/n] and [y/N], the capital Y or N is the default." in output
         assert "private-refresh-token" not in output
     finally:
         if config_path.exists():
