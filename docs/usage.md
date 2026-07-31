@@ -515,7 +515,7 @@ For scrobble health, set the time between successful comparisons through `SCROBB
 spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 ```
 
-Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate retry for transient server errors and sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health first makes one short bounded retry for connection failures, timeouts and temporary 5xx responses. This includes failures during Spotify recent-play access-token refreshes. It sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
