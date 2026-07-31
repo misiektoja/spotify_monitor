@@ -647,7 +647,7 @@
 <p>Before a long monitoring run, check the current configuration:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>--doctor
 </code></pre></div>
-<p>The report uses <code>[PASS]</code>, <code>[WARN]</code> and <code>[FAIL]</code> markers in these sections:</p>
+<p>The report shows only sections relevant to the checks it performed. It uses <code>[PASS]</code>, <code>[WARN]</code> and <code>[FAIL]</code> markers in these possible sections:</p>
 <ul>
 <li>Environment</li>
 <li>Configuration</li>
@@ -655,10 +655,11 @@
 <li>Metadata</li>
 <li>Connectivity</li>
 <li>Target</li>
+<li>Scrobble health</li>
 <li>Notifications</li>
 <li>Summary</li>
 </ul>
-<p>Doctor loads the same settings as a normal run. It checks the Spotify login, connection and selected target. If complete legacy OAuth credentials are present, it requests a temporary token and checks track metadata. A failed legacy check becomes a warning when the web-player fallback works. Doctor also checks configured email and webhook settings without sending a message. It does not create logs, CSV files, flag files or OAuth caches. It does not change configuration or <code>.env</code> files.</p>
+<p>Doctor loads the same settings as a normal run. It checks the Spotify login, connection and selected target. If complete legacy OAuth credentials are present, it requests a temporary token and checks track metadata. A failed legacy check becomes a warning when the web-player fallback works. Doctor also checks configured email and webhook settings without sending a message. It does not create logs, CSV files, flag files or OAuth caches. Friend Activity Doctor does not change configuration or <code>.env</code> files. Focused scrobble health Doctor may atomically update <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> if Spotify rotates it while access is checked.</p>
 <p>In an interactive terminal, Doctor can offer one real delivery test for each notification channel that passes its checks. Each prompt defaults to No. Answering Yes to the email prompt sends one test email. Answering Yes to the webhook prompt sends one Discord or ntfy message. Doctor does not offer delivery tests when it runs without an interactive terminal.</p>
 <p>Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--doctor
@@ -669,10 +670,19 @@
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--token-source<span class="w"> </span>client
 </code></pre></div>
-<p>Each failed check includes a <code>To fix:</code> action. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
+<p>For scrobble health, focused Doctor shows live progress while it checks the environment, configuration, Spotify recent plays, Last.fm scrobbles and notifications. Its final report includes how many recent plays each service returned plus the current comparison status. Add <code>--verbose</code> to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--doctor<span class="w"> </span>--verbose
 </code></pre></div>
-<p>Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. It also shows hidden <code>--set-sp-dc</code> entry as a fallback. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
+<p>Track titles and listening timestamps appear only in this verbose diagnostic output. Spotify and Last.fm can timestamp different points in the same playback, so matched rows can have different times. Refresh tokens, API keys and other private credentials remain hidden.</p>
+<p>If focused Doctor reports missing, expired or revoked Spotify recent-play authorization, run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
+</code></pre></div>
+<p>The command shows the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, the exact redirect URI plus Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation</a> and <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE</a> guides. Confirm that the app owner has Premium, Web API is selected and the redirect URI matches exactly. If the Spotify account being authorized is not the app owner, add it under User Management.</p>
+<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. This is not evidence that Last.fm scrobbling is broken. Spotify Monitor leaves the current health state unchanged, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
+<p>Each failed check includes a <code>To fix:</code> action. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
+</code></pre></div>
+<p>Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. If manual extraction is needed, it shows the recommended <code>--set-sp-dc</code> command because its hidden prompt is the most secure entry method. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
 <p>For advanced client-mode failures, repeat the <a href="../configuration/#spotify-desktop-client">Spotify Desktop Client</a> export steps. Add <code>--debug</code> to Doctor or a normal run for sanitized technical detail. Use <code>--verbose</code> for a complete startup summary plus occasional state changes without output for every poll. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.</p>
 <p><a id="choosing-the-right-logging-level"></a></p>
 <h2 id="choosing-the-right-logging-level">Choosing the Right Logging Level<a class="headerlink" href="#choosing-the-right-logging-level" title="Permanent link">&para;</a></h2>

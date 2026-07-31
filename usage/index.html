@@ -452,6 +452,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scrobble-health-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scrobble Health Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#container-operation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -826,6 +837,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scrobble-health-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scrobble Health Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#container-operation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1115,7 +1137,7 @@
 <p>If you use cookie authentication and have not saved <code>SP_DC_COOKIE</code>, the <code>-u</code> fallback supplies it for one run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span>
 </code></pre></div>
-<p>This command can expose the cookie through shell history or process listings. Use browser import locally or hidden <code>--set-sp-dc</code> entry in a container instead.</p>
+<p>This command can expose the cookie through shell history or process listings. Use browser import when available. For a manually extracted cookie, use the recommended <code>--set-sp-dc</code> command because its hidden prompt is the most secure entry method.</p>
 <p>If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use <code>-r</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>-u<span class="w"> </span><span class="s2">&quot;your_sp_dc_cookie_value&quot;</span><span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
 </code></pre></div>
@@ -1134,24 +1156,60 @@
 <p>You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.</p>
 <p>By default, text output is saved to <code>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log</code>. Change the base path with <code>SP_LOGFILE</code> and the suffix with <code>FILE_SUFFIX</code> or <code>-y</code>. Disable file logging with <code>DISABLE_LOGGING</code> or <code>-d</code>.</p>
 <p>Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.</p>
+<p><a id="scrobble-health-mode"></a></p>
+<h2 id="scrobble-health-mode">Scrobble Health Mode<a class="headerlink" href="#scrobble-health-mode" title="Permanent link">&para;</a></h2>
+<p>Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. This mode can notify through the console, email or a webhook when the gap meets the configured evidence threshold.</p>
+<p>Run the focused wizard once:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--setup-scrobble-health
+</code></pre></div>
+<p>The focused wizard lets you review each section before saving. It links to <a href="https://www.last.fm/api/accounts">Last.fm API account management</a>, the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation guide</a> and its <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE guide</a>. It shows the recommended <code>http://127.0.0.1:8888/callback</code> redirect URI to register without asking you to choose another, asks only for the app Client ID and authorizes read-only <code>user-read-recently-played</code> access. A Client Secret and Spotify cookie are not used by this mode. Both setup wizards explain that bracketed values are recommended defaults and that the capital letter in <code>[Y/n]</code> or <code>[y/N]</code> is the default. Duration prompts show seconds plus a readable equivalent. Enter seconds directly or add <code>s</code> for seconds, <code>m</code> for minutes, <code>h</code> for hours or <code>d</code> for days. Examples include <code>120</code>, <code>120s</code>, <code>2m</code>, <code>1h</code> and <code>1d</code>. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.</p>
+<p>If you only need to enter or replace the Last.fm API key, run <code>spotify_monitor --set-lastfm-credentials</code>. The key is hidden during entry and saved to the selected dotenv file.</p>
+<p>To authorize again after the Spotify refresh token expires or is revoked, run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
+</code></pre></div>
+<p>The command reuses the app Client ID and redirect URI from the selected config then saves the new <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> in the selected dotenv file. It opens the authorization page for local installs or prints the URL for Docker. In either case, paste the complete redirected URL from the browser address bar when prompted.</p>
+<p>The focused wizard saves scrobble health in <code>spotify_monitor_scrobble_health.conf</code> plus <code>.env.scrobble_health</code>. Select the mode to discover those files:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health
+</code></pre></div>
+<p>Save the profile to compare as <code>LASTFM_USERNAME</code> in the scrobble health config or pass <code>--lastfm-username</code> for one run. Use <code>--config-file</code> when you want to select another saved scrobble health configuration.</p>
+<p>No config or dotenv file is required. With <code>LASTFM_API_KEY</code>, <code>SPOTIFY_SCROBBLE_CLIENT_ID</code> and <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> already available as environment variables, select only the mode and profile:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--lastfm-username<span class="w"> </span>LASTFM_USERNAME
+</code></pre></div>
+<p>You can pass the credentials with <code>--lastfm-api-key</code>, <code>--scrobble-client-id</code> and <code>--scrobble-refresh-token</code> instead. Use <code>--scrobble-redirect-uri</code> when the app does not register the default <code>http://127.0.0.1:8888/callback</code>. Private values may remain visible in shell history or process listings.</p>
+<p>To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if <code>TARGET_USER_URI_ID</code> is not saved:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor_scrobble_health.conf<span class="w"> </span>--monitor-mode<span class="w"> </span>friend_activity<span class="w"> </span>SPOTIFY_USER_ID
+</code></pre></div>
+<p>The mode reads the authorized Spotify account's completed plays through the official <code>user-read-recently-played</code> scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.</p>
+<p>The console prints the first comparison and explains its result. Every visible monitoring event includes the same human-readable timestamp and separator used by Friend Activity, so console logs show when startup, checks, outages, recoveries or errors occurred. Later routine checks appear only with <code>--verbose</code>. Outages, recoveries and operational errors remain visible in normal output. Outage messages use the same human-readable date format for the oldest missing play and every recent missing play. Email and webhook bodies include the notification timestamp. An idle result means Spotify has no completed plays from the configured recent-history period to compare with Last.fm yet. Email uses <code>SCROBBLE_HEALTH_NOTIFICATION</code>. Discord or ntfy uses <code>WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION</code> together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after <code>SCROBBLE_HEALTH_REPEAT_INTERVAL</code>.</p>
+<p>Scrobble-specific settings have one-run options, so every comparison control can be changed without a config file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--scrobble-min-unmatched<span class="w"> </span><span class="m">7</span><span class="w"> </span>--scrobble-dead-period<span class="w"> </span><span class="m">1800</span><span class="w"> </span>--scrobble-check-interval<span class="w"> </span><span class="m">180</span><span class="w"> </span>--scrobble-match-window<span class="w"> </span><span class="m">240</span><span class="w"> </span>--scrobble-lookback<span class="w"> </span><span class="m">18000</span><span class="w"> </span>--scrobble-repeat-interval<span class="w"> </span><span class="m">0</span><span class="w"> </span>--scrobble-state-file<span class="w"> </span>scrobble-state.json
+</code></pre></div>
+<p>Use focused Doctor checks before leaving it unattended:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--doctor
+</code></pre></div>
+<p>Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. If Spotify rotates the refresh token during that check, Doctor atomically updates only <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> in the selected dotenv file so later monitoring can continue. After a successful check it prints the monitoring command for the detected installation and preserves the selected configuration plus dotenv paths. Docker and Docker Compose output uses the matching container command and <code>/data</code> paths. Private values originally passed through <code>--lastfm-api-key</code> or <code>--scrobble-refresh-token</code> are represented by uppercase placeholders so Doctor never repeats them on screen.</p>
+<p>To inspect the actual histories instead of only their counts, add <code>--verbose</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--doctor<span class="w"> </span>--verbose
+</code></pre></div>
+<p>The verbose focused report lists recent Spotify plays with <code>MATCHED</code> or <code>NOT MATCHED</code> markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times. Normal Doctor output does not display listening history.</p>
 <p><a id="main-application-docker-image"></a></p>
 <h2 id="container-operation">Container Operation<a class="headerlink" href="#container-operation" title="Permanent link">&para;</a></h2>
 <p>See <a href="../installation/#docker-compose">Docker installation</a> for installation, Linux file ownership, local image builds and upgrades. This section covers everyday use after setup.</p>
 <p>Compose makes the current host directory available as <code>/data</code> inside the container. The wizard creates <code>spotify_monitor.conf</code> and <code>.env</code> in that host directory. Logs and CSV output are also written there. The image does not contain your configuration or private values.</p>
 <p>Start the target saved by setup in the foreground:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
 </code></pre></div>
 <p>This short command uses <code>/data/spotify_monitor.conf</code> and <code>/data/.env</code> from <code>docker-compose.yml</code>. If setup saved either file under another <code>/data</code> path, use the explicit <code>docker compose run</code> command printed by setup.</p>
 <p>For a background run and live logs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>--no-log-prefix
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>--no-log-prefix
 </code></pre></div>
 <p>Stop and remove the service container:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
 </code></pre></div>
 <p>This command does not delete files in the current directory.</p>
 <p>If the wizard did not save the target, <code>docker compose up --no-log-prefix</code> cannot supply one. Use the direct Compose command printed by setup:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span><span class="s2">&quot;https://open.spotify.com/user/spotify_user_uri_id&quot;</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span><span class="s2">&quot;https://open.spotify.com/user/spotify_user_uri_id&quot;</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p><a id="import-firefox-into-container-authentication"></a></p>
 <h3 id="import-firefox-into-container-authentication">Import Firefox into Container Authentication<a class="headerlink" href="#import-firefox-into-container-authentication" title="Permanent link">&para;</a></h3>
@@ -1160,51 +1218,51 @@
 <h4 id="windows-powershell">Windows PowerShell<a class="headerlink" href="#windows-powershell" title="Permanent link">&para;</a></h4>
 <p>Use Docker Desktop or another Docker-compatible runtime in Linux container mode. Firefox stores the profile root under <code>$env:APPDATA\Mozilla\Firefox</code>.</p>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">docker</span> <span class="n">run</span> <span class="p">-</span><span class="n">-rm</span> <span class="n">-it</span> <span class="p">-</span><span class="n">-init</span> <span class="n">-v</span> <span class="s2">&quot;${PWD}:/data:z&quot;</span> <span class="n">-v</span> <span class="s2">&quot;$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> <span class="n">misiektoja</span><span class="p">/</span><span class="n">spotify-monitor</span><span class="p">:</span><span class="n">latest</span> <span class="p">-</span><span class="n">-import-browser-cookie</span> <span class="p">-</span><span class="n">-browser</span> <span class="n">firefox</span> <span class="p">-</span><span class="n">-env</span><span class="o">-file</span> <span class="p">/</span><span class="n">data</span><span class="p">/.</span><span class="n">env</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">docker</span> <span class="n">run</span> <span class="p">-</span><span class="n">-rm</span> <span class="n">-it</span> <span class="p">-</span><span class="n">-init</span> <span class="n">-v</span> <span class="s2">&quot;${PWD}:/data:z&quot;</span> <span class="n">-v</span> <span class="s2">&quot;$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> <span class="n">misiektoja</span><span class="p">/</span><span class="n">spotify-monitor</span><span class="p">:</span><span class="n">latest</span> <span class="p">-</span><span class="n">-import-browser-cookie</span> <span class="p">-</span><span class="n">-browser</span> <span class="n">firefox</span> <span class="p">-</span><span class="n">-env</span><span class="o">-file</span> <span class="p">/</span><span class="n">data</span><span class="p">/.</span><span class="n">env</span>
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">docker</span> <span class="n">compose</span> <span class="n">run</span> <span class="p">-</span><span class="n">-rm</span> <span class="n">-v</span> <span class="s2">&quot;$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> <span class="n">spotify_monitor</span> <span class="p">-</span><span class="n">-import-browser-cookie</span> <span class="p">-</span><span class="n">-browser</span> <span class="n">firefox</span> <span class="p">-</span><span class="n">-env</span><span class="o">-file</span> <span class="p">/</span><span class="n">data</span><span class="p">/.</span><span class="n">env</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">docker</span> <span class="n">compose</span> <span class="n">run</span> <span class="p">-</span><span class="n">-rm</span> <span class="n">-v</span> <span class="s2">&quot;$env:APPDATA\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> <span class="n">spotify_monitor</span> <span class="p">-</span><span class="n">-import-browser-cookie</span> <span class="p">-</span><span class="n">-browser</span> <span class="n">firefox</span> <span class="p">-</span><span class="n">-env</span><span class="o">-file</span> <span class="p">/</span><span class="n">data</span><span class="p">/.</span><span class="n">env</span>
 </code></pre></div>
 <h4 id="windows-command-prompt">Windows Command Prompt<a class="headerlink" href="#windows-command-prompt" title="Permanent link">&para;</a></h4>
 <p>Use <code>%cd%</code> for the current project directory and <code>%APPDATA%</code> for the Firefox profile root.</p>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>docker run --rm -it --init -v <span class="s2">&quot;</span><span class="nv">%cd%</span><span class="s2">:/data:z&quot;</span> -v <span class="s2">&quot;</span><span class="nv">%APPDATA%</span><span class="s2">\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --env-file /data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker run --rm -it --init -v <span class="s2">&quot;</span><span class="nv">%cd%</span><span class="s2">:/data:z&quot;</span> -v <span class="s2">&quot;</span><span class="nv">%APPDATA%</span><span class="s2">\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> misiektoja/spotify-monitor:latest --import-browser-cookie --browser firefox --env-file /data/.env
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>docker compose run --rm -v <span class="s2">&quot;</span><span class="nv">%APPDATA%</span><span class="s2">\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>docker compose run --rm -v <span class="s2">&quot;</span><span class="nv">%APPDATA%</span><span class="s2">\Mozilla\Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span> spotify_monitor --import-browser-cookie --browser firefox --env-file /data/.env
 </code></pre></div>
 <h4 id="linux-with-a-standard-firefox-package">Linux with a standard Firefox package<a class="headerlink" href="#linux-with-a-standard-firefox-package" title="Permanent link">&para;</a></h4>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <h4 id="linux-with-firefox-from-snap">Linux with Firefox from Snap<a class="headerlink" href="#linux-with-firefox-from-snap" title="Permanent link">&para;</a></h4>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <h4 id="linux-with-firefox-from-flatpak">Linux with Firefox from Flatpak<a class="headerlink" href="#linux-with-firefox-from-flatpak" title="Permanent link">&para;</a></h4>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$HOME</span><span class="s2">/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <h4 id="macos">macOS<a class="headerlink" href="#macos" title="Permanent link">&para;</a></h4>
 <p>Mount the Firefox profile root at the standard container location. The importer reads <code>profiles.ini</code> and offers profile selection when needed.</p>
 <p>Direct Docker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">HOME</span><span class="si">}</span><span class="s2">/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">HOME</span><span class="si">}</span><span class="s2">/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>Docker Compose:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">HOME</span><span class="si">}</span><span class="s2">/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">HOME</span><span class="si">}</span><span class="s2">/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro&quot;</span><span class="w"> </span>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>Firefox works inside Docker because its cookie database can be mounted as a read-only file. Chrome, Brave and Chromium need the host password service to decrypt their cookies. A container cannot use that service. Import from those browsers through a local PyPI or manual installation instead.</p>
 <p>Do not add <code>:z</code> or <code>:Z</code> to the whole Firefox profile mount. Those suffixes can change SELinux labels on the host files. If SELinux blocks the read-only mount, close Firefox and copy <code>cookies.sqlite</code> to a dedicated directory before mounting that copy.</p>
-<p>After import, normal Compose runs read <code>SP_DC_COOKIE</code> from the host <code>.env</code> file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the hidden <a href="../configuration/#manual-cookie-extraction"><code>--set-sp-dc</code></a> fallback.</p>
+<p>After import, normal Compose runs read <code>SP_DC_COOKIE</code> from the host <code>.env</code> file. You do not need to mount Firefox again. If browser import is unavailable on another host, use the recommended <a href="../configuration/#manual-cookie-extraction"><code>--set-sp-dc</code></a> command. Its hidden prompt is the most secure way to enter a manually extracted cookie.</p>
 <p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. The tool warns but does not disable the setting so custom host integration remains possible.</p>
 <p><a id="terminal-output"></a></p>
 <h2 id="terminal-output">Terminal Output<a class="headerlink" href="#terminal-output" title="Permanent link">&para;</a></h2>
@@ -1212,7 +1270,7 @@
 <p>Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented <code>--version</code> and <code>--generate-config</code> output intentionally omit it.</p>
 <p>Normal monitoring shows the target, authentication method, polling interval, alert state, output destination, configuration path, <code>.env</code> path and metadata source. Optional features appear only when enabled. When file logging is enabled, the log receives a complete summary that excludes private values.</p>
 <p>Use <code>--verbose</code> to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>--verbose
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>spotify_monitor<span class="w"> </span>spotify_user_uri_id<span class="w"> </span>--verbose
 </code></pre></div>
 <p>Spotify Monitor normally checks every 30 seconds. Verbose mode reports token refreshes, metadata fallback, the first temporary friend-list miss, recovery from temporary problems and a periodic status summary. It does not print every successful check when nothing changed.</p>
 <p><code>--debug</code> retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in summaries, verbose events, debug output or the complete log summary.</p>
@@ -1220,7 +1278,7 @@
 <p><a id="listing-mode"></a></p>
 <h2 id="listing-mode">Listing Mode<a class="headerlink" href="#listing-mode" title="Permanent link">&para;</a></h2>
 <p>Listing mode shows the Spotify friends visible to the monitoring account and each person's most recently reported track:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>spotify_monitor<span class="w"> </span>-l
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>-l
 </code></pre></div>
 <p>The output includes each person's display name and user URI ID. Use the user URI ID as a monitoring target.</p>
 <p align="center">
@@ -1234,14 +1292,14 @@
 <li>set <code>ACTIVE_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-a</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-a
 </code></pre></div>
 <p>To send an email when a user becomes inactive:</p>
 <ul>
 <li>set <code>INACTIVE_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-i</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-i
 </code></pre></div>
 <p>Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the <code>INACTIVE_EMAIL_RECENT_SONGS_COUNT</code> configuration option.</p>
 <p>To send an email when a listed track, playlist or album plays:</p>
@@ -1250,14 +1308,14 @@
 <li>or use the <code>-t</code> flag</li>
 </ul>
 <p>Create a text file with one track, album or playlist per line. Select it with <code>MONITOR_LIST_FILE</code> or <code>-s</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_spotify_user_uri_id
 </code></pre></div>
 <p>Example file <code>spotify_tracks_spotify_user_uri_id</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>we fell in love in october
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>Like a Stone
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>Half Believing
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>Something Changed
-<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>I Will Be There
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>we fell in love in october
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>Like a Stone
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>Half Believing
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>Something Changed
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>I Will Be There
 </code></pre></div>
 <p>Start a line with <code>#</code> to ignore it.</p>
 <p>To send an email for every reported song change:</p>
@@ -1265,21 +1323,21 @@
 <li>set <code>SONG_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-j</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-j
 </code></pre></div>
 <p>To send an email when a user repeats the same song:</p>
 <ul>
 <li>set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-x</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-x
 </code></pre></div>
 <p>Error emails are enabled by default when SMTP is configured. To disable them:</p>
 <ul>
 <li>set <code>ERROR_NOTIFICATION</code> to <code>False</code></li>
 <li>or use the <code>-e</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-e
 </code></pre></div>
 <p>All email alerts require valid <a href="../configuration/#smtp-settings">SMTP settings</a>.</p>
 <p>Example email:</p>
@@ -1328,24 +1386,28 @@
 <tr>
 <td>Monitoring error</td>
 <td><code>WEBHOOK_ERROR_NOTIFICATION</code></td>
-<td>Disable with <code>--no-webhook-error-notify</code></td>
+<td>Enable with <code>--webhook-errors</code> or disable with <code>--no-webhook-error-notify</code></td>
 </tr>
 </tbody>
 </table>
 <p>For example, this sends a webhook alert for every song change during one run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-song-changes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-song-changes
 </code></pre></div>
-<p>Use <code>--webhook</code> or <code>--no-webhook</code> to turn all configured webhook alerts on or off for one run. A tracked-song webhook alert uses the same song list as a tracked-song email alert.</p>
+<p>Use <code>--webhook</code> or <code>--no-webhook</code> to turn all configured webhook alerts on or off for one run. Standard Discord and public <code>ntfy.sh</code> URLs automatically correct a stale configured provider. Use <code>--webhook-provider {discord,ntfy}</code> as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.</p>
+<p>The recommended way to save a private destination is still the hidden <code>--set-webhook-url</code> command. For automation or one-time testing, <code>--webhook-url URL</code> overrides the destination without changing <code>.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--webhook-provider<span class="w"> </span>ntfy<span class="w"> </span>--webhook-url<span class="w"> </span><span class="s2">&quot;https://ntfy.sh/your-private-topic&quot;</span><span class="w"> </span>--webhook-song-changes
+</code></pre></div>
+<p>A URL passed on the command line may remain visible in shell history or process listings. See <a href="../configuration/#webhook-settings">Webhook Settings</a> for the setup wizard, advanced payload templates and dynamic headers.</p>
 <p><a id="csv-export"></a></p>
 <h2 id="csv-export">CSV Export<a class="headerlink" href="#csv-export" title="Permanent link">&para;</a></h2>
 <p>To save reported songs in a CSV file, set <code>CSV_FILE</code> or use <code>-b</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_user_uri_id.csv
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_user_uri_id.csv
 </code></pre></div>
 <p>Spotify Monitor creates the file if it does not exist.</p>
 <p><a id="activity-flag-file"></a></p>
 <h2 id="activity-flag-file">Activity Flag File<a class="headerlink" href="#activity-flag-file" title="Permanent link">&para;</a></h2>
 <p>Set <code>FLAG_FILE</code> or use <code>--flag-file PATH</code> to expose the monitored user's current activity state to another local tool. Spotify Monitor creates the file while the user is active and deletes it after the user becomes inactive:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>--flag-file<span class="w"> </span>/path/spotify_user_active
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>--flag-file<span class="w"> </span>/path/spotify_user_active
 </code></pre></div>
 <p>For a container, place the file under <code>/data</code> so it appears in the host directory. Each concurrently monitored user should have a different flag path.</p>
 <p><a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a></p>
@@ -1355,7 +1417,7 @@
 <li>set <code>TRACK_SONGS</code> to <code>True</code></li>
 <li>or use the <code>-g</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-g
 </code></pre></div>
 <p>The Spotify client must be installed and running.</p>
 <p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. A container run prints one warning before monitoring and <code>--doctor</code> reports <code>[WARN]</code>, but the setting is not disabled automatically.</p>
@@ -1385,13 +1447,17 @@
 <p><a id="check-intervals"></a></p>
 <h2 id="check-intervals">Check Intervals<a class="headerlink" href="#check-intervals" title="Permanent link">&para;</a></h2>
 <p>The polling interval is the number of seconds between Friend Activity checks. Set it through <code>SPOTIFY_CHECK_INTERVAL</code> or <code>-c</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">20</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">20</span>
 </code></pre></div>
+<p>For scrobble health, set the time between successful comparisons through <code>SCROBBLE_HEALTH_CHECK_INTERVAL</code> or <code>--scrobble-check-interval</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--scrobble-check-interval<span class="w"> </span><span class="m">120</span>
+</code></pre></div>
+<p>Operational failures use <code>SPOTIFY_ERROR_INTERVAL</code> as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate retry for transient server errors and sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long <code>Retry-After</code> value. A structured <code>QUOTA_EXCEEDED</code> response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
 <p>The inactivity timer starts at the last reported track. Set the number of seconds through <code>SPOTIFY_INACTIVITY_CHECK</code> or <code>-o</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
 </code></pre></div>
 <p>If a user disappears from Friend Activity, use <code>-m</code> or <code>SPOTIFY_DISAPPEARED_CHECK_INTERVAL</code> to control the delay between visibility checks:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>-m<span class="w"> </span><span class="m">180</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>spotify_monitor<span class="w"> </span>TARGET<span class="w"> </span>-m<span class="w"> </span><span class="m">180</span>
 </code></pre></div>
 <p><a id="signal-controls-macoslinuxunix"></a></p>
 <h2 id="signal-controls-macoslinuxunix">Signal Controls (macOS/Linux/Unix)<a class="headerlink" href="#signal-controls-macoslinuxunix" title="Permanent link">&para;</a></h2>
@@ -1436,19 +1502,19 @@
 </tbody>
 </table>
 <p>Send a signal with <code>kill</code> or <code>pkill</code>. For example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;spotify_monitor &lt;spotify_user_uri_id&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;spotify_monitor &lt;spotify_user_uri_id&gt;&quot;</span>
 </code></pre></div>
 <p>This feature is not available for a native Windows process because Windows supports only a limited signal set.</p>
 <p><a id="coloring-log-output-with-grc"></a></p>
 <h2 id="coloring-log-output-with-grc">Coloring Log Output with GRC<a class="headerlink" href="#coloring-log-output-with-grc" title="Permanent link">&para;</a></h2>
 <p><a href="https://github.com/garabik/grc">GRC</a> can color saved log files when you view them in a terminal.</p>
 <p>Add to your GRC config (<code>~/.grc/grc.conf</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a># monitoring log file
-<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>.*_monitor_.*\.log
-<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>conf.monitor_logs
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a># monitoring log file
+<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>.*_monitor_.*\.log
+<a id="__codelineno-48-3" name="__codelineno-48-3" href="#__codelineno-48-3"></a>conf.monitor_logs
 </code></pre></div>
 <p>Copy <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs">conf.monitor_logs</a> to <code>~/.grc/</code>. Then view a log through <code>grc</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
 </code></pre></div>
 
 

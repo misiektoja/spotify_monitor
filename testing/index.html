@@ -460,6 +460,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -476,6 +494,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#test-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#focused-test-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Focused Test Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coverage-and-type-checking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coverage and Type Checking
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -528,6 +598,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#test-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#focused-test-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Focused Test Commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coverage-and-type-checking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coverage and Type Checking
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -552,12 +663,47 @@
 
 
 <h1 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h1>
-<p>The <a href="https://github.com/misiektoja/spotify_monitor/tree/main/tests/">tests directory</a> contains an offline pytest suite for contributors. It checks configuration and target parsing, setup, browser cookie import, recovery advice, Doctor, startup output, webhook delivery, metadata fallbacks and container files. Tests replace network requests with local test doubles or fixtures.</p>
+<p>The <a href="https://github.com/misiektoja/spotify_monitor/tree/main/tests/">tests directory</a> contains an offline pytest suite for contributors. It checks configuration and target parsing, setup, browser cookie import, recovery advice, Doctor, startup output, notification delivery, metadata fallbacks, packaging and container files. Tests replace Spotify requests with local fixtures.</p>
 <p>Install the test dependencies and run the suite from the repository root:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[test]&#39;</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest
 </code></pre></div>
-<p>GitHub Actions runs the same suite on Python 3.9 through 3.14. It also checks Windows setup, optional dependency installation, Docker and Docker Compose. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
+<p>GitHub Actions runs the same suite on Python 3.9 through 3.14. It also checks Windows setup, optional dependency installation, the built wheel, strict documentation, Docker and Docker Compose. A separate quality job runs pyright plus subprocess-aware branch coverage. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
+<h2 id="test-layers">Test Layers<a class="headerlink" href="#test-layers" title="Permanent link">&para;</a></h2>
+<p>The suite combines several test types:</p>
+<ul>
+<li>Unit and component tests exercise focused functions with deterministic inputs.</li>
+<li>Integration tests use temporary files, SQLite databases and real loopback HTTP and SMTP connections.</li>
+<li>Packaging tests build the wheel, install it into a clean environment and run the installed command outside the source tree.</li>
+<li>The offline E2E test runs one complete CLI monitoring iteration against a loopback Spotify fixture.</li>
+<li>Contract tests validate stable documentation commands, links, container assets and publishing workflows.</li>
+<li>CI smoke tests run the application through Windows, Docker and Docker Compose.</li>
+</ul>
+<p>No test needs a real Spotify cookie, SMTP password or webhook URL. Loopback transport tests use fake credentials that are accepted only by temporary local servers.</p>
+<h2 id="focused-test-commands">Focused Test Commands<a class="headerlink" href="#focused-test-commands" title="Permanent link">&para;</a></h2>
+<p>Run semantic documentation contracts:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_documentation.py
+</code></pre></div>
+<p>Run packaging tests:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_packaging.py
+</code></pre></div>
+<p>Run local transport and offline E2E tests:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_local_transports.py<span class="w"> </span>tests/test_offline_e2e.py
+</code></pre></div>
+<p>Run property-based tests:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_properties.py
+</code></pre></div>
+<h2 id="coverage-and-type-checking">Coverage and Type Checking<a class="headerlink" href="#coverage-and-type-checking" title="Permanent link">&para;</a></h2>
+<p>Coverage stores all parent and subprocess data below <code>local/</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>local/coverage-data
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">COVERAGE_FILE</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/local/coverage-data/.coverage&quot;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>coverage<span class="w"> </span>run<span class="w"> </span>-m<span class="w"> </span>pytest
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">COVERAGE_FILE</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/local/coverage-data/.coverage&quot;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>coverage<span class="w"> </span>combine<span class="w"> </span>local/coverage-data
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nv">COVERAGE_FILE</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/local/coverage-data/.coverage&quot;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>coverage<span class="w"> </span>report
+</code></pre></div>
+<p>Run pyright against the application, debug tools and tests while selecting the active interpreter:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pyright<span class="w"> </span>--pythonpath<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>python<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>spotify_monitor.py<span class="w"> </span>debug<span class="w"> </span>tests
+</code></pre></div>
+<p>The current coverage floor is a baseline rather than a final target. Raise it gradually as meaningful behavior receives new tests.</p>
 
 
 
