@@ -104,6 +104,67 @@ def test_spotify_get_scrobble_access_token_uses_user_owned_app(monkeypatch):
     persistence.assert_called_once_with("rotated-refresh")
 
 
+# Confirms transient refresh-token connection failures receive one short immediate retry
+def test_spotify_get_scrobble_access_token_retries_transient_connection_failure(monkeypatch):
+    token_response = Mock(status_code=200)
+    token_response.raise_for_status.return_value = None
+    token_response.json.return_value = {"access_token": "scoped-token", "expires_in": 3600}
+    session = Mock()
+    session.post.side_effect = [monitor.req.ConnectionError("stale pooled connection"), token_response]
+    sleep = Mock()
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", None)
+    monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 0)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "")
+    monkeypatch.setattr(monitor.time, "sleep", sleep)
+
+    token = monitor.spotify_get_scrobble_access_token("a" * 32, "private-refresh", session)
+
+    assert token == "scoped-token"
+    assert session.post.call_count == 2
+    sleep.assert_called_once_with(monitor.SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+
+
+# Confirms transient Spotify server responses receive one short refresh-token retry
+def test_spotify_get_scrobble_access_token_retries_transient_server_error(monkeypatch):
+    unavailable_response = Mock(status_code=503)
+    token_response = Mock(status_code=200)
+    token_response.raise_for_status.return_value = None
+    token_response.json.return_value = {"access_token": "scoped-token", "expires_in": 3600}
+    session = Mock()
+    session.post.side_effect = [unavailable_response, token_response]
+    sleep = Mock()
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", None)
+    monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 0)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "")
+    monkeypatch.setattr(monitor.time, "sleep", sleep)
+
+    token = monitor.spotify_get_scrobble_access_token("a" * 32, "private-refresh", session)
+
+    assert token == "scoped-token"
+    assert session.post.call_count == 2
+    unavailable_response.close.assert_called_once_with()
+    sleep.assert_called_once_with(monitor.SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+
+
+# Confirms Spotify rate limits return directly to the monitoring loop without an immediate retry
+def test_spotify_get_scrobble_access_token_does_not_retry_rate_limit(monkeypatch):
+    response = Mock(status_code=429, headers={"Retry-After": "600"})
+    response.json.return_value = {"error": {"status": 429, "message": "Too many requests", "reason": "QUOTA_EXCEEDED"}}
+    session = Mock()
+    session.post.return_value = response
+    sleep = Mock()
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_ACCESS_TOKEN", None)
+    monkeypatch.setattr(monitor, "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT", 0)
+    monkeypatch.setattr(monitor, "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT", "")
+    monkeypatch.setattr(monitor.time, "sleep", sleep)
+
+    with pytest.raises(monitor.SpotifyQuotaExceededError):
+        monitor.spotify_get_scrobble_access_token("a" * 32, "private-refresh", session)
+
+    assert session.post.call_count == 1
+    sleep.assert_not_called()
+
+
 # Confirms an expired Spotify grant points to standalone reauthorization
 def test_spotify_get_scrobble_access_token_reports_expired_grant(monkeypatch):
     response = Mock(status_code=400)
@@ -716,9 +777,12 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
 
 # Confirms scrobble health uses a smaller capped retry budget than Friend Activity
 def test_scrobble_health_http_retries_are_bounded():
+    allowed_methods = monitor.scrobble_health_retry.allowed_methods
     assert monitor.retry.total == 5
     assert monitor.scrobble_health_retry.total == 1
     assert 429 not in monitor.scrobble_health_retry.status_forcelist
+    assert allowed_methods is not None
+    assert "POST" not in allowed_methods
 
 
 # Confirms Spotify's structured quota response preserves a bounded diagnostic delay
