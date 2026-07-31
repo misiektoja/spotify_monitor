@@ -2,6 +2,14 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.2.1 (TBD)
+
+Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify access-token refreshes.
+
+**Bug fixes**:
+
+- **BUGFIX:** Added one short bounded retry when a Spotify recent-play token refresh hits a connection failure, timeout or temporary 5xx response. Rate limits and rejected credentials still return directly to the existing backoff and recovery handling
+
 # Changes in 3.2 (31 Jul 2026)
 
 Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.
