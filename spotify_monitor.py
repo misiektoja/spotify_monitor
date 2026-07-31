@@ -1051,6 +1051,9 @@ MAX_RETRY_AFTER_SECONDS = 60
 # Limit scrobble health to one immediate HTTP retry before its monitoring loop backs off
 SCROBBLE_HEALTH_HTTP_RETRIES = 1
 
+# Pause briefly before the immediate Spotify refresh-token retry
+SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY = 1
+
 # Require three consecutive failed comparisons before sending an operational alert
 SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES = 3
 
@@ -2404,7 +2407,7 @@ web_player_retry = CappedRetry(
 web_player_adapter = HTTPAdapter(max_retries=web_player_retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
 
-# Scrobble health retries transient server failures once while returning quota responses to its monitoring loop
+# Scrobble health GET requests retry transient failures once while returning quota responses to its monitoring loop
 scrobble_health_retry = CappedRetry(
     total=SCROBBLE_HEALTH_HTTP_RETRIES,
     connect=SCROBBLE_HEALTH_HTTP_RETRIES,
@@ -4162,6 +4165,28 @@ def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
         return False
 
 
+# Posts a Spotify refresh-token request with one bounded retry for transient failures
+def spotify_post_scrobble_refresh_token(request_session: req.Session, token_data: dict) -> Any:
+    max_attempts = SCROBBLE_HEALTH_HTTP_RETRIES + 1
+    for attempt in range(max_attempts):
+        debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health token refresh, attempt {attempt + 1}/{max_attempts}]")
+        try:
+            response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        except (req.ConnectionError, req.Timeout) as exc:
+            if attempt + 1 >= max_attempts:
+                raise
+            debug_print(f"Spotify recent-play token refresh failed temporarily: {sanitize_error_text(exc)}. Retrying in {display_time(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)}")
+            time.sleep(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+            continue
+        if 500 <= response.status_code <= 599 and attempt + 1 < max_attempts:
+            debug_print(f"Spotify recent-play token refresh returned HTTP {response.status_code}. Retrying in {display_time(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)}")
+            response.close()
+            time.sleep(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+            continue
+        return response
+    raise RuntimeError("Spotify recent-play token refresh exhausted its bounded retry")
+
+
 # Refreshes and caches a user-owned Spotify recent-play access token
 def spotify_get_scrobble_access_token(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> str:
     global SPOTIFY_SCROBBLE_REFRESH_TOKEN, SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_AUTH_FINGERPRINT
@@ -4175,8 +4200,7 @@ def spotify_get_scrobble_access_token(client_id: Optional[str] = None, refresh_t
         return SP_CACHED_SCROBBLE_ACCESS_TOKEN
     request_session = SCROBBLE_HEALTH_SESSION if session is None else session
     token_data = {"client_id": selected_client_id, "grant_type": "refresh_token", "refresh_token": selected_refresh_token}
-    debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health token refresh]")
-    response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    response = spotify_post_scrobble_refresh_token(request_session, token_data)
     if response.status_code == 429 or response.status_code >= 500:
         spotify_raise_scrobble_http_error(response)
     oauth_error, oauth_description = spotify_scrobble_oauth_error(response)
