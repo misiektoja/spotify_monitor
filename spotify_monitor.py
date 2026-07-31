@@ -327,7 +327,7 @@ SPOTIFY_SCROBBLE_REFRESH_TOKEN = ""
 
 # How often to compare completed Spotify plays with Last.fm in seconds
 # Can also be set using --scrobble-check-interval
-SCROBBLE_HEALTH_CHECK_INTERVAL = 120
+SCROBBLE_HEALTH_CHECK_INTERVAL = 180
 
 # Minimum age of the oldest unmatched play before an outage alert in seconds
 # Can also be set using --scrobble-dead-period
