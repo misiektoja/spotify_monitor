@@ -4,7 +4,7 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.2.1 (TBD)
 
-Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify access-token refreshes.
+Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify recent-play access-token refreshes.
 
 **Bug fixes**:
 
