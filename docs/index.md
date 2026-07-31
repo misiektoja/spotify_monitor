@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
 </p>
 
-Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local client, detect skipped tracks and receive instant notifications for every beat your friends play.
+Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local Spotify client, detect skipped tracks and receive instant notifications for every beat your friends play.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
@@ -18,6 +18,11 @@ Powerful real-time tracker for Spotify friend music activity: monitor listening 
 
 <a id="-quick-install-run"></a>
 ### 🚀 Quick Install & Run
+
+Spotify Monitor has two independent modes:
+
+- **Friend Activity** monitors a Spotify friend's completed plays, activity status and listening sessions.
+- **Last.fm Scrobble Health** checks whether plays from your Spotify account reach your Last.fm profile and alerts you when scrobbles stop showing up.
 
 #### Python from PyPI
 
@@ -27,13 +32,20 @@ New to Python or unsure what is installed? Follow the [Python install walkthroug
 pip install spotify_monitor
 ```
 
-Run setup wizard:
+Run setup for friend activity mode:
 
 ```sh
 spotify_monitor --setup
 ```
 
+Or for Last.fm Scrobble Health:
+```sh
+spotify_monitor --setup-scrobble-health
+```
+
 #### Docker image - fastest container setup
+
+The Docker commands below run Friend Activity setup. For Last.fm Scrobble Health, replace the final `--setup` with `--setup-scrobble-health`.
 
 ##### macOS or Windows
 
@@ -82,7 +94,8 @@ For the manual single-file method, optional extras and upgrade commands for ever
 ## Features
 
 ### 🔍 Real-time Tracking
-- **Friend Activity**: Monitor songs listened by Spotify users in real-time.
+- **Friend Activity**: Monitor songs listened to by Spotify users in real time.
+- **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
 - **Session Stats**: Display **duration, track counts** and **songs on loop**.
 
