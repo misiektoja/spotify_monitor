@@ -79,15 +79,19 @@ Spotify Friend Activity reports a track after the user finishes it. Spotify Moni
 <a id="scrobble-health-mode"></a>
 ## Scrobble Health Mode
 
-Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert. This mode can notify through the console, email or a webhook when the gap meets the configured evidence threshold.
+Spotify's six-month re-authorization requirement can disconnect Spotify Scrobbling while Last.fm currently warns only through a website banner without an email alert.
 
-Run the focused wizard once:
+This mode can notify through the console, email or a webhook (Discord, ntfy) when Spotify scrobbles stop showing up on Last.fm.
+
+Run the focused setup wizard once:
 
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
 
-The focused wizard lets you review each section before saving. It links to [Last.fm API account management](https://www.last.fm/api/accounts), the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), Spotify's [app creation guide](https://developer.spotify.com/documentation/web-api/concepts/apps) and its [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow). It shows the recommended `http://127.0.0.1:8888/callback` redirect URI to register without asking you to choose another, asks only for the app Client ID and authorizes read-only `user-read-recently-played` access. A Client Secret and Spotify cookie are not used by this mode. Both setup wizards explain that bracketed values are recommended defaults and that the capital letter in `[Y/n]` or `[y/N]` is the default. Duration prompts show seconds plus a readable equivalent. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Its notification choices cover scrobble outages, recovery and operational errors rather than Friend Activity events. With complete local authentication it can run Doctor then start scrobble health monitoring immediately.
+The setup wizard walks you through the whole process. With complete local authentication it can run Doctor tests and then start scrobble health monitoring immediately.
+
+This mode reads the authorized Spotify account's completed plays through the official `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
 
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
@@ -99,31 +103,23 @@ spotify_monitor --authorize-scrobble-health
 
 The command reuses the app Client ID and redirect URI from the selected config then saves the new `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file. It opens the authorization page for local installs or prints the URL for Docker. In either case, paste the complete redirected URL from the browser address bar when prompted.
 
-The focused wizard saves scrobble health in `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health`. Select the mode to discover those files:
+The focused wizard saves scrobble health config in `spotify_monitor_scrobble_health.conf` and secrets in `.env.scrobble_health`.
+
+To run the tool in scrobble health mode later:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health
 ```
 
-Save the profile to compare as `LASTFM_USERNAME` in the scrobble health config or pass `--lastfm-username` for one run. Use `--config-file` when you want to select another saved scrobble health configuration.
+You can indicate Last.fm username to monitor via `LASTFM_USERNAME` in the scrobble health config file or by passing `--lastfm-username` as command line argument. Use `--config-file` when you want to select another saved scrobble health configuration.
 
-No config or dotenv file is required. With `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REFRESH_TOKEN` already available as environment variables, select only the mode and profile:
-
-```sh
-spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
-```
-
-You can pass the credentials with `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token` instead. Use `--scrobble-redirect-uri` when the app does not register the default `http://127.0.0.1:8888/callback`. Private values may remain visible in shell history or process listings.
+You can also pass all the required credentials with `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token` instead of config file. Use `--scrobble-redirect-uri` when the app does not register the default `http://127.0.0.1:8888/callback`. Private values may remain visible in shell history or process listings in such case.
 
 To run Friend Activity with a scrobble health config, select Friend Activity and provide a Spotify target if `TARGET_USER_URI_ID` is not saved:
 
 ```sh
 spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
-
-The mode reads the authorized Spotify account's completed plays through the official `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window.
-
-The console prints the first comparison and explains its result. Every visible monitoring event includes the same human-readable timestamp and separator used by Friend Activity, so console logs show when startup, checks, outages, recoveries or errors occurred. Later routine checks appear only with `--verbose`. Outages, recoveries and operational errors remain visible in normal output. Outage messages use the same human-readable date format for the oldest missing play and every recent missing play. Email and webhook bodies include the notification timestamp. An idle result means Spotify has no completed plays from the configured recent-history period to compare with Last.fm yet. Email uses `SCROBBLE_HEALTH_NOTIFICATION`. Discord or ntfy uses `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` together with the normal webhook master switch. The monitor persists its outage state so a restart does not resend the first alert. It repeats an unresolved alert only after `SCROBBLE_HEALTH_REPEAT_INTERVAL`.
 
 Scrobble-specific settings have one-run options, so every comparison control can be changed without a config file:
 
@@ -137,15 +133,15 @@ Use focused Doctor checks before leaving it unattended:
 spotify_monitor --monitor-mode scrobble_health --doctor
 ```
 
-Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. If Spotify rotates the refresh token during that check, Doctor atomically updates only `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file so later monitoring can continue. After a successful check it prints the monitoring command for the detected installation and preserves the selected configuration plus dotenv paths. Docker and Docker Compose output uses the matching container command and `/data` paths. Private values originally passed through `--lastfm-api-key` or `--scrobble-refresh-token` are represented by uppercase placeholders so Doctor never repeats them on screen.
+Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. If Spotify rotates the refresh token during that check, Doctor atomically updates only `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file so later monitoring can continue. After a successful check it prints the monitoring command for the detected installation and preserves the selected configuration plus dotenv paths.
 
-To inspect the actual histories instead of only their counts, add `--verbose`:
+To inspect the actual Spotify and Last.fm track histories instead of only their counts, add `--verbose`:
 
 ```sh
 spotify_monitor --monitor-mode scrobble_health --doctor --verbose
 ```
 
-The verbose focused report lists recent Spotify plays with `MATCHED` or `NOT MATCHED` markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times. Normal Doctor output does not display listening history.
+The verbose focused report lists recent Spotify plays with `MATCHED` or `NOT MATCHED` markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times.
 
 <a id="main-application-docker-image"></a>
 ## Container Operation
