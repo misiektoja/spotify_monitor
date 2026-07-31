@@ -21,6 +21,8 @@ Powerful real-time tracker for Spotify friend music activity: monitor listening 
 
 #### Python from PyPI
 
+New to Python or unsure what is installed? Follow the [Python install walkthrough](https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-install-everything) first.
+
 ```sh
 pip install spotify_monitor
 ```
