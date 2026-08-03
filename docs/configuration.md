@@ -35,7 +35,7 @@ If the same setting appears in more than one place, the item later in this list 
 
 The `.env` layer applies to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `SMTP_PASSWORD` and `WEBHOOK_URL`. It also accepts the non-secret `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` settings for externally managed runs. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
-You may set `TARGET_USER_URI_ID` to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:
+Despite its legacy name, `TARGET_USER_URI_ID` accepts a complete Spotify profile URL, a `spotify:user:` URI or a user ID. A positional command-line target takes precedence. With a configured target you can start monitoring with:
 
 ```sh
 spotify_monitor --config-file spotify_monitor.conf
@@ -285,7 +285,7 @@ Client mode reuses login data from a real Spotify desktop session. It is an adva
 - Run the tool with `--token-source client -w <path-to-login-request-body-file>`:
 
 ```sh
-spotify_monitor --token-source client -w <path-to-login-request-body-file> <spotify_user_uri_id>
+spotify_monitor --token-source client -w <path-to-login-request-body-file> <spotify_target>
 ```
 
 Spotify Monitor reads the required fields from the saved request and starts monitoring.
@@ -326,7 +326,7 @@ If you already have a working app or want to create a new one:
 Example:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+spotify_monitor <spotify_target> -r "your_spotify_app_client_id:your_spotify_app_client_secret"
 ```
 
 When configured the tool automatically refreshes the OAuth app access token. Tokens are cached in the file specified by `SP_APP_TOKENS_FILE` configuration option (default: `.spotify-monitor-oauth-app.json`).
@@ -347,7 +347,8 @@ If you configure authentication outside the wizard you can still follow the targ
 Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
 
 <a id="how-to-get-a-friends-user-uri-id"></a>
-## How to Get a Friend's User URI ID
+<a id="find-a-friends-spotify-profile"></a>
+## How to Find a Friend's Spotify Profile
 
 Use the Spotify desktop or mobile app:
 
@@ -355,13 +356,11 @@ Use the Spotify desktop or mobile app:
 - click the **three dots** (•••) or press the **Share** button
 - copy the link to the profile
 
-You'll get a URL like: [https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id](https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id)
+You'll get a URL like `https://open.spotify.com/user/USER_ID?si=tracking_id`.
 
-Pass that profile URL directly to the tool. Raw IDs and Spotify user URIs such as `spotify:user:spotify_user_uri_id` are also accepted.
+Pass that profile URL directly to the tool. You do not need to extract the ID. A Spotify user URI such as `spotify:user:USER_ID` or a standalone user ID is also accepted.
 
-As an alternative you can extract the part between `/user/` and `?si=` - in this case: `spotify_user_uri_id` - then pass that raw ID to the tool.
-
-Alternatively you can list all user URI IDs of accounts you follow by using [Listing mode](usage.md#listing-mode).
+Alternatively you can use [Listing mode](usage.md#listing-mode) to see the Spotify user IDs and profile URLs of accounts you follow. Either displayed form can be used as the monitoring target.
 
 <a id="smtp-settings"></a>
 ## SMTP Settings
@@ -581,13 +580,13 @@ Browser import does not use the parent-directory search when choosing where to w
 You can specify a custom file with `DOTENV_FILE` or `--env-file` flag:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> --env-file /path/.env-spotify_monitor
+spotify_monitor <spotify_target> --env-file /path/.env-spotify_monitor
 ```
 
 Disable automatic `.env` search with `DOTENV_FILE = "none"` or `--env-file none`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> --env-file none
+spotify_monitor <spotify_target> --env-file none
 ```
 
 As a last resort, you can store private values in the configuration file or source code. This makes them easier to expose or commit accidentally.
