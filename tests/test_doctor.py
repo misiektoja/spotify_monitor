@@ -92,6 +92,15 @@ def test_report_markers_and_sections(monkeypatch):
     assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
 
 
+# Verifies Doctor visually attaches explanatory details to their check rows
+def test_report_indents_check_details():
+    report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "PASS", "Log destination appears writable", "Path: spotify_monitor")])
+
+    rendered = monitor.render_doctor_report(report)
+
+    assert "[PASS] Log destination appears writable\n  Path: spotify_monitor" in rendered
+
+
 # Verifies reports omit sections that have no checks
 def test_report_omits_empty_sections():
     report = monitor.DoctorReport([monitor.make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded")])
@@ -260,6 +269,15 @@ def test_optional_dependency_reporting():
     assert len(optional) == 2
     assert all(check.status == "WARN" for check in optional)
     assert all("Normal monitoring is unaffected" in check.detail for check in optional)
+
+
+# Verifies Chromium dependency guidance explicitly preserves Firefox import support
+def test_installed_browser_dependency_explains_firefox_support():
+    checks = monitor.doctor_check_environment((3, 9, 0), all_dependencies_present)
+    check = next(item for item in checks if "pycookiecheat" in item.label)
+
+    assert check.status == "PASS"
+    assert check.detail == "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"
 
 
 # Verifies requested container playback is a warning rather than a failure
