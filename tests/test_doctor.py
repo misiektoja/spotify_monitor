@@ -90,6 +90,7 @@ def test_report_markers_and_sections(monkeypatch):
     assert "0 failure(s)" in rendered
     assert "run only after approval" in rendered
     assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
+    assert "ASCII_LOG_SEPARATORS resolves" not in rendered
 
 
 # Verifies Doctor visually attaches explanatory details to their check rows
