@@ -7620,7 +7620,7 @@ def _wizard_collect_auth_section(state: WizardSetupState, method: str) -> None:
 # Collects the polling interval using the current answer as its default
 def _wizard_collect_polling_section(state: WizardSetupState) -> None:
     current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
-    state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", current_interval)
+    state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
 
 
 # Collects email settings after clearing pending answers from that section
@@ -7681,7 +7681,7 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
         print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
     if state.auth.get("browser"):
         print(f"  Browser: {browser_label(state.auth['browser'])}")
-    print(f"  Polling interval: {state.config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
+    print(f"  Polling interval: {_wizard_format_duration(int(state.config_values['SPOTIFY_CHECK_INTERVAL']))}")
     print(f"  Email: {'enabled' if state.enabled_notifications else 'disabled'}")
     print(f"  Email notifications: {', '.join(state.enabled_notifications) if state.enabled_notifications else 'none'}")
     print(f"  Webhook: {'enabled' if state.enabled_webhooks else 'disabled'}")
