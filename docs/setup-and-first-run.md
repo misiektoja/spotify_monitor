@@ -5,7 +5,7 @@
 
 This page assumes Spotify Monitor is already installed (see [Installation](installation.md)). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose), finish that method's steps then return here.
 
-Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
+Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify, how often to poll and which alerts to enable. The polling interval accepts seconds directly or a positive whole number followed by `s`, `m`, `h` or `d`. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
 Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup.
 
