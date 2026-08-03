@@ -6178,8 +6178,28 @@ def nearest_existing_parent(path: Path) -> Path:
     return candidate
 
 
+# Resolves the target or mode-specific suffix used by the runtime log file
+def resolve_log_file_suffix(target_value=None, lastfm_username=None) -> str:
+    if FILE_SUFFIX:
+        return str(FILE_SUFFIX)
+    if lastfm_username is not None:
+        safe_lastfm_suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", str(lastfm_username)).strip("._")
+        return f"lastfm_{safe_lastfm_suffix or 'scrobble_health'}"
+    if target_value:
+        return resolve_target_user_id(target_value, None) or ""
+    return ""
+
+
+# Builds the exact log path used for one effective suffix
+def build_log_path(base_path, suffix: str) -> Path:
+    log_path = Path(os.path.expanduser(str(base_path)))
+    if log_path.suffix == "" and suffix:
+        log_path = log_path.parent / f"{log_path.name}_{suffix}.log"
+    return log_path
+
+
 # Validates effective config values and configured file destinations without writing them
-def doctor_check_configuration(config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = ()) -> List[DoctorCheck]:
+def doctor_check_configuration(config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), target_value=None, lastfm_username=None) -> List[DoctorCheck]:
     checks = list(startup_checks)
     if not any(check.section == "Configuration" and "configuration file" in check.label.lower() for check in checks):
         if config_path:
@@ -6231,7 +6251,14 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if CSV_FILE:
         destinations.append(("CSV destination", Path(CSV_FILE)))
     if not DISABLE_LOGGING and SP_LOGFILE:
-        destinations.append(("Log destination", Path(SP_LOGFILE)))
+        try:
+            log_suffix = resolve_log_file_suffix(target_value, lastfm_username)
+        except ValueError:
+            log_suffix = ""
+        if log_suffix:
+            destinations.append(("Log destination", build_log_path(SP_LOGFILE, log_suffix)))
+        else:
+            checks.append(make_doctor_check("Configuration", "PASS", "Log destination will be finalized after a target is selected", f"Base path: {Path(os.path.expanduser(SP_LOGFILE))}"))
     for label, destination in destinations:
         parent = nearest_existing_parent(destination)
         if parent.is_dir() and os.access(parent, os.W_OK):
@@ -6507,7 +6534,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
     report.checks.extend(doctor_check_container_playback())
     if progress is not None:
         progress("configuration")
-    report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+    report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks, target_value))
     if progress is not None:
         progress("authentication")
     report.checks.extend(doctor_check_authentication(report))
@@ -6599,7 +6626,7 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
         report.checks.extend(doctor_check_environment())
         if progress is not None:
             progress("configuration")
-        report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+        report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks, lastfm_username=username))
         if progress is not None:
             progress("Spotify recent plays")
         try:
@@ -10201,6 +10228,8 @@ def main():
         sys.exit(1)
     if args.disable_logging is True:
         DISABLE_LOGGING = True
+    if args.file_suffix:
+        FILE_SUFFIX = str(args.file_suffix)
     if args.notify_active is True:
         ACTIVE_NOTIFICATION = True
     if args.notify_inactive is True:
@@ -10477,15 +10506,8 @@ def main():
             print_recovery_error(e, "file_write", detail=f"CSV destination '{CSV_FILE}' cannot be opened for writing: {e}")
             sys.exit(1)
 
-    if args.file_suffix:
-        FILE_SUFFIX = str(args.file_suffix)
-    else:
-        if not FILE_SUFFIX:
-            if scrobble_health_mode:
-                safe_lastfm_suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", scrobble_health_username).strip("._")
-                FILE_SUFFIX = f"lastfm_{safe_lastfm_suffix or 'scrobble_health'}"
-            else:
-                FILE_SUFFIX = str(target_user_id)
+    if not FILE_SUFFIX:
+        FILE_SUFFIX = resolve_log_file_suffix(target_user_id, scrobble_health_username if scrobble_health_mode else None)
 
     if args.disable_logging is True:
         DISABLE_LOGGING = True
@@ -10498,13 +10520,7 @@ def main():
 
     if not DISABLE_LOGGING:
         try:
-            log_path = Path(os.path.expanduser(SP_LOGFILE))
-            if log_path.parent != Path('.'):
-                if log_path.suffix == "":
-                    log_path = log_path.parent / f"{log_path.name}_{FILE_SUFFIX}.log"
-            else:
-                if log_path.suffix == "":
-                    log_path = Path(f"{log_path.name}_{FILE_SUFFIX}.log")
+            log_path = build_log_path(SP_LOGFILE, FILE_SUFFIX)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             FINAL_LOG_PATH = str(log_path)
             sys.stdout = Logger(FINAL_LOG_PATH)
