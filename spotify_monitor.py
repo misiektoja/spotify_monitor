@@ -6883,26 +6883,10 @@ def _build_help_epilog() -> str:
     protobuf_file = "/data/login.protobuf" if method in ("docker", "compose") else "<protobuf_file>"
     sections = [
         "Examples:",
+        "",
+        "Friend Activity:",
         "  # Guided setup, recommended for the first run",
         f"  {prefix} --setup",
-        "",
-        "  # Guided setup for Spotify-to-Last.fm scrobble health monitoring",
-        f"  {prefix} --setup-scrobble-health",
-        "",
-        "  # Reauthorize the user-owned Spotify app for scrobble health",
-        f"  {prefix} --authorize-scrobble-health",
-        "",
-        "  # Start the separate Spotify-to-Last.fm scrobble health mode",
-        f"  {prefix} --monitor-mode scrobble_health",
-        "",
-        "  # Start scrobble health with a Last.fm profile selected for this run",
-        f"  {prefix} --monitor-mode scrobble_health --lastfm-username <lastfm_username>",
-        "",
-        "  # Diagnose scrobble health and list recent Spotify and Last.fm history",
-        f"  {prefix} --monitor-mode scrobble_health --doctor --verbose",
-        "",
-        "  # Select Friend Activity for this run",
-        f"  {prefix} --monitor-mode friend_activity <spotify_user_id>",
         "",
     ]
     if method in ("docker", "compose"):
@@ -6933,9 +6917,6 @@ def _build_help_epilog() -> str:
         "  # Save a Discord or ntfy webhook URL through a hidden prompt",
         f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
         "",
-        "  # Send one test webhook without starting monitoring",
-        f"  {prefix} --send-test-webhook",
-        "",
     ))
     sections.extend((
         "  # Monitor one Spotify user",
@@ -6953,6 +6934,15 @@ def _build_help_epilog() -> str:
     ))
     if method == "compose":
         sections.extend(("", "  # Start from the target saved by setup", "  docker compose up --no-log-prefix"))
+    sections.extend((
+        "",
+        "Scrobble Health:",
+        "  # Guided setup for Spotify-to-Last.fm monitoring",
+        f"  {prefix} --setup-scrobble-health",
+        "",
+        "  # Start Spotify-to-Last.fm monitoring",
+        f"  {prefix} --monitor-mode scrobble_health",
+    ))
     sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
     return "\n".join(sections) + "\n"
 
