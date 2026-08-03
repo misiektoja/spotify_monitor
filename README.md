@@ -149,7 +149,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 
 | I want to... | Run this |
 | --- | --- |
-| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
+| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a complete profile URL, `spotify:user:` URI or user ID |
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
