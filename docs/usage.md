@@ -72,7 +72,7 @@ The tool runs until you press `Ctrl+C`. On macOS, Linux or Unix, tools such as `
 
 You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.
 
-By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable file logging with `DISABLE_LOGGING` or `-d`.
+By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable file logging with `DISABLE_LOGGING` or `-d`. Saved logs remain UTF-8, but separator-only lines use ASCII hyphens for compatibility across viewers.
 
 Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
 
