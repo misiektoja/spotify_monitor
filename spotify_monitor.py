@@ -6139,7 +6139,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
             advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", f"Install {package_name} then retry", False)
             checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
 
-    optional = (("spotipy", "Spotipy", "legacy OAuth metadata only"), ("pycookiecheat", "pycookiecheat", "Chromium browser import only"))
+    optional = (("spotipy", "Spotipy", "Used only for legacy OAuth metadata"), ("pycookiecheat", "pycookiecheat", "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"))
     for module_name, package_name, purpose in optional:
         try:
             present = find_spec(module_name) is not None
@@ -6148,7 +6148,8 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         if present:
             checks.append(make_doctor_check("Environment", "PASS", f"Optional dependency {package_name} is installed", purpose))
         else:
-            checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"))
+            missing_purpose = "Required only for importing cookies from Chromium-based browsers. Normal monitoring is unaffected. Firefox cookie import is also unaffected" if module_name == "pycookiecheat" else f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
+            checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))
     return checks
 
 
@@ -6182,12 +6183,12 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     checks = list(startup_checks)
     if not any(check.section == "Configuration" and "configuration file" in check.label.lower() for check in checks):
         if config_path:
-            checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", str(config_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", f"Path: {config_path}"))
         else:
             checks.append(make_doctor_check("Configuration", "PASS", "No configuration file selected", "Using built-in defaults and command-line overrides"))
     if not any(check.section == "Configuration" and "dotenv" in check.label.lower() for check in checks):
         if env_path:
-            checks.append(make_doctor_check("Configuration", "PASS", "Dotenv file loaded", str(env_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Dotenv file loaded", f"Path: {env_path}"))
         else:
             checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
 
@@ -6221,7 +6222,7 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if MONITOR_LIST_FILE:
         monitor_path = Path(MONITOR_LIST_FILE).expanduser()
         if monitor_path.is_file() and os.access(monitor_path, os.R_OK):
-            checks.append(make_doctor_check("Configuration", "PASS", "Monitored-track list is readable", str(monitor_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Monitored-track list is readable", f"Path: {monitor_path}"))
         else:
             advice = classify_recovery_error(context="file_read", detail=f"Monitored-track list is unreadable: {monitor_path}")
             checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice))
@@ -6234,7 +6235,7 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     for label, destination in destinations:
         parent = nearest_existing_parent(destination)
         if parent.is_dir() and os.access(parent, os.W_OK):
-            checks.append(make_doctor_check("Configuration", "PASS", f"{label} appears writable", str(destination.expanduser())))
+            checks.append(make_doctor_check("Configuration", "PASS", f"{label} appears writable", f"Path: {destination.expanduser()}"))
         else:
             advice = classify_recovery_error(context="file_write", detail=f"{label} is not writable: {destination.expanduser()}")
             checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice))
@@ -6539,7 +6540,7 @@ def render_doctor_report(report: DoctorReport) -> str:
         for check in section_checks:
             lines.append(f"[{'PASS' if check.status == 'PASS' else check.status}] {check.label}")
             if check.detail:
-                lines.append(check.detail)
+                lines.append(f"  {check.detail}")
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
