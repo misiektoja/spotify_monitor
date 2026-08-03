@@ -14,6 +14,7 @@ Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble heal
 **Bug fixes**:
 
 - **BUGFIX:** Added one short bounded retry when a Spotify recent-play token refresh hits a connection failure, timeout or temporary 5xx response. Rate limits and rejected credentials still return directly to the existing backoff and recovery handling
+- **BUGFIX:** Doctor now keeps paths and explanations attached to each check. It also makes clear that `pycookiecheat` is needed only for Chromium-based import, not Firefox
 
 # Changes in 3.2 (31 Jul 2026)
 
