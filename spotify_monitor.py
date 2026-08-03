@@ -474,6 +474,12 @@ SP_LOGFILE = "spotify_monitor"
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
+# Controls conversion of separator-only log lines to ASCII:
+#   "Auto" - enable on Windows only (default)
+#   "On"   - enable on every operating system
+#   "Off"  - preserve Unicode separators in logs
+ASCII_LOG_SEPARATORS = "Auto"
+
 # ----------------------------
 # Terminal Output
 # ----------------------------
@@ -817,6 +823,7 @@ DOTENV_FILE = ""
 FILE_SUFFIX = ""
 SP_LOGFILE = ""
 DISABLE_LOGGING = False
+ASCII_LOG_SEPARATORS = "Auto"
 DEBUG_MODE = False
 VERBOSE_MODE = False
 HORIZONTAL_LINE = 0
@@ -2466,8 +2473,18 @@ def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
     return truncate_chars
 
 
-# Converts Unicode-only horizontal separator lines to ASCII for portable log display
+# Reports whether separator-only log lines should use ASCII on this system
+def ascii_log_separators_enabled():
+    mode = str(ASCII_LOG_SEPARATORS).strip().lower()
+    if mode not in {"auto", "on", "off"}:
+        raise ValueError("ASCII_LOG_SEPARATORS must be 'Auto', 'On' or 'Off'")
+    return mode == "on" or (mode == "auto" and platform.system() == "Windows")
+
+
+# Converts Unicode-only horizontal separator lines to ASCII when configured
 def normalize_log_separators(message):
+    if not ascii_log_separators_enabled():
+        return message
     return re.sub(r"(?m)^─+$", lambda match: match.group(0).replace("─", "-"), message)
 
 
@@ -5344,6 +5361,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
             StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
+            StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
@@ -5362,6 +5380,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
+        StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
@@ -10174,6 +10193,11 @@ def main():
         CSV_FILE = os.path.expanduser(args.csv_file)
     elif CSV_FILE:
         CSV_FILE = os.path.expanduser(CSV_FILE)
+    try:
+        ascii_log_separators_enabled()
+    except ValueError as e:
+        print(f"* Error: {e}")
+        sys.exit(1)
     if args.disable_logging is True:
         DISABLE_LOGGING = True
     if args.notify_active is True:
