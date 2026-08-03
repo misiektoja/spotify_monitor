@@ -53,6 +53,7 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
     monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: dict(auth))
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
@@ -121,6 +122,17 @@ def test_duration_helper_accepts_default(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Dead period before an alert", 1200) == 1200
     input_mock.assert_called_once_with("Dead period before an alert [1200s - 20m]: ")
+
+
+# Verifies regular setup accepts unit-based polling intervals and stores seconds
+def test_polling_section_uses_duration_input(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    duration_mock = Mock(return_value=3600)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
+    monitor._wizard_collect_polling_section(state)
+    assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == 3600
+    duration_mock.assert_called_once_with("Spotify polling interval (seconds or use s/m/h/d)", monitor.SPOTIFY_CHECK_INTERVAL)
 
 
 # Verifies Ctrl+C and Ctrl+D cancel cleanly without a traceback
