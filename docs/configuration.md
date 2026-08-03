@@ -346,9 +346,7 @@ If you configure authentication outside the wizard you can still follow the targ
 
 Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
 
-<a id="how-to-get-a-friends-user-uri-id"></a>
-<a id="find-a-friends-spotify-profile"></a>
-## How to Find a Friend's Spotify Profile
+## How to Find a Friend's Spotify Profile URL
 
 Use the Spotify desktop or mobile app:
 
