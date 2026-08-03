@@ -7701,6 +7701,7 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
     print("\nSetup summary\n")
     print(f"  Target: {state.target}")
     print(f"  Persist target: {'yes' if state.persist_target else 'no'}")
+    print(f"  Polling interval: {_wizard_format_duration(int(state.config_values['SPOTIFY_CHECK_INTERVAL']))}")
     print(f"  Token source: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
     if state.auth.get("mount_required"):
@@ -7709,7 +7710,6 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
         print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
     if state.auth.get("browser"):
         print(f"  Browser: {browser_label(state.auth['browser'])}")
-    print(f"  Polling interval: {_wizard_format_duration(int(state.config_values['SPOTIFY_CHECK_INTERVAL']))}")
     print(f"  Email: {'enabled' if state.enabled_notifications else 'disabled'}")
     print(f"  Email notifications: {', '.join(state.enabled_notifications) if state.enabled_notifications else 'none'}")
     print(f"  Webhook: {'enabled' if state.enabled_webhooks else 'disabled'}")
@@ -7721,15 +7721,15 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
 
 # Opens one selected setup section then returns to the summary
 def _wizard_edit_setup_section(state: WizardSetupState, method: str) -> None:
-    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Polling interval", "Change how often Spotify is checked."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Polling interval", "Change how often Spotify is checked."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
     if section == 0:
         print()
         _wizard_collect_target_section(state, state.target)
     elif section == 1:
-        _wizard_collect_auth_section(state, method)
-    elif section == 2:
         print()
         _wizard_collect_polling_section(state)
+    elif section == 2:
+        _wizard_collect_auth_section(state, method)
     elif section == 3:
         print()
         _wizard_collect_email_section(state)
@@ -7982,9 +7982,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     config_values["DOTENV_FILE"] = str(env_path)
     state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
     _wizard_collect_target_section(state, initial_target)
-    _wizard_collect_auth_section(state, method)
-    print()
     _wizard_collect_polling_section(state)
+    _wizard_collect_auth_section(state, method)
     print()
     _wizard_collect_email_section(state)
     print()
