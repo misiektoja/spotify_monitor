@@ -2466,6 +2466,11 @@ def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
     return truncate_chars
 
 
+# Converts Unicode-only horizontal separator lines to ASCII for portable log display
+def normalize_log_separators(message):
+    return re.sub(r"(?m)^─+$", lambda match: match.group(0).replace("─", "-"), message)
+
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
@@ -2474,7 +2479,7 @@ class Logger(object):
 
     def write(self, message):
         # Expand tabs for file output (stdout remains untouched)
-        self.logfile.write(message.expandtabs(8))
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         if (TRUNCATE_CHARS):
             message = truncate_string_per_line(message, TRUNCATE_CHARS)
         self.terminal.write(message)
@@ -2488,7 +2493,7 @@ class Logger(object):
         self.terminal.flush()
 
     def log_only(self, message):
-        self.logfile.write(message.expandtabs(8))
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         self.logfile.flush()
 
     def flush(self):
