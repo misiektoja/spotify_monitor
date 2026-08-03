@@ -9,7 +9,7 @@ Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble heal
 **Features and improvements**:
 
 - **IMPROVE:** Added `ASCII_LOG_SEPARATORS` with `"Auto"`, `"On"` and `"Off"` modes. The default uses ASCII separator-only log lines on Windows while terminal separators stay Unicode and all log content stays UTF-8
-- **IMPROVE:** Extended the regular Friend Activity setup wizard polling prompt to accept duration units such as `30s`, `2m`, `1h` and `1d` while continuing to save the interval as seconds
+- **IMPROVE:** Extended setup duration prompts to accept values such as `30s`, `2m`, `1.5h`, `1h 30m` and `1d` while continuing to save intervals as seconds
 
 **Bug fixes**:
 
