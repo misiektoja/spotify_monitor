@@ -23,7 +23,7 @@ See [Installation](installation.md) for setup, optional dependencies, image deta
 <a id="monitoring-mode"></a>
 ## Monitoring Mode
 
-Pass the friend you want to monitor as a command-line target. The easiest form is the complete profile URL described in [How to Find a Friend's Spotify Profile](configuration.md#find-a-friends-spotify-profile). A `spotify:user:` URI or user ID is also accepted:
+Pass the friend you want to monitor as a command-line target. The easiest form is the complete profile URL described in [How to Find a Friend's Spotify Profile URL](configuration.md#how-to-find-a-friends-spotify-profile-url). A `spotify:user:` URI or user ID is also accepted:
 
 ```sh
 spotify_monitor "https://open.spotify.com/user/USER_ID?si=tracking_id"
