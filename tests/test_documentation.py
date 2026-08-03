@@ -164,7 +164,16 @@ def test_landing_pages_cover_authentication_policy():
 
 # Verifies usage guidance exposes every supported target form and install command prefix
 def test_usage_docs_cover_target_forms_and_install_commands():
-    assert_concepts(read_asset("docs/usage.md"), "spotify:user:spotify_user_uri_id", "https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id", "TARGET_USER_URI_ID", "python3 spotify_monitor.py", "docker compose run --rm spotify_monitor", "misiektoja/spotify-monitor:latest")
+    usage = read_asset("docs/usage.md")
+    assert_concepts(usage, "spotify:user:USER_ID", "https://open.spotify.com/user/USER_ID?si=tracking_id", "TARGET_USER_URI_ID", "python3 spotify_monitor.py", "docker compose run --rm spotify_monitor", "misiektoja/spotify-monitor:latest")
+    assert "<spotify_user_uri_id>" not in usage
+
+
+# Verifies friend-profile guidance names the person being monitored and retains every target form
+def test_configuration_docs_use_friend_focused_target_guidance():
+    configuration = read_asset("docs/configuration.md")
+    assert '<a id="find-a-friends-spotify-profile"></a>' in configuration
+    assert_concepts(configuration, "How to Find a Friend's Spotify Profile", "profile URL", "spotify:user:USER_ID", "standalone user ID")
 
 
 # Verifies debugging downloads retain the supported curl commands
