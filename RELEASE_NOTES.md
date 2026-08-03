@@ -4,11 +4,12 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.2.1 (TBD)
 
-Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify recent-play access-token refreshes and makes log separators configurable and portable.
+Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify recent-play access-token refreshes, makes log separators configurable and portable and makes Friend Activity polling intervals easier to enter during setup.
 
 **Features and improvements**:
 
 - **IMPROVE:** Added `ASCII_LOG_SEPARATORS` with `"Auto"`, `"On"` and `"Off"` modes. The default uses ASCII separator-only log lines on Windows while terminal separators stay Unicode and all log content stays UTF-8
+- **IMPROVE:** Extended the regular Friend Activity setup wizard polling prompt to accept duration units such as `30s`, `2m`, `1h` and `1d` while continuing to save the interval as seconds
 
 **Bug fixes**:
 
