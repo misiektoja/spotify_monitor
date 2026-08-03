@@ -4,7 +4,11 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.2.1 (TBD)
 
-Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify recent-play access-token refreshes.
+Version **3.2.1** improves the reliability of **Spotify-to-Last.fm scrobble health monitoring** during routine Spotify recent-play access-token refreshes and makes log separators more portable.
+
+**Features and improvements**:
+
+- **IMPROVE:** Kept Unicode separators in terminal output while writing separator-only log lines with ASCII hyphens for compatibility without changing UTF-8 logging for other content
 
 **Bug fixes**:
 
