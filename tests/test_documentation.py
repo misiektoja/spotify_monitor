@@ -2,7 +2,10 @@
 
 import re
 import textwrap
+import unicodedata
 from pathlib import Path
+
+import spotify_monitor as monitor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +31,18 @@ def markdown_headings(text: str) -> list[tuple[int, int, str]]:
                 headings.append((offset, len(match.group(1)), match.group(2)))
         offset += len(line)
     return headings
+
+
+# Returns explicit and generated Markdown anchor IDs
+def markdown_anchors(text: str) -> set[str]:
+    anchors = set(re.findall(r'<a\s+id=["\x27]([^"\x27]+)', text))
+    for _offset, _level, heading in markdown_headings(text):
+        normalized = unicodedata.normalize("NFKD", heading).encode("ascii", "ignore").decode("ascii").casefold()
+        slug = re.sub(r"[^\w\s-]", "", normalized)
+        slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+        if slug:
+            anchors.add(slug)
+    return anchors
 
 
 # Returns one Markdown section whose heading contains every requested term
@@ -172,8 +187,22 @@ def test_usage_docs_cover_target_forms_and_install_commands():
 # Verifies friend-profile guidance names the person being monitored and retains every target form
 def test_configuration_docs_use_friend_focused_target_guidance():
     configuration = read_asset("docs/configuration.md")
-    assert '<a id="find-a-friends-spotify-profile"></a>' in configuration
-    assert_concepts(configuration, "How to Find a Friend's Spotify Profile", "profile URL", "spotify:user:USER_ID", "standalone user ID")
+    assert "## How to Find a Friend's Spotify Profile URL" in configuration
+    assert_concepts(configuration, "profile URL", "spotify:user:USER_ID", "standalone user ID")
+
+
+# Verifies every runtime documentation URL resolves to a published page and anchor
+def test_runtime_guide_urls_match_documentation_anchors():
+    guide_names = ("QUICK_START_GUIDE_URL", "INSTALLATION_GUIDE_URL", "CONFIG_GUIDE_URL", "COOKIE_GUIDE_URL", "MANUAL_COOKIE_GUIDE_URL", "CONTAINER_FIREFOX_GUIDE_URL", "CLIENT_GUIDE_URL", "TARGET_GUIDE_URL", "FOLLOWING_GUIDE_URL", "SMTP_GUIDE_URL", "WEBHOOK_GUIDE_URL", "SECRETS_GUIDE_URL", "INTERVALS_GUIDE_URL", "DOCTOR_GUIDE_URL", "OAUTH_GUIDE_URL", "SCROBBLE_AUTH_GUIDE_URL")
+    for name in guide_names:
+        guide_url = getattr(monitor, name)
+        assert guide_url.startswith(monitor.DOCUMENTATION_URL + "/")
+        suffix = guide_url.removeprefix(monitor.DOCUMENTATION_URL).lstrip("/")
+        relative_path, _separator, fragment = suffix.partition("#")
+        document_path = "docs/index.md" if not relative_path else f"docs/{relative_path.rstrip('/')}" + ".md"
+        document = read_asset(document_path)
+        if fragment:
+            assert fragment in markdown_anchors(document), f"{name} references missing anchor #{fragment} in {document_path}"
 
 
 # Verifies debugging downloads retain the supported curl commands
