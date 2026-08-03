@@ -393,6 +393,37 @@ def test_valid_totp_config_passes(monkeypatch):
     assert totp_check.status == "PASS"
 
 
+# Verifies Doctor checks the final target-specific log filename
+def test_doctor_configuration_uses_final_target_log_path(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", False)
+    monkeypatch.setattr(monitor, "SP_LOGFILE", "spotify_monitor")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "")
+
+    checks = monitor.doctor_check_configuration(target_value="spotify:user:sq58")
+    check = next(item for item in checks if item.label == "Log destination appears writable")
+
+    assert check.detail == "Path: spotify_monitor_sq58.log"
+
+
+# Verifies custom and scrobble-health suffixes use the runtime naming rules
+def test_doctor_configuration_uses_effective_log_suffix(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", False)
+    monkeypatch.setattr(monitor, "SP_LOGFILE", "logs/spotify")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "friends")
+
+    custom_checks = monitor.doctor_check_configuration(target_value="sq58")
+    custom_check = next(item for item in custom_checks if item.label == "Log destination appears writable")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "")
+    scrobble_checks = monitor.doctor_check_configuration(lastfm_username="Last.fm User")
+    scrobble_check = next(item for item in scrobble_checks if item.label == "Log destination appears writable")
+
+    assert custom_check.detail == "Path: logs/spotify_friends.log"
+    assert scrobble_check.detail == "Path: logs/spotify_lastfm_Last.fm_User.log"
+    assert monitor.build_log_path("logs/fixed.log", "sq58") == Path("logs/fixed.log")
+
+
 # Configures the minimum valid client-mode values
 def configure_client_mode(monkeypatch):
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "client")
