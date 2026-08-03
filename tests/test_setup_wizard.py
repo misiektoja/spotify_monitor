@@ -100,8 +100,8 @@ def test_positive_integer_helper_reprompts(monkeypatch, capsys):
     assert capsys.readouterr().out.count("positive whole number") == 2
 
 
-@pytest.mark.parametrize(("value", "expected"), [("120", 120), ("120s", 120), ("2m", 120), ("2 mins", 120), ("1h", 3600), ("1 day", 86400)])
-# Verifies duration input accepts bare seconds and common unit forms
+@pytest.mark.parametrize(("value", "expected"), [("120", 120), ("120s", 120), ("2m", 120), ("2 mins", 120), ("1h", 3600), ("1.5h", 5400), ("1h 30m", 5400), ("1 day", 86400)])
+# Verifies duration input accepts bare seconds plus single, decimal and compound unit forms
 def test_duration_helper_accepts_supported_units(monkeypatch, value, expected):
     monkeypatch.setattr(monitor, "_wizard_input", Mock(return_value=value))
     assert monitor._wizard_ask_duration("Comparison interval", 120) == expected
@@ -113,7 +113,7 @@ def test_duration_helper_shows_readable_default_and_reprompts(monkeypatch, capsy
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Comparison interval", 120) == 120
     assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Comparison interval [120s - 2m]: ",)]
-    assert "120, 120s, 2m, 1h or 1d" in capsys.readouterr().out
+    assert "120, 2m, 1.5h, 1h 30m or 1d" in capsys.readouterr().out
 
 
 # Verifies an empty duration answer accepts the readable default
