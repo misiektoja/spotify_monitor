@@ -542,10 +542,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-to-get-a-friends-user-uri-id" class="md-nav__link">
+  <a href="#how-to-find-a-friends-spotify-profile-url" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How to Get a Friend's User URI ID
+        How to Find a Friend's Spotify Profile URL
       
     </span>
   </a>
@@ -933,10 +933,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-to-get-a-friends-user-uri-id" class="md-nav__link">
+  <a href="#how-to-find-a-friends-spotify-profile-url" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How to Get a Friend's User URI ID
+        How to Find a Friend's Spotify Profile URL
       
     </span>
   </a>
@@ -1067,7 +1067,7 @@
 <li>Command-line options</li>
 </ol>
 <p>The <code>.env</code> layer applies to supported private keys such as <code>SP_DC_COOKIE</code>, <code>LASTFM_API_KEY</code>, <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code>, <code>SMTP_PASSWORD</code> and <code>WEBHOOK_URL</code>. It also accepts the non-secret <code>SPOTIFY_SCROBBLE_CLIENT_ID</code> and <code>SPOTIFY_SCROBBLE_REDIRECT_URI</code> settings for externally managed runs. A target written directly after the command overrides <code>TARGET_USER_URI_ID</code>. Use <code>--config-file PATH</code> and <code>--env-file PATH</code> to select files explicitly. Use <code>--config-file none</code> and <code>--env-file none</code> to disable both automatic searches. See <a href="#storing-secrets">Storing Secrets</a> for the search rules and supported keys.</p>
-<p>You may set <code>TARGET_USER_URI_ID</code> to a raw user ID, Spotify user URI or profile URL. A positional command-line target takes precedence over this configured value. With a configured target you can start monitoring with:</p>
+<p>Despite its legacy name, <code>TARGET_USER_URI_ID</code> accepts a complete Spotify profile URL, a <code>spotify:user:</code> URI or a user ID. A positional command-line target takes precedence. With a configured target you can start monitoring with:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
 </code></pre></div>
 <p>A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.</p>
@@ -1199,7 +1199,7 @@
 </tr>
 </tbody>
 </table>
-<p>An operational Spotify or Last.fm request error does not count as a scrobbling outage. Scrobble health makes one bounded immediate retry for transient server errors then waits for <code>SPOTIFY_ERROR_INTERVAL</code>, which is three minutes by default, before its next comparison. It does not immediately retry a Spotify 429 response or block for a very long <code>Retry-After</code> value. A <code>QUOTA_EXCEEDED</code> response explains that the user-owned app quota is exhausted and links to Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>. The monitor sends an operational email or webhook only after three consecutive comparison failures. A successful comparison resets that failure count. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.</p>
+<p>An operational Spotify or Last.fm request error does not count as a scrobbling outage. Scrobble health makes one short bounded retry for connection failures, timeouts and temporary 5xx responses, including failures while refreshing its Spotify recent-play access token. It then waits for <code>SPOTIFY_ERROR_INTERVAL</code>, which is three minutes by default, before its next comparison. It does not immediately retry a Spotify 429 response or block for a very long <code>Retry-After</code> value. A <code>QUOTA_EXCEEDED</code> response explains that the user-owned app quota is exhausted and links to Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>. The monitor sends an operational email or webhook only after three consecutive comparison failures. A successful comparison resets that failure count. The existing health state is preserved until both histories can be compared again. Recovery requires a confirmed match newer than the Spotify evidence that triggered the outage. Outage alerts link directly to the Last.fm connected-applications page for reauthorization.</p>
 <p><a id="spotify-access-token-source"></a></p>
 <h2 id="spotify-access-token-source">Spotify Access Token Source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
 <p>Spotify Monitor uses either the <code>cookie</code> or <code>client</code> token source for Friend Activity.</p>
@@ -1342,7 +1342,7 @@
 <ul>
 <li>Run the tool with <code>--token-source client -w &lt;path-to-login-request-body-file&gt;</code>:</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>--token-source<span class="w"> </span>client<span class="w"> </span>-w<span class="w"> </span>&lt;path-to-login-request-body-file&gt;<span class="w"> </span>&lt;spotify_user_uri_id&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>--token-source<span class="w"> </span>client<span class="w"> </span>-w<span class="w"> </span>&lt;path-to-login-request-body-file&gt;<span class="w"> </span>&lt;spotify_target&gt;
 </code></pre></div>
 <p>Spotify Monitor reads the required fields from the saved request and starts monitoring.</p>
 <p>To avoid passing <code>-w</code> each time, save the file path in <code>LOGIN_REQUEST_BODY_FILE</code>.</p>
@@ -1377,7 +1377,7 @@
 </li>
 </ul>
 <p>Example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;your_spotify_app_client_id:your_spotify_app_client_secret&quot;</span>
 </code></pre></div>
 <p>When configured the tool automatically refreshes the OAuth app access token. Tokens are cached in the file specified by <code>SP_APP_TOKENS_FILE</code> configuration option (default: <code>.spotify-monitor-oauth-app.json</code>).</p>
 <p>If <code>SP_APP_CLIENT_ID</code> and <code>SP_APP_CLIENT_SECRET</code> are in <code>.env</code>, a running process on macOS, Linux or Unix can reload them after a <code>SIGHUP</code> signal. See <a href="#storing-secrets">Storing Secrets</a> and <a href="../usage/#signal-controls-macoslinuxunix">Signal Controls</a>.</p>
@@ -1388,18 +1388,16 @@
 <p>This works in cookie mode and advanced client mode without a separate user-authorized OAuth token. It uses private web-player Pathfinder operations rather than a supported public Web API. Spotify can change these operations. Spotify Monitor therefore reads their current identifiers from the web-player bundle and retries discovery once if Spotify rejects a cached identifier.</p>
 <p>If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.</p>
 <p>Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.</p>
-<p><a id="how-to-get-a-friends-user-uri-id"></a></p>
-<h2 id="how-to-get-a-friends-user-uri-id">How to Get a Friend's User URI ID<a class="headerlink" href="#how-to-get-a-friends-user-uri-id" title="Permanent link">&para;</a></h2>
+<h2 id="how-to-find-a-friends-spotify-profile-url">How to Find a Friend's Spotify Profile URL<a class="headerlink" href="#how-to-find-a-friends-spotify-profile-url" title="Permanent link">&para;</a></h2>
 <p>Use the Spotify desktop or mobile app:</p>
 <ul>
 <li>go to your friend's profile</li>
 <li>click the <strong>three dots</strong> (•••) or press the <strong>Share</strong> button</li>
 <li>copy the link to the profile</li>
 </ul>
-<p>You'll get a URL like: <a href="https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id">https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id</a></p>
-<p>Pass that profile URL directly to the tool. Raw IDs and Spotify user URIs such as <code>spotify:user:spotify_user_uri_id</code> are also accepted.</p>
-<p>As an alternative you can extract the part between <code>/user/</code> and <code>?si=</code> - in this case: <code>spotify_user_uri_id</code> - then pass that raw ID to the tool.</p>
-<p>Alternatively you can list all user URI IDs of accounts you follow by using <a href="../usage/#listing-mode">Listing mode</a>.</p>
+<p>You'll get a URL like <code>https://open.spotify.com/user/USER_ID?si=tracking_id</code>.</p>
+<p>Pass that profile URL directly to the tool. You do not need to extract the ID. A Spotify user URI such as <code>spotify:user:USER_ID</code> or a standalone user ID is also accepted.</p>
+<p>Alternatively you can use <a href="../usage/#listing-mode">Listing mode</a> to see the Spotify user IDs and profile URLs of accounts you follow. Either displayed form can be used as the monitoring target.</p>
 <p><a id="smtp-settings"></a></p>
 <h2 id="smtp-settings">SMTP Settings<a class="headerlink" href="#smtp-settings" title="Permanent link">&para;</a></h2>
 <p>Email notifications need SMTP server details for the email account that sends the messages. Add them to <code>spotify_monitor.conf</code> or use the setup wizard.</p>
@@ -1541,10 +1539,10 @@
 <p>By default, Friend Activity looks for <code>.env</code> while an explicit scrobble health run looks for <code>.env.scrobble_health</code>. The search starts in the current directory then continues in each parent directory.</p>
 <p>Browser import does not use the parent-directory search when choosing where to write. Without <code>--env-file</code>, it writes to <code>.env</code> in the current directory.</p>
 <p>You can specify a custom file with <code>DOTENV_FILE</code> or <code>--env-file</code> flag:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--env-file<span class="w"> </span>/path/.env-spotify_monitor
 </code></pre></div>
 <p>Disable automatic <code>.env</code> search with <code>DOTENV_FILE = "none"</code> or <code>--env-file none</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_user_uri_id&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--env-file<span class="w"> </span>none
 </code></pre></div>
 <p>As a last resort, you can store private values in the configuration file or source code. This makes them easier to expose or commit accidentally.</p>
 

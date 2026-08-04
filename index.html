@@ -912,23 +912,18 @@
 
 <p><a id="-quick-install-run"></a></p>
 <h3 id="quick-install-run">🚀 Quick Install &amp; Run<a class="headerlink" href="#quick-install-run" title="Permanent link">&para;</a></h3>
-<p>Spotify Monitor has two independent modes:</p>
-<ul>
-<li><strong>Friend Activity</strong> monitors a Spotify friend's completed plays, activity status and listening sessions.</li>
-<li><strong>Last.fm Scrobble Health</strong> checks whether plays from your Spotify account reach your Last.fm profile and alerts you when scrobbles stop showing up.</li>
-</ul>
 <h4 id="python-from-pypi">Python from PyPI<a class="headerlink" href="#python-from-pypi" title="Permanent link">&para;</a></h4>
 <p>New to Python or unsure what is installed? Follow the <a href="https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-install-everything">Python install walkthrough</a> first.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>spotify_monitor
 </code></pre></div>
-<p>Run setup for friend activity mode:</p>
+<p>Run setup for friend activity mode (Spotify friend's completed plays, activity status and listening session):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--setup
 </code></pre></div>
-<p>Or for Last.fm Scrobble Health:
+<p>Or for Last.fm scrobble health mode (checks whether plays from your Spotify account reach your Last.fm profile):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>--setup-scrobble-health
 </code></pre></div></p>
 <h4 id="docker-image-fastest-container-setup">Docker image - fastest container setup<a class="headerlink" href="#docker-image-fastest-container-setup" title="Permanent link">&para;</a></h4>
-<p>The Docker commands below run Friend Activity setup. For Last.fm Scrobble Health, replace the final <code>--setup</code> with <code>--setup-scrobble-health</code>.</p>
+<p>The Docker commands below run Friend Activity setup. For Last.fm scrobble health, replace the final <code>--setup</code> with <code>--setup-scrobble-health</code>.</p>
 <h5 id="macos-or-windows">macOS or Windows<a class="headerlink" href="#macos-or-windows" title="Permanent link">&para;</a></h5>
 <p>Use a macOS shell or Windows PowerShell with a Docker-compatible runtime that provides the <code>docker</code> CLI.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
