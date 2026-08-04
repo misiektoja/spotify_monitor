@@ -19,11 +19,6 @@ Powerful real-time tracker for Spotify friend music activity: monitor listening 
 <a id="-quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
-Spotify Monitor has two independent modes:
-
-- **Friend Activity** monitors a Spotify friend's completed plays, activity status and listening sessions.
-- **Last.fm Scrobble Health** checks whether plays from your Spotify account reach your Last.fm profile and alerts you when scrobbles stop showing up.
-
 #### Python from PyPI
 
 New to Python or unsure what is installed? Follow the [Python install walkthrough](https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-install-everything) first.
@@ -32,20 +27,20 @@ New to Python or unsure what is installed? Follow the [Python install walkthroug
 pip install spotify_monitor
 ```
 
-Run setup for friend activity mode:
+Run setup for friend activity mode (Spotify friend's completed plays, activity status and listening session):
 
 ```sh
 spotify_monitor --setup
 ```
 
-Or for Last.fm Scrobble Health:
+Or for Last.fm scrobble health mode (checks whether plays from your Spotify account reach your Last.fm profile):
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
 
 #### Docker image - fastest container setup
 
-The Docker commands below run Friend Activity setup. For Last.fm Scrobble Health, replace the final `--setup` with `--setup-scrobble-health`.
+The Docker commands below run Friend Activity setup. For Last.fm scrobble health, replace the final `--setup` with `--setup-scrobble-health`.
 
 ##### macOS or Windows
 
@@ -149,7 +144,7 @@ Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The t
 
 | I want to... | Run this |
 | --- | --- |
-| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
+| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a complete profile URL, `spotify:user:` URI or user ID |
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |

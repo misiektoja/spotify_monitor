@@ -637,6 +637,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
         monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
+        monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: secret)
         monkeypatch.setattr(monitor, "_doctor_ask_yes_no", lambda question: False)
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
@@ -671,6 +672,7 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: next(answers))
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: next(choices))
         monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
+        monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: next(secrets))
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
         with pytest.raises(SystemExit) as error:

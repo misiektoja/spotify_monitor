@@ -23,12 +23,12 @@ See [Installation](installation.md) for setup, optional dependencies, image deta
 <a id="monitoring-mode"></a>
 ## Monitoring Mode
 
-Pass a [Spotify user target](configuration.md#how-to-get-a-friends-user-uri-id) as a command-line argument. A target can be a raw user ID, a `spotify:user:` URI or a complete profile URL:
+Pass the friend you want to monitor as a command-line target. The easiest form is the complete profile URL described in [How to Find a Friend's Spotify Profile URL](configuration.md#how-to-find-a-friends-spotify-profile-url). A `spotify:user:` URI or user ID is also accepted:
 
 ```sh
-spotify_monitor spotify_user_uri_id
-spotify_monitor "spotify:user:spotify_user_uri_id"
-spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id?si=tracking_id"
+spotify_monitor "https://open.spotify.com/user/USER_ID?si=tracking_id"
+spotify_monitor "spotify:user:USER_ID"
+spotify_monitor USER_ID
 ```
 
 You can also save any of these forms as `TARGET_USER_URI_ID` in `spotify_monitor.conf`. A positional target takes precedence. With a saved target no positional value is needed:
@@ -42,7 +42,7 @@ The setup wizard asks whether to save the target. A saved target lets a local in
 If you use cookie authentication and have not saved `SP_DC_COOKIE`, the `-u` fallback supplies it for one run:
 
 ```sh
-spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value"
+spotify_monitor <spotify_target> -u "your_sp_dc_cookie_value"
 ```
 
 This command can expose the cookie through shell history or process listings. Use browser import when available. For a manually extracted cookie, use the recommended `--set-sp-dc` command because its hidden prompt is the most secure entry method.
@@ -50,7 +50,7 @@ This command can expose the cookie through shell history or process listings. Us
 If you have working legacy OAuth app credentials and want the tool to try the Web API metadata path first, use `-r`:
 
 ```sh
-spotify_monitor spotify_user_uri_id -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
+spotify_monitor <spotify_target> -u "your_sp_dc_cookie_value" -r "your_spotify_app_client_id:your_spotify_app_client_secret"
 ```
 
 See [Spotify OAuth App](configuration.md#spotify-oauth-app) for the optional dependency and current compatibility guidance.
@@ -65,7 +65,7 @@ By default the tool looks for `spotify_monitor.conf` in this order:
 Specify another file explicitly when needed:
 
 ```sh
-spotify_monitor spotify_user_uri_id --config-file /path/spotify_monitor_new.conf
+spotify_monitor <spotify_target> --config-file /path/spotify_monitor_new.conf
 ```
 
 The tool runs until you press `Ctrl+C`. On macOS, Linux or Unix, tools such as `tmux` or `screen` can keep it running after you disconnect from a terminal. Docker Compose can run in the background as described below.
@@ -73,6 +73,8 @@ The tool runs until you press `Ctrl+C`. On macOS, Linux or Unix, tools such as `
 You can monitor multiple Spotify friends by running multiple copies with separate output names or directories.
 
 By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.log`. Change the base path with `SP_LOGFILE` and the suffix with `FILE_SUFFIX` or `-y`. Disable file logging with `DISABLE_LOGGING` or `-d`.
+
+Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lines on Windows, `"On"` to use them on every operating system or `"Off"` to preserve Unicode separators in logs everywhere. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
 
 Spotify Friend Activity reports a track after the user finishes it. Spotify Monitor therefore cannot show the currently playing track in real time.
 
@@ -176,7 +178,7 @@ This command does not delete files in the current directory.
 If the wizard did not save the target, `docker compose up --no-log-prefix` cannot supply one. Use the direct Compose command printed by setup:
 
 ```sh
-docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+docker compose run --rm spotify_monitor "https://open.spotify.com/user/USER_ID" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
 <a id="import-firefox-into-container-authentication"></a>
@@ -296,7 +298,7 @@ Normal monitoring shows the target, authentication method, polling interval, ale
 Use `--verbose` to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:
 
 ```sh
-spotify_monitor spotify_user_uri_id --verbose
+spotify_monitor <spotify_target> --verbose
 ```
 
 Spotify Monitor normally checks every 30 seconds. Verbose mode reports token refreshes, metadata fallback, the first temporary friend-list miss, recovery from temporary problems and a periodic status summary. It does not print every successful check when nothing changed.
@@ -314,7 +316,7 @@ Listing mode shows the Spotify friends visible to the monitoring account and eac
 spotify_monitor -l
 ```
 
-The output includes each person's display name and user URI ID. Use the user URI ID as a monitoring target.
+The output includes each person's display name, Spotify user ID and profile URL. Either the user ID or profile URL can be used as a monitoring target.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
@@ -329,7 +331,7 @@ To send an email when a user becomes active:
 - or use the `-a` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -a
+spotify_monitor <spotify_target> -a
 ```
 
 To send an email when a user becomes inactive:
@@ -338,7 +340,7 @@ To send an email when a user becomes inactive:
 - or use the `-i` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -i
+spotify_monitor <spotify_target> -i
 ```
 
 Inactivity emails include recent songs from the session with skipped track status. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
@@ -351,10 +353,10 @@ To send an email when a listed track, playlist or album plays:
 Create a text file with one track, album or playlist per line. Select it with `MONITOR_LIST_FILE` or `-s`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -t -s spotify_tracks_spotify_user_uri_id
+spotify_monitor <spotify_target> -t -s spotify_tracks_USER_ID
 ```
 
-Example file `spotify_tracks_spotify_user_uri_id`:
+Example file `spotify_tracks_USER_ID`:
 
 ```
 we fell in love in october
@@ -372,7 +374,7 @@ To send an email for every reported song change:
 - or use the `-j` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -j
+spotify_monitor <spotify_target> -j
 ```
 
 To send an email when a user repeats the same song:
@@ -381,7 +383,7 @@ To send an email when a user repeats the same song:
 - or use the `-x` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -x
+spotify_monitor <spotify_target> -x
 ```
 
 Error emails are enabled by default when SMTP is configured. To disable them:
@@ -390,7 +392,7 @@ Error emails are enabled by default when SMTP is configured. To disable them:
 - or use the `-e` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -e
+spotify_monitor <spotify_target> -e
 ```
 
 All email alerts require valid [SMTP settings](configuration.md#smtp-settings).
@@ -420,7 +422,7 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 For example, this sends a webhook alert for every song change during one run:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> --webhook-song-changes
+spotify_monitor <spotify_target> --webhook-song-changes
 ```
 
 Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or off for one run. Standard Discord and public `ntfy.sh` URLs automatically correct a stale configured provider. Use `--webhook-provider {discord,ntfy}` as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.
@@ -428,7 +430,7 @@ Use `--webhook` or `--no-webhook` to turn all configured webhook alerts on or of
 The recommended way to save a private destination is still the hidden `--set-webhook-url` command. For automation or one-time testing, `--webhook-url URL` overrides the destination without changing `.env`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> --webhook-provider ntfy --webhook-url "https://ntfy.sh/your-private-topic" --webhook-song-changes
+spotify_monitor <spotify_target> --webhook-provider ntfy --webhook-url "https://ntfy.sh/your-private-topic" --webhook-song-changes
 ```
 
 A URL passed on the command line may remain visible in shell history or process listings. See [Webhook Settings](configuration.md#webhook-settings) for the setup wizard, advanced payload templates and dynamic headers.
@@ -439,7 +441,7 @@ A URL passed on the command line may remain visible in shell history or process 
 To save reported songs in a CSV file, set `CSV_FILE` or use `-b`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -b spotify_tracks_user_uri_id.csv
+spotify_monitor <spotify_target> -b spotify_tracks_USER_ID.csv
 ```
 
 Spotify Monitor creates the file if it does not exist.
@@ -464,7 +466,7 @@ To play reported tracks in your local Spotify client:
 - or use the `-g` flag
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -g
+spotify_monitor <spotify_target> -g
 ```
 
 The Spotify client must be installed and running.
@@ -506,7 +508,7 @@ For current-track progress plus pause and resume detection, see [lastfm_monitor]
 The polling interval is the number of seconds between Friend Activity checks. Set it through `SPOTIFY_CHECK_INTERVAL` or `-c`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -c 20
+spotify_monitor <spotify_target> -c 20
 ```
 
 For scrobble health, set the time between successful comparisons through `SCROBBLE_HEALTH_CHECK_INTERVAL` or `--scrobble-check-interval`:
@@ -515,12 +517,12 @@ For scrobble health, set the time between successful comparisons through `SCROBB
 spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 ```
 
-Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health makes one bounded immediate retry for transient server errors and sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health first makes one short bounded retry for connection failures, timeouts and temporary 5xx responses. This includes failures during Spotify recent-play access-token refreshes. It sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id> -o 900
+spotify_monitor <spotify_target> -o 900
 ```
 
 If a user disappears from Friend Activity, use `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` to control the delay between visibility checks:
@@ -549,7 +551,7 @@ Supported signals:
 Send a signal with `kill` or `pkill`. For example:
 
 ```sh
-pkill -USR1 -f "spotify_monitor <spotify_user_uri_id>"
+pkill -USR1 -f "spotify_monitor <spotify_target>"
 ```
 
 This feature is not available for a native Windows process because Windows supports only a limited signal set.

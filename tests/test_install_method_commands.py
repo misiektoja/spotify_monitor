@@ -204,26 +204,10 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
     assert monitor._build_help_epilog() == """Examples:
+
+Friend Activity:
   # Guided setup, recommended for the first run
   python3 spotify_monitor.py --setup
-
-  # Guided setup for Spotify-to-Last.fm scrobble health monitoring
-  python3 spotify_monitor.py --setup-scrobble-health
-
-  # Reauthorize the user-owned Spotify app for scrobble health
-  python3 spotify_monitor.py --authorize-scrobble-health
-
-  # Start the separate Spotify-to-Last.fm scrobble health mode
-  python3 spotify_monitor.py --monitor-mode scrobble_health
-
-  # Start scrobble health with a Last.fm profile selected for this run
-  python3 spotify_monitor.py --monitor-mode scrobble_health --lastfm-username <lastfm_username>
-
-  # Diagnose scrobble health and list recent Spotify and Last.fm history
-  python3 spotify_monitor.py --monitor-mode scrobble_health --doctor --verbose
-
-  # Select Friend Activity for this run
-  python3 spotify_monitor.py --monitor-mode friend_activity <spotify_user_id>
 
   # Open https://open.spotify.com/ in Firefox and sign in first
   # Then import Spotify login from Firefox (recommended for local installs)
@@ -234,9 +218,6 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
 
   # Save a Discord or ntfy webhook URL through a hidden prompt
   python3 spotify_monitor.py --set-webhook-url
-
-  # Send one test webhook without starting monitoring
-  python3 spotify_monitor.py --send-test-webhook
 
   # Monitor one Spotify user
   # A spotify:user URI or profile URL is also accepted
@@ -250,6 +231,13 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
 
   # Advanced Spotify desktop client mode
   python3 spotify_monitor.py <spotify_user_id> --token-source client --login-request-body-file <protobuf_file>
+
+Scrobble Health:
+  # Guided setup for Spotify-to-Last.fm monitoring
+  python3 spotify_monitor.py --setup-scrobble-health
+
+  # Start Spotify-to-Last.fm monitoring
+  python3 spotify_monitor.py --monitor-mode scrobble_health
 
 Guide: https://misiektoja.github.io/spotify_monitor/setup-and-first-run/
 """

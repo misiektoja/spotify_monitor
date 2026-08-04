@@ -53,6 +53,7 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
     monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: dict(auth))
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
@@ -99,8 +100,8 @@ def test_positive_integer_helper_reprompts(monkeypatch, capsys):
     assert capsys.readouterr().out.count("positive whole number") == 2
 
 
-@pytest.mark.parametrize(("value", "expected"), [("120", 120), ("120s", 120), ("2m", 120), ("2 mins", 120), ("1h", 3600), ("1 day", 86400)])
-# Verifies duration input accepts bare seconds and common unit forms
+@pytest.mark.parametrize(("value", "expected"), [("120", 120), ("120s", 120), ("2m", 120), ("2 mins", 120), ("1h", 3600), ("1.5h", 5400), ("1h 30m", 5400), ("1 day", 86400)])
+# Verifies duration input accepts bare seconds plus single, decimal and compound unit forms
 def test_duration_helper_accepts_supported_units(monkeypatch, value, expected):
     monkeypatch.setattr(monitor, "_wizard_input", Mock(return_value=value))
     assert monitor._wizard_ask_duration("Comparison interval", 120) == expected
@@ -112,7 +113,7 @@ def test_duration_helper_shows_readable_default_and_reprompts(monkeypatch, capsy
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Comparison interval", 120) == 120
     assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Comparison interval [120s - 2m]: ",)]
-    assert "120, 120s, 2m, 1h or 1d" in capsys.readouterr().out
+    assert "120, 2m, 1.5h, 1h 30m or 1d" in capsys.readouterr().out
 
 
 # Verifies an empty duration answer accepts the readable default
@@ -121,6 +122,17 @@ def test_duration_helper_accepts_default(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Dead period before an alert", 1200) == 1200
     input_mock.assert_called_once_with("Dead period before an alert [1200s - 20m]: ")
+
+
+# Verifies regular setup accepts unit-based polling intervals and stores seconds
+def test_polling_section_uses_duration_input(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    duration_mock = Mock(return_value=3600)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
+    monitor._wizard_collect_polling_section(state)
+    assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == 3600
+    duration_mock.assert_called_once_with("Spotify polling interval (seconds or use s/m/h/d)", monitor.SPOTIFY_CHECK_INTERVAL)
 
 
 # Verifies Ctrl+C and Ctrl+D cancel cleanly without a traceback
@@ -294,7 +306,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "1", "4", "", "n", "", "n"])
+        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
@@ -329,7 +341,7 @@ def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "1", "5", "", "n", "3", "y"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "3", "y"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -343,7 +355,7 @@ def test_setup_review_edits_polling_before_save(monkeypatch):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
-        install_inputs(monkeypatch, ["target.user", "y", "1", "5", "", "n", "2", "3", "45", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "2", "2", "45", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
@@ -356,7 +368,7 @@ def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         monkeypatch.chdir(directory)
-        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "1", "3", "", "n", "", "n"])
+        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "1", "3", "n", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
         monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
@@ -452,7 +464,7 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
         directory = Path(directory_name)
         login_path = directory / "login.protobuf"
         login_path.write_bytes(b"fixture")
-        install_inputs(monkeypatch, ["target.user", "y", "2", "y", str(login_path), "n", "", "n", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "2", "y", str(login_path), "n", "n", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "parse_login_request_body_file", lambda path: ("device-id", "system-id", "account-id", "refresh-private-value"))
         with pytest.raises(SystemExit) as error:
@@ -569,21 +581,50 @@ def test_setup_review_requires_confirmed_discard(monkeypatch, tmp_path):
 
 
 # Verifies all editable setup sections are offered and target edits update persisted state
-def test_setup_edit_menu_offers_every_section(monkeypatch, tmp_path):
+def test_setup_edit_menu_offers_every_section(monkeypatch, tmp_path, capsys):
     baseline = dict(vars(monitor))
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "old.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
     captured = {}
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: (captured.update({"question": question, "options": options}) or 0))
     monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "new.user")
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
+    monitor._wizard_print_setup_summary(state, "manual")
+    summary = capsys.readouterr().out
     monitor._wizard_edit_setup_section(state, "manual")
-    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Authentication", "Polling interval", "Email notifications", "Webhook alerts", "File destinations", "Return to summary"]
+    assert summary.index("Polling interval:") < summary.index("Token source:")
+    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "File destinations", "Return to summary"]
     assert state.target == "new.user"
     assert state.config_values["TARGET_USER_URI_ID"] == ""
 
 
+# Verifies initial setup asks for polling before authentication with one blank line
+def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, capsys):
+    events = []
+    config_path = tmp_path / "spotify_monitor.conf"
+    env_path = tmp_path / ".env"
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+    monkeypatch.setattr(monitor, "_wizard_destinations", lambda config, env, method=None: (config_path, env_path))
+    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path: path)
+    monkeypatch.setattr(monitor, "_wizard_collect_target_section", lambda state, target=None: events.append("target"))
+    monkeypatch.setattr(monitor, "_wizard_collect_polling_section", lambda state: (events.append("polling"), print("Spotify polling interval [1800s - 30m]:")))
+    monkeypatch.setattr(monitor, "_wizard_collect_auth_section", lambda state, method: (events.append("authentication"), print("\nChoose an authentication mode")))
+    monkeypatch.setattr(monitor, "_wizard_collect_email_section", lambda state: events.append("email"))
+    monkeypatch.setattr(monitor, "_wizard_collect_webhook_section", lambda state: events.append("webhook"))
+    monkeypatch.setattr(monitor, "_wizard_review_setup", lambda state, method: False)
+
+    with pytest.raises(SystemExit) as error:
+        monitor.run_setup_wizard()
+
+    output = capsys.readouterr().out
+    assert error.value.code == 1
+    assert events == ["target", "polling", "authentication", "email", "webhook"]
+    assert "Spotify polling interval [1800s - 30m]:\n\nChoose an authentication mode" in output
+    assert "Spotify polling interval [1800s - 30m]:\n\n\nChoose an authentication mode" not in output
+
+
 # Verifies each non-target edit choice invokes only its matching section collector
-@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_auth_section", True), (2, "_wizard_collect_polling_section", False), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_destination_section", True)])
+@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_polling_section", False), (2, "_wizard_collect_auth_section", True), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_destination_section", True)])
 def test_setup_edit_routes_to_selected_section(monkeypatch, tmp_path, section, function_name, with_method):
     baseline = dict(vars(monitor))
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])

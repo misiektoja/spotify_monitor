@@ -2,6 +2,22 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.2.1 (04 Aug 2026)
+
+Version **3.2.1** makes Spotify-to-Last.fm token refreshes more resilient, adds portable log files and streamlines Friend Activity setup, help and diagnostics.
+
+**Features and improvements**:
+
+- **IMPROVE:** **Portable log separators** - The new `ASCII_LOG_SEPARATORS` setting controls whether separator-only lines saved to log files use ASCII hyphens. `"Auto"` enables them on Windows by default, `"On"` enables them on every operating system and `"Off"` preserves Unicode separators. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
+- **IMPROVE:** **Flexible setup intervals** - The setup wizard accepts polling interval durations such as `30s`, `2m`, `1.5h`, `1h 30m` and `1d` while still saving the value as seconds
+- **IMPROVE:** **Focused command-line help** - `--help` now groups concise examples into Friend Activity and Scrobble Health sections so the main setup, monitoring and diagnostic commands are easier to find
+- **IMPROVE:** **Actionable Doctor output** - Details remain attached to their checks, final target-specific log destinations are validated and `pycookiecheat` is clearly identified as a Chromium-only import dependency that Firefox does not need
+- **IMPROVE:** **Clearer Friend Activity guidance** - Setup examples consistently document Spotify user IDs, URIs and profile URLs while in-app recovery links open the correct target guide
+
+**Bug fixes**:
+
+- **BUGFIX:** **Resilient recent-play token refreshes** - Spotify-to-Last.fm monitoring now retries a connection failure, timeout or temporary 5xx response once after a short delay. Rate limits and rejected credentials still return directly to the existing backoff and recovery handling
+
 # Changes in 3.2 (31 Jul 2026)
 
 Version **3.2** adds **Spotify-to-Last.fm scrobble health monitoring** plus flexible **webhook runtime controls and request customization** for Discord, ntfy and advanced integrations.

@@ -90,6 +90,16 @@ def test_report_markers_and_sections(monkeypatch):
     assert "0 failure(s)" in rendered
     assert "run only after approval" in rendered
     assert f"Guide: {monitor.DOCTOR_GUIDE_URL}" in rendered
+    assert "ASCII_LOG_SEPARATORS resolves" not in rendered
+
+
+# Verifies Doctor visually attaches explanatory details to their check rows
+def test_report_indents_check_details():
+    report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "PASS", "Log destination appears writable", "Path: spotify_monitor")])
+
+    rendered = monitor.render_doctor_report(report)
+
+    assert "[PASS] Log destination appears writable\n  Path: spotify_monitor" in rendered
 
 
 # Verifies reports omit sections that have no checks
@@ -262,6 +272,15 @@ def test_optional_dependency_reporting():
     assert all("Normal monitoring is unaffected" in check.detail for check in optional)
 
 
+# Verifies Chromium dependency guidance explicitly preserves Firefox import support
+def test_installed_browser_dependency_explains_firefox_support():
+    checks = monitor.doctor_check_environment((3, 9, 0), all_dependencies_present)
+    check = next(item for item in checks if "pycookiecheat" in item.label)
+
+    assert check.status == "PASS"
+    assert check.detail == "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"
+
+
 # Verifies requested container playback is a warning rather than a failure
 def test_doctor_reports_container_playback_as_warning(monkeypatch):
     monkeypatch.setattr(monitor, "is_container_environment", lambda: True)
@@ -373,6 +392,37 @@ def test_valid_totp_config_passes(monkeypatch):
     checks = monitor.doctor_check_configuration()
     totp_check = next(check for check in checks if "TOTP" in check.label)
     assert totp_check.status == "PASS"
+
+
+# Verifies Doctor checks the final target-specific log filename
+def test_doctor_configuration_uses_final_target_log_path(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", False)
+    monkeypatch.setattr(monitor, "SP_LOGFILE", "spotify_monitor")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "")
+
+    checks = monitor.doctor_check_configuration(target_value="spotify:user:sq58")
+    check = next(item for item in checks if item.label == "Log destination appears writable")
+
+    assert check.detail == "Path: spotify_monitor_sq58.log"
+
+
+# Verifies custom and scrobble-health suffixes use the runtime naming rules
+def test_doctor_configuration_uses_effective_log_suffix(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", False)
+    monkeypatch.setattr(monitor, "SP_LOGFILE", "logs/spotify")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "friends")
+
+    custom_checks = monitor.doctor_check_configuration(target_value="sq58")
+    custom_check = next(item for item in custom_checks if item.label == "Log destination appears writable")
+    monkeypatch.setattr(monitor, "FILE_SUFFIX", "")
+    scrobble_checks = monitor.doctor_check_configuration(lastfm_username="Last.fm User")
+    scrobble_check = next(item for item in scrobble_checks if item.label == "Log destination appears writable")
+
+    assert custom_check.detail == "Path: logs/spotify_friends.log"
+    assert scrobble_check.detail == "Path: logs/spotify_lastfm_Last.fm_User.log"
+    assert monitor.build_log_path("logs/fixed.log", "sq58") == Path("logs/fixed.log")
 
 
 # Configures the minimum valid client-mode values

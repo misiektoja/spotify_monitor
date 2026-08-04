@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.2
+v3.2.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -19,7 +19,7 @@ spotipy (optional, used when legacy OAuth app credentials are configured)
 pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 """
 
-VERSION = "3.2"
+VERSION = "3.2.1"
 
 
 # ---------------------------
@@ -474,6 +474,12 @@ SP_LOGFILE = "spotify_monitor"
 # Can also be disabled via the -d flag
 DISABLE_LOGGING = False
 
+# Controls conversion of separator-only log lines to ASCII:
+#   "Auto" - enable on Windows only (default)
+#   "On"   - enable on every operating system
+#   "Off"  - preserve Unicode separators in logs
+ASCII_LOG_SEPARATORS = "Auto"
+
 # ----------------------------
 # Terminal Output
 # ----------------------------
@@ -817,6 +823,7 @@ DOTENV_FILE = ""
 FILE_SUFFIX = ""
 SP_LOGFILE = ""
 DISABLE_LOGGING = False
+ASCII_LOG_SEPARATORS = "Auto"
 DEBUG_MODE = False
 VERBOSE_MODE = False
 HORIZONTAL_LINE = 0
@@ -952,7 +959,7 @@ COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-sp_dc-cookie"
 MANUAL_COOKIE_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#manual-cookie-extraction"
 CONTAINER_FIREFOX_GUIDE_URL = DOCUMENTATION_URL + "/usage/#import-firefox-into-container-authentication"
 CLIENT_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-desktop-client"
-TARGET_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#how-to-get-a-friends-user-uri-id"
+TARGET_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#how-to-find-a-friends-spotify-profile-url"
 FOLLOWING_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#following-the-monitored-user"
 SMTP_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#smtp-settings"
 WEBHOOK_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#webhook-settings"
@@ -1050,6 +1057,9 @@ MAX_RETRY_AFTER_SECONDS = 60
 
 # Limit scrobble health to one immediate HTTP retry before its monitoring loop backs off
 SCROBBLE_HEALTH_HTTP_RETRIES = 1
+
+# Pause briefly before the immediate Spotify refresh-token retry
+SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY = 1
 
 # Require three consecutive failed comparisons before sending an operational alert
 SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES = 3
@@ -2404,7 +2414,7 @@ web_player_retry = CappedRetry(
 web_player_adapter = HTTPAdapter(max_retries=web_player_retry, pool_connections=100, pool_maxsize=100)
 SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
 
-# Scrobble health retries transient server failures once while returning quota responses to its monitoring loop
+# Scrobble health GET requests retry transient failures once while returning quota responses to its monitoring loop
 scrobble_health_retry = CappedRetry(
     total=SCROBBLE_HEALTH_HTTP_RETRIES,
     connect=SCROBBLE_HEALTH_HTTP_RETRIES,
@@ -2463,6 +2473,21 @@ def resolve_truncate_chars(cli_value, configured_value, logging_disabled):
     return truncate_chars
 
 
+# Reports whether separator-only log lines should use ASCII on this system
+def ascii_log_separators_enabled():
+    mode = str(ASCII_LOG_SEPARATORS).strip().lower()
+    if mode not in {"auto", "on", "off"}:
+        raise ValueError("ASCII_LOG_SEPARATORS must be 'Auto', 'On' or 'Off'")
+    return mode == "on" or (mode == "auto" and platform.system() == "Windows")
+
+
+# Converts Unicode-only horizontal separator lines to ASCII when configured
+def normalize_log_separators(message):
+    if not ascii_log_separators_enabled():
+        return message
+    return re.sub(r"(?m)^─+$", lambda match: match.group(0).replace("─", "-"), message)
+
+
 # Logger class to output messages to stdout and log file
 class Logger(object):
     def __init__(self, filename):
@@ -2471,7 +2496,7 @@ class Logger(object):
 
     def write(self, message):
         # Expand tabs for file output (stdout remains untouched)
-        self.logfile.write(message.expandtabs(8))
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         if (TRUNCATE_CHARS):
             message = truncate_string_per_line(message, TRUNCATE_CHARS)
         self.terminal.write(message)
@@ -2485,7 +2510,7 @@ class Logger(object):
         self.terminal.flush()
 
     def log_only(self, message):
-        self.logfile.write(message.expandtabs(8))
+        self.logfile.write(normalize_log_separators(message.expandtabs(8)))
         self.logfile.flush()
 
     def flush(self):
@@ -4162,6 +4187,28 @@ def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
         return False
 
 
+# Posts a Spotify refresh-token request with one bounded retry for transient failures
+def spotify_post_scrobble_refresh_token(request_session: req.Session, token_data: dict) -> Any:
+    max_attempts = SCROBBLE_HEALTH_HTTP_RETRIES + 1
+    for attempt in range(max_attempts):
+        debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health token refresh, attempt {attempt + 1}/{max_attempts}]")
+        try:
+            response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        except (req.ConnectionError, req.Timeout) as exc:
+            if attempt + 1 >= max_attempts:
+                raise
+            debug_print(f"Spotify recent-play token refresh failed temporarily: {sanitize_error_text(exc)}. Retrying in {display_time(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)}")
+            time.sleep(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+            continue
+        if 500 <= response.status_code <= 599 and attempt + 1 < max_attempts:
+            debug_print(f"Spotify recent-play token refresh returned HTTP {response.status_code}. Retrying in {display_time(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)}")
+            response.close()
+            time.sleep(SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY)
+            continue
+        return response
+    raise RuntimeError("Spotify recent-play token refresh exhausted its bounded retry")
+
+
 # Refreshes and caches a user-owned Spotify recent-play access token
 def spotify_get_scrobble_access_token(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> str:
     global SPOTIFY_SCROBBLE_REFRESH_TOKEN, SP_CACHED_SCROBBLE_ACCESS_TOKEN, SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT, SP_CACHED_SCROBBLE_AUTH_FINGERPRINT
@@ -4175,8 +4222,7 @@ def spotify_get_scrobble_access_token(client_id: Optional[str] = None, refresh_t
         return SP_CACHED_SCROBBLE_ACCESS_TOKEN
     request_session = SCROBBLE_HEALTH_SESSION if session is None else session
     token_data = {"client_id": selected_client_id, "grant_type": "refresh_token", "refresh_token": selected_refresh_token}
-    debug_print(f"HTTP POST {SPOTIFY_SCROBBLE_TOKEN_URL} [scrobble health token refresh]")
-    response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+    response = spotify_post_scrobble_refresh_token(request_session, token_data)
     if response.status_code == 429 or response.status_code >= 500:
         spotify_raise_scrobble_http_error(response)
     oauth_error, oauth_description = spotify_scrobble_oauth_error(response)
@@ -5315,6 +5361,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
             StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
+            StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
@@ -5333,6 +5380,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
+        StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
@@ -6091,7 +6139,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
             advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", f"Install {package_name} then retry", False)
             checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
 
-    optional = (("spotipy", "Spotipy", "legacy OAuth metadata only"), ("pycookiecheat", "pycookiecheat", "Chromium browser import only"))
+    optional = (("spotipy", "Spotipy", "Used only for legacy OAuth metadata"), ("pycookiecheat", "pycookiecheat", "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"))
     for module_name, package_name, purpose in optional:
         try:
             present = find_spec(module_name) is not None
@@ -6100,7 +6148,8 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         if present:
             checks.append(make_doctor_check("Environment", "PASS", f"Optional dependency {package_name} is installed", purpose))
         else:
-            checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"))
+            missing_purpose = "Required only for importing cookies from Chromium-based browsers. Normal monitoring is unaffected. Firefox cookie import is also unaffected" if module_name == "pycookiecheat" else f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
+            checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))
     return checks
 
 
@@ -6129,17 +6178,37 @@ def nearest_existing_parent(path: Path) -> Path:
     return candidate
 
 
+# Resolves the target or mode-specific suffix used by the runtime log file
+def resolve_log_file_suffix(target_value=None, lastfm_username=None) -> str:
+    if FILE_SUFFIX:
+        return str(FILE_SUFFIX)
+    if lastfm_username is not None:
+        safe_lastfm_suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", str(lastfm_username)).strip("._")
+        return f"lastfm_{safe_lastfm_suffix or 'scrobble_health'}"
+    if target_value:
+        return resolve_target_user_id(target_value, None) or ""
+    return ""
+
+
+# Builds the exact log path used for one effective suffix
+def build_log_path(base_path, suffix: str) -> Path:
+    log_path = Path(os.path.expanduser(str(base_path)))
+    if log_path.suffix == "" and suffix:
+        log_path = log_path.parent / f"{log_path.name}_{suffix}.log"
+    return log_path
+
+
 # Validates effective config values and configured file destinations without writing them
-def doctor_check_configuration(config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = ()) -> List[DoctorCheck]:
+def doctor_check_configuration(config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), target_value=None, lastfm_username=None) -> List[DoctorCheck]:
     checks = list(startup_checks)
     if not any(check.section == "Configuration" and "configuration file" in check.label.lower() for check in checks):
         if config_path:
-            checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", str(config_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", f"Path: {config_path}"))
         else:
             checks.append(make_doctor_check("Configuration", "PASS", "No configuration file selected", "Using built-in defaults and command-line overrides"))
     if not any(check.section == "Configuration" and "dotenv" in check.label.lower() for check in checks):
         if env_path:
-            checks.append(make_doctor_check("Configuration", "PASS", "Dotenv file loaded", str(env_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Dotenv file loaded", f"Path: {env_path}"))
         else:
             checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
 
@@ -6173,7 +6242,7 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if MONITOR_LIST_FILE:
         monitor_path = Path(MONITOR_LIST_FILE).expanduser()
         if monitor_path.is_file() and os.access(monitor_path, os.R_OK):
-            checks.append(make_doctor_check("Configuration", "PASS", "Monitored-track list is readable", str(monitor_path)))
+            checks.append(make_doctor_check("Configuration", "PASS", "Monitored-track list is readable", f"Path: {monitor_path}"))
         else:
             advice = classify_recovery_error(context="file_read", detail=f"Monitored-track list is unreadable: {monitor_path}")
             checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice))
@@ -6182,11 +6251,18 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if CSV_FILE:
         destinations.append(("CSV destination", Path(CSV_FILE)))
     if not DISABLE_LOGGING and SP_LOGFILE:
-        destinations.append(("Log destination", Path(SP_LOGFILE)))
+        try:
+            log_suffix = resolve_log_file_suffix(target_value, lastfm_username)
+        except ValueError:
+            log_suffix = ""
+        if log_suffix:
+            destinations.append(("Log destination", build_log_path(SP_LOGFILE, log_suffix)))
+        else:
+            checks.append(make_doctor_check("Configuration", "PASS", "Log destination will be finalized after a target is selected", f"Base path: {Path(os.path.expanduser(SP_LOGFILE))}"))
     for label, destination in destinations:
         parent = nearest_existing_parent(destination)
         if parent.is_dir() and os.access(parent, os.W_OK):
-            checks.append(make_doctor_check("Configuration", "PASS", f"{label} appears writable", str(destination.expanduser())))
+            checks.append(make_doctor_check("Configuration", "PASS", f"{label} appears writable", f"Path: {destination.expanduser()}"))
         else:
             advice = classify_recovery_error(context="file_write", detail=f"{label} is not writable: {destination.expanduser()}")
             checks.append(make_doctor_check("Configuration", "FAIL", advice.summary, advice.detail, advice))
@@ -6458,7 +6534,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
     report.checks.extend(doctor_check_container_playback())
     if progress is not None:
         progress("configuration")
-    report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+    report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks, target_value))
     if progress is not None:
         progress("authentication")
     report.checks.extend(doctor_check_authentication(report))
@@ -6491,7 +6567,7 @@ def render_doctor_report(report: DoctorReport) -> str:
         for check in section_checks:
             lines.append(f"[{'PASS' if check.status == 'PASS' else check.status}] {check.label}")
             if check.detail:
-                lines.append(check.detail)
+                lines.append(f"  {check.detail}")
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
@@ -6550,7 +6626,7 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
         report.checks.extend(doctor_check_environment())
         if progress is not None:
             progress("configuration")
-        report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks))
+        report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks, lastfm_username=username))
         if progress is not None:
             progress("Spotify recent plays")
         try:
@@ -6807,26 +6883,10 @@ def _build_help_epilog() -> str:
     protobuf_file = "/data/login.protobuf" if method in ("docker", "compose") else "<protobuf_file>"
     sections = [
         "Examples:",
+        "",
+        "Friend Activity:",
         "  # Guided setup, recommended for the first run",
         f"  {prefix} --setup",
-        "",
-        "  # Guided setup for Spotify-to-Last.fm scrobble health monitoring",
-        f"  {prefix} --setup-scrobble-health",
-        "",
-        "  # Reauthorize the user-owned Spotify app for scrobble health",
-        f"  {prefix} --authorize-scrobble-health",
-        "",
-        "  # Start the separate Spotify-to-Last.fm scrobble health mode",
-        f"  {prefix} --monitor-mode scrobble_health",
-        "",
-        "  # Start scrobble health with a Last.fm profile selected for this run",
-        f"  {prefix} --monitor-mode scrobble_health --lastfm-username <lastfm_username>",
-        "",
-        "  # Diagnose scrobble health and list recent Spotify and Last.fm history",
-        f"  {prefix} --monitor-mode scrobble_health --doctor --verbose",
-        "",
-        "  # Select Friend Activity for this run",
-        f"  {prefix} --monitor-mode friend_activity <spotify_user_id>",
         "",
     ]
     if method in ("docker", "compose"):
@@ -6857,9 +6917,6 @@ def _build_help_epilog() -> str:
         "  # Save a Discord or ntfy webhook URL through a hidden prompt",
         f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
         "",
-        "  # Send one test webhook without starting monitoring",
-        f"  {prefix} --send-test-webhook",
-        "",
     ))
     sections.extend((
         "  # Monitor one Spotify user",
@@ -6877,6 +6934,15 @@ def _build_help_epilog() -> str:
     ))
     if method == "compose":
         sections.extend(("", "  # Start from the target saved by setup", "  docker compose up --no-log-prefix"))
+    sections.extend((
+        "",
+        "Scrobble Health:",
+        "  # Guided setup for Spotify-to-Last.fm monitoring",
+        f"  {prefix} --setup-scrobble-health",
+        "",
+        "  # Start Spotify-to-Last.fm monitoring",
+        f"  {prefix} --monitor-mode scrobble_health",
+    ))
     sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
     return "\n".join(sections) + "\n"
 
@@ -7015,14 +7081,26 @@ def _wizard_format_duration(seconds: int) -> str:
     return raw if readable == raw else f"{raw} - {readable}"
 
 
-# Parses one positive whole-number duration with an optional time unit
+# Parses one positive setup duration from whole or compound time units
 def _wizard_parse_duration(value: str) -> Optional[int]:
-    match = re.fullmatch(r"([1-9]\d*)\s*([a-z]*)", value.strip().casefold())
-    if not match:
+    normalized = value.strip().casefold()
+    matches = list(re.finditer(r"(\d+(?:\.\d+)?)\s*([a-z]*)", normalized))
+    if not matches:
         return None
     unit_seconds = {"": 1, "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60, "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600, "d": 86400, "day": 86400, "days": 86400}
-    multiplier = unit_seconds.get(match.group(2))
-    return int(match.group(1)) * multiplier if multiplier is not None else None
+    cursor = 0
+    total = 0.0
+    for match in matches:
+        if normalized[cursor:match.start()].strip():
+            return None
+        multiplier = unit_seconds.get(match.group(2))
+        if multiplier is None or len(matches) > 1 and not match.group(2):
+            return None
+        total += float(match.group(1)) * multiplier
+        cursor = match.end()
+    if normalized[cursor:].strip() or total < 1 or not total.is_integer():
+        return None
+    return int(total)
 
 
 # Prompts until the user provides a positive duration or accepts the readable default
@@ -7035,7 +7113,7 @@ def _wizard_ask_duration(question: str, default: int) -> int:
         parsed = _wizard_parse_duration(value)
         if parsed is not None:
             return parsed
-        print("  Enter a positive duration such as 120, 120s, 2m, 1h or 1d.")
+        print("  Enter a positive duration such as 120, 2m, 1.5h, 1h 30m or 1d.")
 
 
 # Reads a required secret through getpass without echoing the entered value
@@ -7572,7 +7650,7 @@ def _wizard_collect_auth_section(state: WizardSetupState, method: str) -> None:
 # Collects the polling interval using the current answer as its default
 def _wizard_collect_polling_section(state: WizardSetupState) -> None:
     current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
-    state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_positive_int("Spotify polling interval in seconds", current_interval)
+    state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
 
 
 # Collects email settings after clearing pending answers from that section
@@ -7625,6 +7703,7 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
     print("\nSetup summary\n")
     print(f"  Target: {state.target}")
     print(f"  Persist target: {'yes' if state.persist_target else 'no'}")
+    print(f"  Polling interval: {_wizard_format_duration(int(state.config_values['SPOTIFY_CHECK_INTERVAL']))}")
     print(f"  Token source: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
     if state.auth.get("mount_required"):
@@ -7633,7 +7712,6 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
         print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
     if state.auth.get("browser"):
         print(f"  Browser: {browser_label(state.auth['browser'])}")
-    print(f"  Polling interval: {state.config_values['SPOTIFY_CHECK_INTERVAL']} seconds")
     print(f"  Email: {'enabled' if state.enabled_notifications else 'disabled'}")
     print(f"  Email notifications: {', '.join(state.enabled_notifications) if state.enabled_notifications else 'none'}")
     print(f"  Webhook: {'enabled' if state.enabled_webhooks else 'disabled'}")
@@ -7645,15 +7723,15 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
 
 # Opens one selected setup section then returns to the summary
 def _wizard_edit_setup_section(state: WizardSetupState, method: str) -> None:
-    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Polling interval", "Change how often Spotify is checked."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Polling interval", "Change how often Spotify is checked."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
     if section == 0:
         print()
         _wizard_collect_target_section(state, state.target)
     elif section == 1:
-        _wizard_collect_auth_section(state, method)
-    elif section == 2:
         print()
         _wizard_collect_polling_section(state)
+    elif section == 2:
+        _wizard_collect_auth_section(state, method)
     elif section == 3:
         print()
         _wizard_collect_email_section(state)
@@ -7906,9 +7984,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     config_values["DOTENV_FILE"] = str(env_path)
     state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
     _wizard_collect_target_section(state, initial_target)
-    _wizard_collect_auth_section(state, method)
-    print()
     _wizard_collect_polling_section(state)
+    _wizard_collect_auth_section(state, method)
     print()
     _wizard_collect_email_section(state)
     print()
@@ -10145,8 +10222,15 @@ def main():
         CSV_FILE = os.path.expanduser(args.csv_file)
     elif CSV_FILE:
         CSV_FILE = os.path.expanduser(CSV_FILE)
+    try:
+        ascii_log_separators_enabled()
+    except ValueError as e:
+        print(f"* Error: {e}")
+        sys.exit(1)
     if args.disable_logging is True:
         DISABLE_LOGGING = True
+    if args.file_suffix:
+        FILE_SUFFIX = str(args.file_suffix)
     if args.notify_active is True:
         ACTIVE_NOTIFICATION = True
     if args.notify_inactive is True:
@@ -10423,15 +10507,8 @@ def main():
             print_recovery_error(e, "file_write", detail=f"CSV destination '{CSV_FILE}' cannot be opened for writing: {e}")
             sys.exit(1)
 
-    if args.file_suffix:
-        FILE_SUFFIX = str(args.file_suffix)
-    else:
-        if not FILE_SUFFIX:
-            if scrobble_health_mode:
-                safe_lastfm_suffix = re.sub(r"[^A-Za-z0-9._-]+", "_", scrobble_health_username).strip("._")
-                FILE_SUFFIX = f"lastfm_{safe_lastfm_suffix or 'scrobble_health'}"
-            else:
-                FILE_SUFFIX = str(target_user_id)
+    if not FILE_SUFFIX:
+        FILE_SUFFIX = resolve_log_file_suffix(target_user_id, scrobble_health_username if scrobble_health_mode else None)
 
     if args.disable_logging is True:
         DISABLE_LOGGING = True
@@ -10444,13 +10521,7 @@ def main():
 
     if not DISABLE_LOGGING:
         try:
-            log_path = Path(os.path.expanduser(SP_LOGFILE))
-            if log_path.parent != Path('.'):
-                if log_path.suffix == "":
-                    log_path = log_path.parent / f"{log_path.name}_{FILE_SUFFIX}.log"
-            else:
-                if log_path.suffix == "":
-                    log_path = Path(f"{log_path.name}_{FILE_SUFFIX}.log")
+            log_path = build_log_path(SP_LOGFILE, FILE_SUFFIX)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             FINAL_LOG_PATH = str(log_path)
             sys.stdout = Logger(FINAL_LOG_PATH)

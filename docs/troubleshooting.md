@@ -31,15 +31,15 @@ Warnings do not make the command fail. Doctor returns a nonzero exit status if a
 
 ```sh
 spotify_monitor --doctor
-spotify_monitor --doctor <spotify_user_uri_id>
+spotify_monitor --doctor <spotify_target>
 ```
 
 Doctor accepts the normal configuration options:
 
 ```sh
-spotify_monitor --doctor <spotify_user_uri_id> --config-file spotify_monitor.conf
-spotify_monitor --doctor <spotify_user_uri_id> --env-file /path/.env-spotify_monitor
-spotify_monitor --doctor <spotify_user_uri_id> --token-source client
+spotify_monitor --doctor <spotify_target> --config-file spotify_monitor.conf
+spotify_monitor --doctor <spotify_target> --env-file /path/.env-spotify_monitor
+spotify_monitor --doctor <spotify_target> --token-source client
 ```
 
 For scrobble health, focused Doctor shows live progress while it checks the environment, configuration, Spotify recent plays, Last.fm scrobbles and notifications. Its final report includes how many recent plays each service returned plus the current comparison status. Add `--verbose` to list up to ten recent Spotify plays with match markers, their matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison:

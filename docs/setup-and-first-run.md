@@ -5,7 +5,7 @@
 
 This page assumes Spotify Monitor is already installed (see [Installation](installation.md)). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose), finish that method's steps then return here.
 
-Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify and which alerts to enable. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
+Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify, how often to poll and which alerts to enable. The polling interval accepts seconds directly, decimal units such as `1.5h` or compound durations such as `1h 30m`. Supported units are `s`, `m`, `h` and `d`. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
 
 Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup.
 
@@ -126,7 +126,7 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 | I want to... | Run this |
 | --- | --- |
 | Set up Spotify Monitor for the first time | Use the setup command for your installation above |
-| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a raw ID, `spotify:user:` URI or profile URL |
+| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a complete profile URL, `spotify:user:` URI or user ID |
 | Start the target saved in `TARGET_USER_URI_ID` | `spotify_monitor --config-file spotify_monitor.conf` or `docker compose up --no-log-prefix` |
 | Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
@@ -193,25 +193,25 @@ The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`
 
 Before monitoring, [follow the Spotify user](configuration.md#following-the-monitored-user) from the account represented by your configured credentials.
 
-Start monitoring with a raw user ID, Spotify user URI or profile URL. These PyPI examples also show how a saved `TARGET_USER_URI_ID` removes the positional target:
+Start monitoring with a complete Spotify profile URL, a `spotify:user:` URI or a user ID. The first two PyPI examples use a positional target. The third uses a saved `TARGET_USER_URI_ID`:
 
 ```sh
-spotify_monitor <spotify_user_uri_id>
-spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id"
+spotify_monitor <spotify_target>
+spotify_monitor "https://open.spotify.com/user/USER_ID"
 spotify_monitor --config-file spotify_monitor.conf
 ```
 
 For a [manual script](installation.md#manual-installation):
 
 ```sh
-python3 spotify_monitor.py <spotify_user_uri_id>
+python3 spotify_monitor.py <spotify_target>
 ```
 
 For Docker Compose, use `/data` paths inside the container. If the target was saved by setup use the first command. Otherwise use the second form with any supported target:
 
 ```sh
 docker compose up --no-log-prefix
-docker compose run --rm spotify_monitor "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+docker compose run --rm spotify_monitor "https://open.spotify.com/user/USER_ID" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
 `docker compose up --no-log-prefix` uses the default `/data/spotify_monitor.conf` and `/data/.env` paths declared in `docker-compose.yml`. If setup saved either file under another `/data` path, use the explicit `docker compose run` command printed by setup.
@@ -220,7 +220,7 @@ For a direct `docker run` command on macOS or Windows PowerShell:
 
 ```sh
 docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --config-file /data/spotify_monitor.conf --env-file /data/.env
-docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest "https://open.spotify.com/user/spotify_user_uri_id" --config-file /data/spotify_monitor.conf --env-file /data/.env
+docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest "https://open.spotify.com/user/USER_ID" --config-file /data/spotify_monitor.conf --env-file /data/.env
 ```
 
 These commands work in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`. On a native Linux container engine replace `${PWD}` with `$PWD` and add `--user "$(id -u):$(id -g)"` immediately after `--init`.
