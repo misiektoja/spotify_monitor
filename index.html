@@ -895,16 +895,14 @@
 
 
 <h1 id="spotify_monitor">spotify_monitor<a class="headerlink" href="#spotify_monitor" title="Permanent link">&para;</a></h1>
-<p align="left">
-  <img src="https://img.shields.io/github/v/release/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="GitHub Release" />
-  <img src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&color=teal" alt="PyPI Version" />
-  <img src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&color=magenta" alt="GitHub Stars" />
-  <img src="https://img.shields.io/badge/python-3.9+-blueviolet?style=flat-square" alt="Python Versions" />
-  <img src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&color=blue" alt="License" />
-  <img src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green" alt="Last Commit" />
-  <img src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" alt="Maintenance" />
-</p>
-
+<p><a href="https://github.com/misiektoja/spotify_monitor/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/misiektoja/spotify_monitor?style=flat-square&amp;color=blue" /></a>
+<a href="https://pypi.org/project/spotify-monitor/"><img alt="PyPI Version" src="https://img.shields.io/pypi/v/spotify_monitor?style=flat-square&amp;color=teal" /></a>
+<a href="https://github.com/misiektoja/spotify_monitor"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/misiektoja/spotify_monitor?style=flat-square&amp;color=magenta" /></a>
+<a href="https://pypi.org/project/spotify-monitor/"><img alt="Python Versions" src="https://img.shields.io/badge/python-3.9+-blueviolet?style=flat-square" /></a>
+<a href="https://github.com/misiektoja/spotify_monitor/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/misiektoja/spotify_monitor?style=flat-square&amp;color=blue" /></a>
+<a href="https://scorecard.dev/viewer/?uri=github.com/misiektoja/spotify_monitor"><img alt="OpenSSF Scorecard" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.scorecard.dev%2Fprojects%2Fgithub.com%2Fmisiektoja%2Fspotify_monitor%3Fbadge_cache%3D20260825&amp;query=%24.score&amp;label=openssf%20scorecard&amp;style=flat-square" /></a>
+<a href="https://github.com/misiektoja/spotify_monitor/commits/main"><img alt="Last Commit" src="https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&amp;color=green" /></a>
+<a href="https://github.com/misiektoja/spotify_monitor"><img alt="Maintenance" src="https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square" /></a></p>
 <p>Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local Spotify client, detect skipped tracks and receive instant notifications for every beat your friends play.</p>
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
@@ -916,30 +914,30 @@
 <p>New to Python or unsure what is installed? Follow the <a href="https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-install-everything">Python install walkthrough</a> first.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>spotify_monitor
 </code></pre></div>
-<p>Run setup for friend activity mode (Spotify friend's completed plays, activity status and listening session):</p>
+<p>Run setup for <strong>friend activity mode</strong> (Spotify friend's completed plays, activity status and listening session):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--setup
 </code></pre></div>
-<p>Or for Last.fm scrobble health mode (checks whether plays from your Spotify account reach your Last.fm profile):
+<p>Or for <strong>Last.fm scrobble health mode</strong> (checks whether plays from your Spotify account reach your Last.fm profile):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>spotify_monitor<span class="w"> </span>--setup-scrobble-health
 </code></pre></div></p>
 <h4 id="docker-image-fastest-container-setup">Docker image - fastest container setup<a class="headerlink" href="#docker-image-fastest-container-setup" title="Permanent link">&para;</a></h4>
 <p>The Docker commands below run Friend Activity setup. For Last.fm scrobble health, replace the final <code>--setup</code> with <code>--setup-scrobble-health</code>.</p>
 <h5 id="macos-or-windows">macOS or Windows<a class="headerlink" href="#macos-or-windows" title="Permanent link">&para;</a></h5>
 <p>Use a macOS shell or Windows PowerShell with a Docker-compatible runtime that provides the <code>docker</code> CLI.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
 </code></pre></div>
 <p>In Windows Command Prompt replace <code>${PWD}</code> with <code>%cd%</code> above.</p>
 <h5 id="linux">Linux<a class="headerlink" href="#linux" title="Permanent link">&para;</a></h5>
 <p>Run the container with your numeric user and group IDs (<code>--user "$(id -u):$(id -g)"</code> below). This lets the container write files that your host account can edit.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
 </code></pre></div>
 <h4 id="docker-compose-shorter-recurring-commands">Docker Compose - shorter recurring commands<a class="headerlink" href="#docker-compose-shorter-recurring-commands" title="Permanent link">&para;</a></h4>
 <p>Download the Compose file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
 </code></pre></div>
 <p>Linux container engine requires to export your numeric user ID and group ID so files created in the current directory belong to you instead of <code>root</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">"</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span>
 </code></pre></div>
 <p>Docker-compatible runtimes on macOS and Windows normally do not need these values.</p>
 <p>Run setup wizard:</p>
@@ -966,6 +964,7 @@
 <li><strong>Track Context</strong>: View <strong>playlist, artist</strong> and <strong>album info</strong> with clickable URLs.</li>
 <li><strong>Skip Detection</strong>: Identify exactly when and how long a song was played.</li>
 <li><strong>Global Search</strong>: Instant links to <strong>Spotify, YouTube Music, Apple Music, Tidal, lyrics</strong> and more.</li>
+<li><strong>Coloured Output</strong>: Readable terminal colours with a <strong>customizable theme</strong>, while log files stay plain text.</li>
 </ul>
 <h3 id="smart-notifications">🔔 Smart Notifications<a class="headerlink" href="#smart-notifications" title="Permanent link">&para;</a></h3>
 <ul>

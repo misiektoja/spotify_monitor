@@ -1126,9 +1126,11 @@
 <p><strong>Python path</strong>:</p>
 <ul>
 <li><a href="https://www.python.org/downloads/">Python</a> 3.9 or higher</li>
-<li>Core libraries: <code>requests</code>, <code>python-dateutil</code>, <code>urllib3</code>, <code>pyotp</code>, <code>python-dotenv</code>, <code>wcwidth</code>, <code>Pillow</code></li>
+<li>Core libraries: <code>requests</code>, <code>python-dateutil</code>, <code>urllib3</code>, <code>pyotp</code>, <code>python-dotenv</code>, <code>wcwidth</code></li>
 <li><a href="https://github.com/spotipy-dev/spotipy">spotipy</a> is optional and is needed only for legacy OAuth metadata access</li>
 <li><a href="https://github.com/n8henrie/pycookiecheat">pycookiecheat</a> is optional and is needed only to import cookies from Chrome, Brave or Chromium</li>
+<li><a href="https://github.com/python-pillow/Pillow">Pillow</a> is optional and is needed only to attach playlist and album artwork to ntfy alerts</li>
+<li><a href="https://github.com/tartley/colorama">colorama</a> is optional and improves coloured output in the classic Windows Command Prompt</li>
 </ul>
 <p><strong>Container path</strong> (Python is included in the image):</p>
 <ul>
@@ -1292,44 +1294,57 @@ pipx install spotify_monitor
 </code></pre></div>
 <p>Each command below that uses square brackets installs the base <code>spotify_monitor</code> package plus the named optional dependency. Run only the command that matches your needs. You do not need to run the plain install command first.</p>
 <p>Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"spotify_monitor[browser]"</span>
 </code></pre></div>
 <p>This installs Spotify Monitor and the optional <code>pycookiecheat</code> dependency.</p>
+<p>Artwork in ntfy alerts is optional. Install the artwork extra to attach playlist and album covers to ntfy notifications:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"spotify_monitor[notification-images]"</span>
+</code></pre></div>
+<p>This installs Spotify Monitor and the optional Pillow dependency. Python 3.10 and newer get the current Pillow, while Python 3.9 gets the last release that still supports it. After installing, set <code>NTFY_IMAGES</code> to <code>True</code> in the configuration file. The Docker images already include this dependency.</p>
 <p>Spotipy is optional. Install the legacy OAuth extra only if you already have working <a href="../configuration/#spotify-oauth-app">Spotify OAuth App</a> credentials and want to enable the optional legacy Web API metadata path. The automatic web-player backend works without this extra:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[legacy-oauth]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"spotify_monitor[legacy-oauth]"</span>
 </code></pre></div>
 <p>This installs Spotify Monitor and the optional Spotipy dependency. It also includes the base package, so this single command is sufficient.</p>
-<p>Both extras can be installed together:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser,legacy-oauth]&quot;</span>
+<p>Extras can be installed together:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"spotify_monitor[browser,legacy-oauth,notification-images]"</span>
 </code></pre></div>
 <p><a id="manual-installation"></a></p>
 <h3 id="install-the-manual-script">Install the Manual Script<a class="headerlink" href="#install-the-manual-script" title="Permanent link">&para;</a></h3>
 <p>Download the script and dependency list into the same directory:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
 </code></pre></div>
 <p>You can also download <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py">spotify_monitor.py</a> and <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt">requirements.txt</a> in a browser or use the files from a cloned repository.</p>
 <p>Install the core dependencies:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 </code></pre></div>
 <p>You can install the core dependencies directly if you downloaded only the script:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pip<span class="w"> </span>install<span class="w"> </span>requests<span class="w"> </span>python-dateutil<span class="w"> </span>urllib3<span class="w"> </span>pyotp<span class="w"> </span>python-dotenv<span class="w"> </span>wcwidth<span class="w"> </span>Pillow
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pip<span class="w"> </span>install<span class="w"> </span>requests<span class="w"> </span>python-dateutil<span class="w"> </span>urllib3<span class="w"> </span>pyotp<span class="w"> </span>python-dotenv<span class="w"> </span>wcwidth
 </code></pre></div>
 <p>For optional legacy OAuth support install <code>spotipy</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;spotipy&gt;=2.24.0&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"spotipy&gt;=2.24.0"</span>
 </code></pre></div>
 <p>For optional Chrome, Brave or Chromium import on macOS or Linux install <code>pycookiecheat</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;pycookiecheat&gt;=0.8&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"pycookiecheat&gt;=0.8"</span>
+</code></pre></div>
+<p>For optional artwork in ntfy alerts install <code>Pillow</code>, then set <code>NTFY_IMAGES</code> to <code>True</code> in the configuration file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"Pillow&gt;=12.0.0"</span>
+</code></pre></div>
+<p>On Python 3.9 install the last release that supports it instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"Pillow&gt;=11.3.0,&lt;12"</span>
+</code></pre></div>
+<p>On the classic Windows Command Prompt, install <code>colorama</code> for better coloured output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>pip<span class="w"> </span>install<span class="w"> </span>colorama
 </code></pre></div>
 <p>Verify the script:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
 </code></pre></div>
 <p>Use <code>python spotify_monitor.py --version</code> on Windows.</p>
 <p><a id="docker-image"></a></p>
 <h3 id="install-from-docker-hub">Install from Docker Hub<a class="headerlink" href="#install-from-docker-hub" title="Permanent link">&para;</a></h3>
 <p>The published <a href="https://hub.docker.com/r/misiektoja/spotify-monitor"><code>misiektoja/spotify-monitor</code></a> image supports <code>linux/amd64</code> and <code>linux/arm64</code>.</p>
 <p>No separate image download is required. Its first-run command uses <code>docker run --pull=always</code> to pull the current image and start the setup wizard in one step, so for Docker installing and setting up are a single command:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z&quot;</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--setup
 </code></pre></div>
 <p>On a native Linux container engine, add <code>--user "$(id -u):$(id -g)"</code> immediately after <code>--init</code>. <a href="../setup-and-first-run/#new-here-run-the-setup-wizard">Setup &amp; First Run</a> shows the exact command for macOS shells, Windows PowerShell and native Linux engines then explains what the wizard asks.</p>
 <p>Normal monitoring commands reuse the installed image and do not check for a newer release. The <a href="#upgrade-a-direct-docker-installation">upgrade instructions</a> pull explicitly when you choose to upgrade.</p>
@@ -1341,27 +1356,27 @@ pipx install spotify_monitor
 <p><a id="docker-compose"></a></p>
 <h3 id="install-with-docker-compose">Install with Docker Compose<a class="headerlink" href="#install-with-docker-compose" title="Permanent link">&para;</a></h3>
 <p>Compose adds a reusable project file and shorter commands for later runs. Create or choose a directory for Spotify Monitor and download the Compose file there:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/docker-compose.yml
 </code></pre></div>
 <p>You can also download <a href="https://github.com/misiektoja/spotify_monitor/blob/main/docker-compose.yml">docker-compose.yml</a> in a browser or use the file from a cloned repository.</p>
 <p>On a native Linux container engine, the container does not automatically know which host user should own new files. Export your numeric user ID and group ID so configuration, logs and CSV files created by the container belong to your account instead of <code>root</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">"</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span>
 </code></pre></div>
 <p>Run these commands in the same terminal that you will use for setup and later Compose commands. A new terminal will not keep the exported values. To make them permanent for this project, put the numeric results from <code>id -u</code> and <code>id -g</code> in the Compose <code>.env</code> file:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="na">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s">1000</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="na">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s">1000</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="na">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s">1000</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="na">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s">1000</span>
 </code></pre></div>
 <p>The values above are only examples. Use the numbers returned on your system. The setup wizard keeps unrelated entries in this file. Docker-compatible runtimes on macOS and Windows normally handle bind-mount ownership, so users on those systems can usually skip this step. If <code>/data</code> is not writable, set the host user and group IDs as shown above.</p>
 <p>Compose makes the current host directory available as <code>/data</code> inside the container. This is called a bind mount. The setup wizard creates <code>spotify_monitor.conf</code> and <code>.env</code> there, so the files remain on your computer when the container is replaced. From this directory your first command is the setup wizard:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>--pull<span class="o">=</span>always<span class="w"> </span>spotify_monitor<span class="w"> </span>--setup
 </code></pre></div>
 <p>The <code>--pull=always</code> flag pulls the current image first, so no separate <code>docker compose pull</code> is needed during onboarding. On a native Linux container engine, export the UID and GID shown above in the same terminal before you run setup. See <a href="../setup-and-first-run/#new-here-run-the-setup-wizard">Setup &amp; First Run</a> for the wizard walkthrough.</p>
 <p><a id="build-docker-locally"></a></p>
 <h3 id="build-the-docker-image-locally">Build the Docker Image Locally<a class="headerlink" href="#build-the-docker-image-locally" title="Permanent link">&para;</a></h3>
 <p>From a cloned repository:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--pull<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-monitor:local<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--pull<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-monitor:local<span class="w"> </span>--version
 </code></pre></div>
 <p>To use this image through Compose, comment out <code>image:</code> in <code>docker-compose.yml</code> and uncomment <code>build: .</code>.</p>
 <p><a id="next-step"></a></p>
@@ -1371,44 +1386,44 @@ pipx install spotify_monitor
 <h2 id="upgrading">Upgrading<a class="headerlink" href="#upgrading" title="Permanent link">&para;</a></h2>
 <p>Upgrading the package or image does not remove your configuration, <code>.env</code> secrets, logs or CSV files. Keep those files in the same working directory or another persistent location.</p>
 <h3 id="upgrade-a-pypi-installation">Upgrade a PyPI Installation<a class="headerlink" href="#upgrade-a-pypi-installation" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>spotify_monitor
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>spotify_monitor<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>spotify_monitor
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>spotify_monitor<span class="w"> </span>--version
 </code></pre></div>
 <p>Retain any optional extras you use during the upgrade:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">&quot;spotify_monitor[browser,legacy-oauth]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span><span class="s2">"spotify_monitor[browser,legacy-oauth]"</span>
 </code></pre></div>
 <h3 id="upgrade-a-manual-installation">Upgrade a Manual Installation<a class="headerlink" href="#upgrade-a-manual-installation" title="Permanent link">&para;</a></h3>
 <p>Replace <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py">spotify_monitor.py</a> and <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt">requirements.txt</a> with the newest copies. You can download them in a browser, use the files from an updated clone or run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>curl<span class="w"> </span>-fsSLO<span class="w"> </span>https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--version
 </code></pre></div>
 <p>Refresh the dependencies even when <code>requirements.txt</code> appears unchanged because a new release may add or change a required library.</p>
 <p>Use <code>python spotify_monitor.py --version</code> on Windows. If you modified the script itself, save your changes before replacing it and reapply them to the new version.</p>
 <h3 id="upgrade-a-docker-compose-installation">Upgrade a Docker Compose Installation<a class="headerlink" href="#upgrade-a-docker-compose-installation" title="Permanent link">&para;</a></h3>
 <p>Stop an attached run with <code>Ctrl+C</code>. From the directory that contains <code>docker-compose.yml</code> run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
 </code></pre></div>
 <p>Compose replaces the service container with one based on the current <code>latest</code> image. The host files <code>spotify_monitor.conf</code> and <code>.env</code> remain in place with the logs and CSV files.</p>
 <h3 id="upgrade-a-direct-docker-installation">Upgrade a Direct Docker Installation<a class="headerlink" href="#upgrade-a-direct-docker-installation" title="Permanent link">&para;</a></h3>
 <p>Stop the current run then pull the current image:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>misiektoja/spotify-monitor:latest
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>misiektoja/spotify-monitor:latest
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--version
 </code></pre></div>
 <p>Start the tool again with the same <code>/data</code> mount and options you used before. If your command uses a version such as <code>3.0</code> instead of <code>latest</code>, replace that version yourself when you want to upgrade. Each release publishes <code>latest</code> plus tags in <code>vX.Y</code> and <code>X.Y</code> forms.</p>
 <p>For example, to pin version 3.0:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>misiektoja/spotify-monitor:3.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>docker<span class="w"> </span>pull<span class="w"> </span>misiektoja/spotify-monitor:3.0
 </code></pre></div>
 <h3 id="upgrade-a-locally-built-docker-image">Upgrade a Locally Built Docker Image<a class="headerlink" href="#upgrade-a-locally-built-docker-image" title="Permanent link">&para;</a></h3>
 <p>Rebuild from the updated repository and refresh the base image:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--pull<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-monitor:local<span class="w"> </span>--version
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>docker<span class="w"> </span>build<span class="w"> </span>--pull<span class="w"> </span>--tag<span class="w"> </span>spotify-monitor:local<span class="w"> </span>.
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify-monitor:local<span class="w"> </span>--version
 </code></pre></div>
 <h3 id="check-upgrade">Check Upgrade<a class="headerlink" href="#check-upgrade" title="Permanent link">&para;</a></h3>
 <p>After any upgrade run the doctor command for your installation:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>spotify_monitor<span class="w"> </span>--doctor
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>spotify_monitor<span class="w"> </span>--doctor
 </code></pre></div>
 <p>For Docker Compose use <code>docker compose run --rm spotify_monitor --doctor</code>. For a direct image use the normal <code>/data</code> mount plus <code>--doctor</code>.</p>
 
