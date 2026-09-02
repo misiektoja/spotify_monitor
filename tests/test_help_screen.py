@@ -88,3 +88,22 @@ def test_the_parser_is_built_with_the_argparse_colour_switch():
     source = Path(monitor.__file__).read_text(encoding="utf-8")
 
     assert "**argparse_color_kwargs()" in source.split("argparse.ArgumentParser(", 1)[1].split("\n\n", 1)[0]
+
+
+# The one sentence each shared one-shot flag uses across the sibling monitors
+SHARED_FLAG_HELP = {
+    "--setup": "Run the guided setup and write a ready-to-run configuration",
+    "--doctor": "Run read-only preflight checks and report what is ready and what is not",
+    "--set-webhook-url": "Save a Discord or ntfy webhook URL through a hidden prompt",
+    "--set-smtp-password": "Enter the SMTP password privately, check it against the mail server and save it to the dotenv file",
+    "--send-test-email": "Send test email to verify SMTP settings",
+    "--send-test-webhook": "Send one test webhook without starting monitoring",
+}
+
+
+# Verifies each shared one-shot flag describes itself with the sentence the sibling monitors use
+def test_the_shared_flags_use_the_shared_help_sentences(help_screen):
+    compact = " ".join(help_screen.split())
+
+    for flag, sentence in SHARED_FLAG_HELP.items():
+        assert f"{flag} {sentence}" in compact, f"the '{flag}' help sentence has drifted from the shared wording"
