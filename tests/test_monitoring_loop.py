@@ -242,3 +242,51 @@ def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypa
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     assert not flag_path.exists()
+
+
+# Verifies the first failure while the friend is active is reported in full rather than waiting for a repeat threshold
+def test_the_first_failure_while_active_is_reported_in_full(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    responses = [buddy_list(timestamp_ms=int(time.time()) * 1000), Exception("503 Server Error: Service Unavailable")]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=responses))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    assert "* Error, retrying in " in output
+    assert "To fix: " in output
+
+
+# Verifies a failure that keeps repeating is reported once and then carried by the liveness banner
+def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 2)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=Exception("503 Server Error: Service Unavailable")))
+    loop_environment.stop_after = 6
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    assert output.count("To fix: ") == 1
+    assert "* Monitoring degraded for watched-user. " in output
+    assert output.count("Liveness check, timestamp:") == 2
+
+
+# Verifies a failure that clears is reported as recovered, since a throttled failure stops printing while it lasts
+def test_a_cleared_outage_reports_its_recovery(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    responses = [Exception("503 Server Error: Service Unavailable"), buddy_list(timestamp_ms=int(time.time()) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=responses))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    assert "* Monitoring recovered for watched-user after " in capsys.readouterr().out

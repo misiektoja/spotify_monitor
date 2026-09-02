@@ -1653,6 +1653,54 @@ def print_recovery_error(error: Any = None, context: str = "runtime", debug: Opt
     return advice
 
 
+# Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
+class OutageReporter:
+    # Starts with no failure recorded, so the first failure of any category is reported in full
+    def __init__(self) -> None:
+        self.code: Optional[str] = None
+        self.since: int = 0
+        self.checks: int = 0
+
+    # Records one failed check and returns "full" for a new failure, "degraded" on the liveness cadence,
+    # "repeat" while the liveness banner is switched off or "" while the same failure is merely continuing
+    def failed(self, advice: RecoveryAdvice, liveness_counter: int) -> str:
+        if advice.code != self.code:
+            self.code = advice.code
+            self.since = int(time.time())
+            self.checks = 0
+            return "full"
+        self.checks += 1
+        # With the liveness banner off there is nothing to carry the reminder, so the summary keeps its old cadence
+        if not liveness_counter:
+            return "repeat"
+        if self.checks >= liveness_counter:
+            self.checks = 0
+            return "degraded"
+        return ""
+
+    # Clears the failure after a successful check and returns how long it lasted, or None when none was active
+    def recovered(self) -> Optional[int]:
+        if not self.code:
+            return None
+        lasted = int(time.time()) - self.since
+        self.code = None
+        self.since = 0
+        self.checks = 0
+        return lasted
+
+
+# Reports a lasting failure on the liveness cadence, so a broken run still says it is alive without repeating itself
+def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int) -> None:
+    print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}")
+    print_cur_ts("Liveness check, timestamp:\t")
+
+
+# Reports that a failure cleared, since a throttled failure no longer stops printing when it is over
+def print_outage_recovery(target: str, lasted: int) -> None:
+    print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
+    print_cur_ts("Timestamp:\t\t\t")
+
+
 # Tracks the last uninterrupted recovery category to suppress duplicate hints
 @dataclass
 class RecoveryHintTracker:
@@ -9919,7 +9967,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     error_network_issue_start_ts = 0
     sp_accessToken = ""
     recovery_hint_tracker = RecoveryHintTracker()
-    transient_request_failure_active = False
+    outage = OutageReporter()
 
     try:
         if csv_file_name:
@@ -9955,6 +10003,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_friends = spotify_get_friends_json(sp_accessToken)
             sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
             recovery_hint_tracker.reset()
+            outage_lasted = outage.recovered()
+            if outage_lasted is not None:
+                print_outage_recovery(user_uri_id, outage_lasted)
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
@@ -9971,7 +10022,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             debug_print("Main monitor loop", outcome="failed", error=f"{type(e).__name__}: {e}")
 
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
-            advice = print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+            advice = classify_recovery_error(e, auth_context)
+
+            # A failure that has not changed is left to the liveness cadence rather than repeated every check
+            outage_outcome = outage.failed(advice, LIVENESS_CHECK_COUNTER)
+            if outage_outcome in ("full", "repeat"):
+                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+            elif outage_outcome == "degraded":
+                print_outage_liveness(user_uri_id, advice, outage.since)
 
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
@@ -9996,7 +10054,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     email_sent = email_sent or email_succeeded
                     webhook_sent = webhook_sent or webhook_succeeded
 
-            print_cur_ts("Timestamp:\t\t\t")
+            if outage_outcome in ("full", "repeat"):
+                print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
             continue
 
@@ -10205,9 +10264,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         sp_friends = spotify_get_friends_json(sp_accessToken)
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
-                        if transient_request_failure_active:
-                            verbose_notice("Spotify requests recovered after a transient failure")
-                            transient_request_failure_active = False
+                        outage_lasted = outage.recovered()
+                        if outage_lasted is not None:
+                            print_outage_recovery(user_uri_id, outage_lasted)
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
@@ -10223,10 +10282,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
                         advice = classify_recovery_error(e, auth_context)
-
-                        if (advice.code in ("spotify.unavailable", "network.unavailable", "network.timeout", "spotify.rate_limited") or str(e) == '') and not transient_request_failure_active:
-                            verbose_notice(f"{advice.summary}. Automatic retries are active")
-                            transient_request_failure_active = True
 
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                             SP_CACHED_ACCESS_TOKEN = None
@@ -10245,19 +10300,31 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             else:
                                 error_network_issue_counter += 1
 
-                        if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
-                            print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}): ")
-                            print_cur_ts("Timestamp:\t\t\t")
-                            error_500_start_ts = 0
-                            error_500_counter = 0
+                        # A failure that has not changed is left to the liveness cadence rather than repeated every check
+                        outage_outcome = outage.failed(advice, LIVENESS_CHECK_COUNTER)
+                        report_in_full = outage_outcome == "full"
 
-                        elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
-                            print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}): ")
-                            print_cur_ts("Timestamp:\t\t\t")
-                            error_network_issue_start_ts = 0
-                            error_network_issue_counter = 0
+                        # With the liveness banner off the aggregated 50x and network summaries keep their old cadence
+                        if outage_outcome == "repeat":
+                            if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
+                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}): ")
+                                print_cur_ts("Timestamp:\t\t\t")
+                                error_500_start_ts = 0
+                                error_500_counter = 0
 
-                        elif not error_500_start_ts and not error_network_issue_start_ts:
+                            elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
+                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}): ")
+                                print_cur_ts("Timestamp:\t\t\t")
+                                error_network_issue_start_ts = 0
+                                error_network_issue_counter = 0
+
+                            elif not error_500_start_ts and not error_network_issue_start_ts:
+                                report_in_full = True
+
+                        if outage_outcome == "degraded":
+                            print_outage_liveness(user_uri_id, advice, outage.since)
+
+                        elif report_in_full:
                             print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
 
                             if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":

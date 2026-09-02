@@ -69,6 +69,8 @@ spotify_monitor --import-browser-cookie --browser firefox
 
 Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. If manual extraction is needed, it shows the recommended `--set-sp-dc` command because its hidden prompt is the most secure entry method. See [Import Firefox into Container Authentication](usage.md#import-firefox-into-container-authentication) for Linux, Snap, Flatpak and macOS commands.
 
+During a long outage the failure is reported in full once, then the liveness banner takes over with `* Monitoring degraded for <user_uri_id>` and the summary of what is still failing, so a broken run keeps saying it is alive without repeating the same paragraph. When the failure clears, `* Monitoring recovered for <user_uri_id>` reports how long it lasted. Setting `LIVENESS_CHECK_INTERVAL` to 0 removes the banner that carries the reminder, so the one-line summary goes back to printing on every check.
+
 For advanced client-mode failures, repeat the [Spotify Desktop Client](configuration.md#spotify-desktop-client) export steps. Add `--debug` to Doctor or a normal run for sanitized technical detail: each line names the operation, then lists its details as comma-separated `key=value` fields, and every outbound call reports `outcome=OK` or `outcome=failed`. Use `--verbose` for a complete startup summary and occasional state changes, without a line per check or a trace for every request. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden. A `--debug` run leaves the terminal as it was instead of clearing it, so the output you are comparing against stays on screen. `--verbose` clears it like an ordinary run.
 
 <a id="terminal-colours-look-wrong"></a>
