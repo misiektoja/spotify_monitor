@@ -839,8 +839,31 @@ def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", "your_sp_dc_cookie_value", raising=False)
     monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "dotenv file", "WEBHOOK_URL": "environment"}, raising=False)
 
-    from_file, from_environment, from_settings = monitor.doctor_secret_sources(str(env_file))
+    from_file, from_environment, from_settings, from_command_line = monitor.doctor_secret_sources(str(env_file))
 
     assert "SMTP_PASSWORD" in from_file
     assert "WEBHOOK_URL" in from_environment
-    assert "SP_DC_COOKIE" not in from_file + from_environment + from_settings
+    assert "SP_DC_COOKIE" not in from_file + from_environment + from_settings + from_command_line
+
+
+# Verifies a row whose advice repeats its own summary prints that text once rather than as two problems
+def test_a_row_never_prints_its_summary_twice():
+    repeated = "No valid sp_dc cookie was found"
+
+    check = monitor.make_doctor_check("Configuration", "WARN", repeated, repeated)
+
+    assert check.label == repeated
+    assert check.detail == ""
+
+
+# Verifies a secret passed as an argument is reported under the command line rather than the configuration file
+def test_a_command_line_secret_is_reported_as_such(monkeypatch):
+    for name in monitor.SECRET_KEYS:
+        monkeypatch.setattr(monitor, name, "your_placeholder", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "command line"}, raising=False)
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "a-real-secret-value", raising=False)
+
+    labels = [check.label for check in monitor.doctor_secret_checks(None)]
+
+    assert "Secrets loaded from the command line" in labels
+    assert "Secrets loaded from the configuration file or command line" not in labels

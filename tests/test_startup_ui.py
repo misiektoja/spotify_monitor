@@ -507,7 +507,7 @@ def test_logger_terminal_only_and_log_only(monkeypatch, tmp_path):
 
 
 # The rows shared with the sibling monitors, in the order every one of them prints
-SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
 
 
 # Verifies the shared rows keep the order and the label column width every sibling monitor prints
@@ -525,7 +525,7 @@ def test_the_scrobble_health_summary_keeps_the_shared_tail(monkeypatch):
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
     rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
-    tail = ("Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+    tail = ("Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
 
     assert [row.label for row in rows if row.label in tail] == list(tail)
     assert max(len(row.label) for row in rows) <= 28
