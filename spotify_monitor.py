@@ -7144,7 +7144,6 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
             else:
                 missing_purpose = f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
             checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))
-    checks.append(make_doctor_check("Environment", "PASS", f"Install method: {_wizard_install_method()}"))
     return checks
 
 
@@ -7301,7 +7300,11 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     destinations = []
     if CSV_FILE:
         destinations.append(("CSV destination", Path(CSV_FILE)))
-    if not DISABLE_LOGGING and SP_LOGFILE:
+    else:
+        checks.append(make_doctor_check("Configuration", "PASS", "CSV logging is disabled", "No CSV file will be written"))
+    if DISABLE_LOGGING:
+        checks.append(make_doctor_check("Configuration", "PASS", "Output logging is disabled", "No log file will be written"))
+    elif SP_LOGFILE:
         try:
             log_suffix = resolve_log_file_suffix(target_value, lastfm_username)
         except ValueError:
@@ -7609,7 +7612,9 @@ def render_doctor_notice() -> None:
 
 # Renders one sectioned ASCII doctor report with action lines for failures
 def render_doctor_report(report: DoctorReport) -> str:
-    lines = [colorize("header", "Doctor")]
+    # The install method is context rather than a check: it cannot fail, so it is stated once here
+    # instead of taking a result row that no marker describes
+    lines = [colorize("header", "Doctor"), f"Detected install method: {colorize('username', _wizard_install_method())}"]
     sections = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
     for section in sections:
         section_checks = [item for item in report.checks if item.section == section]

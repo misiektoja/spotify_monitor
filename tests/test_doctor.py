@@ -109,6 +109,28 @@ def test_preflight_notice_names_the_scrobble_health_write(monkeypatch, capsys):
     assert "A rotated Spotify recent-play refresh token may be updated in the selected dotenv file." in capsys.readouterr().out
 
 
+# Verifies the install method is stated as context instead of a check that can never fail
+def test_report_states_the_install_method_without_a_marker():
+    report = monitor.DoctorReport([monitor.make_doctor_check("Environment", "PASS", "Python 3.12.0 is supported")])
+
+    rendered = monitor.render_doctor_report(report)
+
+    assert f"Doctor\nDetected install method: {monitor._wizard_install_method()}\n" in rendered
+    assert "[PASS] Install method" not in rendered
+
+
+# Verifies disabled output destinations are stated rather than left out of the report
+def test_report_names_disabled_output_destinations(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "CSV_FILE", "")
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", True)
+
+    rendered = monitor.render_doctor_report(monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present))
+
+    assert "[PASS] CSV logging is disabled\n  No CSV file will be written" in rendered
+    assert "[PASS] Output logging is disabled\n  No log file will be written" in rendered
+
+
 # Verifies Doctor visually attaches explanatory details to their check rows
 def test_report_indents_check_details():
     report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "PASS", "Log destination appears writable", "Path: spotify_monitor")])
@@ -294,7 +316,7 @@ def test_python_version_check():
     unsupported = monitor.doctor_check_environment((3, 8, 18), all_dependencies_present)
     assert supported[0].status == "PASS"
     assert unsupported[0].status == "FAIL"
-    assert any(check.status == "PASS" and check.label.startswith("Install method: ") for check in supported)
+    assert not any(check.label.startswith("Install method") for check in supported)
 
 
 # Verifies missing optional dependencies are warnings that do not affect normal monitoring
