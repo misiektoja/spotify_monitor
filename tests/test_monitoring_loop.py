@@ -211,6 +211,26 @@ def test_a_verbose_notice_closes_with_a_timestamp(loop_environment, monkeypatch,
     assert set(lines[notice + 2]) == {"\u2500"}
 
 
+# Verifies a repeated operational notice such as a token refresh closes its own block once monitoring runs,
+# and stays a bare line on the startup screen, where the monitoring header closes the block instead
+def test_a_token_refresh_notice_closes_its_own_block_only_while_monitoring(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "HORIZONTAL_LINE", 10)
+    monkeypatch.setattr(monitor, "MONITORING_ACTIVE", False)
+
+    monitor.verbose_notice("Authentication token refreshed (cookie mode)")
+
+    assert capsys.readouterr().out == "* Authentication token refreshed (cookie mode)\n"
+
+    monitor.mark_monitoring_started()
+    monitor.verbose_notice("Authentication token refreshed (cookie mode)")
+
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    assert lines[0] == "* Authentication token refreshed (cookie mode)"
+    assert lines[1].startswith("Timestamp:")
+    assert set(lines[2]) == {"─"}
+
+
 # Verifies a target missing from the buddy list does not raise the activity flag
 def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypatch, tmp_path):
     flag_path = tmp_path / "active.flag"
