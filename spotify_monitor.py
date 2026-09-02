@@ -5801,7 +5801,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if first_successful_check:
                 print(f"* {result_message}")
                 print_cur_ts("\nTimestamp:\t\t\t")
-            elif evaluation.status != previous_status:
+            elif evaluation.status != previous_status and evaluation.status != "suspect":
                 # Only a change of health is news, so an unchanged result is left to debug and the liveness banner
                 verbose_print(result_message)
                 if VERBOSE_MODE:
@@ -5812,7 +5812,9 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                     verbose_print(f"Scrobble health monitoring healthy for {username}. The result is unchanged since the last check")
                     print_cur_ts("Liveness check, timestamp:\t")
                     alive_counter = 0
-            previous_status = evaluation.status
+            # Waiting is one play Last.fm has not caught up with yet, so it neither reports nor replaces the last reported status
+            if evaluation.status != "suspect":
+                previous_status = evaluation.status
             first_successful_check = False
             operational_error_email_notified = False
             operational_error_webhook_notified = False

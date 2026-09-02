@@ -1144,3 +1144,57 @@ def test_a_rejected_spotify_client_id_can_be_abandoned(monkeypatch):
     assert state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] == ""
     assert state.auth["complete"] is False
     authorize.assert_not_called()
+
+
+# Confirms a play Last.fm has not caught up with yet does not report a health change in both directions
+def test_scrobble_health_monitor_does_not_report_a_late_scrobble_as_a_change(monkeypatch, capsys):
+    state = {"status": "healthy", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
+    evaluations = iter([
+        monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1000, latest_spotify_at=1000, latest_lastfm_at=1000),
+        monitor.ScrobbleHealthEvaluation("suspect", (spotify_play(1200),), latest_match_at=1000, latest_spotify_at=1200, latest_lastfm_at=1000),
+        monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1200, latest_spotify_at=1200, latest_lastfm_at=1200),
+    ])
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1000)])
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
+    monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: next(evaluations))
+    monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    output = capsys.readouterr().out
+    assert output.count("Scrobble health result: Healthy") == 1
+    assert "Waiting." not in output
+
+
+# Confirms an outage that a late scrobble briefly interrupts is not announced a second time
+def test_scrobble_health_monitor_does_not_repeat_an_outage_after_a_waiting_check(monkeypatch, capsys):
+    state = {"status": "broken", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
+    outage = monitor.ScrobbleHealthEvaluation("broken", (spotify_play(1200),), latest_match_at=1000, latest_spotify_at=1200, latest_lastfm_at=1000)
+    evaluations = iter([
+        outage,
+        monitor.ScrobbleHealthEvaluation("suspect", (spotify_play(1200),), latest_match_at=1000, latest_spotify_at=1200, latest_lastfm_at=1000),
+        outage,
+    ])
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1200)])
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
+    monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: next(evaluations))
+    monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    output = capsys.readouterr().out
+    assert output.count("Scrobble health result: Possible outage") == 1
