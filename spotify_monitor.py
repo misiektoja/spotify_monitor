@@ -1249,7 +1249,7 @@ TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:US
 SPOTIFY_OBJECT_TYPES = frozenset({"user", "artist", "track", "album", "playlist"})
 
 # Stable machine-readable recovery categories exposed to tests and future renderers
-RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
+RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "secret.entry", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
 
 
 # Stores one stable recovery category with safe user-facing guidance
@@ -1405,6 +1405,17 @@ def make_recovery_advice(code: str, summary: str, fix: str, retryable: bool, det
 # Adds a directly relevant documentation link on its own line
 def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
     return f"{fix}\nGuide: {guide_url}"
+
+
+# Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
+def secret_entry_cancelled_advice(subject, flag, guide_url):
+    return make_recovery_advice("secret.entry", f"{subject[:1].upper()}{subject[1:]} setup was cancelled and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again when you have the value ready", guide_url), False)
+
+
+# Returns the advice a declined secret replacement reports, worded the same way by every one-shot secret command
+def secret_replacement_declined_advice(subject, flag, guide_url, plural=False):
+    kept = "were left as they are" if plural else "was left as it is"
+    return make_recovery_advice("secret.entry", f"The saved {subject} {kept} and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again and answer y to replace the saved value", guide_url), False)
 
 
 # Returns install-aware cookie recovery guidance with host-specific container instructions
@@ -2422,16 +2433,18 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
         try:
             confirmed = read_interactively(prompt, f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
-            confirmed = False
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("Spotify cookie", "--set-sp-dc", MANUAL_COOKIE_GUIDE_URL)) from None
         if not confirmed:
-            raise BrowserCookieImportError("SP_DC_COOKIE replacement was cancelled. The dotenv file was not changed.")
+            raise RecoveryError(secret_replacement_declined_advice("Spotify cookie", "--set-sp-dc", MANUAL_COOKIE_GUIDE_URL))
 
     print(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         sp_dc = read_secret_privately(hidden_prompt, "Enter sp_dc privately: ")
     except (EOFError, KeyboardInterrupt):
-        raise BrowserCookieImportError("SP_DC_COOKIE entry was cancelled. The dotenv file was not changed.") from None
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("Spotify cookie", "--set-sp-dc", MANUAL_COOKIE_GUIDE_URL)) from None
     if not isinstance(sp_dc, str) or not sp_dc:
         raise BrowserCookieImportError("No nonempty sp_dc cookie was entered. The dotenv file was not changed.")
 
@@ -2476,15 +2489,17 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         try:
             confirmed = read_interactively(prompt, f"Replace LASTFM_API_KEY in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
-            confirmed = False
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("Last.fm API key", "--set-lastfm-credentials", SECRETS_GUIDE_URL)) from None
         if not confirmed:
-            raise LastfmConfigurationError("LASTFM_API_KEY replacement was cancelled. The dotenv file was not changed.")
+            raise RecoveryError(secret_replacement_declined_advice("Last.fm API key", "--set-lastfm-credentials", SECRETS_GUIDE_URL))
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     print(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
     try:
         api_key = read_secret_privately(hidden_prompt, "Enter the Last.fm API key privately: ").strip()
     except (EOFError, KeyboardInterrupt):
-        raise LastfmConfigurationError("LASTFM_API_KEY entry was cancelled. The dotenv file was not changed.") from None
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("Last.fm API key", "--set-lastfm-credentials", SECRETS_GUIDE_URL)) from None
     if not api_key or "\r" in api_key or "\n" in api_key:
         raise LastfmConfigurationError("No valid Last.fm API key was entered. The dotenv file was not changed.")
     try:
@@ -2576,14 +2591,16 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
         try:
             confirmed = read_interactively(prompt, f"Replace the saved webhook URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
-            confirmed = False
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL)) from None
         if not confirmed:
-            raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.")
+            raise RecoveryError(secret_replacement_declined_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL))
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         webhook_url = read_secret_privately(hidden_prompt, "Paste the Discord or ntfy webhook URL (input hidden): ").strip()
     except (EOFError, KeyboardInterrupt):
-        raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.") from None
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("webhook URL", "--set-webhook-url", WEBHOOK_GUIDE_URL)) from None
     if not validate_webhook_url(webhook_url):
         raise WebhookConfigurationError("That does not look like a complete HTTPS webhook URL. The private settings file was not changed.")
     try:
@@ -2641,15 +2658,17 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
         try:
             confirmed = str(read_interactively(prompt, f"Replace the saved SMTP password in '{destination}'? [y/N]: ")).strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
-            confirmed = False
+            print()
+            raise RecoveryError(secret_entry_cancelled_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL)) from None
         if not confirmed:
-            raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed"))
+            raise RecoveryError(secret_replacement_declined_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL))
     print(f"* The password is checked by signing in to {SMTP_HOST} as {SMTP_USER}. Nothing is sent")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         smtp_password = str(read_secret_privately(hidden_prompt, "Enter the SMTP password (input hidden): ")).strip()
     except (EOFError, KeyboardInterrupt):
-        raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed")) from None
+        print()
+        raise RecoveryError(secret_entry_cancelled_advice("SMTP password", "--set-smtp-password", SMTP_GUIDE_URL)) from None
     check = smtp_sign_in if sign_in is None else sign_in
     try:
         signed_in_user = check(smtp_password, timeout=5)
@@ -11304,7 +11323,7 @@ def main():
             parser.error("--set-lastfm-credentials requires a writable dotenv destination and cannot use --env-file none")
         try:
             run_set_lastfm_credentials(env_file=args.env_file, config_path=args.config_file)
-        except LastfmConfigurationError as exc:
+        except (LastfmConfigurationError, RecoveryError) as exc:
             print_recovery_error(exc, "set_lastfm_credentials")
             sys.exit(1)
         sys.exit(0)
@@ -11412,7 +11431,7 @@ def main():
             parser.error("--set-sp-dc requires a writable dotenv destination and cannot use --env-file none")
         try:
             run_set_sp_dc(env_file=args.env_file, config_path=args.config_file)
-        except BrowserCookieImportError as exc:
+        except (BrowserCookieImportError, RecoveryError) as exc:
             print_recovery_error(exc, "set_sp_dc")
             sys.exit(1)
         sys.exit(0)
@@ -11475,7 +11494,7 @@ def main():
             parser.error("--set-webhook-url requires a writable dotenv destination and cannot use --env-file none")
         try:
             run_set_webhook_url(env_file=args.env_file)
-        except WebhookConfigurationError as exc:
+        except (WebhookConfigurationError, RecoveryError) as exc:
             print_recovery_error(exc, "set_webhook_url")
             sys.exit(1)
         sys.exit(0)

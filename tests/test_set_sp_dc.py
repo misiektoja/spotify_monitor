@@ -93,7 +93,7 @@ def test_set_sp_dc_existing_cookie_requires_confirmation(tmp_path, monkeypatch):
     validate_mock = Mock(side_effect=AssertionError("validation used"))
     monkeypatch.setattr(monitor, "validate_imported_sp_dc", validate_mock)
 
-    with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
+    with pytest.raises(monitor.RecoveryError, match="left as it is"):
         monitor.run_set_sp_dc(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=getpass_mock)
     getpass_mock.assert_not_called()
     validate_mock.assert_not_called()

@@ -110,7 +110,7 @@ def test_set_lastfm_credentials_requires_replacement_confirmation():
     try:
         destination.write_bytes(original)
         hidden_prompt = Mock(side_effect=AssertionError("hidden prompt used"))
-        with pytest.raises(monitor.LastfmConfigurationError, match="cancelled"):
+        with pytest.raises(monitor.RecoveryError, match="left as it is"):
             monitor.run_set_lastfm_credentials(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=hidden_prompt)
         hidden_prompt.assert_not_called()
         assert destination.read_bytes() == original

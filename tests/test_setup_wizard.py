@@ -1262,3 +1262,38 @@ def test_a_hidden_value_is_read_with_debug_output_off(monkeypatch):
     assert monitor.read_secret_privately(lambda prompt: seen.append(monitor.DEBUG_MODE) or "value", "Enter it: ") == "value"
     assert seen == [False, False]
     assert monitor.DEBUG_MODE is True
+
+
+# Verifies an interrupted entry reports the cancel itself, with the command that resumes it
+def test_an_interrupted_secret_entry_reports_the_cancel(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+
+    def interrupt(prompt=""):
+        raise KeyboardInterrupt
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=interrupt, sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    advice = raised.value.advice
+    assert advice.summary == "SMTP password setup was cancelled and the dotenv file was not changed"
+    assert "Run --set-smtp-password again when you have the value ready" in advice.fix
+    assert monitor.SMTP_GUIDE_URL in advice.fix
+    assert not destination.exists()
+
+
+# Verifies a declined replacement reports the kept value rather than a cancelled entry
+def test_a_declined_secret_replacement_reports_the_kept_value(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    destination.write_text('SMTP_PASSWORD="original"\n', encoding="utf-8")
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=Mock(side_effect=AssertionError("hidden prompt used")))
+
+    advice = raised.value.advice
+    assert advice.summary == "The saved SMTP password was left as it is and the dotenv file was not changed"
+    assert "answer y to replace the saved value" in advice.fix
+    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="original"\n'
