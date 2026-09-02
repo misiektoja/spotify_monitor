@@ -108,7 +108,7 @@ After saving authentication, the wizard checks whether the monitoring account fo
 
 For Docker or Docker Compose, choose **Import from Firefox after setup**. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt. It then prints the matching command to mount the signed-in host profile read-only once and save `SP_DC_COOKIE` in the host `.env` file. Windows commands use the Firefox profile under `%APPDATA%\Mozilla\Firefox`. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
 
-If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard.
+If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard. Any other run without a target reports the missing target before it checks the `sp_dc` cookie, so the simpler problem is named first.
 
 If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.
 

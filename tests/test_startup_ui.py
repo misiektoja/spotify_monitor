@@ -529,3 +529,22 @@ def test_the_scrobble_health_summary_keeps_the_shared_tail(monkeypatch):
 
     assert [row.label for row in rows if row.label in tail] == list(tail)
     assert max(len(row.label) for row in rows) <= 28
+
+
+# Verifies a first run without a target is told about the target before it is told about the cookie
+def test_a_missing_target_is_reported_before_the_credentials():
+    result = run_cli("--config-file", "none", "--env-file", "none")
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 1
+    assert "* Error: No Spotify target was provided" in output
+    assert "SP_DC_COOKIE" not in output
+
+
+# Verifies the friend listing keeps working without a target, since the gate above it must stay exempt
+def test_the_friend_listing_stays_exempt_from_the_target_gate():
+    result = run_cli("--list-friends", "--config-file", "none", "--env-file", "none")
+
+    output = result.stdout + result.stderr
+    assert "No Spotify target was provided" not in output
+    assert "SP_DC_COOKIE" in output

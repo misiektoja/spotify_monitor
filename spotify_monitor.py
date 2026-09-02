@@ -11973,6 +11973,13 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
+    # Checked before the credentials, so a first run is told the simplest missing thing first. The friend listing
+    # and the Protobuf decoding modes below finish without a target, so they stay exempt
+    protobuf_decode_only = TOKEN_SOURCE == "client" and not scrobble_health_mode and bool(args.login_request_body_file or args.clienttoken_request_body_file)
+    if not target_user_id and not args.list_friends and not protobuf_decode_only:
+        print_recovery_error(context="target_missing")
+        sys.exit(1)
+
     if scrobble_health_mode:
         if is_missing_or_placeholder(LASTFM_API_KEY):
             print_recovery_error(context="secret", detail="LASTFM_API_KEY is missing. Use --lastfm-api-key, an environment variable or a selected dotenv file.")
@@ -12117,6 +12124,7 @@ def main():
             sys.exit(1)
         sys.exit(0)
 
+    # Backstop for the exempt modes above, each of which exits on its own before monitoring starts
     if not target_user_id:
         print_recovery_error(context="target_missing")
         sys.exit(1)
