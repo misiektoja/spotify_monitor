@@ -677,8 +677,8 @@ def test_scrobble_health_monitor_prints_first_check_and_hides_normal_repeats(mon
     assert "private-api-key" not in output
 
 
-# Confirms verbose mode displays routine checks after the first comparison
-def test_scrobble_health_monitor_prints_repeated_checks_in_verbose_mode(monkeypatch, capsys):
+# Confirms verbose mode stays quiet while the health result is unchanged, instead of repeating it every check
+def test_scrobble_health_monitor_stays_quiet_while_the_result_is_unchanged(monkeypatch, capsys):
     state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("idle")
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
@@ -688,16 +688,63 @@ def test_scrobble_health_monitor_prints_repeated_checks_in_verbose_mode(monkeypa
     monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
     monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
+
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
     output = capsys.readouterr().out
-    assert output.count("Running scrobble health check") == 2
-    assert output.count("Scrobble health result: Idle") == 2
-    assert output.count("Timestamp:") == 3
-    assert "Spotify reported no completed plays from the last 6 hours" in output
-    assert "nothing to compare with Last.fm yet" in output
+    assert output.count("Running scrobble health check") == 1
+    assert output.count("Scrobble health result: Idle") == 1
+    assert output.count("Timestamp:") == 2
+
+
+# Confirms verbose mode reports the check where the health result changes, since that is the news
+def test_scrobble_health_monitor_reports_a_changed_result(monkeypatch, capsys):
+    state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
+    evaluations = [monitor.ScrobbleHealthEvaluation("idle"), monitor.ScrobbleHealthEvaluation("healthy")]
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
+    monkeypatch.setattr(monitor, "evaluate_scrobble_health", Mock(side_effect=evaluations))
+    monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    output = capsys.readouterr().out
+    assert output.count("Scrobble health result: Idle") == 1
+    assert output.count("Scrobble health result: Healthy") == 1
+
+
+# Confirms an unchanged result still reports the loop is alive once the liveness interval has passed
+def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys):
+    state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
+    evaluation = monitor.ScrobbleHealthEvaluation("idle")
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
+    monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
+    monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
+    monkeypatch.setattr(monitor, "transition_scrobble_health_state", lambda current_state, current_evaluation: (dict(state), ""))
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 240)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    output = capsys.readouterr().out
+    assert "Scrobble health monitoring healthy for lastfm-user. The result is unchanged since the last check" in output
+    assert "Liveness check, timestamp:" in output
 
 
 # Confirms scrobble alerts format play dates and deliver notifications before the console timestamp

@@ -5576,6 +5576,10 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
     operational_error_webhook_notified = False
     operational_error_failures = 0
     first_successful_check = True
+    previous_status = None
+    alive_counter = 0
+    # The shared liveness interval counted in scrobble health checks, which run on their own interval
+    liveness_after = LIVENESS_CHECK_INTERVAL / SCROBBLE_HEALTH_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL and SCROBBLE_HEALTH_CHECK_INTERVAL else 0
     print(f"* Scrobble health monitoring started for Last.fm profile {username}.")
     print(f"* Checking now then every {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}. Press Ctrl+C to stop.")
     print_cur_ts("\nTimestamp:\t\t\t")
@@ -5585,7 +5589,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if first_successful_check:
                 print("* Running scrobble health check ...", flush=True)
             else:
-                verbose_print("Running scrobble health check ...")
+                debug_print("Starting scrobble health check", user=username, interval=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
             spotify_plays = spotify_get_recent_plays()
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
@@ -5611,13 +5615,22 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             else:
                 result = f"Possible outage. {unmatched_count} consecutive Spotify {play_word} {state_verb} missing from Last.fm and {threshold_verb} the alert threshold."
             result_message = f"Scrobble health result: {result} Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}."
+            debug_print("Completed scrobble health check", user=username, status=evaluation.status, unmatched=unmatched_count, next=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
             if first_successful_check:
                 print(f"* {result_message}")
                 print_cur_ts("\nTimestamp:\t\t\t")
-            else:
+            elif evaluation.status != previous_status:
+                # Only a change of health is news, so an unchanged result is left to debug and the liveness banner
                 verbose_print(result_message)
                 if VERBOSE_MODE:
                     print_cur_ts("\nTimestamp:\t\t\t")
+            else:
+                alive_counter += 1
+                if liveness_after and alive_counter >= liveness_after:
+                    verbose_print(f"Scrobble health monitoring healthy for {username}. The result is unchanged since the last check")
+                    print_cur_ts("Liveness check, timestamp:\t")
+                    alive_counter = 0
+            previous_status = evaluation.status
             first_successful_check = False
             operational_error_email_notified = False
             operational_error_webhook_notified = False
