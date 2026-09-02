@@ -657,14 +657,33 @@ def test_notifications_disabled_do_not_contact_smtp(monkeypatch):
     connect.assert_not_called()
 
 
-# Verifies incomplete enabled SMTP configuration fails before a connection
-def test_incomplete_enabled_smtp_config_fails(monkeypatch):
+# Verifies incomplete enabled SMTP settings are reported before a connection, as a warning rather than a failure
+def test_incomplete_enabled_smtp_config_warns(monkeypatch):
     configure_valid_doctor(monkeypatch)
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
     monkeypatch.setattr(monitor, "SMTP_HOST", "")
     check = monitor.doctor_check_notifications()[0]
-    assert check.status == "FAIL"
+    assert check.status == "WARN"
     assert require_advice(check).code == "smtp.invalid"
+
+
+# Verifies email alerts that cannot deliver are one WARN whose detail and action name the same settings
+def test_unusable_email_settings_warn_and_name_the_same_settings(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.invalid")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "owner@example.invalid")
+    monkeypatch.setattr(monitor, "SMTP_USER", "your_smtp_user")
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", Mock(side_effect=AssertionError("SMTP was contacted")))
+
+    check = monitor.doctor_check_notifications()[0]
+
+    assert check.status == "WARN"
+    assert check.label == monitor.EMAIL_UNUSABLE_CHECK_LABEL
+    assert check.detail == "SMTP_USER or SMTP_PASSWORD is empty or still set to its placeholder"
+    assert "Set SMTP_USER and SMTP_PASSWORD or turn the email alerts off" in require_advice(check).fix
+    assert monitor.SMTP_GUIDE_URL in require_advice(check).fix
 
 
 class FakeSMTP:

@@ -1054,6 +1054,9 @@ DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 # Labels of the two Doctor checks that gate the optional delivery tests, matched by prefix so each can name its channel
 SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
 WEBHOOK_READY_CHECK_LABEL = "Webhook URL, headers and alert choices look valid"
+
+# The label every sibling monitor uses when email alerts are on but the settings they would use cannot deliver
+EMAIL_UNUSABLE_CHECK_LABEL = "Email alerts are enabled but unusable"
 OAUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-oauth-app"
 SCROBBLE_AUTH_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#spotify-recent-play-authorization"
 SPOTIFY_WEB_LOGIN_URL = "https://open.spotify.com/"
@@ -3660,30 +3663,36 @@ def calculate_timespan(timestamp1, timestamp2, show_weeks=True, show_hours=True,
         return '0 seconds'
 
 
-# Validates shared SMTP settings without opening a network connection
-def validate_smtp_configuration() -> Optional[RecoveryAdvice]:
+# Reports the first unusable email setting as a doctor detail and an action that names the same settings
+def email_settings_problem() -> Optional[Tuple[str, str]]:
     fqdn_re = re.compile(r'(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.)+[a-zA-Z]{2,63}\.?$)')
     try:
         ipaddress.ip_address(str(SMTP_HOST))
     except ValueError:
         if not fqdn_re.search(str(SMTP_HOST)):
-            return classify_recovery_error(context="smtp_config", detail="SMTP_HOST is not a valid IP address or fully qualified domain name")
+            return ("SMTP_HOST is not a valid IP address or hostname", "Correct SMTP_HOST or turn the email alerts off")
 
     try:
         port = int(SMTP_PORT)
         if not (1 <= port <= 65535):
             raise ValueError
     except (TypeError, ValueError):
-        return classify_recovery_error(context="smtp_config", detail="SMTP_PORT must be an integer from 1 through 65535")
+        return ("SMTP_PORT is not a port number between 1 and 65535", "Correct SMTP_PORT or turn the email alerts off")
 
     sender = parseaddr(str(SENDER_EMAIL))[1]
     receiver = parseaddr(str(RECEIVER_EMAIL))[1]
     if sender != str(SENDER_EMAIL) or receiver != str(RECEIVER_EMAIL) or "@" not in sender or "@" not in receiver:
-        return classify_recovery_error(context="smtp_config", detail="SENDER_EMAIL or RECEIVER_EMAIL is invalid")
+        return ("SENDER_EMAIL or RECEIVER_EMAIL is not an email address", "Correct SENDER_EMAIL and RECEIVER_EMAIL or turn the email alerts off")
 
     if not SMTP_USER or not isinstance(SMTP_USER, str) or SMTP_USER == "your_smtp_user" or not SMTP_PASSWORD or not isinstance(SMTP_PASSWORD, str) or SMTP_PASSWORD == "your_smtp_password":
-        return classify_recovery_error(context="smtp_config", detail="SMTP_USER or SMTP_PASSWORD is missing or still a placeholder")
+        return ("SMTP_USER or SMTP_PASSWORD is empty or still set to its placeholder", "Set SMTP_USER and SMTP_PASSWORD or turn the email alerts off")
     return None
+
+
+# Validates shared SMTP settings without opening a network connection
+def validate_smtp_configuration() -> Optional[RecoveryAdvice]:
+    problem = email_settings_problem()
+    return classify_recovery_error(context="smtp_config", detail=problem[0]) if problem is not None else None
 
 
 # Opens and authenticates one SMTP connection without sending an email
@@ -7716,13 +7725,19 @@ def webhook_notifications_enabled() -> bool:
     return bool(WEBHOOK_ENABLED and event_notifications)
 
 
+# Returns the doctor row for email alerts whose settings cannot deliver, worded the same way by every sibling monitor
+def doctor_email_unusable_check(detail, fix):
+    advice = make_recovery_advice("smtp.invalid", EMAIL_UNUSABLE_CHECK_LABEL, recovery_fix_with_guide(fix, SMTP_GUIDE_URL), False, detail)
+    return make_doctor_check("Notifications", "WARN", EMAIL_UNUSABLE_CHECK_LABEL, detail, advice)
+
+
 # Validates SMTP configuration and login without sending an email
 def doctor_check_notifications() -> List[DoctorCheck]:
     if not email_notifications_enabled():
         return [make_doctor_check("Notifications", "PASS", "Email notifications are disabled", "No SMTP connection was attempted and no email was sent")]
-    validation_error = validate_smtp_configuration()
-    if validation_error is not None:
-        return [make_doctor_check("Notifications", "FAIL", validation_error.summary, validation_error.detail, validation_error)]
+    problem = email_settings_problem()
+    if problem is not None:
+        return [doctor_email_unusable_check(*problem)]
     smtp_object = None
     try:
         smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=5)
