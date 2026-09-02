@@ -1086,6 +1086,7 @@ STARTUP_BANNER = r"""
 
 import sys
 
+# Declared once so the startup gate, the packaging metadata and any later environment check cannot disagree
 MINIMUM_PYTHON_VERSION = (3, 9)
 MINIMUM_PYTHON_VERSION_TEXT = ".".join(str(part) for part in MINIMUM_PYTHON_VERSION)
 
