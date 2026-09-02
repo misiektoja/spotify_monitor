@@ -8770,6 +8770,9 @@ def _wizard_existing_secret(key: str, env_path: Path, placeholders: Sequence[str
 
 # Queues one secret update after confirming replacement of an existing dotenv assignment
 def _wizard_queue_secret(updates: dict, env_path: Path, key: str, value: str) -> bool:
+    # A blank answer means the stored value stays, so there is nothing to queue and nothing to ask about
+    if not value:
+        return False
     try:
         existing_assignment = _dotenv_contains_key(env_path, key)
     except BrowserCookieImportError as exc:
@@ -9819,11 +9822,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
-    if secret_updates or not env_path.exists():
+    # A dotenv with nothing in it is noise beside the config, so an empty one is never created
+    if secret_updates:
         try:
             update_status = update_dotenv_file(env_path, secret_updates)
-            label = "Secrets" if secret_updates else "Dotenv"
-            print(f"  {label + ':':<15}{update_status['path']}")
+            print(f"  {'Secrets:':<15}{update_status['path']}")
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
@@ -9849,7 +9852,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             if _wizard_load_effective_setup(config_path, env_path):
                 render_doctor_notice()
                 try:
-                    report = build_doctor_report(target, str(config_path), str(env_path), progress=_doctor_progress)
+                    report = build_doctor_report(target, str(config_path), str(env_path) if env_path.is_file() else None, progress=_doctor_progress)
                 finally:
                     _doctor_progress_clear()
                 print(render_doctor_sections(report))
@@ -9866,10 +9869,12 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         # The files are already written, so an interrupt here only skips the optional checks
         print(colorize("warning", "Setup is saved. Use the commands below when ready."))
     host_os = auth.get("host_os")
+    # A dotenv that was never written does not exist, so the commands that only read it leave it out unless a later step still has to write it
+    saved_env = env_path if env_path.is_file() or not auth["complete"] else None
     doctor_target = None if persist_target else target
-    doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target, host_os=host_os)
+    doctor_command = _wizard_action_command(method, "--doctor", config_path, saved_env, doctor_target, host_os=host_os)
     monitor_target = None if persist_target else target
-    monitor_command = _wizard_action_command(method, "", config_path, env_path, monitor_target, host_os=host_os)
+    monitor_command = _wizard_action_command(method, "", config_path, saved_env, monitor_target, host_os=host_os)
     print(colorize('header', "\nNext steps\n"))
     if not auth["complete"]:
         print("Setup was saved. Authentication still needs to be completed.\n")
@@ -9913,7 +9918,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         exec_args = _wizard_local_command_args(method, exact=True)
         if not persist_target:
             exec_args.append(target)
-        exec_args.extend(("--config-file", str(config_path), "--env-file", str(env_path)))
+        exec_args.extend(("--config-file", str(config_path)))
+        if saved_env is not None:
+            exec_args.extend(("--env-file", str(saved_env)))
         sys.stdout.flush()
         raise SystemExit(_wizard_launch_monitor(exec_args))
     elif method in ("manual", "pip") and auth["complete"] and not auth["validated"]:
@@ -9985,11 +9992,11 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
-    if secret_updates or not env_path.exists():
+    # A dotenv with nothing in it is noise beside the config, so an empty one is never created
+    if secret_updates:
         try:
             update_status = update_dotenv_file(env_path, secret_updates)
-            label = "Secrets" if secret_updates else "Dotenv"
-            print(f"  {label + ':':<15}{update_status['path']}")
+            print(f"  {'Secrets:':<15}{update_status['path']}")
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
@@ -10001,15 +10008,17 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It may update a rotated Spotify refresh token and offers real delivery tests only with separate approval.", default=True):
             doctor_ran = True
             if _wizard_load_effective_setup(config_path, env_path):
-                doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path)) != 0
+                doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path) if env_path.is_file() else None) != 0
             else:
                 doctor_failed = True
     except (EOFError, KeyboardInterrupt):
         # The files are already written, so an interrupt here only skips the optional check
         print(colorize("warning", "Setup is saved. Use the commands below when ready."))
     authorize_command = _wizard_action_command(method, "--authorize-scrobble-health", config_path, env_path)
-    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, env_path)
-    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, env_path)
+    # A dotenv that was never written does not exist, so the commands that only read it leave it out unless a later step still has to write it
+    saved_env = env_path if env_path.is_file() or not auth["complete"] else None
+    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, saved_env)
+    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, saved_env)
     print(colorize('header', "\nNext steps\n"))
     if not auth["complete"]:
         print("Setup was saved. Spotify recent-play authorization still needs to be completed.\n")
@@ -10034,7 +10043,9 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         raise SystemExit(0) from None
     if start_monitoring:
         exec_args = _wizard_local_command_args(method, exact=True)
-        exec_args.extend(("--monitor-mode", "scrobble_health", "--config-file", str(config_path), "--env-file", str(env_path)))
+        exec_args.extend(("--monitor-mode", "scrobble_health", "--config-file", str(config_path)))
+        if saved_env is not None:
+            exec_args.extend(("--env-file", str(saved_env)))
         sys.stdout.flush()
         raise SystemExit(_wizard_launch_monitor(exec_args))
     if method in ("manual", "pip") and auth["complete"] and not doctor_ran:

@@ -436,7 +436,8 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         output = capsys.readouterr().out
         assert monitor.SPOTIFY_WEB_LOGIN_URL in output
         assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}" in output
-        assert f"  Dotenv:        {env_path.resolve()}\n\n* Browser prerequisite: test guidance" in output
+        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n\n* Browser prerequisite: test guidance" in output
+        assert "  Dotenv:        " not in output
         assert "browser-private-value" not in output
 
 
@@ -563,6 +564,29 @@ def test_email_recommended_preset_uses_shared_validation(monkeypatch, tmp_path):
     assert config_values["SONG_ON_LOOP_NOTIFICATION"] is False
     connect_mock.assert_called_once()
     assert questions == ["Configure email notifications?", "Enable TLS/SSL for SMTP?"]
+
+
+# Verifies a blank SMTP password keeps the stored one without queueing an empty secret or asking to replace it
+def test_a_blank_smtp_password_queues_nothing_and_asks_no_replace_question(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="stored-private-value"\n', encoding="utf-8")
+    yes_no = iter([True, True])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    questions = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: (questions.append(question) or next(yes_no)))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
+    config_values = {}
+    secrets = {}
+    enabled = monitor._wizard_collect_email(config_values, secrets, env_path)
+    assert enabled == ["active", "inactive", "errors"]
+    assert secrets == {}
+    assert config_values["SMTP_HOST"] == "smtp.example.com"
+    assert questions == ["Configure email notifications?", "Enable TLS/SSL for SMTP?"]
+    assert env_path.read_text(encoding="utf-8") == 'SMTP_PASSWORD="stored-private-value"\n'
 
 
 # Verifies all-events and custom presets set each notification flag as selected
@@ -787,6 +811,30 @@ def test_doctor_failure_blocks_local_start(monkeypatch, capsys):
         assert "saved but is not ready" in capsys.readouterr().out
 
 
+# Verifies a save without secrets creates no dotenv and the doctor, printed commands and launch leave --env-file out
+def test_a_secret_free_save_creates_no_dotenv_and_omits_the_env_file(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        env_path = directory / ".env"
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        report = monitor.DoctorReport(checks=[monitor.DoctorCheck("Environment", "PASS", "All good")])
+        install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, True, True, True], report)
+        exec_mock = Mock()
+        monkeypatch.setattr(monitor.os, "execv", exec_mock)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
+        assert error.value.code == 0
+        assert not env_path.exists()
+        assert monitor.build_doctor_report.call_args.args[2] is None
+        arguments = exec_mock.call_args.args[1]
+        assert "--config-file" in arguments
+        assert "--env-file" not in arguments
+        output = capsys.readouterr().out
+        assert "  Dotenv:        " not in output
+        assert "--doctor" in output
+        assert "--env-file" not in output
+
+
 # Verifies Compose prints prefix-free up only for complete authentication with a persisted target
 def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
     with make_test_directory() as directory_name:
@@ -819,7 +867,9 @@ def test_compose_custom_destinations_do_not_print_up(monkeypatch, capsys):
         assert error.value.code == 0
         output = capsys.readouterr().out
         assert "docker compose up --no-log-prefix" not in output
-        assert "spotify_monitor --config-file /data/custom.conf --env-file /data/custom.env" in output
+        assert "spotify_monitor --config-file /data/custom.conf" in output
+        # Nothing wrote the dotenv, so the command does not name a file that does not exist
+        assert "--env-file" not in output
 
 
 # Verifies deferred macOS Firefox setup skips Doctor and prints ordered host commands
@@ -837,7 +887,8 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
-        assert (directory / ".env").read_text(encoding="utf-8") == ""
+        # The import command will write the dotenv later, so no empty one is created now but every command still names it
+        assert not (directory / ".env").exists()
         doctor_mock.assert_not_called()
         prompts = [call.args[0] for call in ask_mock.call_args_list]
         assert not any("Run doctor now" in prompt for prompt in prompts)
@@ -847,6 +898,8 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         doctor_index = output.index("After authentication succeeds, verify authentication and the target:")
         start_index = output.index("After Doctor passes, start monitoring:")
         assert prerequisite_index < import_index < doctor_index < start_index
+        command_lines = [line for line in output.splitlines() if "--config-file /data/" in line]
+        assert command_lines and all("--env-file /data/.env" in line for line in command_lines)
         assert '${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro' in output
         assert "--config-file /data/" in output
         assert "spotify_monitor.conf" in output

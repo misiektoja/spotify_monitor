@@ -581,6 +581,29 @@ def test_scrobble_health_setup_orders_incomplete_authentication_steps(monkeypatc
                 path.unlink()
 
 
+# Confirms a save without secrets creates no dotenv while every command still names the file the authorize step will write
+def test_scrobble_health_setup_without_secrets_creates_no_dotenv(monkeypatch, capsys):
+    config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-no-dotenv-{os.getpid()}.conf"
+    env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-no-dotenv-{os.getpid()}.env"
+    auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
+    install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False,))
+    try:
+        with pytest.raises(SystemExit) as error:
+            monitor.run_scrobble_health_setup_wizard()
+        assert error.value.code == 0
+        assert config_path.is_file()
+        assert not env_path.exists()
+        output = capsys.readouterr().out
+        assert "  Dotenv:        " not in output
+        command_lines = [line for line in output.splitlines() if "--config-file" in line]
+        assert len(command_lines) == 3
+        assert all("--env-file " in line and env_path.name in line for line in command_lines)
+    finally:
+        for path in (config_path, env_path):
+            if path.exists():
+                path.unlink()
+
+
 # Confirms successful focused Doctor can launch local scrobble monitoring
 def test_scrobble_health_setup_offers_local_start_after_doctor(monkeypatch):
     config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-start-{os.getpid()}.conf"
