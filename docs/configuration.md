@@ -370,7 +370,7 @@ Alternatively you can use [Listing mode](usage.md#listing-mode) to see the Spoti
 <a id="tls-verification"></a>
 ## TLS Verification
 
-Spotify Monitor verifies the TLS certificate of every server it contacts: Spotify, Last.fm, the connectivity check endpoint, downloaded artwork and, when enabled, the webhook service.
+Spotify Monitor verifies the TLS certificate of every server it contacts: Spotify, Last.fm, the connectivity check endpoint, downloaded artwork, the mail server that delivers email alerts and, when enabled, the webhook service.
 
 Set `VERIFY_SSL` to `False` only on a network that intercepts TLS with its own certificate authority, such as a corporate proxy. With verification off, an intercepted connection cannot be told apart from the real service.
 
