@@ -1554,6 +1554,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "webhook_config":
         return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check the webhook provider, URL, customization, headers and ntfy access token then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
+    if context == "connectivity":
+        # Classified from the error, because the detail names the endpoint rather than the failure
+        cause = str(error or "").lower()
+        if "timed out" in cause or "timeout" in cause:
+            return make_recovery_advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True, safe_detail)
+        return make_recovery_advice("network.unavailable", "The connectivity endpoint could not be reached", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True, safe_detail)
+
     if context.startswith("webhook"):
         if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
             return make_recovery_advice("webhook.rate_limited", "The webhook service is temporarily limiting new messages", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify monitoring continues normally", WEBHOOK_GUIDE_URL), True, safe_detail)
