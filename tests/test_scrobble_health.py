@@ -31,7 +31,7 @@ def install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, yes_no
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=Mock(return_value=True)))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: method)
     monkeypatch.setattr(monitor, "_wizard_destinations", lambda config_file, env_file, method=None, **kwargs: (config_path, env_path))
-    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path: path)
+    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path, method: path)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "lastfm-user")
     monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default, maximum=None: next(positive_values) if positive_values is not None else default)
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: next(positive_values) if positive_values is not None else default)

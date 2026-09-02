@@ -629,7 +629,36 @@ def test_existing_config_decline_uses_alternate_path(monkeypatch):
         existing.write_text("old\n", encoding="utf-8")
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
         monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: str(alternate))
-        assert monitor._wizard_choose_config_destination(existing) == alternate.resolve()
+        assert monitor._wizard_choose_config_destination(existing, "manual") == alternate.resolve()
+
+
+# Verifies an alternate destination that cannot be written is refused and asked again instead of failing at the save
+def test_existing_config_decline_rejects_an_unusable_alternate_path(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        existing = directory / "spotify_monitor.conf"
+        alternate = directory / "alternate.conf"
+        existing.write_text("old\n", encoding="utf-8")
+        answers = iter([str(directory), str(existing / "nested.conf"), str(alternate)])
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
+        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(answers))
+
+        assert monitor._wizard_choose_config_destination(existing, "manual") == alternate.resolve()
+
+        output = capsys.readouterr().out
+        assert "Configuration destination must be a file path, not a directory." in output
+        assert "Configuration destination does not have a usable parent directory." in output
+
+
+# Verifies a host destination is checked for being a file with a writable parent, as the setup page promises
+def test_host_destinations_are_checked_before_the_first_question(tmp_path):
+    with pytest.raises(ValueError, match="must be a file path, not a directory"):
+        monitor._wizard_validate_destination("manual", tmp_path, "Configuration destination")
+    blocker = tmp_path / "blocker"
+    blocker.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="does not have a usable parent directory"):
+        monitor._wizard_validate_destination("pip", blocker / "nested.conf", "Dotenv destination")
+    assert monitor._wizard_validate_destination("manual", tmp_path / "missing" / "spotify_monitor.conf", "Configuration destination") == (tmp_path / "missing" / "spotify_monitor.conf").resolve()
 
 
 # Verifies setup review can edit one section then save without recollecting other sections
@@ -683,7 +712,7 @@ def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, cap
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
     monkeypatch.setattr(monitor, "_wizard_destinations", lambda config, env, method=None: (config_path, env_path))
-    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path: path)
+    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path, method: path)
     monkeypatch.setattr(monitor, "_wizard_collect_target_section", lambda state, target=None: events.append("target"))
     monkeypatch.setattr(monitor, "_wizard_collect_polling_section", lambda state: (events.append("polling"), print("Spotify polling interval [1800s - 30m]:")))
     monkeypatch.setattr(monitor, "_wizard_collect_auth_section", lambda state, method: (events.append("authentication"), print("\nChoose an authentication mode")))
