@@ -129,7 +129,7 @@ def test_set_sp_dc_success_uses_install_aware_container_commands(tmp_path, monke
 
     output = capsys.readouterr().out
     assert "docker compose run --rm spotify_monitor --doctor --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
-    assert "docker compose run --rm spotify_monitor --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
+    assert "docker compose run --rm spotify_monitor <spotify_target> --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
     assert "SPOTIFY_USER_URI_ID" not in output
     assert str(destination.resolve()) in output
     assert secret not in output

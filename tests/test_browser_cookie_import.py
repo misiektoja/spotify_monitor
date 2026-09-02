@@ -592,6 +592,51 @@ def test_validation_buddy_list_rejection_is_distinct(monkeypatch):
         monitor.validate_imported_sp_dc("secret-cookie")
 
 
+# Runs one successful import and returns the printed next-steps output
+def import_and_capture(tmp_path, monkeypatch, capsys, **keywords):
+    cookie_file = tmp_path / "cookies.sqlite"
+    cookie_file.touch()
+    monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="secret-cookie"))
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+    monitor.run_browser_cookie_import(cookie_file=str(cookie_file), env_file=str(tmp_path / "import.env"), interactive=False, **keywords)
+    return capsys.readouterr().out
+
+
+# Verifies a target the config will not supply is printed in both next-steps commands
+def test_a_target_the_config_does_not_hold_is_printed_in_both_commands(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, target="friend.user", saved_target="")
+    assert output.count("friend.user") == 2
+    assert "<spotify_target>" not in output
+
+
+# Verifies a target already saved in the config is left out of both next-steps commands
+def test_a_target_saved_in_the_config_is_left_out_of_both_commands(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, target="friend.user", saved_target="friend.user")
+    assert "friend.user" not in output
+    assert "<spotify_target>" not in output
+
+
+# Verifies only the monitoring command carries the placeholder when no target is known at all
+def test_no_known_target_places_the_placeholder_in_the_monitoring_command_only(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, saved_target="")
+    doctor_line, monitor_line = output.split("Check setup again:", 1)[1].split("After Doctor passes, start monitoring:", 1)
+    assert "<spotify_target>" not in doctor_line
+    assert "<spotify_target>" in monitor_line
+
+
+# Verifies the persisted target is read from the config file when the caller knows no target
+def test_a_config_file_target_is_read_when_the_caller_knows_no_target(tmp_path, monkeypatch, capsys):
+    with_target = tmp_path / "with_target.conf"
+    with_target.write_text('TARGET_USER_URI_ID = "saved.user"\n', encoding="utf-8")
+    without_target = tmp_path / "without_target.conf"
+    without_target.write_text('TARGET_USER_URI_ID = ""\n', encoding="utf-8")
+    saved_output = import_and_capture(tmp_path, monkeypatch, capsys, config_path=str(with_target))
+    unsaved_output = import_and_capture(tmp_path, monkeypatch, capsys, config_path=str(without_target), force=True)
+    assert "<spotify_target>" not in saved_output
+    assert "saved.user" not in saved_output
+    assert "<spotify_target>" in unsaved_output
+
+
 PROGRESS_LINES = (
     "* Cookie extracted. Checking it with Spotify ...",
     "* Checking the entered Spotify cookie before changing the dotenv file ...",

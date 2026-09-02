@@ -427,6 +427,25 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert "browser-private-value" not in output
 
 
+# Verifies the wizard tells the import runner whether the config will supply the target, so its printed
+# commands carry the target exactly when the config does not hold it
+@pytest.mark.parametrize("persist_answer, expected_saved", [("y", "target.user"), ("n", "")])
+def test_browser_import_receives_the_persisted_target_decision(monkeypatch, persist_answer, expected_saved):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        install_inputs(monkeypatch, ["target.user", persist_answer, "1", "1", "", "n", "y", "", "", "n", "n"])
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+        import_mock = Mock(side_effect=lambda **kwargs: monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"}))
+        monkeypatch.setattr(monitor, "run_browser_cookie_import", import_mock)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        assert import_mock.call_args.kwargs["target"] == "target.user"
+        assert import_mock.call_args.kwargs["saved_target"] == expected_saved
+        assert import_mock.call_args.kwargs["config_path"] == str((directory / "spotify_monitor.conf").resolve())
+
+
 # Verifies browser import failure can finish setup without discarding the generated config
 def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
     with make_test_directory() as directory_name:
@@ -452,8 +471,9 @@ def test_browser_import_retry_succeeds(monkeypatch):
         runner = Mock(side_effect=[monitor.BrowserCookieImportError("safe failure"), str(env_path)])
         monkeypatch.setattr(monitor, "run_browser_cookie_import", runner)
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
-        result = monitor._wizard_finish_browser_import(auth, env_path)
+        result = monitor._wizard_finish_browser_import(auth, env_path, Path(directory_name) / "spotify_monitor.conf", "friend.user", "")
         assert runner.call_count == 2
+        assert runner.call_args.kwargs["target"] == "friend.user"
         assert result["complete"] is True
         assert result["validated"] is True
 

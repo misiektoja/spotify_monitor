@@ -26,7 +26,7 @@ Doctor loads the same settings as a normal run. It opens with the raw `manual`, 
 
 In an interactive terminal, Doctor can offer one real delivery test for each notification channel that passes its checks. Each prompt defaults to No. Answering Yes to the email prompt sends one test email. Answering Yes to the webhook prompt sends one Discord or ntfy message. Ctrl+C at either prompt ends the run rather than declining one test and asking the next. Doctor does not offer delivery tests when it runs without an interactive terminal. The `Summary` line is printed after the tests finish and counts their results, so the sentence and the exit code always describe the same run.
 
-The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. While a check is failing it asks for the failures first.
+The report ends with a **Next steps** block naming the command that starts monitoring, carrying the same `--config-file` and `--env-file` this run checked. It carries the target this run used, leaves it out when the configuration file already supplies one and otherwise shows `<spotify_target>` for you to replace. While a check is failing it asks for the failures first.
 
 Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:
 

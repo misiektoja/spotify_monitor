@@ -2393,7 +2393,7 @@ def validate_imported_sp_dc(sp_dc):
 
 
 # Runs extraction, validation, overwrite handling and atomic dotenv persistence
-def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None, config_path=None, target=None):
+def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None, config_path=None, target=None, saved_target=None):
     destination = resolve_import_env_path(env_file)
     print(f"* Browser prerequisite: open {SPOTIFY_WEB_LOGIN_URL} in {browser_label(browser)} and sign in to the Spotify account used for monitoring")
     print(f"* Dotenv destination: {destination}")
@@ -2446,8 +2446,9 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     print()
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
-    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, target)
-    monitor_command = _wizard_action_command(method, "", selected_config, destination, target)
+    doctor_target, monitor_target = _wizard_command_targets(target, _config_file_target(selected_config) if saved_target is None else saved_target)
+    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, doctor_target)
+    monitor_command = _wizard_action_command(method, "", selected_config, destination, monitor_target)
     _wizard_print_command("Check setup again:", doctor_command)
     _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
@@ -2494,8 +2495,9 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
 
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
-    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
-    monitor_command = _wizard_action_command(method, "", selected_config, destination)
+    doctor_target, monitor_target = _wizard_command_targets(None, _config_file_target(selected_config))
+    doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, doctor_target)
+    monitor_command = _wizard_action_command(method, "", selected_config, destination, monitor_target)
     print("* SP_DC_COOKIE validation succeeded")
     print(f"* Updated dotenv: {destination}")
     print()
@@ -8146,13 +8148,16 @@ def _wizard_local_command_args(method: str, exact: bool = False) -> List[str]:
 
 # Renders command arguments for the active host shell
 def _wizard_render_command(arguments: Sequence[str]) -> str:
-    values = [str(argument) for argument in arguments]
-    return subprocess.list2cmdline(values) if platform.system() == "Windows" else shlex.join(values)
+    return " ".join(_wizard_quote_argument(argument) for argument in arguments)
 
 
 # Quotes one command argument for the active host shell
 def _wizard_quote_argument(value: Any) -> str:
-    return _wizard_render_command([str(value)])
+    text = str(value)
+    # A <placeholder> is documentation for the reader to replace, so quoting it would only be noise
+    if text.startswith("<") and text.endswith(">"):
+        return text
+    return subprocess.list2cmdline([text]) if platform.system() == "Windows" else shlex.quote(text)
 
 
 # Returns the portable command prefix for one installation method and optional host environment
@@ -8230,6 +8235,27 @@ def _wizard_container_path(path) -> str:
     return str(PurePosixPath("/data", *relative.parts))
 
 
+# Reads only the persisted target from a config file, so a printed command can omit a positional the config already supplies
+def _config_file_target(config_path) -> str:
+    if not config_path or str(config_path).casefold() == "none":
+        return ""
+    namespace: dict = {}
+    if not load_config_file(config_path, namespace=namespace, report_errors=False):
+        return ""
+    return str(namespace.get("TARGET_USER_URI_ID") or "")
+
+
+# Returns the targets for the printed doctor and monitoring commands, dropping one the effective config already supplies
+def _wizard_command_targets(explicit_target=None, saved_target=None, placeholder="<spotify_target>"):
+    saved = str(saved_target or "")
+    known = str(explicit_target or "") or saved
+    if not known:
+        # Monitoring cannot run without a target, so it keeps the placeholder while the doctor reports the gap itself
+        return None, placeholder
+    printed = None if known == saved else known
+    return printed, printed
+
+
 # Builds a Spotify Monitor action command using install-aware paths and an optional target
 def _wizard_action_command(method: str, action: str, config_path, env_path, target: Optional[str] = None, host_os: Optional[str] = None) -> str:
     parts = [_wizard_cmd_prefix(method, host_os=host_os)]
@@ -8246,10 +8272,9 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     return " ".join(parts)
 
 
-def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, doctor_exit: int = 0) -> None:
+def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, saved_target: Optional[str] = None, doctor_exit: int = 0) -> None:
     method = _wizard_install_method()
-    # Only a target this run was given is printed, so the command stays pasteable rather than carrying a placeholder
-    command = _wizard_action_command(method, "", config_path, env_path, target)
+    command = _wizard_action_command(method, "", config_path, env_path, _wizard_command_targets(target, saved_target)[1])
     print(colorize('header', "\nNext steps\n"))
     _wizard_print_command("After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:", command)
     print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
@@ -9138,13 +9163,13 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
 
 
 # Completes a deferred browser import with retry, private entry or incomplete recovery choices
-def _wizard_finish_browser_import(auth: dict, env_path: Path) -> dict:
+def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path, target: str, saved_target: str) -> dict:
     browser = auth.get("browser")
     if not browser:
         return auth
     while True:
         try:
-            run_browser_cookie_import(browser=browser, env_file=str(env_path), interactive=True, input_func=_wizard_input)
+            run_browser_cookie_import(browser=browser, env_file=str(env_path), interactive=True, input_func=_wizard_input, config_path=str(config_path), target=target, saved_target=saved_target)
             auth.update({"complete": True, "validated": True})
             return auth
         except BrowserCookieImportError as exc:
@@ -9656,7 +9681,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         if auth.get("browser") and method not in ("docker", "compose"):
             print()
-            auth = _wizard_finish_browser_import(auth, env_path)
+            auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "")
         if auth["complete"]:
             if _wizard_load_effective_setup(config_path, env_path):
                 follow_status = _wizard_offer_target_follow(target)
@@ -11750,7 +11775,7 @@ def main():
         if args.user_agent:
             USER_AGENT = args.user_agent
         try:
-            run_browser_cookie_import(browser=args.browser or "firefox", browser_profile=args.browser_profile, cookie_file=args.cookie_file, env_file=args.env_file, force=args.force, config_path=args.config_file, target=args.user_id or TARGET_USER_URI_ID)
+            run_browser_cookie_import(browser=args.browser or "firefox", browser_profile=args.browser_profile, cookie_file=args.cookie_file, env_file=args.env_file, force=args.force, config_path=args.config_file, target=args.user_id, saved_target=TARGET_USER_URI_ID)
         except BrowserCookieImportError as exc:
             print_recovery_error(exc, "browser_import")
             sys.exit(1)
@@ -11983,7 +12008,7 @@ def main():
         if scrobble_health_mode:
             _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None, doctor_exit=doctor_exit)
         else:
-            _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, doctor_exit=doctor_exit)
+            _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, TARGET_USER_URI_ID, doctor_exit=doctor_exit)
         sys.exit(doctor_exit)
 
     LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL else 0

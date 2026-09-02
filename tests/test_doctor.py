@@ -760,7 +760,8 @@ def test_cli_doctor_without_target_bypasses_normal_startup():
     assert "connectivity gate called" not in result.stderr
     assert "monitor loop called" not in result.stderr
     assert "Start monitoring:" in result.stdout
-    assert "python3 spotify_monitor.py --env-file none" in result.stdout
+    # Nothing supplies a target here, so the command keeps the placeholder rather than printing one that cannot run
+    assert "python3 spotify_monitor.py <spotify_target> --env-file none" in result.stdout
     assert "SPOTIFY_USER_URI_ID" not in result.stdout
 
 
