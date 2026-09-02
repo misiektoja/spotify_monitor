@@ -8376,9 +8376,9 @@ def _build_help_epilog() -> str:
         ("Guided setup, recommended for the first run", f"{prefix} --setup"),
         import_entry,
         ("Or use the most secure manual method to enter the Spotify cookie", _wizard_set_sp_dc_cmd(method, container_env)),
-        ("Check the setup before relying on it", f"{prefix} --doctor <spotify_user_id>"),
-        ("Start monitoring, a spotify:user URI or profile URL is also accepted", f"{prefix} <spotify_user_id>"),
-        ("Advanced Spotify desktop client mode", f"{prefix} <spotify_user_id> --token-source client --login-request-body-file {'/data/login.protobuf' if containerised else '<protobuf_file>'}"),
+        ("Check the setup before relying on it", f"{prefix} --doctor <spotify_target>"),
+        ("Start monitoring, a spotify:user URI or profile URL is also accepted", f"{prefix} <spotify_target>"),
+        ("Advanced Spotify desktop client mode", f"{prefix} <spotify_target> --token-source client --login-request-body-file {'/data/login.protobuf' if containerised else '<protobuf_file>'}"),
     ]
     if method == "compose":
         getting_started.append(("Start from the target saved by setup", "docker compose up --no-log-prefix"))
@@ -8394,7 +8394,7 @@ def _build_help_epilog() -> str:
         )),
         ("Information and diagnostics", (
             ("List friends visible to the configured Spotify account", f"{prefix} --list-friends"),
-            ("Trace what the tool is doing", f"{prefix} <spotify_user_id> --debug"),
+            ("Trace what the tool is doing", f"{prefix} <spotify_target> --debug"),
         )),
         ("Scrobble health mode", (
             ("Guided setup for Spotify-to-Last.fm monitoring", f"{prefix} --setup-scrobble-health"),
@@ -9585,7 +9585,7 @@ def _wizard_welcome() -> None:
     method = _wizard_install_method()
     prefix = _wizard_cmd_prefix(method)
     interactive = sys.stdin.isatty()
-    print("For <spotify_target>, use a Spotify user ID or complete profile URL.\n")
+    print("For <spotify_target>, use a complete Spotify profile URL, spotify:user URI or user ID.\n")
     _wizard_print_command("Quickest start (already configured):", f"{prefix} <spotify_target>")
     setup_suffix = "   (or just answer Y below)" if interactive else ""
     _wizard_print_command("Easiest start (guided setup wizard):", f"{prefix} --setup", setup_suffix)

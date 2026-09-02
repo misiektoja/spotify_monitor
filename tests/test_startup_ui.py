@@ -154,8 +154,8 @@ def test_help_banner_once_and_raw_epilog():
     assert "--scrobble-repeat-interval" in result.stdout
     assert "--scrobble-state-file" in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health --doctor --verbose" not in result.stdout
-    assert f"{prefix} --monitor-mode friend_activity <spotify_user_id>" not in result.stdout
-    assert f"\n  # Start monitoring, a spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
+    assert f"{prefix} --monitor-mode friend_activity <spotify_target>" not in result.stdout
+    assert f"\n  # Start monitoring, a spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_target>" in result.stdout
     assert result.stdout.index("Getting started:") < result.stdout.index("Scrobble health mode:")
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
@@ -166,7 +166,7 @@ def test_no_argument_welcome_uses_spaced_quick_start_blocks():
     prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 1
     assert "Welcome to Spotify Monitor" not in result.stdout
-    assert "For <spotify_target>, use a Spotify user ID or complete profile URL.\n" in result.stdout
+    assert "For <spotify_target>, use a complete Spotify profile URL, spotify:user URI or user ID.\n" in result.stdout
     assert f"Quickest start (already configured):\n    {prefix} <spotify_target>\n" in result.stdout
     assert f"Easiest start (guided setup wizard):\n    {prefix} --setup\n" in result.stdout
     assert f"Check setup before monitoring:\n    {prefix} --doctor <spotify_target>\n" in result.stdout

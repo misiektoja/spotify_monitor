@@ -195,7 +195,7 @@ def test_interactive_welcome_declines_setup(monkeypatch, capsys):
     monitor._wizard_welcome()
     output = capsys.readouterr().out
     assert "Welcome to Spotify Monitor" not in output
-    assert "For <spotify_target>, use a Spotify user ID or complete profile URL.\n" in output
+    assert "For <spotify_target>, use a complete Spotify profile URL, spotify:user URI or user ID.\n" in output
     assert "Quickest start (already configured):\n    spotify_monitor <spotify_target>\n" in output
     assert "Easiest start (guided setup wizard):\n    spotify_monitor --setup   (or just answer Y below)\n" in output
     assert "Check setup before monitoring:\n    spotify_monitor --doctor <spotify_target>\n" in output
@@ -238,13 +238,13 @@ Getting started:
   python3 spotify_monitor.py --set-sp-dc
 
   # Check the setup before relying on it
-  python3 spotify_monitor.py --doctor <spotify_user_id>
+  python3 spotify_monitor.py --doctor <spotify_target>
 
   # Start monitoring, a spotify:user URI or profile URL is also accepted
-  python3 spotify_monitor.py <spotify_user_id>
+  python3 spotify_monitor.py <spotify_target>
 
   # Advanced Spotify desktop client mode
-  python3 spotify_monitor.py <spotify_user_id> --token-source client --login-request-body-file <protobuf_file>
+  python3 spotify_monitor.py <spotify_target> --token-source client --login-request-body-file <protobuf_file>
 
 Notifications:
   # Save a Discord or ntfy webhook URL through a hidden prompt
@@ -261,7 +261,7 @@ Information and diagnostics:
   python3 spotify_monitor.py --list-friends
 
   # Trace what the tool is doing
-  python3 spotify_monitor.py <spotify_user_id> --debug
+  python3 spotify_monitor.py <spotify_target> --debug
 
 Scrobble health mode:
   # Guided setup for Spotify-to-Last.fm monitoring
@@ -282,8 +282,8 @@ def test_pip_help_epilog_uses_console_command(monkeypatch):
     assert "spotify_monitor --import-browser-cookie --browser firefox" in epilog
     assert "spotify_monitor --set-sp-dc" in epilog
     assert "recommended for local installs" in epilog
-    assert "spotify_monitor <spotify_user_id>" in epilog
-    assert "spotify_monitor --doctor <spotify_user_id>" in epilog
+    assert "spotify_monitor <spotify_target>" in epilog
+    assert "spotify_monitor --doctor <spotify_target>" in epilog
     assert "spotify_monitor --list-friends" in epilog
 
 
@@ -299,7 +299,7 @@ def test_docker_help_epilog_uses_container_commands(monkeypatch):
     assert "Linux host example" in epilog
     assert "profile read-only" in epilog
     assert "Host Spotify auto-play is unavailable by default" in epilog
-    assert f"{prefix} --doctor <spotify_user_id>" in epilog
+    assert f"{prefix} --doctor <spotify_target>" in epilog
     assert "--login-request-body-file /data/login.protobuf" in epilog
 
 
