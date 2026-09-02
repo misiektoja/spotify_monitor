@@ -7889,9 +7889,12 @@ def doctor_email_unusable_check(detail, fix):
 
 # Validates SMTP configuration and login without sending an email
 def doctor_check_notifications() -> List[DoctorCheck]:
+    problem = email_settings_problem()
+    if not _startup_notification_categories() and problem is None:
+        advice = make_recovery_advice("smtp.invalid", "Email is configured but no alert types are selected", recovery_fix_with_guide("Turn on at least one email alert in the configuration file", SMTP_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be emailed", advice)]
     if not email_notifications_enabled():
         return [make_doctor_check("Notifications", "PASS", "Email notifications are disabled", "No SMTP connection was attempted and no email was sent")]
-    problem = email_settings_problem()
     if problem is not None:
         return [doctor_email_unusable_check(*problem)]
     smtp_object = None
@@ -7915,8 +7918,13 @@ def doctor_check_notifications() -> List[DoctorCheck]:
 
 # Checks webhook alert settings without sending a message
 def doctor_check_webhook_notifications() -> List[DoctorCheck]:
-    if not WEBHOOK_ENABLED:
+    # The error alert ships on by default, so it alone cannot mean the channel was meant to be on
+    deliberate_webhook_types = any((WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, MONITOR_MODE == "scrobble_health" and WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION))
+    if not WEBHOOK_ENABLED and not deliberate_webhook_types:
         return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled")]
+    if not WEBHOOK_ENABLED:
+        advice = make_recovery_advice("webhook.invalid", "Webhook alert types are selected but webhooks are switched off", recovery_fix_with_guide("Set WEBHOOK_ENABLED to True, or turn the alert types off", WEBHOOK_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be delivered", advice)]
     if not normalized_webhook_provider():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
@@ -7932,8 +7940,8 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
         advice = classify_recovery_error(context="webhook_config", detail=header_error)
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not webhook_notifications_enabled():
-        advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", "Turn on at least one webhook alert in spotify_monitor.conf or set WEBHOOK_ENABLED to False", False)
-        return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent during this passive check", advice)]
+        advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", recovery_fix_with_guide("Turn on at least one webhook alert in the configuration file, or set WEBHOOK_ENABLED to False", WEBHOOK_GUIDE_URL), False)
+        return [make_doctor_check("Notifications", "WARN", advice.summary, "Nothing would ever be delivered", advice)]
     return [make_doctor_check("Notifications", "PASS", f"{WEBHOOK_READY_CHECK_LABEL} for {webhook_provider_display_name()}", f"Alerts: {', '.join(_startup_webhook_notification_categories())}. The private link was not displayed. No webhook was sent during this passive check")]
 
 
@@ -12017,7 +12025,7 @@ def main():
                 if not os.path.isfile(env_path):
                     advice = classify_recovery_error(context="config_missing", detail=f"Dotenv file not found: {env_path}")
                     if args.doctor:
-                        doctor_startup_checks.append(make_doctor_check("Configuration", "FAIL", "The requested dotenv file was not found", advice.detail, advice))
+                        doctor_startup_checks.append(make_doctor_check("Configuration", "WARN", "The requested dotenv file was not found", advice.detail, advice))
                     elif not args.authorize_scrobble_health:
                         print(f"* Warning: dotenv file '{env_path}' does not exist\n")
                     env_path = None

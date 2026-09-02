@@ -1108,3 +1108,34 @@ def test_a_missing_target_warns_with_the_shared_detail(monkeypatch):
 
     assert [check.status for check in checks] == ["WARN"]
     assert checks[0].detail == "Nothing will be monitored until one is given"
+
+
+# Verifies configured mail settings with no alert types selected warn, since nothing would ever be emailed
+def test_email_configured_but_nothing_selected_warns(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    for name in ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION"):
+        monkeypatch.setattr(monitor, name, False)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "private-password")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "alerts@example.test")
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", Mock(side_effect=AssertionError("SMTP was contacted")))
+
+    check = monitor.doctor_check_notifications()[0]
+
+    assert (check.status, check.label) == ("WARN", "Email is configured but no alert types are selected")
+    assert check.detail == "Nothing would ever be emailed"
+    assert require_advice(check).code == "smtp.invalid"
+
+
+# Verifies webhook alert types selected while the channel is off warn, since nothing would ever be delivered
+def test_webhook_alerts_selected_but_switched_off_warn(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", True)
+
+    check = monitor.doctor_check_webhook_notifications()[0]
+
+    assert (check.status, check.label) == ("WARN", "Webhook alert types are selected but webhooks are switched off")
+    assert "WEBHOOK_ENABLED" in require_advice(check).fix
