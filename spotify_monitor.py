@@ -2447,7 +2447,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, target)
-    monitor_command = _wizard_action_command(method, "", selected_config, destination, target or "SPOTIFY_USER_URI_ID")
+    monitor_command = _wizard_action_command(method, "", selected_config, destination, target)
     _wizard_print_command("Check setup again:", doctor_command)
     _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
@@ -2495,7 +2495,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
-    monitor_command = _wizard_action_command(method, "", selected_config, destination, "SPOTIFY_USER_URI_ID")
+    monitor_command = _wizard_action_command(method, "", selected_config, destination)
     print("* SP_DC_COOKIE validation succeeded")
     print(f"* Updated dotenv: {destination}")
     print()
@@ -7852,9 +7852,13 @@ def _doctor_ask_yes_no(question: str) -> bool:
     while True:
         try:
             value = read_interactively(input, f"{question} [y/N]: ").strip().casefold()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError:
             print("\nDelivery test skipped.")
             return False
+        except KeyboardInterrupt:
+            # Ctrl+C ends the run here the way it does anywhere else, rather than only declining this one test
+            signal_handler(signal.SIGINT, None)
+            raise
         if not value or value in ("n", "no"):
             return False
         if value in ("y", "yes"):
@@ -8242,10 +8246,10 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     return " ".join(parts)
 
 
-def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, target_is_saved: bool = False, doctor_exit: int = 0) -> None:
+def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, doctor_exit: int = 0) -> None:
     method = _wizard_install_method()
-    command_target = None if target_is_saved else target or "SPOTIFY_USER_URI_ID"
-    command = _wizard_action_command(method, "", config_path, env_path, command_target)
+    # Only a target this run was given is printed, so the command stays pasteable rather than carrying a placeholder
+    command = _wizard_action_command(method, "", config_path, env_path, target)
     print(colorize('header', "\nNext steps\n"))
     _wizard_print_command("After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:", command)
     print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
@@ -11979,9 +11983,7 @@ def main():
         if scrobble_health_mode:
             _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None, doctor_exit=doctor_exit)
         else:
-            command_target = args.user_id if args.user_id is not None else None
-            target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
-            _wizard_print_monitor_after_doctor(command_config, command_env, command_target, target_is_saved=target_is_saved, doctor_exit=doctor_exit)
+            _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, doctor_exit=doctor_exit)
         sys.exit(doctor_exit)
 
     LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL else 0
