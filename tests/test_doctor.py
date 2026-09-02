@@ -780,7 +780,7 @@ def test_cli_scrobble_doctor_success_prints_manual_monitoring_command(tmp_path):
     config_path.write_text(f'MONITOR_MODE = "scrobble_health"\nLASTFM_USERNAME = "lastfm-user"\nSPOTIFY_SCROBBLE_CLIENT_ID = "{"a" * 32}"\n', encoding="utf-8")
     env_path.write_text("LASTFM_API_KEY=private-api-key\nSPOTIFY_SCROBBLE_REFRESH_TOKEN=private-refresh-token\n", encoding="utf-8")
     result = run_cli(["--monitor-mode", "scrobble_health", "--doctor", "--config-file", str(config_path), "--env-file", str(env_path)], "runtime['run_scrobble_health_doctor'] = lambda *args: 0;")
-    expected_prefix = monitor._wizard_render_command([sys.executable, str(CLI_PATH)])
+    expected_prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 0
     assert "After Doctor passes, start scrobble health monitoring:" in result.stdout
     assert f"{expected_prefix} --monitor-mode scrobble_health --config-file {config_path} --env-file {env_path}" in result.stdout

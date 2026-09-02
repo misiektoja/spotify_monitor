@@ -77,8 +77,7 @@ def test_windows_manual_commands_are_friendly_and_space_safe(tmp_path, monkeypat
     monkeypatch.setattr(monitor, "__file__", str(script_path))
     assert monitor._wizard_cmd_prefix("manual") == "python spotify_monitor.py"
     command = monitor._wizard_action_command("manual", "--doctor", config_path, env_path)
-    assert '"C:\\Python Tools\\python.exe"' in command
-    assert f'"{script_path}"' in command
+    assert command.startswith("python spotify_monitor.py --doctor")
     assert f'"{config_path}"' in command
     assert f'"{env_path}"' in command
     assert monitor._wizard_cmd_prefix("pip", exact=True) == '"C:\\Python Tools\\python.exe" -m spotify_monitor'
@@ -312,3 +311,25 @@ def test_help_epilog_contains_no_secret_bearing_examples(monkeypatch, method):
     epilog = monitor._build_help_epilog()
     for forbidden in ("--spotify-dc-cookie", " sp_dc", "refresh_token", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", " -u "):
         assert forbidden not in epilog
+
+
+# Verifies the cookie recovery command is pasteable as printed and reaches the files this run was given
+def test_the_cookie_recovery_command_names_the_files_this_run_was_given(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    env_path = tmp_path / "private.env"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(monitor, "DOTENV_FILE", str(env_path))
+
+    fix = monitor.cookie_auth_recovery_fix()
+
+    assert f"python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file {config_path} --env-file {env_path}" in fix
+
+
+# Verifies a dotenv switched off with the none sentinel is not printed as a file path
+def test_the_cookie_recovery_command_skips_a_dotenv_switched_off(monkeypatch):
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
+
+    assert monitor.cookie_auth_recovery_fix().endswith("python3 spotify_monitor.py --import-browser-cookie --browser firefox")

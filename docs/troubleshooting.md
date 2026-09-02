@@ -59,7 +59,7 @@ The command shows the [Spotify Developer Dashboard](https://developer.spotify.co
 
 If Spotify reports `QUOTA_EXCEEDED`, the user-owned app has exhausted its Development Mode request quota. This is not evidence that Last.fm scrobbling is broken. Spotify Monitor leaves the current health state unchanged, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long `Retry-After` value. Increase `--scrobble-check-interval` if the response repeats and see Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
-Each failed check includes a `To fix:` action. For local cookie authentication failures, open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account used for monitoring. Then run:
+Each failed check includes a `To fix:` action. A command in that action matches how you installed the tool and carries the `--config-file` or `--env-file` you started with, so it can be pasted as it is. For local cookie authentication failures, open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the Spotify account used for monitoring. Then run:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox
