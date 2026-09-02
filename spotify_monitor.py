@@ -8241,13 +8241,14 @@ def _wizard_print_setup_destinations(method: str, config_path: Path, env_path: P
     print(f"Dotenv:                 {env_path}\n")
 
 
-# Reads one setup line and exits cleanly when Ctrl+C or Ctrl+D cancels input
+# Reads one setup line, letting a cancelled prompt reach the handler that knows what was written
 def _wizard_input(prompt_text: str) -> str:
     try:
         return input(colorize("info", prompt_text))
     except (EOFError, KeyboardInterrupt):
-        print("\nSetup cancelled.")
-        raise SystemExit(1) from None
+        # The interrupted prompt owns the line break, so every handler prints its message alone
+        print()
+        raise
 
 
 # Prompts for optional or required text while applying an Enter default safely
@@ -8371,8 +8372,8 @@ def _wizard_ask_secret(question: str) -> str:
     try:
         return str(getpass.getpass(f"{question}: "))
     except (EOFError, KeyboardInterrupt):
-        print("\nSetup cancelled.")
-        raise SystemExit(1) from None
+        print()
+        raise
 
 
 # Resolves setup destinations without searching parent directories
@@ -8393,7 +8394,7 @@ def _wizard_choose_config_destination(config_path: Path) -> Path:
     while selected.exists() and not _wizard_ask_yes_no(f"Configuration file '{selected}' exists. Replace it with a fresh configuration built from defaults and create a timestamped backup?", default=False):
         alternative = _wizard_ask_text("Another config destination or leave empty to cancel")
         if not alternative:
-            print("Setup cancelled. Destination files were not changed.")
+            print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
             raise SystemExit(1)
         selected = Path(alternative).expanduser().resolve()
     return selected
@@ -9342,7 +9343,15 @@ def _wizard_welcome() -> None:
     _wizard_print_command("Check setup before monitoring:", f"{prefix} --doctor <spotify_target>")
     print(f"Full options: {colorize('section', prefix + ' --help')}")
     print(f"\nGuide:        {colorize('link', QUICK_START_GUIDE_URL)}\n")
-    if interactive and _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
+    if not interactive:
+        return
+    try:
+        start_setup = _wizard_ask_yes_no("Run the guided setup wizard now?", default=True)
+    except (EOFError, KeyboardInterrupt):
+        # This prompt sits outside the wizard, which reports what happened to the destination files
+        print(colorize("warning", "Setup cancelled."))
+        raise SystemExit(1) from None
+    if start_setup:
         print()
         run_setup_wizard()
 
@@ -9369,24 +9378,28 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print("If needed, the tool offers to follow the target. The target must also share listening activity.")
     print(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n")
     _wizard_print_setup_destinations(method, config_path, env_path)
-    config_path = _wizard_choose_config_destination(config_path)
-    baseline_values = dict(globals())
-    initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
-    config_values = dict(baseline_values)
-    config_values["DOTENV_FILE"] = str(env_path)
-    state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
-    _wizard_collect_target_section(state, initial_target)
-    _wizard_collect_polling_section(state)
-    _wizard_collect_auth_section(state, method)
-    print()
-    _wizard_collect_email_section(state)
-    print()
-    _wizard_collect_webhook_section(state)
-    print()
-    _wizard_collect_output_section(state)
-    if not _wizard_review_setup(state, method):
-        print("Setup cancelled. Destination files were not changed.")
-        raise SystemExit(1)
+    try:
+        config_path = _wizard_choose_config_destination(config_path)
+        baseline_values = dict(globals())
+        initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
+        config_values = dict(baseline_values)
+        config_values["DOTENV_FILE"] = str(env_path)
+        state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
+        _wizard_collect_target_section(state, initial_target)
+        _wizard_collect_polling_section(state)
+        _wizard_collect_auth_section(state, method)
+        print()
+        _wizard_collect_email_section(state)
+        print()
+        _wizard_collect_webhook_section(state)
+        print()
+        _wizard_collect_output_section(state)
+        if not _wizard_review_setup(state, method):
+            print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
+            raise SystemExit(1)
+    except (EOFError, KeyboardInterrupt):
+        print(colorize("warning", "Setup cancelled. Destination files were not changed."))
+        raise SystemExit(1) from None
     config_path = state.config_path
     env_path = state.env_path
     target = state.target
@@ -9413,37 +9426,41 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
-    if auth.get("browser") and method not in ("docker", "compose"):
-        print()
-        auth = _wizard_finish_browser_import(auth, env_path)
-    if auth["complete"]:
-        if _wizard_load_effective_setup(config_path, env_path):
-            follow_status = _wizard_offer_target_follow(target)
-            if follow_status in ("already_followed", "followed"):
-                auth["validated"] = True
-        else:
-            print(colorize('header', "\nFollowing check\n"))
-            print("Follow status could not be checked because the saved setup could not be loaded.")
     doctor_failed = False
     doctor_ran = False
-    if auth["complete"]:
-        print()
-    if auth["complete"] and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
-        doctor_ran = True
-        if _wizard_load_effective_setup(config_path, env_path):
-            render_doctor_notice()
-            try:
-                report = build_doctor_report(target, str(config_path), str(env_path), progress=_doctor_progress)
-            finally:
-                _doctor_progress_clear()
-            print(render_doctor_report(report))
-            doctor_failed = any(check.status == "FAIL" for check in report.checks)
-            if not doctor_failed:
-                auth["validated"] = True
-            delivery_checks = _doctor_offer_notification_tests(report)
-            doctor_failed = doctor_failed or any(check.status == "FAIL" for check in delivery_checks)
-        else:
-            doctor_failed = True
+    try:
+        if auth.get("browser") and method not in ("docker", "compose"):
+            print()
+            auth = _wizard_finish_browser_import(auth, env_path)
+        if auth["complete"]:
+            if _wizard_load_effective_setup(config_path, env_path):
+                follow_status = _wizard_offer_target_follow(target)
+                if follow_status in ("already_followed", "followed"):
+                    auth["validated"] = True
+            else:
+                print(colorize('header', "\nFollowing check\n"))
+                print("Follow status could not be checked because the saved setup could not be loaded.")
+        if auth["complete"]:
+            print()
+        if auth["complete"] and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
+            doctor_ran = True
+            if _wizard_load_effective_setup(config_path, env_path):
+                render_doctor_notice()
+                try:
+                    report = build_doctor_report(target, str(config_path), str(env_path), progress=_doctor_progress)
+                finally:
+                    _doctor_progress_clear()
+                print(render_doctor_report(report))
+                doctor_failed = any(check.status == "FAIL" for check in report.checks)
+                if not doctor_failed:
+                    auth["validated"] = True
+                delivery_checks = _doctor_offer_notification_tests(report)
+                doctor_failed = doctor_failed or any(check.status == "FAIL" for check in delivery_checks)
+            else:
+                doctor_failed = True
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional checks
+        print(colorize("warning", "Setup is saved. Use the commands below when ready."))
     host_os = auth.get("host_os")
     doctor_target = None if persist_target else target
     doctor_command = _wizard_action_command(method, "--doctor", config_path, env_path, doctor_target, host_os=host_os)
@@ -9482,7 +9499,13 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         _wizard_print_command(direct_label, monitor_command)
     print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
-    if local_ready and _wizard_ask_yes_no("Start monitoring now? Monitoring will continue until Ctrl+C.", default=True):
+    try:
+        start_monitoring = bool(local_ready and _wizard_ask_yes_no("Start monitoring now? Monitoring will continue until Ctrl+C.", default=True))
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional launch
+        print(colorize("warning", "Setup is saved. Start monitoring with the command above when ready."))
+        raise SystemExit(0) from None
+    if start_monitoring:
         exec_args = _wizard_local_command_args(method, exact=True)
         if not persist_target:
             exec_args.append(target)
@@ -9515,29 +9538,33 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print("Five consecutive missing plays and a 20 minute dead period are the default alert threshold.")
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.\n")
     _wizard_print_setup_destinations(method, config_path, env_path)
-    config_path = _wizard_choose_config_destination(config_path)
-    baseline_values = dict(globals())
-    config_values = dict(globals())
-    config_values.update({
-        "MONITOR_MODE": "scrobble_health",
-        "TOKEN_SOURCE": "cookie",
-        "TARGET_USER_URI_ID": "",
-        "DOTENV_FILE": str(env_path),
-        "SCROBBLE_HEALTH_NOTIFICATION": True,
-        "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
-    })
-    initial_auth = {"complete": False, "validated": False, "source": "not configured"}
-    state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, LASTFM_USERNAME, initial_auth, [], [])
-    _wizard_collect_scrobble_health_profile_section(state)
-    _wizard_collect_scrobble_health_threshold_section(state)
-    _wizard_collect_scrobble_health_auth_section(state, method)
-    print()
-    _wizard_collect_scrobble_health_email_section(state)
-    print()
-    _wizard_collect_scrobble_health_webhook_section(state)
-    if not _wizard_review_scrobble_health_setup(state, method):
-        print("Setup cancelled. Destination files were not changed.")
-        raise SystemExit(1)
+    try:
+        config_path = _wizard_choose_config_destination(config_path)
+        baseline_values = dict(globals())
+        config_values = dict(globals())
+        config_values.update({
+            "MONITOR_MODE": "scrobble_health",
+            "TOKEN_SOURCE": "cookie",
+            "TARGET_USER_URI_ID": "",
+            "DOTENV_FILE": str(env_path),
+            "SCROBBLE_HEALTH_NOTIFICATION": True,
+            "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
+        })
+        initial_auth = {"complete": False, "validated": False, "source": "not configured"}
+        state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, LASTFM_USERNAME, initial_auth, [], [])
+        _wizard_collect_scrobble_health_profile_section(state)
+        _wizard_collect_scrobble_health_threshold_section(state)
+        _wizard_collect_scrobble_health_auth_section(state, method)
+        print()
+        _wizard_collect_scrobble_health_email_section(state)
+        print()
+        _wizard_collect_scrobble_health_webhook_section(state)
+        if not _wizard_review_scrobble_health_setup(state, method):
+            print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
+            raise SystemExit(1)
+    except (EOFError, KeyboardInterrupt):
+        print(colorize("warning", "Setup cancelled. Destination files were not changed."))
+        raise SystemExit(1) from None
     config_path = state.config_path
     env_path = state.env_path
     config_values = state.config_values
@@ -9566,12 +9593,16 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     doctor_failed = False
     doctor_ran = False
     print()
-    if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It may update a rotated Spotify refresh token and offers real delivery tests only with separate approval.", default=True):
-        doctor_ran = True
-        if _wizard_load_effective_setup(config_path, env_path):
-            doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path)) != 0
-        else:
-            doctor_failed = True
+    try:
+        if auth["complete"] and _wizard_ask_yes_no("Run scrobble health Doctor now? It may update a rotated Spotify refresh token and offers real delivery tests only with separate approval.", default=True):
+            doctor_ran = True
+            if _wizard_load_effective_setup(config_path, env_path):
+                doctor_failed = run_scrobble_health_doctor(username, str(config_path), str(env_path)) != 0
+            else:
+                doctor_failed = True
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional check
+        print(colorize("warning", "Setup is saved. Use the commands below when ready."))
     authorize_command = _wizard_action_command(method, "--authorize-scrobble-health", config_path, env_path)
     doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", config_path, env_path)
     monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", config_path, env_path)
@@ -9591,7 +9622,13 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         _wizard_print_command(start_label, monitor_command)
     print(f"Guide: {colorize('link', SCROBBLE_AUTH_GUIDE_URL)}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and doctor_ran and not doctor_failed
-    if local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True):
+    try:
+        start_monitoring = bool(local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True))
+    except (EOFError, KeyboardInterrupt):
+        # The files are already written, so an interrupt here only skips the optional launch
+        print(colorize("warning", "Setup is saved. Start monitoring with the command above when ready."))
+        raise SystemExit(0) from None
+    if start_monitoring:
         exec_args = _wizard_local_command_args(method, exact=True)
         exec_args.extend(("--monitor-mode", "scrobble_health", "--config-file", str(config_path), "--env-file", str(env_path)))
         sys.stdout.flush()
