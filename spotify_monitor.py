@@ -1020,6 +1020,8 @@ SP_CLIENT_TOKEN_EXPIRES_AT = 0
 
 # Whole checks, so a check interval longer than the liveness interval still waits one check instead of reporting on every check
 LIVENESS_CHECK_COUNTER = max(1, -(-LIVENESS_CHECK_INTERVAL // SPOTIFY_CHECK_INTERVAL)) if LIVENESS_CHECK_INTERVAL else 0
+# Seconds rather than checks, because a failing run usually retries on a different interval than a healthy one
+LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_COUNTER else 0
 
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
@@ -1659,22 +1661,23 @@ class OutageReporter:
     def __init__(self) -> None:
         self.code: Optional[str] = None
         self.since: int = 0
-        self.checks: int = 0
+        self.reported_at: int = 0
 
-    # Records one failed check and returns "full" for a new failure, "degraded" on the liveness cadence,
+    # Records one failed check and returns "full" for a new failure, "degraded" once the liveness interval has passed,
     # "repeat" while the liveness banner is switched off or "" while the same failure is merely continuing
-    def failed(self, advice: RecoveryAdvice, liveness_counter: int) -> str:
+    def failed(self, advice: RecoveryAdvice, liveness_interval: int) -> str:
+        now = int(time.time())
         if advice.code != self.code:
             self.code = advice.code
-            self.since = int(time.time())
-            self.checks = 0
+            self.since = now
+            self.reported_at = now
             return "full"
-        self.checks += 1
         # With the liveness banner off there is nothing to carry the reminder, so the summary keeps its old cadence
-        if not liveness_counter:
+        if not liveness_interval:
             return "repeat"
-        if self.checks >= liveness_counter:
-            self.checks = 0
+        # Timed rather than counted, because a failing run usually retries on a different interval than a healthy one
+        if now - self.reported_at >= liveness_interval:
+            self.reported_at = now
             return "degraded"
         return ""
 
@@ -1685,7 +1688,7 @@ class OutageReporter:
         lasted = int(time.time()) - self.since
         self.code = None
         self.since = 0
-        self.checks = 0
+        self.reported_at = 0
         return lasted
 
 
@@ -10037,7 +10040,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             advice = classify_recovery_error(e, auth_context)
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
-            outage_outcome = outage.failed(advice, LIVENESS_CHECK_COUNTER)
+            outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
             if outage_outcome in ("full", "repeat"):
                 print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
             elif outage_outcome == "degraded":
@@ -10313,7 +10316,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 error_network_issue_counter += 1
 
                         # A failure that has not changed is left to the liveness cadence rather than repeated every check
-                        outage_outcome = outage.failed(advice, LIVENESS_CHECK_COUNTER)
+                        outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
                         report_in_full = outage_outcome == "full"
 
                         # With the liveness banner off the aggregated 50x and network summaries keep their old cadence
@@ -10956,7 +10959,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_SECRET_KEYS
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_SECRET_KEYS
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -12094,6 +12097,7 @@ def main():
         sys.exit(doctor_exit)
 
     LIVENESS_CHECK_COUNTER = max(1, -(-LIVENESS_CHECK_INTERVAL // SPOTIFY_CHECK_INTERVAL)) if LIVENESS_CHECK_INTERVAL else 0
+    LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_COUNTER else 0
 
     if args.send_test_webhook:
         print("* Sending a test webhook ...\n")

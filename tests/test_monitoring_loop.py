@@ -38,10 +38,13 @@ class LoopHarness:
     def __init__(self):
         self.sleeps: list = []
         self.stop_after = 1
+        # A fake clock advanced by each sleep, so the timed liveness reminder is deterministic
+        self.now = float(int(time.time()))
 
     # Stands in for time.sleep so each completed loop step is observable and bounded
     def sleep(self, seconds):
         self.sleeps.append(seconds)
+        self.now += seconds
         if len(self.sleeps) >= self.stop_after:
             raise LoopStopped
 
@@ -52,6 +55,7 @@ def loop_environment(monkeypatch, tmp_path):
     harness = LoopHarness()
 
     monkeypatch.setattr(monitor.time, "sleep", harness.sleep)
+    monkeypatch.setattr(monitor.time, "time", lambda: harness.now)
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
     monkeypatch.setattr(monitor, "ALARM_RETRY", 15)
@@ -264,6 +268,7 @@ def test_the_first_failure_while_active_is_reported_in_full(loop_environment, mo
 # Verifies a failure that keeps repeating is reported once and then carried by the liveness banner
 def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 2)
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 2 * monitor.SPOTIFY_ERROR_INTERVAL)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=Exception("503 Server Error: Service Unavailable")))
@@ -275,6 +280,22 @@ def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypat
     assert output.count("To fix: ") == 1
     assert "* Monitoring degraded for watched-user. " in output
     assert output.count("Liveness check, timestamp:") == 2
+
+
+# Verifies the reminder follows the clock, so a run that retries faster than it polls does not remind more often
+def test_the_outage_reminder_follows_the_clock_not_the_check_count(monkeypatch):
+    clock = [1000000.0]
+    monkeypatch.setattr(monitor.time, "time", lambda: clock[0])
+    reporter = monitor.OutageReporter()
+    advice = monitor.classify_recovery_error(Exception("503 Server Error: Service Unavailable"), "cookie_auth")
+
+    assert reporter.failed(advice, 900) == "full"
+    outcomes = []
+    for _ in range(60):
+        clock[0] += 15
+        outcomes.append(reporter.failed(advice, 900))
+
+    assert outcomes.count("degraded") == 1
 
 
 # Verifies a failure that clears is reported as recovered, since a throttled failure stops printing while it lasts
