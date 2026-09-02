@@ -1548,3 +1548,17 @@ def test_declining_the_retry_offer_keeps_the_saved_number(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
     assert monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535) == 587
+
+
+# Verifies a declined target ends the section without asking to persist a target that does not exist
+def test_a_declined_target_ends_the_section_without_the_persist_question(monkeypatch, tmp_path, capsys):
+    baseline = {name: value for name, value in vars(monitor).items() if name in monitor._config_allowed_names()}
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "", True, {"complete": False, "validated": False, "browser": None, "source": "not configured"}, [], [])
+    monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: pytest.fail("the persist question was asked without a target"))
+
+    monitor._wizard_collect_target_section(state)
+
+    assert state.target == ""
+    assert state.config_values["TARGET_USER_URI_ID"] == ""
+    assert "No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line." in capsys.readouterr().out

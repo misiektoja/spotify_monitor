@@ -9409,6 +9409,11 @@ def _wizard_reset_section(state: Union[WizardSetupState, ScrobbleHealthSetupStat
 # Collects the monitored target and whether it should be persisted
 def _wizard_collect_target_section(state: WizardSetupState, initial_target: Optional[str] = None) -> None:
     state.target = _wizard_target(initial_target or state.target or None)
+    # A declined target ends the section, so nothing asks about persisting a target that does not exist
+    if not state.target:
+        print("  No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line.")
+        state.config_values["TARGET_USER_URI_ID"] = ""
+        return
     state.persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=state.persist_target)
     state.config_values["TARGET_USER_URI_ID"] = state.target if state.persist_target else ""
 
