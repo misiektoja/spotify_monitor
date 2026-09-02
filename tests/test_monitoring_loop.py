@@ -59,7 +59,7 @@ def loop_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
     monkeypatch.setattr(monitor, "ALARM_RETRY", 15)
-    monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 0)
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 0)
     monkeypatch.setattr(monitor, "FLAG_FILE", "")
     monkeypatch.setattr(monitor, "TRACK_SONGS", False)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
@@ -267,7 +267,6 @@ def test_the_first_failure_while_active_is_reported_in_full(loop_environment, mo
 
 # Verifies a failure that keeps repeating is reported once and then carried by the liveness banner
 def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 2)
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 2 * monitor.SPOTIFY_ERROR_INTERVAL)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
@@ -323,9 +322,25 @@ def test_a_labelled_failure_keeps_the_shared_shape(loop_environment, capsys):
     assert first_line == "* Error 50x (6x times in the last 30 minutes): Spotify is temporarily unavailable (retrying in 3 minutes)"
 
 
+# Verifies the banner follows the clock rather than the number of checks behind it
+def test_the_liveness_banner_follows_the_clock_not_the_check_count(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 3 * monitor.SPOTIFY_CHECK_INTERVAL)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(timestamp_ms=started_at * 1000))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 5
+
+    run_one_iteration(loop_environment)
+
+    assert capsys.readouterr().out.count("Monitoring healthy for") == 1
+
+
 # Verifies the liveness banner explains itself without --verbose, so a plain run never prints a bare timestamp
 def test_the_liveness_banner_explains_itself_without_diagnostics(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 1)
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", monitor.SPOTIFY_CHECK_INTERVAL)
     monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")

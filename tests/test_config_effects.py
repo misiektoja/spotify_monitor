@@ -20,7 +20,7 @@ ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Sessi
 PROBE_SETUP = (
     "runtime['req'].get = lambda url, **kwargs: print(f'CONNECTIVITY_URL={url}') or print(f'CONNECTIVITY_TIMEOUT={kwargs[\"timeout\"]}') or print(f'CONNECTIVITY_VERIFY={kwargs[\"verify\"]}') or type('Response', (), {'status_code': 200})(); "
     "runtime['urllib3'].disable_warnings = lambda *args, **kwargs: print('INSECURE_WARNINGS_DISABLED'); "
-    "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'CHECK_INTERVAL={runtime[\"SPOTIFY_CHECK_INTERVAL\"]}') or print(f'LIVENESS_COUNTER={runtime[\"LIVENESS_CHECK_COUNTER\"]}'); "
+    "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'CHECK_INTERVAL={runtime[\"SPOTIFY_CHECK_INTERVAL\"]}') or print(f'LIVENESS_SECONDS={runtime[\"LIVENESS_REMINDER_SECONDS\"]}'); "
 )
 DIAGNOSTIC_CONFIG_PROBE_SETUP = "original_load_config = runtime['load_config_file']; runtime['load_config_file'] = lambda *args, **kwargs: print(f'DEBUG_DURING_CONFIG={runtime[\"DEBUG_MODE\"]}') or print(f'VERBOSE_DURING_CONFIG={runtime[\"VERBOSE_MODE\"]}') or original_load_config(*args, **kwargs); " + PROBE_SETUP
 WEBHOOK_PROBE_SETUP = PROBE_SETUP + "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'WEBHOOK_ENABLED={runtime[\"WEBHOOK_ENABLED\"]}'); "
@@ -57,28 +57,28 @@ def probe_value(output, key):
     raise AssertionError(f"{key} was never reported\n{output}")
 
 
-# Confirms a config-file check interval rescales the liveness cadence rather than leaving the import-time ratio
-def test_config_file_check_interval_rescales_the_liveness_cadence():
+# Confirms a config-file liveness interval reaches the loop rather than leaving the built-in default
+def test_config_file_liveness_interval_reaches_the_loop():
     with make_temp_directory() as directory_name:
         config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
         result = run_cli(["--config-file", str(config_path)], PROBE_SETUP)
 
     assert result.returncode == 0, result.stderr
     assert probe_value(result.stdout, "CHECK_INTERVAL") == "300"
-    assert float(probe_value(result.stdout, "LIVENESS_COUNTER")) == 144.0
+    assert float(probe_value(result.stdout, "LIVENESS_SECONDS")) == 43200.0
 
 
-# Confirms a check interval longer than the liveness interval still waits one whole check
-def test_a_long_check_interval_leaves_the_liveness_counter_at_one_check():
+# Confirms a check interval longer than the liveness interval leaves the configured reminder alone
+def test_a_long_check_interval_keeps_the_configured_liveness_interval():
     with make_temp_directory() as directory_name:
         config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 86400\nLIVENESS_CHECK_INTERVAL = 43200\n")
         result = run_cli(["--config-file", str(config_path)], PROBE_SETUP)
 
     assert result.returncode == 0, result.stderr
-    assert float(probe_value(result.stdout, "LIVENESS_COUNTER")) == 1
+    assert float(probe_value(result.stdout, "LIVENESS_SECONDS")) == 43200.0
 
 
-# Confirms a command-line interval still wins over the config file and rescales the same value
+# Confirms a command-line interval still wins over the config file and leaves the liveness reminder alone
 def test_command_line_interval_overrides_the_config_file():
     with make_temp_directory() as directory_name:
         config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
@@ -86,7 +86,7 @@ def test_command_line_interval_overrides_the_config_file():
 
     assert result.returncode == 0, result.stderr
     assert probe_value(result.stdout, "CHECK_INTERVAL") == "600"
-    assert float(probe_value(result.stdout, "LIVENESS_COUNTER")) == 72.0
+    assert float(probe_value(result.stdout, "LIVENESS_SECONDS")) == 43200.0
 
 
 # Confirms the startup connectivity check honors a config-file URL and timeout rather than the built-in defaults
