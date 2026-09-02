@@ -74,3 +74,17 @@ def test_help_shows_one_startup_banner(help_screen):
 def test_the_truncate_flag_is_offered(help_screen):
     assert "--truncate N" in help_screen
     assert "use 999 to auto-detect terminal width" in help_screen
+
+
+# Verifies argparse never adds a palette of its own, which from Python 3.14 would survive --no-color
+def test_argparse_adds_no_palette_of_its_own():
+    expected = {"color": False} if sys.version_info >= (3, 14) else {}
+
+    assert monitor.argparse_color_kwargs() == expected
+
+
+# Verifies the switch is actually passed to the parser, since the helper alone colours nothing
+def test_the_parser_is_built_with_the_argparse_colour_switch():
+    source = Path(monitor.__file__).read_text(encoding="utf-8")
+
+    assert "**argparse_color_kwargs()" in source.split("argparse.ArgumentParser(", 1)[1].split("\n\n", 1)[0]

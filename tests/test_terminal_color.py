@@ -427,6 +427,39 @@ def test_names_with_slashes_and_brackets_are_still_colored(colored, name):
     assert colored["playlist"] in monitor._colorize_line(f"- '{name}'")
 
 
+# Verifies a name's own apostrophe does not end it early, which left most of the name uncoloured
+@pytest.mark.parametrize("name", ["Don't Stop Me Now", "Ain't No Mountain High Enough"])
+def test_a_name_containing_an_apostrophe_is_coloured_whole(colored, name):
+    assert f"{colored['playlist']}{name}{monitor.ANSI_RESET}" in monitor._colorize_line(f"- '{name}'")
+
+
+# Verifies two quoted names on one line stay two names, since the closing quote rule could have joined them
+def test_two_quoted_names_on_one_line_stay_separate(colored):
+    result = monitor._colorize_line("- 'Deep Focus' and 'Peaceful Piano'")
+
+    assert f"{colored['playlist']}Deep Focus{monitor.ANSI_RESET}" in result
+    assert f"{colored['playlist']}Peaceful Piano{monitor.ANSI_RESET}" in result
+
+
+# Verifies a quoted placeholder inside a printed command stays plain, since it is text to replace rather than a name
+@pytest.mark.parametrize("line", ["Run: spotify_monitor '<user_uri_id>'", "Replace '<topic>' with your own ntfy topic"])
+def test_quoted_command_placeholders_stay_plain(colored, line):
+    assert colored["playlist"] not in monitor._colorize_line(line)
+
+
+# Verifies a quoted command-line option is left plain, since it is text to retype rather than a name
+def test_quoted_command_options_stay_plain(colored):
+    assert colored["playlist"] not in monitor._colorize_line("Replace '--env-file none' with a writable path")
+
+
+# Verifies a quoted fragment of a URL stays plain, since it is a piece of an address rather than a name
+@pytest.mark.parametrize("value", ["?code=", "&state="])
+def test_quoted_url_fragments_stay_plain(colored, value):
+    line = f"Copy everything after '{value}' from the address bar."
+
+    assert monitor._colorize_line(line) == line
+
+
 # Verifies quoted values shaped like a file name or a path stay plain
 @pytest.mark.parametrize("value", ["monitor_state.json", "/data/spotify.log", "~/logs/output.txt", "C:\\Users\\me\\state.json"])
 def test_quoted_file_and_path_values_stay_plain(colored, value):
