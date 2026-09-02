@@ -7323,6 +7323,9 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
             checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
 
     optional = (("spotipy", "Spotipy", "Used only for legacy OAuth metadata"), ("pycookiecheat", "pycookiecheat", "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"), ("PIL", "Pillow", "Used only for artwork attachments in ntfy alerts"))
+    # The classic Command Prompt is the only place this library changes anything, so a machine it cannot affect is not warned about a package it does not need
+    if platform.system() == "Windows":
+        optional += (("colorama", "colorama", "Used only for coloured output in the classic Windows Command Prompt"),)
     for module_name, package_name, purpose in optional:
         try:
             present = find_spec(module_name) is not None
@@ -7335,6 +7338,8 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
                 missing_purpose = "Required only for importing cookies from Chromium-based browsers. Normal monitoring is unaffected. Firefox cookie import is also unaffected"
             elif module_name == "PIL":
                 missing_purpose = doctor_notification_images_detail()
+            elif module_name == "colorama":
+                missing_purpose = "Coloured output may not render in the classic Windows Command Prompt. Normal monitoring is unaffected. Windows Terminal needs nothing extra"
             else:
                 missing_purpose = f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
             checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))

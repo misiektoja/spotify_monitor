@@ -320,12 +320,35 @@ def test_python_version_check():
 
 
 # Verifies missing optional dependencies are warnings that do not affect normal monitoring
-def test_optional_dependency_reporting():
+def test_optional_dependency_reporting(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None if name in ("spotipy", "pycookiecheat", "PIL") else object())
     optional = [check for check in checks if "Optional dependency" in check.label]
     assert len(optional) == 3
     assert all(check.status == "WARN" for check in optional)
     assert all("Normal monitoring is unaffected" in check.detail for check in optional)
+
+
+# Verifies a warning about a library that cannot affect this machine is not shown at all
+@pytest.mark.parametrize("system, reported", [("Windows", True), ("Linux", False), ("Darwin", False)])
+def test_a_platform_specific_dependency_is_only_reported_where_it_applies(monkeypatch, system, reported):
+    monkeypatch.setattr(monitor.platform, "system", lambda: system)
+
+    checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None)
+
+    assert any("colorama" in check.label for check in checks) is reported
+
+
+# Verifies the Windows colour library is reported there, so broken colours on that platform have a diagnostic
+def test_missing_colorama_is_reported_on_windows(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Windows")
+
+    checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None if name == "colorama" else object())
+
+    missing = next(check for check in checks if "colorama" in check.label)
+    assert missing.status == "WARN"
+    assert "Coloured output may not render in the classic Windows Command Prompt" in missing.detail
+    assert "Windows Terminal needs nothing extra" in missing.detail
 
 
 # Verifies Chromium dependency guidance explicitly preserves Firefox import support
