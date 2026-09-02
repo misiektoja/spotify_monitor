@@ -294,6 +294,7 @@ def test_python_version_check():
     unsupported = monitor.doctor_check_environment((3, 8, 18), all_dependencies_present)
     assert supported[0].status == "PASS"
     assert unsupported[0].status == "FAIL"
+    assert any(check.status == "PASS" and check.label.startswith("Install method: ") for check in supported)
 
 
 # Verifies missing optional dependencies are warnings that do not affect normal monitoring

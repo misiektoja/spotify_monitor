@@ -7144,6 +7144,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
             else:
                 missing_purpose = f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
             checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))
+    checks.append(make_doctor_check("Environment", "PASS", f"Install method: {_wizard_install_method()}"))
     return checks
 
 
