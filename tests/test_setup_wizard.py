@@ -1580,3 +1580,23 @@ def test_the_doctor_offer_follows_the_target_rather_than_authentication(monkeypa
         assert not any(prompt.startswith("Start monitoring now?") for prompt in prompts)
         assert "Authentication still needs to be completed." in capsys.readouterr().out
 
+
+# Verifies the email question defaults to the saved alerts, so a rerun over configured email proposes keeping it
+def test_the_email_question_defaults_to_the_saved_alerts(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False, **kwargs: seen.append((question, default)) or False)
+
+    monitor._wizard_collect_email({"ERROR_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env")
+    assert seen == [("Configure email notifications?", False)]
+
+    monitor._wizard_collect_email({"ERROR_NOTIFICATION": True, "SMTP_HOST": "smtp.example.test"}, {}, tmp_path / ".env")
+    assert seen[-1] == ("Configure email notifications?", True)
+
+    monitor._wizard_collect_email({"TRACK_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env")
+    assert seen[-1] == ("Configure email notifications?", True)
+
+    monitor._wizard_collect_email({"SCROBBLE_HEALTH_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env", scrobble_health=True)
+    assert seen[-1] == ("Configure email notifications?", False)
+
+    monitor._wizard_collect_email({"SCROBBLE_HEALTH_NOTIFICATION": True, "SMTP_HOST": "smtp.example.test"}, {}, tmp_path / ".env", scrobble_health=True)
+    assert seen[-1] == ("Configure email notifications?", True)

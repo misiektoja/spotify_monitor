@@ -8916,10 +8916,20 @@ def _wizard_email_answer_missing(config_values: dict, notification_names: Sequen
     return True
 
 
+# Reports whether the saved settings already send email, so a rerun proposes keeping the channel it has
+def _wizard_email_enabled(config_values: dict, notification_names: Sequence[str], scrobble_health: bool) -> bool:
+    # The error and scrobble health alerts ship switched on, so on their own they count only once a mail server has been named
+    for key in notification_names:
+        if key != "ERROR_NOTIFICATION" and bool(config_values.get(key)):
+            return True
+    shipped_on = bool(config_values.get("ERROR_NOTIFICATION")) or (scrobble_health and bool(config_values.get("SCROBBLE_HEALTH_NOTIFICATION")))
+    return shipped_on and doctor_secret_is_set(config_values.get("SMTP_HOST"))
+
+
 # Collects SMTP settings and mode-appropriate notification flags without opening a connection
 def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
-    if not _wizard_ask_yes_no("Configure email notifications?", default=False):
+    if not _wizard_ask_yes_no("Configure email notifications?", default=_wizard_email_enabled(config_values, notification_names, scrobble_health)):
         _wizard_disable_email(config_values, notification_names, scrobble_health, secret_updates)
         return []
     pending = dict(config_values)
