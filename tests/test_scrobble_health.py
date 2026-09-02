@@ -193,7 +193,7 @@ def test_run_authorize_scrobble_health_guides_and_saves(monkeypatch, capsys):
         result = monitor.run_authorize_scrobble_health("a" * 32, "http://127.0.0.1:8888/callback", env_file=env_path, config_path=config_path, interactive=True)
         values = dotenv.dotenv_values(env_path, interpolate=False)
         output = capsys.readouterr().out
-        assert result == str(env_path)
+        assert result == str(env_path.resolve())
         assert values == {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": "private-refresh-token"}
         assert monitor.SPOTIFY_DEVELOPER_DASHBOARD_URL in output
         assert monitor.SPOTIFY_APPS_GUIDE_URL in output
@@ -326,8 +326,8 @@ def test_scrobble_health_config_discovery_uses_isolated_default(monkeypatch):
         friend_config.write_text('MONITOR_MODE = "friend_activity"\n', encoding="utf-8")
         scrobble_config.write_text('MONITOR_MODE = "scrobble_health"\n', encoding="utf-8")
         monkeypatch.chdir(directory)
-        assert monitor.find_config_file() == str(friend_config)
-        assert monitor.find_scrobble_health_config_file() == str(scrobble_config)
+        assert monitor.find_config_file() == str(friend_config.resolve())
+        assert monitor.find_scrobble_health_config_file() == str(scrobble_config.resolve())
 
 
 # Confirms the scrobble health CLI selects isolated config and dotenv discovery
