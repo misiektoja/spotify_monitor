@@ -176,6 +176,41 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
+# Verifies verbose stays quiet on an uneventful cycle instead of printing one line per check
+def test_a_quiet_cycle_stays_silent_in_verbose(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(timestamp_ms=int(time.time()) * 1000))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+
+    run_one_iteration(loop_environment)
+
+    assert "Monitoring check #" not in capsys.readouterr().out
+
+
+# Verifies a verbose notice closes with the shared timestamp trailer instead of floating between blocks
+def test_a_verbose_notice_closes_with_a_timestamp(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "REMOVED_DISAPPEARED_COUNTER", 3)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    # The target has to be found once before the loop that reports it missing is reached
+    first_response = iter([buddy_list(timestamp_ms=int(time.time()) * 1000)])
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: next(first_response, {"friends": []}))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    notice = next(index for index, line in enumerate(lines) if "was absent from one buddy-list response" in line)
+    assert lines[notice + 1].startswith("Timestamp:")
+    assert set(lines[notice + 2]) == {"\u2500"}
+
+
 # Verifies a target missing from the buddy list does not raise the activity flag
 def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypatch, tmp_path):
     flag_path = tmp_path / "active.flag"

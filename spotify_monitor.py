@@ -4204,6 +4204,15 @@ def verbose_print(message: Any) -> None:
         print(f"* {sanitize_error_text(message)}")
 
 
+# Prints verbose-only notices as one block, so a standalone line is not left without the timestamp trailer
+def verbose_notice(*messages):
+    if not VERBOSE_MODE or not messages:
+        return
+    for message in messages:
+        verbose_print(message)
+    print_cur_ts("Timestamp:\t\t\t")
+
+
 # Logs the start of one monitoring poll only when debug mode is enabled
 def debug_monitor_check_start(check_number: int, user: str, started_at: Optional[datetime] = None) -> datetime:
     check_started_at = started_at or datetime.now()
@@ -9903,7 +9912,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_friends = spotify_get_friends_json(sp_accessToken)
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         if transient_request_failure_active:
-                            verbose_print("Spotify requests recovered after a transient failure")
+                            verbose_notice("Spotify requests recovered after a transient failure")
                             transient_request_failure_active = False
                         recovery_hint_tracker.reset()
                         email_sent = False
@@ -9984,7 +9993,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     # User has disappeared from the Spotify's friend list or account has been removed
                     disappeared_counter += 1
                     if disappeared_counter == 1:
-                        verbose_print(f"Target {user_uri_id} was absent from one buddy-list response. Waiting for confirmation before reporting disappearance")
+                        verbose_notice(f"Target {user_uri_id} was absent from one buddy-list response. Waiting for confirmation before reporting disappearance")
                     if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
                         debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                         time.sleep(SPOTIFY_CHECK_INTERVAL)
@@ -10021,7 +10030,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     transient_visibility_misses = disappeared_counter
                     disappeared_counter = 0
                     if transient_visibility_misses and user_not_found is False:
-                        verbose_print("Target visibility recovered before disappearance was confirmed")
+                        verbose_notice("Target visibility recovered before disappearance was confirmed")
                     if user_not_found is True:
                         print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
                         if ERROR_NOTIFICATION or webhook_event_enabled("error"):
@@ -10477,7 +10486,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_cur_ts("Liveness check, timestamp:\t")
                         alive_counter = 0
 
-                verbose_print(f"Monitoring check #{check_count} completed for {user_uri_id}")
                 debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
 
