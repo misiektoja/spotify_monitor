@@ -8356,16 +8356,59 @@ def _wizard_target(initial_target: Optional[str] = None) -> str:
             default = ""
 
 
-# Validates proposed SMTP values through the shared validator without connecting
-def _wizard_validate_smtp(values: dict, password: str) -> Optional[RecoveryAdvice]:
-    names = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SMTP_PASSWORD", "SENDER_EMAIL", "RECEIVER_EMAIL")
+# The mail server settings the wizard collects, and how long its sign-in check waits for the server
+WIZARD_SMTP_CONFIG_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL")
+WIZARD_SMTP_TIMEOUT = 5
+
+
+# Returns one saved value as a prompt default, treating the shipped 'your_...' placeholders as unset
+def _wizard_default(value) -> str:
+    text = str(value or "")
+    return text if doctor_secret_is_set(text) else ""
+
+
+# Signs in to the collected mail server without sending anything, so a refused login is caught during setup
+def _wizard_verify_smtp(values: dict, password: str) -> Optional[RecoveryAdvice]:
+    names = WIZARD_SMTP_CONFIG_KEYS + ("SMTP_PASSWORD",)
     previous = {name: globals()[name] for name in names}
+    smtp_object = None
     try:
         globals().update(values)
-        globals()["SMTP_PASSWORD"] = password
-        return validate_smtp_configuration()
+        # A blank answer keeps the password already stored, which is the one the sign-in must then prove
+        globals()["SMTP_PASSWORD"] = password or previous["SMTP_PASSWORD"]
+        settings_problem = validate_smtp_configuration()
+        if settings_problem is not None:
+            return settings_problem if isinstance(settings_problem, RecoveryAdvice) else classify_recovery_error(context="smtp_config", detail=settings_problem)
+        smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=WIZARD_SMTP_TIMEOUT)
+        return None
+    except Exception as exc:
+        return classify_recovery_error(exc, context="smtp")
     finally:
+        if smtp_object is not None:
+            try:
+                smtp_object.quit()
+            except Exception:
+                pass
         globals().update(previous)
+
+
+# Reports the outcome of the sign-in check: True to continue, False to ask again, None to switch email off
+def _wizard_smtp_sign_in_accepted(values: dict, password: str) -> Optional[bool]:
+    print("  Checking the sign-in with the mail server ...")
+    advice = _wizard_verify_smtp(values, password)
+    if advice is None:
+        print("  The mail server accepted the sign-in. No email was sent.")
+        return True
+    print(f"  {advice.summary}: {advice.detail}" if advice.detail else f"  {advice.summary}")
+    print(f"  To fix: {advice.fix}")
+    if _wizard_offer_retry("mail server settings"):
+        return False
+    if advice.retryable:
+        # Being offline is the usual reason a correct setup fails here, so the answers are kept rather than discarded
+        print("  The settings were kept without being checked. Run --doctor to check the sign-in again.")
+        return True
+    print("  Email notifications stay off until the mail server accepts the settings.")
+    return None
 
 
 # Switches every email alert off together, so an abandoned answer cannot leave half a mail server configured
@@ -8390,30 +8433,31 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     if not _wizard_ask_yes_no("Configure email notifications?", default=False):
         _wizard_disable_email(config_values, notification_names, scrobble_health)
         return []
+    pending = dict(config_values)
     while True:
-        host = _wizard_ask_text("SMTP host", required=True)
+        host = _wizard_ask_text("SMTP host", default=_wizard_default(pending.get("SMTP_HOST")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, host):
             return []
-        port = _wizard_ask_positive_int("SMTP port", 587)
-        use_ssl = _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=True)
-        user = _wizard_ask_text("SMTP username", required=True)
+        port = _wizard_ask_positive_int("SMTP port", int(pending.get("SMTP_PORT") or 587))
+        use_ssl = _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=bool(pending.get("SMTP_SSL", True)))
+        user = _wizard_ask_text("SMTP username", default=_wizard_default(pending.get("SMTP_USER")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, user):
             return []
-        sender = _wizard_ask_text("Sender email", required=True)
+        sender = _wizard_ask_text("Sender email", default=_wizard_default(pending.get("SENDER_EMAIL")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, sender):
             return []
-        receiver = _wizard_ask_text("Receiver email", required=True)
+        receiver = _wizard_ask_text("Receiver email", default=_wizard_default(pending.get("RECEIVER_EMAIL")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, receiver):
             return []
         smtp_values = {"SMTP_HOST": host, "SMTP_PORT": port, "SMTP_SSL": use_ssl, "SMTP_USER": user, "SENDER_EMAIL": sender, "RECEIVER_EMAIL": receiver}
+        pending.update(smtp_values)
         smtp_password = _wizard_ask_secret("SMTP password")
-        advice = _wizard_validate_smtp(smtp_values, smtp_password)
-        if advice is None:
-            break
-        print(f"  {advice.summary}: {advice.detail}")
-        if not _wizard_offer_retry("mail server settings"):
+        outcome = _wizard_smtp_sign_in_accepted(smtp_values, smtp_password)
+        if outcome is None:
             _wizard_disable_email(config_values, notification_names, scrobble_health)
             return []
+        if outcome:
+            break
     _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
     config_values.update(smtp_values)
     if scrobble_health:

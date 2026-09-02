@@ -441,10 +441,10 @@ def test_scrobble_health_setup_collects_focused_email_flags(monkeypatch):
     secret_updates = {}
     answers = iter((True, True, True, False))
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False: next(answers))
-    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, required=False: "value@example.test")
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "value@example.test")
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: 587)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
-    monkeypatch.setattr(monitor, "_wizard_validate_smtp", lambda values, password: None)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: (updates.update({key: value}) or True))
     enabled = monitor._wizard_collect_email(config_values, secret_updates, PROJECT_ROOT / "local" / "unused.env", scrobble_health=True)
     assert enabled == ["scrobble outage and recovery"]

@@ -499,7 +499,7 @@ def test_email_recommended_preset_uses_shared_validation(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "smtp-private-value")
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
-    connect_mock = Mock(side_effect=AssertionError("SMTP connected"))
+    connect_mock = Mock(return_value=Mock())
     monkeypatch.setattr(monitor, "smtp_connect_and_login", connect_mock)
     config_values = {}
     secrets = {}
@@ -509,7 +509,7 @@ def test_email_recommended_preset_uses_shared_validation(monkeypatch, tmp_path):
     assert config_values["TRACK_NOTIFICATION"] is False
     assert config_values["SONG_NOTIFICATION"] is False
     assert config_values["SONG_ON_LOOP_NOTIFICATION"] is False
-    connect_mock.assert_not_called()
+    connect_mock.assert_called_once()
     assert questions == ["Configure email notifications?", "Enable TLS/SSL for SMTP?"]
 
 
@@ -524,6 +524,7 @@ def test_email_all_and_custom_presets(monkeypatch, tmp_path, preset, custom_answ
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "smtp-private-value")
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: preset)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
     config_values = {}
     monitor._wizard_collect_email(config_values, {}, tmp_path / ".env")
     names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
@@ -974,7 +975,7 @@ def test_an_abandoned_mail_server_answer_switches_scrobble_health_email_off(monk
     assert config_values["SCROBBLE_HEALTH_NOTIFICATION"] is False
 
 
-# Verifies mail server settings the validator rejects can be abandoned, which switches every email alert off
+# Verifies a mail server that refuses the sign-in can be abandoned, which switches every email alert off
 def test_rejected_mail_server_settings_can_be_abandoned(monkeypatch, tmp_path):
     config_values = {"ACTIVE_NOTIFICATION": True, "ERROR_NOTIFICATION": True}
     labels = []
@@ -982,7 +983,7 @@ def test_rejected_mail_server_settings_can_be_abandoned(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "answer@example.test")
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: default)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
-    monkeypatch.setattr(monitor, "_wizard_validate_smtp", lambda values, password: monitor.make_recovery_advice("smtp.invalid", "SMTP settings are invalid", "Correct SENDER_EMAIL", False, "SENDER_EMAIL is not a valid address"))
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.make_recovery_advice("smtp.invalid", "SMTP settings are invalid", "Correct SENDER_EMAIL", False, "SENDER_EMAIL is not a valid address"))
     monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append(label) or False)
 
     assert monitor._wizard_collect_email(config_values, {}, tmp_path / ".env") == []
