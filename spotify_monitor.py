@@ -1277,6 +1277,11 @@ class RecoveryError(Exception):
         super().__init__(advice.summary)
 
 
+# The four shared status markers. A fifth neutral marker is the single biggest source of drift between these
+# tools, because every state it would cover is a state the others already call PASS
+DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
+
+
 # Stores one doctor result before the report is rendered
 @dataclass(frozen=True)
 class DoctorCheck:
@@ -7336,7 +7341,7 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
 
 # Creates one doctor result while ensuring all displayed fields are secret-safe
 def make_doctor_check(section: str, status: str, label: str, detail: Any = "", advice: Optional[RecoveryAdvice] = None) -> DoctorCheck:
-    if status not in ("PASS", "WARN", "FAIL"):
+    if status not in DOCTOR_STATUSES:
         raise ValueError(f"Unsupported doctor status: {status}")
     safe_label = sanitize_error_text(label)
     safe_detail = sanitize_error_text(detail)
@@ -7663,7 +7668,7 @@ def doctor_check_connectivity(report: DoctorReport) -> List[DoctorCheck]:
     if advice is not None and advice.code in ("network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable"):
         return [make_doctor_check("Connectivity", "FAIL", advice.summary, advice.detail, advice)]
     skip_advice = make_recovery_advice("unknown", "Spotify connectivity could not be checked", "Fix the authentication or configuration failure above then run --doctor again", True)
-    return [make_doctor_check("Connectivity", "WARN", "Spotify connectivity check was skipped", "Authentication did not produce a reusable buddy-list response", skip_advice)]
+    return [make_doctor_check("Connectivity", "SKIP", "Spotify connectivity check was skipped", "Authentication did not produce a reusable buddy-list response", skip_advice)]
 
 
 # Validates an optional target and checks whether buddy-list data can currently observe it
@@ -7678,7 +7683,7 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
     if report.buddy_list is None:
         advice = make_recovery_advice("unknown", "Live target visibility could not be checked", "Fix the authentication or connectivity failure above then run --doctor again", True)
-        return [make_doctor_check("Target", "WARN", f"Target '{target_id}' live check was skipped", "No authenticated buddy-list response is available", advice)]
+        return [make_doctor_check("Target", "SKIP", f"Target '{target_id}' live check was skipped", "No authenticated buddy-list response is available", advice)]
     try:
         found, _ = spotify_get_friend_info(report.buddy_list, target_id)
     except Exception as exc:
@@ -7833,7 +7838,9 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
             results.append(check)
             print(f"[{check.status}] {check.label}")
         else:
-            print("[SKIP] Test email was not sent")
+            check = make_doctor_check("Notifications", "SKIP", "Test email was not sent")
+            results.append(check)
+            print(f"[{check.status}] {check.label}")
     if webhook_ready:
         provider = webhook_provider_display_name()
         if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
@@ -7842,7 +7849,9 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
             results.append(check)
             print(f"[{check.status}] {check.label}")
         else:
-            print("[SKIP] Test webhook was not sent")
+            check = make_doctor_check("Notifications", "SKIP", "Test webhook was not sent")
+            results.append(check)
+            print(f"[{check.status}] {check.label}")
     return results
 
 
@@ -7899,8 +7908,9 @@ def render_doctor_report(report: DoctorReport) -> str:
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
-            if rendered_advice is not None and check.status in ("FAIL", "WARN"):
-                lines.append(f"To fix: {rendered_advice.fix}")
+            if rendered_advice is not None and check.status != "PASS":
+                # The fix carries its own guide line, so each line is indented on its own
+                lines.extend(f"  {advice_line}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
     failures = sum(check.status == "FAIL" for check in report.checks)
     warnings = sum(check.status == "WARN" for check in report.checks)
     if failures:
