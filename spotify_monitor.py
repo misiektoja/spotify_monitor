@@ -1291,6 +1291,9 @@ DOCTOR_MIN_SAFE_CHECK_INTERVAL = 30
 # Delivery results are printed as they happen rather than inside a section, but they still count in the summary
 DOCTOR_DELIVERY_SECTION = "Optional delivery tests"
 
+# The theme entry each doctor result marker is drawn in, so a failure reads as one at a glance
+DOCTOR_MARK_STYLES = {"PASS": "boolean_true", "WARN": "warning", "FAIL": "error", "SKIP": "info"}
+
 
 # Stores one doctor result before the report is rendered
 @dataclass(frozen=True)
@@ -7465,8 +7468,8 @@ def make_doctor_check(section: str, status: str, label: str, detail: Any = "", a
 # Explains what missing artwork support means for the current NTFY_IMAGES setting and how to install it
 def doctor_notification_images_detail() -> str:
     if NTFY_IMAGES:
-        return "NTFY_IMAGES is enabled, so ntfy alerts are sent as text only until Pillow is installed. Normal monitoring is unaffected"
-    return "Required only when NTFY_IMAGES attaches artwork to ntfy alerts, which is currently disabled. Normal monitoring is unaffected"
+        return "NTFY_IMAGES is enabled, so ntfy alerts are sent as text only until Pillow is installed. Every other feature is unaffected"
+    return "Required only when NTFY_IMAGES attaches artwork to ntfy alerts, which is currently disabled. Every other feature is unaffected"
 
 
 # Returns the action that installs Pillow, which the published Docker images already carry
@@ -7497,7 +7500,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         if present:
             checks.append(make_doctor_check("Environment", "PASS", f"Required dependency {package_name} is installed"))
         else:
-            advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", f"Install {package_name} then retry", False)
+            advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", f'Install it with: pip3 install "{package_name}"', False)
             checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
 
     optional = (("spotipy", "Spotipy", "Used only for legacy OAuth metadata"), ("pycookiecheat", "pycookiecheat", "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"), ("PIL", "Pillow", "Used only for artwork attachments in ntfy alerts"))
@@ -7514,15 +7517,15 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         else:
             missing_fix = f"Install it with: pip3 install {package_name}"
             if module_name == "pycookiecheat":
-                missing_purpose = "Required only for importing cookies from Chromium-based browsers. Normal monitoring is unaffected. Firefox cookie import is also unaffected"
+                missing_purpose = "Required only for importing cookies from Chromium-based browsers. Every other feature is unaffected. Firefox cookie import is also unaffected"
             elif module_name == "PIL":
                 missing_purpose = doctor_notification_images_detail()
                 missing_fix = doctor_notification_images_fix()
             elif module_name == "colorama":
-                missing_purpose = "Coloured output may not render in the classic Windows Command Prompt. Normal monitoring is unaffected"
+                missing_purpose = "Coloured output may not render in the classic Windows Command Prompt. Every other feature is unaffected"
                 missing_fix = "Install it with: pip3 install colorama. Or use Windows Terminal, which needs nothing extra"
             else:
-                missing_purpose = f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
+                missing_purpose = f"Optional: {purpose}. Every other feature is unaffected when this feature is unused"
             advice = make_recovery_advice("dependency.missing", f"Optional dependency {package_name} is not installed", recovery_fix_with_guide(missing_fix, INSTALLATION_GUIDE_URL), False)
             checks.append(make_doctor_check("Environment", "WARN", advice.summary, missing_purpose, advice))
     return checks
@@ -7632,11 +7635,11 @@ def doctor_secret_checks(env_path=None) -> List[DoctorCheck]:
     if from_environment:
         checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the environment", ", ".join(from_environment)))
     if from_settings:
-        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the configuration file or command line", ", ".join(from_settings)))
+        checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the configuration file", ", ".join(from_settings)))
     if from_command_line:
         checks.append(make_doctor_check("Configuration", "PASS", "Secrets loaded from the command line", ", ".join(from_command_line)))
     if not checks:
-        checks.append(make_doctor_check("Configuration", "PASS", "No secrets loaded", "Nothing was read from a dotenv file, the environment or the command line"))
+        checks.append(make_doctor_check("Configuration", "PASS", "No secrets loaded", "Nothing was read from a dotenv file, the environment, the configuration file or the command line"))
     return checks
 
 
@@ -7798,15 +7801,14 @@ def doctor_connectivity_endpoint_check() -> DoctorCheck:
 
 
 # Reports Spotify connectivity using the authenticated request already performed
-def doctor_check_connectivity(report: DoctorReport) -> List[DoctorCheck]:
-    checks = [doctor_connectivity_endpoint_check()]
+def doctor_check_connectivity(report: DoctorReport, endpoint_check: Optional[DoctorCheck] = None) -> List[DoctorCheck]:
+    checks = [doctor_connectivity_endpoint_check() if endpoint_check is None else endpoint_check]
     if report.buddy_list is not None:
         return checks + [make_doctor_check("Connectivity", "PASS", "Spotify is reachable", "Confirmed through the authenticated buddy-list request")]
     advice = report.authentication_advice
     if advice is not None and advice.code in ("network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable"):
         return checks + [make_doctor_check("Connectivity", "FAIL", advice.summary, advice.detail, advice)]
-    skip_advice = make_recovery_advice("unknown", "Spotify connectivity could not be checked", "Fix the authentication or configuration failure above then run --doctor again", True)
-    return checks + [make_doctor_check("Connectivity", "SKIP", "Spotify connectivity check was skipped", "Authentication did not produce a reusable buddy-list response", skip_advice)]
+    return checks + [make_doctor_check("Connectivity", "SKIP", "Spotify connectivity was not checked", "Authentication did not succeed, so no request was attempted")]
 
 
 # Validates an optional target and checks whether buddy-list data can currently observe it
@@ -7820,8 +7822,7 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         advice = classify_recovery_error(exc, "target_invalid")
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
     if report.buddy_list is None:
-        advice = make_recovery_advice("unknown", "Live target visibility could not be checked", "Fix the authentication or connectivity failure above then run --doctor again", True)
-        return [make_doctor_check("Target", "SKIP", f"Target '{target_id}' live check was skipped", "No authenticated buddy-list response is available", advice)]
+        return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", "Authentication did not succeed, so no lookup was attempted")]
     try:
         found, _ = spotify_get_friend_info(report.buddy_list, target_id)
     except Exception as exc:
@@ -7949,7 +7950,7 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
 def _doctor_ask_yes_no(question: str) -> bool:
     while True:
         try:
-            value = read_interactively(input, f"{question} [y/N]: ").strip().casefold()
+            value = read_interactively(input, colorize("info", f"{question} [y/N]: ")).strip().casefold()
         except EOFError:
             print("\nDelivery test skipped.")
             return False
@@ -8012,9 +8013,14 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     return results
 
 
+# Renders one doctor result marker in the colour its status calls for
+def render_doctor_marker(status: str) -> str:
+    return colorize(DOCTOR_MARK_STYLES.get(status, "info"), f"[{status}]")
+
+
 # Prints one result the way the report renders it, so a row printed after the report matches the rows above it
 def _doctor_print_check(check) -> None:
-    print(f"[{check.status}] {check.label}")
+    print(f"{render_doctor_marker(check.status)} {check.label}")
     if check.detail:
         print(f"  {check.detail}")
 
@@ -8030,14 +8036,16 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
         progress("configuration")
     report.checks.extend(doctor_check_configuration(config_path, env_path, startup_checks, target_value))
     if progress is not None:
+        progress("connectivity")
+    endpoint_check = doctor_connectivity_endpoint_check()
+    if progress is not None:
         progress("authentication")
     report.checks.extend(doctor_check_authentication(report))
     if progress is not None:
         progress("metadata")
     report.checks.extend(doctor_check_optional_oauth())
-    if progress is not None:
-        progress("connectivity")
-    report.checks.extend(doctor_check_connectivity(report))
+    # The Spotify reachability row reuses the authentication response, so it is added once that is known
+    report.checks.extend(doctor_check_connectivity(report, endpoint_check))
     if progress is not None:
         progress("the monitored profile")
     report.checks.extend(doctor_check_target(report, target_value))
@@ -8066,15 +8074,16 @@ def render_doctor_sections(report: DoctorReport) -> str:
             continue
         lines.extend(("", colorize("section", section)))
         for check in section_checks:
-            lines.append(f"[{check.status}] {check.label}")
+            lines.append(f"{render_doctor_marker(check.status)} {check.label}")
             if check.detail:
                 lines.append(f"  {check.detail}")
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
             if rendered_advice is not None and check.status != "PASS":
-                # The fix carries its own guide line, so each line is indented on its own
-                lines.extend(f"  {advice_line}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
+                # The fix carries its own guide line, so each line is indented and styled on its own rather
+                # than leaving one colour sequence open across the newline
+                lines.extend(f"  {colorize('info', advice_line)}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
     return sanitize_error_text("\n".join(lines))
 
 
@@ -8088,7 +8097,7 @@ def render_doctor_summary(checks: Sequence[DoctorCheck]) -> str:
         summary_line = colorize("warning", f"  All critical checks passed with {warnings} warning(s). Review the warnings above.")
     else:
         summary_line = colorize("boolean_true", "  All checks passed. You are good to go!")
-    return "\n".join(("", colorize("header", "Summary"), summary_line, "", f"Guide: {DOCTOR_GUIDE_URL}"))
+    return "\n".join(("", colorize("header", "Summary"), summary_line, "", colorize("info", f"Guide: {DOCTOR_GUIDE_URL}")))
 
 
 # Returns the raw terminal stream for trusted Doctor cursor movement
@@ -9531,7 +9540,7 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
 
 # Opens one selected setup section then returns to the summary
 def _wizard_edit_setup_section(state: WizardSetupState, method: str) -> None:
-    section = _wizard_ask_choice("Which setup section should be changed?", [("Target and persistence", "Change the Spotify profile and whether it is saved."), ("Polling interval", "Change how often Spotify is checked."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("Output files", "Change log and CSV output settings."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Target", "Change the Spotify profile that is monitored."), ("Polling interval", "Change how often Spotify is checked."), ("Authentication", "Choose cookie or advanced client authentication again."), ("Email notifications", "Change SMTP details and email events."), ("Webhook alerts", "Change Discord or ntfy details and events."), ("Output files", "Change log and CSV output settings."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
     if section == 0:
         print()
         _wizard_collect_target_section(state, state.target)
@@ -9878,19 +9887,8 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         if doctor_offered and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
             doctor_ran = True
             if _wizard_load_effective_setup(config_path, env_path):
-                render_doctor_notice()
-                try:
-                    report = build_doctor_report(target, str(config_path), str(env_path) if env_path.is_file() else None, progress=_doctor_progress)
-                finally:
-                    _doctor_progress_clear()
-                print(render_doctor_sections(report))
-                # Authentication is decided by the preflight alone, so a declined delivery test cannot invalidate it
-                doctor_failed = any(check.status == "FAIL" for check in report.checks)
-                if not doctor_failed:
-                    auth["validated"] = True
-                _doctor_offer_notification_tests(report)
-                print(render_doctor_summary(report.checks))
-                doctor_failed = any(check.status == "FAIL" for check in report.checks)
+                doctor_failed = run_doctor(target, str(config_path), str(env_path) if env_path.is_file() else None) != 0
+                auth["validated"] = not doctor_failed
             else:
                 doctor_failed = True
     except (EOFError, KeyboardInterrupt):

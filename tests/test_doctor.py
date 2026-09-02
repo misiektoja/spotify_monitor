@@ -321,8 +321,8 @@ def test_dependent_checks_are_skipped_clearly(monkeypatch):
     configure_valid_doctor(monkeypatch)
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", "")
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    assert any(check.section == "Connectivity" and check.status == "SKIP" and "skipped" in check.label.lower() for check in report.checks)
-    assert any(check.section == "Target" and check.status == "SKIP" and "skipped" in check.label.lower() for check in report.checks)
+    assert any(check.section == "Connectivity" and check.status == "SKIP" and check.label == "Spotify connectivity was not checked" for check in report.checks)
+    assert any(check.section == "Target" and check.status == "SKIP" and check.label == "The monitored profile was not checked" for check in report.checks)
 
 
 # Verifies Python version support reports pass and fail states
@@ -341,7 +341,7 @@ def test_optional_dependency_reporting(monkeypatch):
     optional = [check for check in checks if "Optional dependency" in check.label]
     assert len(optional) == 3
     assert all(check.status == "WARN" for check in optional)
-    assert all("Normal monitoring is unaffected" in check.detail for check in optional)
+    assert all("Every other feature is unaffected" in check.detail for check in optional)
 
 
 # Verifies a warning about a library that cannot affect this machine is not shown at all

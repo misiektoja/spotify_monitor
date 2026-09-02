@@ -699,7 +699,7 @@ def test_setup_edit_menu_offers_every_section(monkeypatch, tmp_path, capsys):
     summary = capsys.readouterr().out
     monitor._wizard_edit_setup_section(state, "manual")
     assert summary.index("Polling interval:") < summary.index("Token source:")
-    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "Output files", "File destinations", "Return to summary"]
+    assert [label for label, _ in captured["options"]] == ["Target", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "Output files", "File destinations", "Return to summary"]
     assert state.target == "new.user"
     assert state.config_values["TARGET_USER_URI_ID"] == ""
 
