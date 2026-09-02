@@ -18,6 +18,9 @@ PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
 REPOSITORY_MARKDOWN = ("README.md", "SUPPORT.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "THIRD_PARTY_NOTICES.md", ".github/pull_request_template.md")
 ISSUE_TEMPLATES = (".github/ISSUE_TEMPLATE/config.yml", ".github/ISSUE_TEMPLATE/bug_report.yml", ".github/ISSUE_TEMPLATE/feature_request.yml")
 
+# Guide constants may point at Spotify's own developer documentation, which this repository cannot resolve to a page
+EXTERNAL_GUIDE_PREFIXES = ("https://developer.spotify.com/",)
+
 
 # Reads one repository asset as UTF-8
 def read_asset(relative_path: str) -> str:
@@ -224,15 +227,20 @@ def test_configuration_docs_use_friend_focused_target_guidance():
     assert_concepts(configuration, "profile URL", "spotify:user:USER_ID", "standalone user ID")
 
 
-# Verifies every runtime documentation URL resolves to a published page and anchor
+# Verifies every runtime documentation URL resolves to a published page and anchor, enumerated so a new constant cannot escape the check
 def test_runtime_guide_urls_match_documentation_anchors():
-    guide_names = ("QUICK_START_GUIDE_URL", "INSTALLATION_GUIDE_URL", "CONFIG_GUIDE_URL", "COOKIE_GUIDE_URL", "MANUAL_COOKIE_GUIDE_URL", "CONTAINER_FIREFOX_GUIDE_URL", "CLIENT_GUIDE_URL", "TARGET_GUIDE_URL", "FOLLOWING_GUIDE_URL", "SMTP_GUIDE_URL", "WEBHOOK_GUIDE_URL", "SECRETS_GUIDE_URL", "INTERVALS_GUIDE_URL", "DOCTOR_GUIDE_URL", "OAUTH_GUIDE_URL", "SCROBBLE_AUTH_GUIDE_URL")
+    guide_names = sorted(name for name in vars(monitor) if name.endswith("_GUIDE_URL"))
+    assert guide_names, "no runtime guide constants were found"
+
     for name in guide_names:
         guide_url = getattr(monitor, name)
-        assert guide_url.startswith(monitor.DOCUMENTATION_URL + "/")
+        if not guide_url.startswith(monitor.DOCUMENTATION_URL + "/"):
+            assert guide_url.startswith(EXTERNAL_GUIDE_PREFIXES), f"{name} points outside both this site and the allowed external guides: {guide_url}"
+            continue
         suffix = guide_url.removeprefix(monitor.DOCUMENTATION_URL).lstrip("/")
         relative_path, _separator, fragment = suffix.partition("#")
         document_path = "docs/index.md" if not relative_path else f"docs/{relative_path.rstrip('/')}" + ".md"
+        assert (PROJECT_ROOT / document_path).is_file(), f"{name} references missing page {document_path}"
         document = read_asset(document_path)
         if fragment:
             assert fragment in markdown_anchors(document), f"{name} references missing anchor #{fragment} in {document_path}"
