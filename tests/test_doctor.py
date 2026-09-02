@@ -1029,3 +1029,15 @@ def test_the_summary_is_rendered_after_the_delivery_tests():
         assert max(offers) < min(summaries), f"{function.name} renders the summary before the delivery tests"
 
     assert checked, "no doctor entry point runs the delivery tests and then the summary"
+
+
+# Verifies the connectivity row carries the label and the endpoint detail shared with the sibling monitors
+def test_the_connectivity_row_names_the_shared_endpoint(monkeypatch):
+    monkeypatch.setattr(monitor, "CHECK_INTERNET_URL", "https://probe.example/ping")
+    monkeypatch.setattr(monitor, "check_internet", lambda **kwargs: True)
+    passing = monitor.doctor_connectivity_endpoint_check()
+    monkeypatch.setattr(monitor, "check_internet", lambda **kwargs: False)
+    failing = monitor.doctor_connectivity_endpoint_check()
+
+    assert (passing.status, passing.label, passing.detail) == ("PASS", "The connectivity endpoint is reachable", "Endpoint: https://probe.example/ping")
+    assert (failing.status, failing.label, failing.detail) == ("FAIL", "The connectivity endpoint could not be reached", "Endpoint: https://probe.example/ping")

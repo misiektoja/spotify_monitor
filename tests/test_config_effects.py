@@ -1,3 +1,4 @@
+import inspect
 import os
 import subprocess
 import sys
@@ -137,9 +138,9 @@ def test_explicit_connectivity_arguments_win(monkeypatch, url, timeout, verify):
 
 # Confirms no connectivity setting is frozen into the function signature where a config file cannot reach it
 def test_connectivity_defaults_are_not_bound_at_import():
-    defaults = monitor.check_internet.__defaults__
+    parameters = inspect.signature(monitor.check_internet).parameters
 
-    assert defaults == (None, None, None), "resolving these at import time would freeze them before any config file loads"
+    assert [parameters[name].default for name in ("url", "timeout", "verify")] == [None, None, None], "resolving these at import time would freeze them before any config file loads"
 
 
 # Confirms an unedited webhook destination switches the channel off while a real one keeps it on
