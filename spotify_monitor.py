@@ -8161,14 +8161,20 @@ def resolve_executable(path):
     raise FileNotFoundError(f"Could not find executable '{path}'")
 
 
-# Prints a safe monitoring error while suppressing repeated equivalent fix hints
-def print_monitor_recovery(error: Any, context: str, tracker: RecoveryHintTracker, prefix: str) -> RecoveryAdvice:
-    advice = classify_recovery_error(error, context)
-    print(prefix + advice.summary)
-    if tracker.should_render(advice):
-        print(f"To fix: {advice.fix}")
+# Renders one monitoring failure in the shape every monitor in this family prints
+def render_monitor_recovery(advice: RecoveryAdvice, retry_note: str = "", with_fix: bool = True, label: str = "Error") -> str:
+    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
+    if with_fix:
+        lines.append(f"To fix: {advice.fix}")
         if DEBUG_MODE and advice.detail:
-            print(f"Technical detail: {sanitize_error_text(advice.detail)}")
+            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+    return "\n".join(lines)
+
+
+# Prints a safe monitoring error while suppressing repeated equivalent fix hints
+def print_monitor_recovery(error: Any, context: str, tracker: Optional[RecoveryHintTracker] = None, retry_note: str = "", label: str = "Error") -> RecoveryAdvice:
+    advice = classify_recovery_error(error, context)
+    print(render_monitor_recovery(advice, retry_note, tracker is None or tracker.should_render(advice), label))
     return advice
 
 
@@ -10012,7 +10018,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             _restore_timeout_alarm(alarm_state)
         except TimeoutException:
             _restore_timeout_alarm(alarm_state)
-            print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"* Error, retrying in {display_time(ALARM_RETRY)}: ")
+            print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"retrying in {display_time(ALARM_RETRY)}")
             print_cur_ts("Timestamp:\t\t\t")
             time.sleep(ALARM_RETRY)
             continue
@@ -10027,7 +10033,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice, LIVENESS_CHECK_COUNTER)
             if outage_outcome in ("full", "repeat"):
-                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
             elif outage_outcome == "degraded":
                 print_outage_liveness(user_uri_id, advice, outage.since)
 
@@ -10087,7 +10093,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
             except Exception as e:
-                print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+                print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
                 print_cur_ts("Timestamp:\t\t\t")
                 time.sleep(SPOTIFY_ERROR_INTERVAL)
                 continue
@@ -10274,7 +10280,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         break
                     except TimeoutException:
                         _restore_timeout_alarm(alarm_state)
-                        print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"* Error, retrying in {display_time(ALARM_RETRY)}: ")
+                        print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"retrying in {display_time(ALARM_RETRY)}")
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(ALARM_RETRY)
                     except Exception as e:
@@ -10307,13 +10313,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # With the liveness banner off the aggregated 50x and network summaries keep their old cadence
                         if outage_outcome == "repeat":
                             if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
-                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))}): ")
+                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))})")
                                 print_cur_ts("Timestamp:\t\t\t")
                                 error_500_start_ts = 0
                                 error_500_counter = 0
 
                             elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
-                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))}): ")
+                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))})")
                                 print_cur_ts("Timestamp:\t\t\t")
                                 error_network_issue_start_ts = 0
                                 error_network_issue_counter = 0
@@ -10325,7 +10331,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             print_outage_liveness(user_uri_id, advice, outage.since)
 
                         elif report_in_full:
-                            print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+                            print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
 
                             if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
                                 if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
@@ -10424,7 +10430,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         else:
                             sp_playlist_image_url = ""
                     except Exception as e:
-                        print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
+                        print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
                         continue
