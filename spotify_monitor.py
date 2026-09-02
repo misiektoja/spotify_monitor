@@ -7566,9 +7566,9 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if CSV_FILE:
         destinations.append(("CSV destination", Path(CSV_FILE)))
     else:
-        checks.append(make_doctor_check("Configuration", "PASS", "CSV logging is disabled", "No CSV file will be written"))
+        checks.append(make_doctor_check("Configuration", "PASS", "CSV logging is disabled"))
     if DISABLE_LOGGING:
-        checks.append(make_doctor_check("Configuration", "PASS", "Output logging is disabled", "No log file will be written"))
+        checks.append(make_doctor_check("Configuration", "PASS", "Output logging is disabled"))
     elif SP_LOGFILE:
         try:
             log_suffix = resolve_log_file_suffix(target_value, lastfm_username)
@@ -7773,7 +7773,7 @@ def doctor_check_notifications() -> List[DoctorCheck]:
 # Checks webhook alert settings without sending a message
 def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not WEBHOOK_ENABLED:
-        return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled", "No webhook was sent")]
+        return [make_doctor_check("Notifications", "PASS", "Webhook alerts are disabled")]
     if not normalized_webhook_provider():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_PROVIDER must be discord or ntfy")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
