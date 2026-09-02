@@ -8257,6 +8257,20 @@ def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, us
         print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
 
 
+# Returns the path arguments for a command that writes the dotenv file, which is what makes the two sentinels differ
+def _wizard_secret_command_paths(method: str, config_path, env_path) -> str:
+    parts = ""
+    if config_path is not None:
+        # Passed through rather than resolved, since resolving it would name a file called "none" in the working directory
+        selected_config = "none" if str(config_path).casefold() == "none" else _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
+        parts += f" --config-file {_wizard_quote_argument(selected_config)}"
+    # These commands write the dotenv file and refuse --env-file none, so repeating the sentinel would print a command the tool rejects
+    if env_path is not None and str(env_path).casefold() != "none":
+        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
+        parts += f" --env-file {_wizard_quote_argument(selected_env)}"
+    return parts
+
+
 # Returns the Firefox import command with a read-only profile mount for the selected host
 def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
     selected_host = host_os or "linux"
@@ -8270,33 +8284,21 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, 
     command = f"{prefix} --import-browser-cookie --browser firefox"
     if target:
         command += f" {_wizard_quote_argument(target)}"
-    if config_path is not None:
-        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
-        command += f" --config-file {_wizard_quote_argument(selected_config)}"
-    if env_path is not None:
-        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {_wizard_quote_argument(selected_env)}"
+    command += _wizard_secret_command_paths(method, config_path, env_path)
     return command
 
 
 # Returns the hidden manual sp_dc entry command with optional setup context
 def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None) -> str:
     command = f"{_wizard_cmd_prefix(method, exact=exact, host_os=host_os)} --set-sp-dc"
-    if config_path is not None:
-        selected_config = _wizard_container_path(config_path) if method in ("docker", "compose") else str(Path(config_path).expanduser().resolve())
-        command += f" --config-file {_wizard_quote_argument(selected_config)}"
-    if env_path is not None:
-        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {_wizard_quote_argument(selected_env)}"
+    command += _wizard_secret_command_paths(method, config_path, env_path)
     return command
 
 
 # Returns the hidden webhook URL entry command for one installation method
 def _wizard_set_webhook_url_cmd(method: str, env_path=None, exact: bool = False) -> str:
     command = f"{_wizard_cmd_prefix(method, exact=exact)} --set-webhook-url"
-    if env_path is not None:
-        selected_env = _wizard_container_path(env_path) if method in ("docker", "compose") else str(Path(env_path).expanduser().resolve())
-        command += f" --env-file {_wizard_quote_argument(selected_env)}"
+    command += _wizard_secret_command_paths(method, None, env_path)
     return command
 
 

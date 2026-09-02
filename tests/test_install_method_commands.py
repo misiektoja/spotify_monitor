@@ -163,6 +163,19 @@ def test_set_sp_dc_commands_use_container_data_paths(tmp_path, monkeypatch):
     assert monitor._wizard_set_sp_dc_cmd("compose", tmp_path / ".env", config_path=tmp_path / "custom.conf") == "docker compose run --rm spotify_monitor --set-sp-dc --config-file /data/custom.conf --env-file /data/.env"
 
 
+# Verifies the two sentinels are treated differently, since these commands write the dotenv file they name
+def test_dotenv_writing_commands_drop_the_env_sentinel_and_keep_the_config_one(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    for command in (monitor._wizard_firefox_import_cmd("manual", "none", config_path="none"), monitor._wizard_set_sp_dc_cmd("manual", "none", config_path="none")):
+        # Every one of these refuses --env-file none, so repeating it would print a command the tool rejects
+        assert "--env-file" not in command
+        # The config sentinel is carried, and never resolved into a file called "none" in the working directory
+        assert command.endswith("--config-file none")
+
+    assert monitor._wizard_set_webhook_url_cmd("manual", "none").endswith("--set-webhook-url")
+
+
 # Verifies Chromium-family browser choices are removed on Windows and inside containers
 def test_browser_choices_respect_platform_and_container(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
