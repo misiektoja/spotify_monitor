@@ -55,6 +55,7 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
+    monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
     if report is not None:
         monkeypatch.setattr(monitor, "build_doctor_report", Mock(return_value=report))
@@ -305,7 +306,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "", "n"])
+        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
@@ -340,7 +341,7 @@ def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "3", "y"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "y", "", "3", "y"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -354,7 +355,7 @@ def test_setup_review_edits_polling_before_save(monkeypatch):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "2", "2", "45", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "y", "", "2", "2", "45", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
@@ -367,7 +368,7 @@ def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         monkeypatch.chdir(directory)
-        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "1", "3", "n", "", "n"])
+        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "1", "3", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
         monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
@@ -386,7 +387,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "", "n", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "y", "", "", "n", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
 
@@ -413,7 +414,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
 def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "", "3", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "y", "", "", "3", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(monitor, "run_browser_cookie_import", Mock(side_effect=monitor.BrowserCookieImportError("safe import failure")))
@@ -463,7 +464,7 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
         directory = Path(directory_name)
         login_path = directory / "login.protobuf"
         login_path.write_bytes(b"fixture")
-        install_inputs(monkeypatch, ["target.user", "y", "", "2", "y", str(login_path), "n", "n", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "2", "y", str(login_path), "n", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "parse_login_request_body_file", lambda path: ("device-id", "system-id", "account-id", "refresh-private-value"))
         with pytest.raises(SystemExit) as error:
@@ -591,7 +592,7 @@ def test_setup_edit_menu_offers_every_section(monkeypatch, tmp_path, capsys):
     summary = capsys.readouterr().out
     monitor._wizard_edit_setup_section(state, "manual")
     assert summary.index("Polling interval:") < summary.index("Token source:")
-    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "File destinations", "Return to summary"]
+    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "Output files", "File destinations", "Return to summary"]
     assert state.target == "new.user"
     assert state.config_values["TARGET_USER_URI_ID"] == ""
 
@@ -610,6 +611,7 @@ def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, cap
     monkeypatch.setattr(monitor, "_wizard_collect_auth_section", lambda state, method: (events.append("authentication"), print("\nChoose an authentication mode")))
     monkeypatch.setattr(monitor, "_wizard_collect_email_section", lambda state: events.append("email"))
     monkeypatch.setattr(monitor, "_wizard_collect_webhook_section", lambda state: events.append("webhook"))
+    monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: events.append("output"))
     monkeypatch.setattr(monitor, "_wizard_review_setup", lambda state, method: False)
 
     with pytest.raises(SystemExit) as error:
@@ -617,13 +619,13 @@ def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, cap
 
     output = capsys.readouterr().out
     assert error.value.code == 1
-    assert events == ["target", "polling", "authentication", "email", "webhook"]
+    assert events == ["target", "polling", "authentication", "email", "webhook", "output"]
     assert "Spotify polling interval [1800s - 30m]:\n\nChoose an authentication mode" in output
     assert "Spotify polling interval [1800s - 30m]:\n\n\nChoose an authentication mode" not in output
 
 
 # Verifies each non-target edit choice invokes only its matching section collector
-@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_polling_section", False), (2, "_wizard_collect_auth_section", True), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_destination_section", True)])
+@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_polling_section", False), (2, "_wizard_collect_auth_section", True), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_output_section", False), (6, "_wizard_collect_destination_section", True)])
 def test_setup_edit_routes_to_selected_section(monkeypatch, tmp_path, section, function_name, with_method):
     baseline = dict(vars(monitor))
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
@@ -890,3 +892,27 @@ def test_noninteractive_setup_is_rejected(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "interactive terminal" in output
     assert monitor.QUICK_START_GUIDE_URL in output
+
+
+# Verifies the output section records the log choice and the CSV destination it was given
+def test_the_output_section_records_the_log_and_csv_choices(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["n", str(tmp_path / "plays.csv")])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["DISABLE_LOGGING"] is True
+    assert state.config_values["CSV_FILE"] == str(tmp_path / "plays.csv")
+
+
+# Verifies a blank CSV answer disables CSV output rather than storing an empty path as a file name
+def test_a_blank_csv_answer_disables_csv_output(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["y", ""])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["DISABLE_LOGGING"] is False
+    assert state.config_values["CSV_FILE"] == ""
