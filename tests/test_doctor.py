@@ -760,7 +760,8 @@ def test_cli_doctor_without_target_bypasses_normal_startup():
     assert "connectivity gate called" not in result.stderr
     assert "monitor loop called" not in result.stderr
     assert "Start monitoring:" in result.stdout
-    assert "SPOTIFY_USER_URI_ID --env-file none" in result.stdout
+    assert "python3 spotify_monitor.py --env-file none" in result.stdout
+    assert "SPOTIFY_USER_URI_ID" not in result.stdout
 
 
 # Verifies a successful Compose Doctor command prints the matching target and file context
@@ -798,10 +799,10 @@ def test_cli_scrobble_doctor_success_prints_compose_monitoring_command():
     assert "private-refresh-token" not in result.stdout
 
 
-# Verifies a target already saved in config is not replaced with a placeholder
-def test_doctor_monitoring_command_uses_saved_target(monkeypatch, capsys, tmp_path):
+# Verifies a run with no target of its own prints no placeholder, so the command can be pasted as it is
+def test_doctor_monitoring_command_carries_no_placeholder_target(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
-    monitor._wizard_print_monitor_after_doctor(tmp_path / "spotify_monitor.conf", tmp_path / ".env", target_is_saved=True)
+    monitor._wizard_print_monitor_after_doctor(tmp_path / "spotify_monitor.conf", tmp_path / ".env")
     output = capsys.readouterr().out
     assert "SPOTIFY_USER_URI_ID" not in output
     assert f"--config-file {tmp_path / 'spotify_monitor.conf'}" in output
@@ -1042,3 +1043,19 @@ def test_the_connectivity_row_names_the_shared_endpoint(monkeypatch):
     assert (passing.status, passing.label, passing.detail) == ("PASS", "The connectivity endpoint is reachable", "Endpoint: https://probe.example/ping")
     assert (failing.status, failing.label, failing.detail) == ("FAIL", "The connectivity endpoint could not be reached", "Endpoint: https://probe.example/ping")
     assert failing.advice is not None and failing.advice.fix == "Check network, DNS, proxy and CHECK_INTERNET_URL settings"
+
+
+# Verifies Ctrl+C at a delivery prompt ends the run instead of declining one test and asking the next
+def test_a_delivery_prompt_interrupt_ends_the_run(monkeypatch):
+    def interrupt(prompt=""):
+        raise KeyboardInterrupt
+
+    # The handler restores the saved stream, so it is pointed at the one this test captures
+    monkeypatch.setattr(monitor, "stdout_bck", monitor.sys.stdout)
+    monkeypatch.setattr(monitor, "FLAG_FILE", "")
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    with pytest.raises(SystemExit) as raised:
+        monitor._doctor_ask_yes_no("Send one test")
+
+    assert raised.value.code == 0
