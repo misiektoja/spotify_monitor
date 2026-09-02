@@ -1018,7 +1018,8 @@ SERVER_TIME_URL = "https://open.spotify.com/"
 SP_CACHED_CLIENT_TOKEN = None
 SP_CLIENT_TOKEN_EXPIRES_AT = 0
 
-LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL
+# Whole checks, so a check interval longer than the liveness interval still waits one check instead of reporting on every check
+LIVENESS_CHECK_COUNTER = max(1, -(-LIVENESS_CHECK_INTERVAL // SPOTIFY_CHECK_INTERVAL)) if LIVENESS_CHECK_INTERVAL else 0
 
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
@@ -5050,7 +5051,6 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 time.sleep(TOKEN_RETRY_TIMEOUT)
             else:
                 debug_print("Spotify access token obtained successfully", length=length)
-                verbose_notice("Authentication token refreshed (cookie mode)")
                 break
         except Exception as e:
             last_error = str(e)
@@ -5689,7 +5689,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
     previous_status = None
     alive_counter = 0
     # The shared liveness interval counted in scrobble health checks, which run on their own interval
-    liveness_after = LIVENESS_CHECK_INTERVAL / SCROBBLE_HEALTH_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL and SCROBBLE_HEALTH_CHECK_INTERVAL else 0
+    liveness_after = max(1, -(-LIVENESS_CHECK_INTERVAL // SCROBBLE_HEALTH_CHECK_INTERVAL)) if LIVENESS_CHECK_INTERVAL and SCROBBLE_HEALTH_CHECK_INTERVAL else 0
     print(f"* Scrobble health monitoring started for Last.fm profile {username}.")
     print(f"* Checking now then every {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}. Press Ctrl+C to stop.")
     print_cur_ts("\nTimestamp:\t\t\t")
@@ -6192,7 +6192,7 @@ def spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refr
     SP_CACHED_ACCESS_TOKEN = access_token
     SP_CACHED_REFRESH_TOKEN = parsed[1].get(3)
     SP_ACCESS_TOKEN_EXPIRES_AT = time.time() + expires_in
-    verbose_notice("Authentication token refreshed (advanced client mode)")
+    debug_print("Spotify access token refreshed", source="advanced client")
     return access_token
 
 
@@ -6250,7 +6250,6 @@ def spotify_get_client_token(app_version, device_id, system_id, **device_overrid
     SP_CACHED_CLIENT_TOKEN = client_token
     SP_CLIENT_TOKEN_EXPIRES_AT = time.time() + ttl
     debug_print("Client token refreshed successfully", ttl=f"{ttl}s")
-    verbose_notice("Spotify client token refreshed")
 
     return client_token
 
@@ -6339,7 +6338,6 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_
 
     SP_CACHED_OAUTH_APP_TOKEN = auth_manager.get_access_token(as_dict=False)
     debug_print("OAuth app access token refreshed successfully")
-    verbose_notice("Legacy OAuth metadata token refreshed")
 
     return SP_CACHED_OAUTH_APP_TOKEN
 
@@ -6651,7 +6649,6 @@ def spotify_get_web_access_token_data():
     SP_WEB_ACCESS_TOKEN_EXPIRES_AT = expires_at
     SP_CACHED_WEB_CLIENT_ID = client_id
     debug_print("Anonymous Spotify web-player token obtained successfully", token_len=len(access_token))
-    verbose_notice("Web-player metadata token refreshed")
     return {"access_token": access_token, "expires_at": expires_at, "client_id": client_id}
 
 
@@ -10779,7 +10776,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_cur_ts("\nTimestamp:\t\t\t")
 
                     if LIVENESS_CHECK_COUNTER and alive_counter >= LIVENESS_CHECK_COUNTER:
-                        verbose_print(f"Monitoring healthy for {user_uri_id}. Target remains visible with no activity change")
+                        verbose_print(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
                         print_cur_ts("Liveness check, timestamp:\t")
                         alive_counter = 0
 
@@ -12018,7 +12015,7 @@ def main():
             _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, TARGET_USER_URI_ID, doctor_exit=doctor_exit)
         sys.exit(doctor_exit)
 
-    LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL else 0
+    LIVENESS_CHECK_COUNTER = max(1, -(-LIVENESS_CHECK_INTERVAL // SPOTIFY_CHECK_INTERVAL)) if LIVENESS_CHECK_INTERVAL else 0
 
     if args.send_test_webhook:
         print("* Sending a test webhook ...\n")

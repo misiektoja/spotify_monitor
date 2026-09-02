@@ -478,12 +478,21 @@ class SpotifyWebBackendTests(unittest.TestCase):
     def test_anonymous_token_caching(self):
         token_data = {"access_token": "anonymous-token", "expires_at": int(time.time()) + 3600, "client_id": "web-client"}
         output = io.StringIO()
-        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
+        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh, patch.object(monitor, "DEBUG_MODE", True), redirect_stdout(output):
             first = monitor.spotify_get_web_access_token_data()
             second = monitor.spotify_get_web_access_token_data()
         self.assertEqual(first, second)
         self.assertEqual(refresh.call_count, 1)
-        self.assertEqual(output.getvalue().count("Web-player metadata token refreshed"), 1)
+        # The refresh is debug detail rather than a verbose notice, so a cached read prints nothing at all
+        self.assertEqual(output.getvalue().count("Anonymous Spotify web-player token obtained successfully"), 1)
+
+    # Verifies a routine token refresh is debug detail, so a verbose run stays quiet between real events
+    def test_a_routine_token_refresh_prints_nothing_in_verbose(self):
+        token_data = {"access_token": "anonymous-token", "expires_at": int(time.time()) + 3600, "client_id": "web-client"}
+        output = io.StringIO()
+        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data), patch.object(monitor, "VERBOSE_MODE", True), patch.object(monitor, "DEBUG_MODE", False), redirect_stdout(output):
+            monitor.spotify_get_web_access_token_data()
+        self.assertEqual(output.getvalue(), "")
 
     # Verifies current desktop bundles provide dynamically discovered operation hashes
     def test_persisted_query_discovery_and_cache(self):
