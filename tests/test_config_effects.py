@@ -180,3 +180,27 @@ def test_the_config_settings_count_is_a_debug_only_trace(tmp_path, monkeypatch, 
     monkeypatch.setattr(monitor, "DEBUG_MODE", True)
     monitor.load_config_file(config, namespace=namespace)
     assert "Configuration applied" in capsys.readouterr().out
+
+
+
+# Confirms only debug keeps the screen, since a cleared terminal loses the run being compared against
+@pytest.mark.parametrize(("flag", "expected"), (("--debug", False), ("--verbose", True)))
+def test_only_debug_mode_keeps_the_screen(monkeypatch, flag, expected):
+    cleared = []
+    monkeypatch.setattr(monitor, "clear_screen", lambda enabled=True: cleared.append(bool(enabled)))
+    monkeypatch.setattr(monitor, "CLEAR_SCREEN", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
+    monkeypatch.setattr(monitor.sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "check_internet", lambda: True)
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "test-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: {"friends": []})
+    monkeypatch.setattr(monitor, "spotify_list_friends", lambda friends, token: None)
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--list-friends", "--spotify-dc-cookie", "test-cookie", "--env-file", "none", flag])
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert cleared == [expected]

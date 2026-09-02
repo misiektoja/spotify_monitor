@@ -10631,7 +10631,12 @@ def main():
         sys.stdout = TerminalStream(sys.stdout)
 
     keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--set-smtp-password", "--authorize-scrobble-health", "--doctor"))
-    clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
+    # Read straight from sys.argv because argparse has not run yet, and the screen is cleared before it does
+    if "--debug" in sys.argv:
+        DEBUG_MODE = True
+    if CLEAR_SCREEN and DEBUG_MODE:
+        debug_print("Terminal screen clear skipped because debug mode is active")
+    clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history and not DEBUG_MODE)
 
     print_startup_banner()
 
