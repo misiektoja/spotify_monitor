@@ -805,7 +805,7 @@ def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
     assert monitor.WEBHOOK_URL == url
     assert monitor.WEBHOOK_ENABLED is True
     assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
-    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+    delivery.assert_called_once_with("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True)
 
 
 # Verifies a known ntfy URL corrects a stale configured provider before Doctor or test delivery
@@ -826,7 +826,7 @@ def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
     assert error.value.code == 0
     assert monitor.WEBHOOK_PROVIDER == "ntfy"
     assert "Using ntfy" in capsys.readouterr().out
-    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+    delivery.assert_called_once_with("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True)
 
 
 # Verifies the direct webhook URL CLI override retains strict HTTPS validation
@@ -974,3 +974,24 @@ def test_webhook_wizard_artwork_in_container_points_at_published_image(monkeypat
 
     assert monitor._wizard_collect_ntfy_images() is False
     assert "published Docker images" in capsys.readouterr().out
+
+
+# Verifies both test commands carry the subject, title and body shared with the sibling monitors
+def test_the_test_messages_use_the_shared_wording(monkeypatch):
+    email = Mock(return_value=0)
+    delivery = Mock(return_value=0)
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+
+    for flag in ("--send-test-email", "--send-test-webhook"):
+        monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])
+        with pytest.raises(SystemExit) as error:
+            monitor.main()
+        assert error.value.code == 0
+
+    assert email.call_args.args[:2] == ("spotify_monitor: test email", "This test email was sent by --send-test-email. Your SMTP settings work.")
+    assert delivery.call_args.args[:2] == ("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.")
