@@ -300,3 +300,22 @@ def test_a_labelled_failure_keeps_the_shared_shape(loop_environment, capsys):
 
     first_line = capsys.readouterr().out.splitlines()[0]
     assert first_line == "* Error 50x (6x times in the last 30 minutes): Spotify is temporarily unavailable (retrying in 3 minutes)"
+
+
+# Verifies the liveness banner explains itself without --verbose, so a plain run never prints a bare timestamp
+def test_the_liveness_banner_explains_itself_without_diagnostics(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_COUNTER", 1)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(timestamp_ms=started_at * 1000))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 4
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    assert "* Monitoring healthy for watched-user. The target is visible with no activity change since the last check" in output
+    assert "Liveness check, timestamp:" in output
