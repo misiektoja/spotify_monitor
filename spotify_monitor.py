@@ -2952,8 +2952,13 @@ _LABEL_STYLES = (
 _FROM_TO_COUNT_RE = re.compile(r"(from\s+)(\d+)(\s+to\s+)(\d+)")
 _DIFF_COUNT_UP_RE = re.compile(r"(\(\+\d+\))")
 _DIFF_COUNT_DOWN_RE = re.compile(r"(\(-\d+\))")
-# The separator is a space in prose and an equals sign in the key=value diagnostic fields
-_USER_TAG_RE = re.compile(r"((?:Spotify user|for user|by user|of user|Monitoring(?:\s+Spotify)?\s+user|\buser):?)([\t ]+|=)((?!ID\b)[\w.:-]+)")
+# In prose the value is only tagged when it looks like an identifier, so ordinary sentences such as
+# "the user becomes active" or "Spotify user to monitor" keep their next word plain
+_USER_TAG_RE = re.compile(r"((?:Spotify user|for user|by user|of user|Monitoring(?:\s+Spotify)?\s+user))([\t ]+)((?!ID\b)(?=[\w.:-]*\d)[\w.:-]{4,})")
+
+# A labelled "user" field names its value directly, so the report row "Last.fm user: john" and the
+# key=value diagnostic field "user=john" tag any value
+_USER_FIELD_RE = re.compile(r"(\buser)(:[\t ]+|=)((?!ID\b)[\w.:-]+)")
 
 # A quoted value right after "user" is the monitored URI ID, the same value the "User URI ID:" row reports
 _QUOTED_USER_ID_CONTEXT_RE = re.compile(r"\buser(?:\s+id)?\s+$", re.IGNORECASE)
@@ -2963,7 +2968,8 @@ _TIME_ONLY_RE = re.compile(r"(?<![\w:])(~?(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?
 _SHORT_RANGE_DATE_RE = re.compile(r"\(\w{3}\s+\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\)", re.IGNORECASE)
 _DATE_RANGE_RE = re.compile(r"\b\w{3}\s+\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\b", re.IGNORECASE)
 _HOUR_RANGE_RE = re.compile(r"\b\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\b", re.IGNORECASE)
-_URL_RE = re.compile(r"(https?://[^\s\]]+)")
+# Sentence punctuation, a closing bracket or a closing quote right after a link is not part of it
+_URL_RE = re.compile(r"(https?://[^\s\]]+?)(?=[.,;:!?'\")>]*(?:[\s\]]|$))")
 _PERCENTAGE_RE = re.compile(r"\(\d{1,3}%")
 _BOOLEAN_TRUE_RE = re.compile(r"\bTrue\b|\bEnabled\b")
 _BOOLEAN_FALSE_RE = re.compile(r"\bFalse\b|\bDisabled\b")
@@ -3210,6 +3216,7 @@ def _colorize_line(line):
 
     # Highlight the Spotify user named inside a sentence
     line = _sub_outside_color(_USER_TAG_RE, lambda mo: f"{mo.group(1)}{mo.group(2)}{colorize('id', mo.group(3))}", line)
+    line = _sub_outside_color(_USER_FIELD_RE, lambda mo: f"{mo.group(1)}{mo.group(2)}{colorize('id', mo.group(3))}", line)
 
     # Highlight counters and their differences
     line = _sub_outside_color(_FROM_TO_COUNT_RE, lambda mo: f"{mo.group(1)}{colorize('count_up' if int(mo.group(4)) >= int(mo.group(2)) else 'count_down', mo.group(2))}{mo.group(3)}{colorize('count_up' if int(mo.group(4)) >= int(mo.group(2)) else 'count_down', mo.group(4))}", line)

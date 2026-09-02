@@ -452,6 +452,20 @@ def test_quoted_command_options_stay_plain(colored):
     assert colored["playlist"] not in monitor._colorize_line("Replace '--env-file none' with a writable path")
 
 
+# Verifies sentence punctuation, brackets and quotes around a link stay outside the underlined address
+@pytest.mark.parametrize("line, url", [
+    ("Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID.", "https://open.spotify.com/user/USER_ID"),
+    ("# - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie", "https://open.spotify.com/"),
+    ('CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"', "https://clienttoken.spotify.com/v1/clienttoken"),
+    ("Track URL:\t\t\thttps://open.spotify.com/track/abc", "https://open.spotify.com/track/abc"),
+])
+def test_link_colour_excludes_trailing_punctuation(colored, line, url):
+    result = monitor._colorize_line(line)
+
+    assert monitor.ANSI_ESCAPE_RE.sub("", result) == line
+    assert f"{colored['link']}{url}{monitor.ANSI_RESET}" in result
+
+
 # Verifies a quoted fragment of a URL stays plain, since it is a piece of an address rather than a name
 @pytest.mark.parametrize("value", ["?code=", "&state="])
 def test_quoted_url_fragments_stay_plain(colored, value):
@@ -521,6 +535,27 @@ def test_target_id_uses_the_id_colour_everywhere(colored, line):
     assert monitor.ANSI_ESCAPE_RE.sub("", result) == line
     assert f"{colored['id']}31nnv6eqt4qswvjhcnknimtxqife{monitor.ANSI_RESET}" in result
     assert colored["track"] not in result
+
+
+# Verifies the word after "user" stays plain in ordinary prose, since wizard and config text explains what
+# the tool does rather than naming the monitored friend
+@pytest.mark.parametrize("line", [
+    "     Alerts when the user becomes active, becomes inactive or monitoring has a problem.",
+    "# Spotify user to monitor by raw ID, Spotify user URI or Spotify profile URL",
+    "# How often to check for user activity in seconds",
+    "# Sends the Spotify user agent string to Protobuf",
+])
+def test_prose_after_the_word_user_stays_plain(colored, line):
+    assert monitor._colorize_line(line) == line
+
+
+# Verifies a labelled user field still colours any value, including a short name without digits
+@pytest.mark.parametrize("line, value", [
+    ("  Last.fm user: john", "john"),
+    ("Starting check: check=#3, user=target.user", "target.user"),
+])
+def test_labelled_user_fields_still_colour_their_value(colored, line, value):
+    assert f"{colored['id']}{value}{monitor.ANSI_RESET}" in monitor._colorize_line(line)
 
 
 # Verifies a display name still renders as a name, so the two identifiers stay distinguishable
