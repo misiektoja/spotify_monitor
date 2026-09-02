@@ -7451,6 +7451,9 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
 def make_doctor_check(section: str, status: str, label: str, detail: Any = "", advice: Optional[RecoveryAdvice] = None) -> DoctorCheck:
     if status not in DOCTOR_STATUSES:
         raise ValueError(f"Unsupported doctor status: {status}")
+    # A row the user has to act on is useless without an action, so the row is rejected rather than printed bare
+    if status in ("WARN", "FAIL") and (advice is None or not advice.fix):
+        raise ValueError(f"Doctor {status} rows require a fix")
     safe_label = sanitize_error_text(label)
     safe_detail = sanitize_error_text(detail)
     # Several advice objects carry the same text as their summary, and printing it twice reads as two problems
@@ -7459,11 +7462,15 @@ def make_doctor_check(section: str, status: str, label: str, detail: Any = "", a
 
 # Explains what missing artwork support means for the current NTFY_IMAGES setting and how to install it
 def doctor_notification_images_detail() -> str:
-    install_command = notification_images_install_command()
-    remedy = f"Install it with: {install_command}" if install_command else "The published Docker images already include it, so rebuild from one of them"
     if NTFY_IMAGES:
-        return f"NTFY_IMAGES is enabled, so ntfy alerts are sent as text only until Pillow is installed. Normal monitoring is unaffected. {remedy}"
-    return f"Required only when NTFY_IMAGES attaches artwork to ntfy alerts, which is currently disabled. Normal monitoring is unaffected. {remedy}"
+        return "NTFY_IMAGES is enabled, so ntfy alerts are sent as text only until Pillow is installed. Normal monitoring is unaffected"
+    return "Required only when NTFY_IMAGES attaches artwork to ntfy alerts, which is currently disabled. Normal monitoring is unaffected"
+
+
+# Returns the action that installs Pillow, which the published Docker images already carry
+def doctor_notification_images_fix() -> str:
+    install_command = notification_images_install_command()
+    return f"Install it with: {install_command}" if install_command else "The published Docker images already include it, so rebuild from one of them"
 
 
 # Checks the active Python version and required or optional runtime dependencies
@@ -7503,15 +7510,19 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         if present:
             checks.append(make_doctor_check("Environment", "PASS", f"Optional dependency {package_name} is installed", purpose))
         else:
+            missing_fix = f"Install it with: pip3 install {package_name}"
             if module_name == "pycookiecheat":
                 missing_purpose = "Required only for importing cookies from Chromium-based browsers. Normal monitoring is unaffected. Firefox cookie import is also unaffected"
             elif module_name == "PIL":
                 missing_purpose = doctor_notification_images_detail()
+                missing_fix = doctor_notification_images_fix()
             elif module_name == "colorama":
-                missing_purpose = "Coloured output may not render in the classic Windows Command Prompt. Normal monitoring is unaffected. Windows Terminal needs nothing extra"
+                missing_purpose = "Coloured output may not render in the classic Windows Command Prompt. Normal monitoring is unaffected"
+                missing_fix = "Install it with: pip3 install colorama. Or use Windows Terminal, which needs nothing extra"
             else:
                 missing_purpose = f"Optional: {purpose}. Normal monitoring is unaffected when this feature is unused"
-            checks.append(make_doctor_check("Environment", "WARN", f"Optional dependency {package_name} is not installed", missing_purpose))
+            advice = make_recovery_advice("dependency.missing", f"Optional dependency {package_name} is not installed", recovery_fix_with_guide(missing_fix, INSTALLATION_GUIDE_URL), False)
+            checks.append(make_doctor_check("Environment", "WARN", advice.summary, missing_purpose, advice))
     return checks
 
 
@@ -7527,7 +7538,8 @@ def doctor_check_container_playback() -> List[DoctorCheck]:
     warning = container_playback_warning()
     if warning is None:
         return []
-    return [make_doctor_check("Environment", "WARN", "Container host Spotify auto-play is unavailable by default", warning)]
+    advice = make_recovery_advice("config.invalid", "Container host Spotify auto-play is unavailable by default", "Run Spotify Monitor on the host, or disable TRACK_SONGS inside the container", False)
+    return [make_doctor_check("Environment", "WARN", advice.summary, warning, advice)]
 
 
 # Returns the nearest existing parent for a path without creating directories
@@ -7962,7 +7974,11 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     if email_ready:
         if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
             result = send_email("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5)
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered. Review the SMTP error above")
+            if result == 0:
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
+            else:
+                advice = make_recovery_advice("smtp.connection", "Doctor test email delivery failed", recovery_fix_with_guide("Review the SMTP error above and correct the email settings", SMTP_GUIDE_URL), True)
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test email could not be delivered", advice)
         else:
             check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent", "You declined the real delivery test. Run doctor again and approve the email test when ready")
         results.append(check)
@@ -7973,7 +7989,11 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
         provider = webhook_provider_display_name()
         if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
             result = send_webhook("spotify_monitor: doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", f"Doctor test webhook through {provider} delivered" if result == 0 else f"Doctor test webhook through {provider} delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered. Review the webhook error above")
+            if result == 0:
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", f"Doctor test webhook through {provider} delivered", "One real test webhook was sent after confirmation")
+            else:
+                advice = make_recovery_advice("webhook.connection", f"Doctor test webhook through {provider} delivery failed", recovery_fix_with_guide("Review the webhook error above and correct the destination settings", WEBHOOK_GUIDE_URL), True)
+                check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "FAIL", advice.summary, "The approved test webhook could not be delivered", advice)
         else:
             check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", f"Test webhook through {provider} was not sent", "You declined the real delivery test. Run doctor again and approve the webhook test when ready")
         results.append(check)
@@ -8636,16 +8656,19 @@ def _wizard_ask_choice(question: str, options, default_index: int = 0) -> int:
 
 
 # Prompts until the user provides a positive integer or accepts the default
-def _wizard_ask_positive_int(question: str, default: int) -> int:
+def _wizard_ask_positive_int(question: str, default: int, maximum: Optional[int] = None) -> int:
     while True:
         value = _wizard_ask_text(question, default=str(default), required=True)
+        # An empty answer means the retry offer was declined, so the default stands instead of asking again
+        if not value:
+            return int(default)
         try:
             parsed = int(value)
         except ValueError:
             parsed = 0
-        if parsed > 0:
+        if parsed > 0 and (maximum is None or parsed <= maximum):
             return parsed
-        print("  Enter a positive whole number.")
+        print(f"  Enter a whole number from 1 through {maximum}." if maximum is not None else "  Enter a positive whole number.")
 
 
 # Converts a duration to a compact seconds plus human-readable wizard label
@@ -8869,7 +8892,7 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
         host = _wizard_ask_text("SMTP host", default=_wizard_default(pending.get("SMTP_HOST")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, host, secret_updates):
             return []
-        port = _wizard_ask_positive_int("SMTP port", int(pending.get("SMTP_PORT") or 587))
+        port = _wizard_ask_positive_int("SMTP port", int(pending.get("SMTP_PORT") or 587), maximum=65535)
         use_ssl = _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=bool(pending.get("SMTP_SSL", True)))
         user = _wizard_ask_text("SMTP username", default=_wizard_default(pending.get("SMTP_USER")), required=True)
         if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, user, secret_updates):
@@ -11889,7 +11912,8 @@ def main():
             else:
                 sys.exit(1)
         elif config_retired and args.doctor:
-            doctor_startup_checks.append(make_doctor_check("Configuration", "WARN", "Configuration file contains removed settings", describe_retired_settings(config_retired, cfg_path)))
+            retired_advice = make_recovery_advice("config.invalid", "Configuration file contains removed settings", recovery_fix_with_guide("Delete the listed settings from the configuration file", CONFIG_GUIDE_URL), False)
+            doctor_startup_checks.append(make_doctor_check("Configuration", "WARN", retired_advice.summary, describe_retired_settings(config_retired, cfg_path), retired_advice))
 
     # Config loading can replace these globals, so reapply explicit flags to preserve CLI precedence
     apply_diagnostic_cli_overrides(args)

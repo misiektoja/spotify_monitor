@@ -53,7 +53,7 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
     monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: dict(auth))
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
-    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
     monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
@@ -1008,7 +1008,7 @@ def test_an_abandoned_mail_server_answer_switches_email_off(monkeypatch, tmp_pat
     secret_updates = {}
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "" if question == abandoned else "answer@example.test")
-    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
 
     assert monitor._wizard_collect_email(config_values, secret_updates, tmp_path / ".env") == []
@@ -1022,7 +1022,7 @@ def test_an_abandoned_mail_server_answer_switches_scrobble_health_email_off(monk
     config_values = {"SCROBBLE_HEALTH_NOTIFICATION": True, "ERROR_NOTIFICATION": True}
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "")
-    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
 
     assert monitor._wizard_collect_email(config_values, {}, tmp_path / ".env", scrobble_health=True) == []
@@ -1035,7 +1035,7 @@ def test_rejected_mail_server_settings_can_be_abandoned(monkeypatch, tmp_path):
     labels = []
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "answer@example.test")
-    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.make_recovery_advice("smtp.invalid", "SMTP settings are invalid", "Correct SENDER_EMAIL", False, "SENDER_EMAIL is not a valid address"))
     monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append(label) or False)
@@ -1447,3 +1447,22 @@ def test_a_rejected_cookie_is_not_queued(monkeypatch, capsys):
     assert "SP_DC_COOKIE" not in updates
     assert result["complete"] is False
     assert "Spotify rejected the entered sp_dc cookie" in capsys.readouterr().out
+
+
+# Verifies the port question rejects a number no TCP port can be, instead of saving it for the doctor to reject
+def test_the_smtp_port_question_rejects_a_number_above_the_port_range(monkeypatch, capsys):
+    answers = iter(["70000", "2525"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    chosen = monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535)
+
+    assert chosen == 2525
+    assert "  Enter a whole number from 1 through 65535." in capsys.readouterr().out
+
+
+# Verifies declining the retry offer keeps the saved value rather than asking the same question forever
+def test_declining_the_retry_offer_keeps_the_saved_number(monkeypatch, capsys):
+    answers = iter(["", "n"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    assert monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535) == 587

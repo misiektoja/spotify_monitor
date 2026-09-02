@@ -17,6 +17,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Composes the two renderers the way run_doctor does, so a test can assert on the whole transcript
 def render_doctor_report(report):
     return monitor.render_doctor_sections(report) + "\n" + monitor.render_doctor_summary(report.checks)
+
+
+# Builds the minimal advice a WARN or FAIL row is required to carry
+def actionable_advice():
+    return monitor.make_recovery_advice("unknown", "a summary", "do the thing", False)
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
 
@@ -358,7 +363,7 @@ def test_missing_colorama_is_reported_on_windows(monkeypatch):
     missing = next(check for check in checks if "colorama" in check.label)
     assert missing.status == "WARN"
     assert "Coloured output may not render in the classic Windows Command Prompt" in missing.detail
-    assert "Windows Terminal needs nothing extra" in missing.detail
+    assert "Windows Terminal, which needs nothing extra" in missing.advice.fix
 
 
 # Verifies Chromium dependency guidance explicitly preserves Firefox import support
@@ -839,7 +844,7 @@ def test_optional_artwork_dependency_explains_ntfy_images(monkeypatch):
 
     assert check.status == "WARN"
     assert "NTFY_IMAGES is enabled" in check.detail
-    assert "spotify_monitor[notification-images]" in check.detail
+    assert "spotify_monitor[notification-images]" in check.advice.fix
 
 
 # Verifies artwork guidance inside a container points at the published images instead of pip
@@ -850,8 +855,8 @@ def test_optional_artwork_dependency_guides_container_users(monkeypatch):
     check = next(item for item in checks if "Pillow" in item.label)
 
     assert "currently disabled" in check.detail
-    assert "Docker images" in check.detail
-    assert "pip install" not in check.detail
+    assert "Docker images" in check.advice.fix
+    assert "pip install" not in check.advice.fix
 
 
 # Exported secrets are a documented alternative to a dotenv file, so they must apply when no file is loaded
@@ -904,7 +909,7 @@ def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
 def test_a_row_never_prints_its_summary_twice():
     repeated = "No valid sp_dc cookie was found"
 
-    check = monitor.make_doctor_check("Configuration", "WARN", repeated, repeated)
+    check = monitor.make_doctor_check("Configuration", "WARN", repeated, repeated, actionable_advice())
 
     assert check.label == repeated
     assert check.detail == ""
@@ -981,10 +986,19 @@ def test_a_detail_that_repeats_its_label_is_dropped():
     assert check.detail == ""
 
 
+# Verifies a row the user has to act on cannot reach the report without an action
+def test_an_actionable_row_is_rejected_without_a_fix():
+    for status in ("WARN", "FAIL"):
+        with pytest.raises(ValueError):
+            monitor.make_doctor_check("Configuration", status, "a label", "some detail")
+
+    assert monitor.make_doctor_check("Configuration", "SKIP", "a label").status == "SKIP"
+
+
 # Verifies only the four shared markers can reach a report
 def test_only_the_four_shared_markers_are_accepted():
     assert monitor.DOCTOR_STATUSES == ("PASS", "WARN", "FAIL", "SKIP")
-    assert [monitor.make_doctor_check("Configuration", status, "a label").status for status in monitor.DOCTOR_STATUSES] == list(monitor.DOCTOR_STATUSES)
+    assert [monitor.make_doctor_check("Configuration", status, "a label", advice=actionable_advice()).status for status in monitor.DOCTOR_STATUSES] == list(monitor.DOCTOR_STATUSES)
 
     with pytest.raises(ValueError):
         monitor.make_doctor_check("Configuration", "INFO", "a label")
