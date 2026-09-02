@@ -325,7 +325,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert "The monitoring account must follow the target. Setup checks this after authentication is saved." in output
         assert "If needed, the tool offers to follow the target. The target must also share listening activity." in output
         assert "Uses exported Protobuf request bodies.\n\nHow should cookie authentication be configured?" in output
-        assert "Install method: manual\n\nWhat would you like to do?" in output
+        assert "Install method:        manual\n\nWhat would you like to do?" in output
         assert "\nSaved files\n\n  Configuration:" in output
         assert "\nNext steps\n\nCheck setup again:" in output
         assert monitor.QUICK_START_GUIDE_URL in output

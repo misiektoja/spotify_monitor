@@ -2393,7 +2393,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     method = _wizard_install_method()
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, target)
     monitor_command = _wizard_action_command(method, "", selected_config, destination, target or "SPOTIFY_USER_URI_ID")
-    _wizard_print_command("Check authentication and the target:", doctor_command)
+    _wizard_print_command("Check setup again:", doctor_command)
     _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
 
@@ -2441,8 +2441,9 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     monitor_command = _wizard_action_command(method, "", selected_config, destination, "SPOTIFY_USER_URI_ID")
     print("* SP_DC_COOKIE validation succeeded")
     print(f"* Updated dotenv: {destination}")
-    _wizard_print_command("Check authentication:", doctor_command)
-    _wizard_print_command("Start monitoring after replacing SPOTIFY_USER_URI_ID:", monitor_command)
+    print()
+    _wizard_print_command("Check setup again:", doctor_command)
+    _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
 
 
@@ -2484,8 +2485,9 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
     monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", selected_config, destination)
     print(f"* Updated dotenv: {destination}")
     print("* Saved: LASTFM_API_KEY")
-    _wizard_print_command("Check scrobble health setup:", doctor_command)
-    _wizard_print_command("Start scrobble health monitoring:", monitor_command)
+    print()
+    _wizard_print_command("Check setup again:", doctor_command)
+    _wizard_print_command("After Doctor passes, start scrobble health monitoring:", monitor_command)
     return str(destination)
 
 
@@ -2582,8 +2584,9 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
     print("* Webhook URL looks valid")
     print(f"* Updated private settings file: {destination}")
+    print()
     _wizard_print_command("Send a test webhook:", test_command)
-    _wizard_print_command("Check the complete setup:", doctor_command)
+    _wizard_print_command("Check setup again:", doctor_command)
     return str(destination)
 
 
@@ -7487,7 +7490,7 @@ def doctor_check_notifications() -> List[DoctorCheck]:
             smtp_object.quit()
         finally:
             smtp_object = None
-        return [make_doctor_check("Notifications", "PASS", SMTP_READY_CHECK_LABEL, "No email was sent during this passive check")]
+        return [make_doctor_check("Notifications", "PASS", SMTP_READY_CHECK_LABEL, f"Alerts: {', '.join(_startup_notification_categories())}. No email was sent during this passive check")]
     except Exception as exc:
         advice = classify_recovery_error(exc, "smtp")
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
@@ -7520,7 +7523,7 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
     if not webhook_notifications_enabled():
         advice = make_recovery_advice("webhook.invalid", "Webhook alerts are on but no alert types are selected", "Turn on at least one webhook alert in spotify_monitor.conf or set WEBHOOK_ENABLED to False", False)
         return [make_doctor_check("Notifications", "WARN", advice.summary, "No webhook was sent during this passive check", advice)]
-    return [make_doctor_check("Notifications", "PASS", f"{WEBHOOK_READY_CHECK_LABEL} for {webhook_provider_display_name()}", "The private link was not displayed. No webhook was sent during this passive check")]
+    return [make_doctor_check("Notifications", "PASS", f"{WEBHOOK_READY_CHECK_LABEL} for {webhook_provider_display_name()}", f"Alerts: {', '.join(_startup_webhook_notification_categories())}. The private link was not displayed. No webhook was sent during this passive check")]
 
 
 # Prompts for explicit doctor delivery consent and defaults safely to no
@@ -7844,6 +7847,13 @@ def _wizard_validate_destination(method: str, path, label: str) -> Path:
     return Path(path).expanduser().resolve()
 
 
+# Prints one aligned label and value block, so every summary row lines up
+def _wizard_print_summary_rows(rows) -> None:
+    width = max(len(label) for label, _ in rows) + 1
+    for label, value in rows:
+        print(f"  {(label + ':'):<{width}} {value}")
+
+
 # Prints one labelled command with sibling-style indentation and spacing
 def _wizard_print_command(label: str, command: str, suffix: str = "") -> None:
     print(label)
@@ -7890,8 +7900,7 @@ def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[s
     command_target = None if target_is_saved else target or "SPOTIFY_USER_URI_ID"
     command = _wizard_action_command(method, "", config_path, env_path, command_target)
     print(colorize('header', "\nNext steps\n"))
-    print("After Doctor passes, start monitoring:")
-    print(f"    {colorize('section', command)}\n")
+    _wizard_print_command("After Doctor passes, start monitoring:", command)
 
 
 # Prints the install-aware scrobble health command after a successful Doctor run
@@ -7910,8 +7919,7 @@ def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, us
         action += " --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN"
     command = _wizard_action_command(method, action, config_path, env_path)
     print(colorize('header', "\nNext steps\n"))
-    print("After Doctor passes, start scrobble health monitoring:")
-    print(f"    {colorize('section', command)}\n")
+    _wizard_print_command("After Doctor passes, start scrobble health monitoring:", command)
     if include_api_key_placeholder or include_refresh_token_placeholder:
         print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
 
@@ -8831,25 +8839,31 @@ def _wizard_collect_destination_section(state: WizardSetupState, method: str) ->
 
 # Prints the current editable setup answers without exposing secrets
 def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
-    print(colorize('header', "\nSetup summary\n"))
-    print(f"  Target: {state.target}")
-    print(f"  Persist target: {'yes' if state.persist_target else 'no'}")
-    print(f"  Polling interval: {_wizard_format_duration(int(state.config_values['SPOTIFY_CHECK_INTERVAL']))}")
-    print(f"  Token source: {state.auth['source']}")
-    print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
+    webhook_state = f"enabled ({webhook_provider_display_name(state.config_values.get('WEBHOOK_PROVIDER'))})" if state.enabled_webhooks else "disabled"
+    rows = [
+        ("Target", state.target),
+        ("Persist target", "yes" if state.persist_target else "no"),
+        ("Polling interval", _wizard_format_duration(int(state.config_values["SPOTIFY_CHECK_INTERVAL"]))),
+        ("Token source", state.auth["source"]),
+        ("Authentication status", "complete" if state.auth["complete"] else "incomplete"),
+    ]
     if state.auth.get("mount_required"):
-        print("  Required action: run the host-specific Firefox import command shown after saving")
+        rows.append(("Required action", "run the host-specific Firefox import command shown after saving"))
     if state.auth.get("host_os"):
-        print(f"  Docker host: {CONTAINER_FIREFOX_HOSTS[state.auth['host_os']][0]}")
+        rows.append(("Docker host", CONTAINER_FIREFOX_HOSTS[state.auth["host_os"]][0]))
     if state.auth.get("browser"):
-        print(f"  Browser: {browser_label(state.auth['browser'])}")
-    print(f"  Email: {'enabled' if state.enabled_notifications else 'disabled'}")
-    print(f"  Email notifications: {', '.join(state.enabled_notifications) if state.enabled_notifications else 'none'}")
-    print(f"  Webhook: {'enabled' if state.enabled_webhooks else 'disabled'}")
-    print(f"  Webhook alerts: {', '.join(state.enabled_webhooks) if state.enabled_webhooks else 'none'}")
-    print(f"  Config destination: {state.config_path}")
-    print(f"  Dotenv destination: {state.env_path}")
-    print(f"  Install method: {method}")
+        rows.append(("Browser", browser_label(state.auth["browser"])))
+    rows.extend([
+        ("Email", "enabled" if state.enabled_notifications else "disabled"),
+        ("Email notifications", ", ".join(state.enabled_notifications) if state.enabled_notifications else "none"),
+        ("Webhook", webhook_state),
+        ("Webhook alerts", ", ".join(state.enabled_webhooks) if state.enabled_webhooks else "none"),
+        ("Config destination", state.config_path),
+        ("Dotenv destination", state.env_path),
+        ("Install method", method),
+    ])
+    print(colorize('header', "\nSetup summary\n"))
+    _wizard_print_summary_rows(rows)
 
 
 # Opens one selected setup section then returns to the summary
@@ -9081,7 +9095,7 @@ def _wizard_welcome() -> None:
     _wizard_print_command("Easiest start (guided setup wizard):", f"{prefix} --setup", setup_suffix)
     _wizard_print_command("Check setup before monitoring:", f"{prefix} --doctor <spotify_target>")
     print(f"Full options: {colorize('section', prefix + ' --help')}")
-    print(f"\nGuide:        {QUICK_START_GUIDE_URL}\n")
+    print(f"\nGuide:        {colorize('link', QUICK_START_GUIDE_URL)}\n")
     if interactive and _wizard_ask_yes_no("Run the guided setup wizard now?", default=True):
         print()
         run_setup_wizard()
@@ -9215,12 +9229,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if method == "compose" and persist_target and compose_uses_default_files:
         _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
-        if method == "compose" and not persist_target:
-            print("docker compose up --no-log-prefix requires a persisted target. Use this direct command instead:")
-        else:
-            print(start_label)
-        print(f"    {colorize('section', monitor_command)}\n")
-    print(f"Guide: {QUICK_START_GUIDE_URL}\n")
+        # A compose run without a persisted target cannot use the short command, so the label explains the direct one
+        direct_label = "docker compose up --no-log-prefix requires a persisted target. Use this direct command instead:" if method == "compose" and not persist_target else start_label
+        _wizard_print_command(direct_label, monitor_command)
+    print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and not doctor_failed and (auth["validated"] or doctor_ran)
     if local_ready and _wizard_ask_yes_no("Start monitoring now? Monitoring will continue until Ctrl+C.", default=True):
         exec_args = _wizard_local_command_args(method, exact=True)
@@ -9293,7 +9305,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     print(colorize('header', "\nSaved files\n"))
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
-        print(f"  Backup: {write_status['backup_path']}")
+        print(f"  Backup:        {write_status['backup_path']}")
     if secret_updates or not env_path.exists():
         try:
             update_status = update_dotenv_file(env_path, secret_updates)
@@ -9329,7 +9341,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         _wizard_print_command(start_label, "docker compose up --no-log-prefix")
     else:
         _wizard_print_command(start_label, monitor_command)
-    print(f"Guide: {SCROBBLE_AUTH_GUIDE_URL}\n")
+    print(f"Guide: {colorize('link', SCROBBLE_AUTH_GUIDE_URL)}\n")
     local_ready = method in ("manual", "pip") and auth["complete"] and doctor_ran and not doctor_failed
     if local_ready and _wizard_ask_yes_no("Start scrobble health monitoring now? Monitoring will continue until Ctrl+C.", default=True):
         exec_args = _wizard_local_command_args(method, exact=True)

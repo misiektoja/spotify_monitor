@@ -849,7 +849,8 @@ def test_doctor_webhook_check_is_read_only(monkeypatch):
     post = Mock(side_effect=AssertionError("webhook request attempted"))
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
     checks = monitor.doctor_check_webhook_notifications()
-    assert checks == [monitor.make_doctor_check("Notifications", "PASS", f"{monitor.WEBHOOK_READY_CHECK_LABEL} for {monitor.webhook_provider_display_name()}", "The private link was not displayed. No webhook was sent during this passive check")]
+    assert checks == [monitor.make_doctor_check("Notifications", "PASS", f"{monitor.WEBHOOK_READY_CHECK_LABEL} for {monitor.webhook_provider_display_name()}", f"Alerts: {', '.join(monitor._startup_webhook_notification_categories())}. The private link was not displayed. No webhook was sent during this passive check")]
+    assert checks[0].detail.startswith("Alerts: ")
     post.assert_not_called()
 
 
