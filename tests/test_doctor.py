@@ -1065,3 +1065,32 @@ def test_a_delivery_prompt_interrupt_ends_the_run(monkeypatch):
         monitor._doctor_ask_yes_no("Send one test")
 
     assert raised.value.code == 0
+
+
+# An interval below the safe floor gets the account rate limited, which looks like the tool being broken
+def test_a_rate_limiting_interval_is_warned_about(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 5)
+
+    rows = [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    assert [item.status for item in rows] == ["WARN"]
+    assert str(monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL) in require_advice(rows[0]).fix
+
+
+# The default interval is safe, so the row must stay away rather than warning about every run
+def test_a_safe_interval_is_not_warned_about(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL)
+
+    assert not [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+
+# A run with no target warns with the sentence every monitor in this family uses, so the report reads the same
+def test_a_missing_target_warns_with_the_shared_detail(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+
+    checks = monitor.doctor_check_target(monitor.DoctorReport(), None)
+
+    assert [check.status for check in checks] == ["WARN"]
+    assert checks[0].detail == "Nothing will be monitored until one is given"

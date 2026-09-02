@@ -534,6 +534,8 @@ The polling interval is the number of seconds between Friend Activity checks. Se
 spotify_monitor <spotify_target> -c 20
 ```
 
+An interval below 30 seconds invites the Spotify rate limiter, which stops the tool seeing anything. `--doctor` warns when the configured interval is that short.
+
 For scrobble health, set the time between successful comparisons through `SCROBBLE_HEALTH_CHECK_INTERVAL` or `--scrobble-check-interval`:
 
 ```sh

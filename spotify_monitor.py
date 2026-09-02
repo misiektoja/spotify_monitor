@@ -1285,6 +1285,9 @@ class RecoveryError(Exception):
 # tools, because every state it would cover is a state the others already call PASS
 DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
 
+# A check interval below this invites the Spotify rate limiter, which stops the tool seeing anything
+DOCTOR_MIN_SAFE_CHECK_INTERVAL = 30
+
 # Delivery results are printed as they happen rather than inside a section, but they still count in the summary
 DOCTOR_DELIVERY_SECTION = "Optional delivery tests"
 
@@ -7638,6 +7641,11 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
             checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
     checks.extend(doctor_secret_checks(env_path))
 
+    intervals = f"{display_time(SPOTIFY_CHECK_INTERVAL)} between checks"
+    if SPOTIFY_CHECK_INTERVAL < DOCTOR_MIN_SAFE_CHECK_INTERVAL:
+        advice = make_recovery_advice("spotify.rate_limited", "Check intervals are short enough to be rate limited", recovery_fix_with_guide(f"Raise SPOTIFY_CHECK_INTERVAL to at least {DOCTOR_MIN_SAFE_CHECK_INTERVAL} seconds", INTERVALS_GUIDE_URL), True)
+        checks.append(make_doctor_check("Configuration", "WARN", "Check intervals are short", intervals, advice))
+
     if MONITOR_MODE != "scrobble_health" and TOKEN_SOURCE not in ("cookie", "client"):
         advice = classify_recovery_error(context="config_invalid", detail=f"TOKEN_SOURCE must be cookie or client, not {TOKEN_SOURCE!r}")
         checks.append(make_doctor_check("Configuration", "FAIL", "TOKEN_SOURCE is invalid", advice.detail, advice))
@@ -7791,7 +7799,7 @@ def doctor_check_connectivity(report: DoctorReport) -> List[DoctorCheck]:
 def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorCheck]:
     if target_value is None or target_value == "":
         advice = classify_recovery_error(context="target_missing")
-        return [make_doctor_check("Target", "WARN", "No Spotify target was provided", "Authentication-only preflight completed", advice)]
+        return [make_doctor_check("Target", "WARN", "No Spotify target was provided", "Nothing will be monitored until one is given", advice)]
     try:
         target_id = resolve_target_user_id(target_value, None)
     except ValueError as exc:
