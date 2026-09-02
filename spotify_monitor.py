@@ -3501,6 +3501,9 @@ def check_internet(url=None, timeout=None, verify=None):
 def clear_screen(enabled=True):
     if not enabled:
         return
+    # Don't clear screen if stdout is redirected (not a TTY)
+    if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
+        return
     try:
         if platform.system() == 'Windows':
             os.system('cls')
@@ -3508,6 +3511,15 @@ def clear_screen(enabled=True):
             os.system('clear')
     except Exception:
         print("* Cannot clear the screen contents")
+
+
+# Commands that print a one-shot result and exit, so the screen keeps whatever is already on it
+KEEP_HISTORY_FLAGS = ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--set-smtp-password", "--set-webhook-url", "--authorize-scrobble-health", "--doctor", "--send-test-email", "--send-test-webhook", "--help", "-h")
+
+
+# Returns True when the running command is a one-shot whose output has to stay scrollable
+def keep_terminal_history() -> bool:
+    return any(flag in sys.argv for flag in KEEP_HISTORY_FLAGS)
 
 
 # Renders one diagnostic line as an operation followed by comma-separated key=value fields, dropping unset ones
@@ -10802,13 +10814,12 @@ def main():
     if not isinstance(sys.stdout, TerminalStream):
         sys.stdout = TerminalStream(sys.stdout)
 
-    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--set-smtp-password", "--authorize-scrobble-health", "--doctor"))
     # Read straight from sys.argv because argparse has not run yet, and the screen is cleared before it does
     if "--debug" in sys.argv:
         DEBUG_MODE = True
     if CLEAR_SCREEN and DEBUG_MODE:
         debug_print("Terminal screen clear skipped because debug mode is active")
-    clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history and not DEBUG_MODE)
+    clear_screen(CLEAR_SCREEN and not keep_terminal_history() and not DEBUG_MODE)
 
     print_startup_banner()
 

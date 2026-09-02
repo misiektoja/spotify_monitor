@@ -206,6 +206,25 @@ def test_only_debug_mode_keeps_the_screen(monkeypatch, flag, expected):
     assert cleared == [expected]
 
 
+# Verifies the one-shot commands keep whatever is already on the screen, so their output stays scrollable
+@pytest.mark.parametrize(("argv", "expected"), ((["spotify_monitor", "--doctor"], True), (["spotify_monitor", "--set-sp-dc"], True), (["spotify_monitor", "--send-test-email"], True), (["spotify_monitor", "--help"], True), (["spotify_monitor", "test-user"], False)))
+def test_one_shot_commands_keep_the_terminal_history(monkeypatch, argv, expected):
+    monkeypatch.setattr(monitor.sys, "argv", argv)
+
+    assert monitor.keep_terminal_history() is expected
+
+
+# Verifies a redirected stdout is never cleared, so no escape sequence or TERM warning reaches the captured output
+def test_a_redirected_stdout_is_never_cleared(monkeypatch):
+    commands = []
+    monkeypatch.setattr(monitor.sys.stdout, "isatty", lambda: False, raising=False)
+    monkeypatch.setattr(monitor.os, "system", lambda command: commands.append(command))
+
+    monitor.clear_screen(True)
+
+    assert commands == []
+
+
 @pytest.mark.parametrize("source, position", [("dotenv file", 0), ("environment", 1), ("configuration file or command line", 2), ("command line", 3)])
 # Verifies each source that can supply a secret lands in its own bucket, so none of them is filed under another
 def test_each_secret_source_lands_in_its_own_bucket(monkeypatch, source, position):
