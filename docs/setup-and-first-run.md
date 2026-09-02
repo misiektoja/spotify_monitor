@@ -100,7 +100,7 @@ In this documentation, a **target** is the Spotify user whose activity you want 
 
 The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation.
 
-Both wizards display the detected installation method plus the selected configuration and dotenv destinations before the first prompt. They detect PyPI, a downloaded script, Docker or Docker Compose then print matching commands with paths formatted for the current operating system.
+Both wizards display the detected installation method plus the selected configuration and dotenv destinations before the first prompt. Each needs somewhere to put both files, so `--setup` and `--setup-scrobble-health` refuse `--config-file none` and `--env-file none`. They detect PyPI, a downloaded script, Docker or Docker Compose then print matching commands with paths formatted for the current operating system.
 
 Container setup destinations must stay inside `/data`. That directory is the current host directory mounted into the temporary setup container, so files written there survive `--rm`. The wizard rejects paths such as `/tmp/spotify_monitor.conf` instead of printing a command for a different file.
 
