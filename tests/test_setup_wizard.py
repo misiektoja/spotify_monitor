@@ -297,6 +297,7 @@ def test_container_cookie_setup_offers_hidden_manual_fallback(tmp_path, monkeypa
 
     monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: secret)
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
     updates = {}
     result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
     assert captured["options"][1][0] == "Enter sp_dc privately"
@@ -336,6 +337,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         env_path = directory / ".env"
         install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -496,6 +498,7 @@ def test_manual_cookie_replacement_decline_retains_existing(monkeypatch, capsys)
         env_path.write_text("SP_DC_COOKIE=existing-private-value\n", encoding="utf-8")
         install_inputs(monkeypatch, ["4", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "new-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         updates = {}
         result = monitor._wizard_collect_cookie_auth("manual", env_path, updates)
         assert updates == {}
@@ -1405,3 +1408,42 @@ def test_the_wizard_reload_leaves_an_exported_secret_to_the_environment(monkeypa
 
     assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "environment"
     assert monitor.SP_DC_COOKIE == "an-exported-cookie-value"
+
+
+# Verifies a manually pasted cookie is checked with Spotify before it is queued, not left for the first run
+def test_a_manually_entered_cookie_is_checked_with_spotify(monkeypatch, capsys):
+    checked = []
+    updates = {}
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "sp-dc-value")
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda *args, **kwargs: False)
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: checked.append(cookie))
+
+    result = monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), updates)
+
+    assert checked == ["sp-dc-value"]
+    assert updates["SP_DC_COOKIE"] == "sp-dc-value"
+    assert result["source"] == "private manual entry"
+    assert "  Checking the cookie with Spotify ..." in capsys.readouterr().out
+
+
+# Verifies a cookie Spotify rejects is never queued, so setup cannot save a value that cannot authenticate
+def test_a_rejected_cookie_is_not_queued(monkeypatch, capsys):
+    updates = {}
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "stale-cookie")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda *args, **kwargs: False)
+
+    def reject(_cookie):
+        raise monitor.BrowserCookieImportError("The imported sp_dc cookie is invalid or expired. Sign in to Spotify in the browser then retry.")
+
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", reject)
+
+    result = monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), updates)
+
+    assert "SP_DC_COOKIE" not in updates
+    assert result["complete"] is False
+    assert "Spotify rejected the entered sp_dc cookie" in capsys.readouterr().out

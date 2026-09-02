@@ -9124,6 +9124,15 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 if _wizard_offer_retry("sp_dc cookie", "Monitoring cannot start until one is set"):
                     continue
                 return result
+            # Spotify is asked before the value is queued, so a stale cookie is caught here rather than at the first check
+            print("  Checking the cookie with Spotify ...")
+            try:
+                validate_imported_sp_dc(cookie)
+            except Exception as exc:
+                print(render_recovery_error(exc, "set_sp_dc"))
+                if _wizard_ask_yes_no("Try another authentication method?", default=True):
+                    continue
+                return result
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
             result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
             return result
@@ -9268,15 +9277,23 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path,
             return auth
         except BrowserCookieImportError as exc:
             print(render_recovery_error(exc, "browser_import"))
-        recovery = _wizard_ask_choice("Browser import did not complete. What next?", [("Retry browser import", "Try discovery, extraction and validation again."), ("Enter sp_dc privately", "Save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and import later.")])
+        recovery = _wizard_ask_choice("Browser import did not complete. What next?", [("Retry browser import", "Try discovery, extraction and validation again."), ("Enter sp_dc privately", "Validate and save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and authenticate later.")])
         if recovery == 0:
             continue
         if recovery == 1:
             cookie = _wizard_ask_secret("Existing sp_dc value")
+            # Checked before the write, so this recovery path reports a stale cookie the way the import it replaces does
+            print("  Checking the cookie with Spotify ...")
+            try:
+                validate_imported_sp_dc(cookie)
+            except Exception as exc:
+                print(render_recovery_error(exc, "set_sp_dc"))
+                auth.update({"complete": False, "validated": False})
+                return auth
             try:
                 if _wizard_queue_secret({}, env_path, "SP_DC_COOKIE", cookie):
                     update_dotenv_file(env_path, {"SP_DC_COOKIE": cookie})
-                    auth.update({"complete": True, "validated": False, "source": "private manual entry"})
+                    auth.update({"complete": True, "validated": True, "source": "private manual entry"})
             except Exception:
                 print(f"Config was saved but dotenv destination '{env_path}' could not be updated.")
                 auth.update({"complete": False, "validated": False})
