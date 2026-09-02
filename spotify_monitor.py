@@ -2499,7 +2499,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
             raise BrowserCookieImportError(f"Dotenv destination '{destination}' already contains SP_DC_COOKIE. Re-run with --force to replace it in a noninteractive environment.")
         prompt = input if input_func is None else input_func
         try:
-            confirmed = read_interactively(prompt, f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace the saved Spotify cookie in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
@@ -2534,7 +2534,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     prompt = input if input_func is None else input_func
     if _dotenv_contains_key(destination, "SP_DC_COOKIE"):
         try:
-            confirmed = read_interactively(prompt, f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace the saved Spotify cookie in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             print()
             raise RecoveryError(secret_entry_cancelled_advice("Spotify cookie", "--set-sp-dc", MANUAL_COOKIE_GUIDE_URL)) from None
@@ -2591,7 +2591,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         raise LastfmConfigurationError(f"Could not read dotenv destination '{destination}'. Check that it is a readable UTF-8 file.") from None
     if existing_key:
         try:
-            confirmed = read_interactively(prompt, f"Replace LASTFM_API_KEY in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace the saved Last.fm API key in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             print()
             raise RecoveryError(secret_entry_cancelled_advice("Last.fm API key", "--set-lastfm-credentials", SECRETS_GUIDE_URL)) from None
@@ -8001,7 +8001,7 @@ def build_doctor_report(target_value=None, config_path=None, env_path=None, star
         progress("connectivity")
     report.checks.extend(doctor_check_connectivity(report))
     if progress is not None:
-        progress("target")
+        progress("the monitored profile")
     report.checks.extend(doctor_check_target(report, target_value))
     if progress is not None:
         progress("notifications")

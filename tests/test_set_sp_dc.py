@@ -141,3 +141,17 @@ def test_set_sp_dc_argument_conflicts(arguments):
     result = run_cli("--set-sp-dc", *arguments)
     assert result.returncode == 2
     assert "--set-sp-dc cannot be combined with" in result.stderr
+
+
+# Verifies the replace question names the secret the way every sibling one-shot command names its own
+def test_set_sp_dc_replace_question_uses_the_shared_wording(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    destination.write_text("SP_DC_COOKIE=old-value\n", encoding="utf-8")
+    prompts = []
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "find_config_file", lambda: None)
+
+    monitor.run_set_sp_dc(env_file=destination, interactive=True, input_func=lambda prompt: prompts.append(prompt) or "y", getpass_func=lambda prompt: "new-private-cookie")
+
+    assert prompts == [f"Replace the saved Spotify cookie in '{destination.resolve()}'? [y/N]: "]
