@@ -493,12 +493,14 @@ ASCII_LOG_SEPARATORS = "Auto"
 
 # Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
-# Can also be enabled via the --verbose flag
+# Independent of DEBUG_MODE, so enable both to see everything
+# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
 VERBOSE_MODE = False
 
 # Whether to enable debug output
 # Shows request flow, selected parameters and internal state changes with sensitive values redacted
-# Can also be enabled via the --debug flag
+# Independent of VERBOSE_MODE, so enable both to see everything
+# Can also be enabled via the --debug flag, which turns it on regardless of this setting
 DEBUG_MODE = False
 
 # Width of horizontal line
