@@ -440,7 +440,9 @@ CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
 # Timeout used when checking initial internet connectivity in seconds
 CHECK_INTERNET_TIMEOUT = 5
 
-# Whether to verify TLS certificates for HTTPS requests
+# Whether to verify TLS certificates on every outbound request
+# Only set this to False on a network that intercepts TLS with its own certificate authority
+# Switching it off removes the protection against an intercepted connection
 VERIFY_SSL = True
 
 # Number of Spotify 5xx errors allowed within ERROR_500_TIME_LIMIT before showing an alert
@@ -873,7 +875,7 @@ USER_AGENT = ""
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
-VERIFY_SSL = False
+VERIFY_SSL = True
 ERROR_500_NUMBER_LIMIT = 0
 ERROR_500_TIME_LIMIT = 0
 ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 0
@@ -1040,6 +1042,7 @@ FOLLOWING_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#following-the-monitor
 SMTP_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#smtp-settings"
 WEBHOOK_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#webhook-settings"
 SECRETS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#storing-secrets"
+TLS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#tls-verification"
 INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 
@@ -1123,8 +1126,6 @@ from typing import Any, Callable, List, Optional, Sequence, Tuple, Union, cast
 from email.utils import parseaddr, parsedate_to_datetime
 
 import urllib3
-if not VERIFY_SSL:
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 SESSION = req.Session()
 WEBHOOK_SESSION = req.Session()
@@ -1240,7 +1241,7 @@ TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:US
 SPOTIFY_OBJECT_TYPES = frozenset({"user", "artist", "track", "album", "playlist"})
 
 # Stable machine-readable recovery categories exposed to tests and future renderers
-RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
+RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
 
 
 # Stores one stable recovery category with safe user-facing guidance
@@ -3309,6 +3310,12 @@ def signal_handler(sig, frame):
     if FLAG_FILE:
         flag_file_delete()
     sys.exit(0)
+
+
+# Silences the repeated certificate warning once verification is off, so the choice is reported by the summary and the doctor instead of on every request
+def apply_tls_verification_setting():
+    if not VERIFY_SSL:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # Checks internet connectivity
@@ -6281,6 +6288,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
             StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
+            StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
@@ -6301,6 +6309,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
         StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
+        StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
         *_startup_install_and_secret_rows(env_path),
@@ -7285,6 +7294,12 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
             advice = classify_recovery_error(context="config_invalid", detail="TOTP_VERSION must be a positive integer plus TOTP_SECRET_CIPHER_BYTES a non-empty sequence of integers; refresh them with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
             checks.append(make_doctor_check("Configuration", "FAIL", "Web-player TOTP parameters are invalid", advice.detail, advice))
 
+    if VERIFY_SSL:
+        checks.append(make_doctor_check("Configuration", "PASS", "TLS certificate verification is on", "Every outbound request checks the server certificate"))
+    else:
+        advice = make_recovery_advice("config.insecure", "TLS certificate verification is off", recovery_fix_with_guide("Set VERIFY_SSL back to True unless this network intercepts TLS with its own certificate authority", TLS_GUIDE_URL), False)
+        checks.append(make_doctor_check("Configuration", "WARN", "TLS certificate verification is off", "VERIFY_SSL is False, so an intercepted connection cannot be told apart from the real service", advice))
+
     numeric_errors = runtime_configuration_errors()
     if numeric_errors:
         advice = classify_recovery_error(context="config_invalid", detail="Invalid numeric settings: " + "; ".join(numeric_errors))
@@ -8153,6 +8168,8 @@ def _wizard_ask_text(question: str, default: str = "", required: bool = False) -
         if value or not required:
             return value
         print("  This value is required.")
+        if not _wizard_offer_retry(question):
+            return ""
 
 
 # Prompts until the user provides a valid yes or no response
@@ -8167,6 +8184,13 @@ def _wizard_ask_yes_no(question: str, default: bool = True) -> bool:
         if value in ("n", "no"):
             return False
         print("  Please answer 'y' or 'n'.")
+
+
+# Offers the one way out after an entry the wizard cannot use, so declining keeps every answer already given
+def _wizard_offer_retry(label: str, consequence: str = "") -> bool:
+    if consequence:
+        return not _wizard_ask_yes_no(f"Continue without the {label}? {consequence}", default=False)
+    return _wizard_ask_yes_no(f"Try entering the {label} again?", default=True)
 
 
 # Displays numbered choices and returns the selected zero-based index
@@ -8252,15 +8276,11 @@ def _wizard_ask_duration(question: str, default: int) -> int:
 
 # Reads a required secret through getpass without echoing the entered value
 def _wizard_ask_secret(question: str) -> str:
-    while True:
-        try:
-            value = getpass.getpass(f"{question}: ")
-        except (EOFError, KeyboardInterrupt):
-            print("\nSetup cancelled.")
-            raise SystemExit(1) from None
-        if value:
-            return value
-        print("  This secret is required and cannot be empty.")
+    try:
+        return str(getpass.getpass(f"{question}: "))
+    except (EOFError, KeyboardInterrupt):
+        print("\nSetup cancelled.")
+        raise SystemExit(1) from None
 
 
 # Resolves setup destinations without searching parent directories
@@ -8320,10 +8340,14 @@ def _wizard_target(initial_target: Optional[str] = None) -> str:
     default = initial_target or ""
     while True:
         raw_target = _wizard_ask_text("Spotify profile URL or user ID to monitor", default=default, required=True)
+        if not raw_target:
+            return ""
         try:
             return normalize_spotify_user_id(raw_target)
         except ValueError:
             print("  Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID.")
+            if not _wizard_offer_retry("Spotify profile"):
+                return ""
             default = ""
 
 
@@ -8339,29 +8363,52 @@ def _wizard_validate_smtp(values: dict, password: str) -> Optional[RecoveryAdvic
         globals().update(previous)
 
 
+# Switches every email alert off together, so an abandoned answer cannot leave half a mail server configured
+def _wizard_disable_email(config_values: dict, notification_names: Sequence[str], scrobble_health: bool) -> None:
+    config_values.update({name: False for name in notification_names})
+    if scrobble_health:
+        config_values["SCROBBLE_HEALTH_NOTIFICATION"] = False
+
+
+# Reports whether one required mail server answer was abandoned, switching the channel off when it was
+def _wizard_email_answer_missing(config_values: dict, notification_names: Sequence[str], scrobble_health: bool, answer: str) -> bool:
+    if answer:
+        return False
+    print("  Email notifications stay off until every mail server setting is answered.")
+    _wizard_disable_email(config_values, notification_names, scrobble_health)
+    return True
+
+
 # Collects SMTP settings and mode-appropriate notification flags without opening a connection
 def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
     if not _wizard_ask_yes_no("Configure email notifications?", default=False):
-        config_values.update({name: False for name in notification_names})
-        if scrobble_health:
-            config_values["SCROBBLE_HEALTH_NOTIFICATION"] = False
+        _wizard_disable_email(config_values, notification_names, scrobble_health)
         return []
     while True:
-        smtp_values = {
-            "SMTP_HOST": _wizard_ask_text("SMTP host", required=True),
-            "SMTP_PORT": _wizard_ask_positive_int("SMTP port", 587),
-            "SMTP_SSL": _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=True),
-            "SMTP_USER": _wizard_ask_text("SMTP username", required=True),
-            "SENDER_EMAIL": _wizard_ask_text("Sender email", required=True),
-            "RECEIVER_EMAIL": _wizard_ask_text("Receiver email", required=True),
-        }
+        host = _wizard_ask_text("SMTP host", required=True)
+        if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, host):
+            return []
+        port = _wizard_ask_positive_int("SMTP port", 587)
+        use_ssl = _wizard_ask_yes_no("Enable TLS/SSL for SMTP?", default=True)
+        user = _wizard_ask_text("SMTP username", required=True)
+        if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, user):
+            return []
+        sender = _wizard_ask_text("Sender email", required=True)
+        if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, sender):
+            return []
+        receiver = _wizard_ask_text("Receiver email", required=True)
+        if _wizard_email_answer_missing(config_values, notification_names, scrobble_health, receiver):
+            return []
+        smtp_values = {"SMTP_HOST": host, "SMTP_PORT": port, "SMTP_SSL": use_ssl, "SMTP_USER": user, "SENDER_EMAIL": sender, "RECEIVER_EMAIL": receiver}
         smtp_password = _wizard_ask_secret("SMTP password")
         advice = _wizard_validate_smtp(smtp_values, smtp_password)
         if advice is None:
             break
         print(f"  {advice.summary}: {advice.detail}")
-        print("  Re-enter the SMTP settings.")
+        if not _wizard_offer_retry("mail server settings"):
+            _wizard_disable_email(config_values, notification_names, scrobble_health)
+            return []
     _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
     config_values.update(smtp_values)
     if scrobble_health:
@@ -8403,9 +8450,13 @@ def _wizard_collect_ntfy_access_token(secret_updates: dict, env_path: Path) -> N
         return
     while True:
         token = _wizard_ask_secret("Paste the ntfy access token only").strip()
-        if token and "\r" not in token and "\n" not in token and not token.casefold().startswith(("bearer ", "basic ")):
+        if not token:
+            return
+        if "\r" not in token and "\n" not in token and not token.casefold().startswith(("bearer ", "basic ")):
             break
         print("  Paste only the access token without a Bearer or Basic prefix.")
+        if not _wizard_offer_retry("ntfy access token"):
+            return
     if existing_token:
         secret_updates["NTFY_ACCESS_TOKEN"] = token
     else:
@@ -8432,15 +8483,20 @@ def _wizard_collect_ntfy_images() -> bool:
     return _wizard_install_notification_images_dependency(method)
 
 
+# Switches the channel and every alert it owns off together, so a half-configured webhook cannot be written
+def _wizard_disable_webhook(config_values: dict, notification_names: Sequence[str], scrobble_health: bool) -> None:
+    config_values["WEBHOOK_ENABLED"] = False
+    config_values["NTFY_IMAGES"] = False
+    config_values.update({name: False for name in notification_names})
+    if scrobble_health:
+        config_values["WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION"] = False
+
+
 # Collects hidden webhook secrets and mode-appropriate alert choices without sending a message
 def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
     if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=False):
-        config_values["WEBHOOK_ENABLED"] = False
-        config_values["NTFY_IMAGES"] = False
-        config_values.update({name: False for name in notification_names})
-        if scrobble_health:
-            config_values["WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION"] = False
+        _wizard_disable_webhook(config_values, notification_names, scrobble_health)
         return []
     provider_choice = _wizard_ask_choice("Which webhook service should receive alerts?", [("Discord", "Sends a Discord embed to one channel webhook."), ("ntfy", "Sends a native notification to one ntfy topic URL.")])
     provider = "discord" if provider_choice == 0 else "ntfy"
@@ -8460,10 +8516,19 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
             webhook_url = normalize_ntfy_topic_url(webhook_input) if provider == "ntfy" else webhook_input.strip()
             if validate_webhook_url(webhook_url):
                 break
+            # Nothing can be delivered without a destination, so giving up has to stay reachable from the prompt
+            if not webhook_input.strip():
+                if _wizard_offer_retry("webhook URL", "Webhook alerts stay off until one is set"):
+                    continue
+                _wizard_disable_webhook(config_values, notification_names, scrobble_health)
+                return []
             if provider == "ntfy":
                 print("  Enter a complete HTTPS ntfy topic URL or a topic name containing up to 64 letters, numbers, dashes or underscores.")
             else:
                 print("  That does not look like a complete HTTPS webhook URL. Copy it from the webhook service and try again.")
+            if not _wizard_offer_retry("webhook URL"):
+                _wizard_disable_webhook(config_values, notification_names, scrobble_health)
+                return []
         if existing_webhook:
             secret_updates["WEBHOOK_URL"] = webhook_url
         else:
@@ -8582,6 +8647,10 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
             print(f"\nFind the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}")
             print()
             cookie = _wizard_ask_secret("Existing sp_dc value")
+            if not cookie:
+                if _wizard_offer_retry("sp_dc cookie", "Monitoring cannot start until one is set"):
+                    continue
+                return result
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
             result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
             return result
@@ -8957,7 +9026,10 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
     if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
         print(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
         api_key = _wizard_ask_secret("Last.fm API key")
-        _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
+        while not api_key and _wizard_offer_retry("Last.fm API key", "Scrobble health checks stay off until one is set"):
+            api_key = _wizard_ask_secret("Last.fm API key")
+        if api_key:
+            _wizard_queue_secret(state.secret_updates, state.env_path, "LASTFM_API_KEY", api_key)
     try:
         redirect_uri = validate_spotify_scrobble_redirect_uri(str(state.config_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or SPOTIFY_SCROBBLE_REDIRECT_URI))
     except SpotifyScrobbleAuthorizationError as exc:
@@ -8967,19 +9039,27 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
     print_spotify_scrobble_app_guidance(redirect_uri)
     while True:
         client_id = _wizard_ask_text("Spotify app Client ID", default=str(state.config_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or SPOTIFY_SCROBBLE_CLIENT_ID), required=True)
+        if not client_id:
+            break
         try:
             client_id = validate_spotify_scrobble_client_id(client_id)
             break
         except SpotifyScrobbleAuthorizationError as exc:
             print(f"  {exc}.")
+            if not _wizard_offer_retry("Spotify app Client ID"):
+                client_id = ""
+                break
     state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] = client_id
     state.config_values["SPOTIFY_SCROBBLE_REDIRECT_URI"] = redirect_uri
     existing_refresh_token = _wizard_existing_secret("SPOTIFY_SCROBBLE_REFRESH_TOKEN", state.env_path)
     baseline_client_id = str(state.baseline_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or "")
     baseline_redirect_uri = str(state.baseline_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or "")
-    existing_matches_app = existing_refresh_token and client_id == baseline_client_id and redirect_uri == baseline_redirect_uri
+    existing_matches_app = bool(client_id) and existing_refresh_token and client_id == baseline_client_id and redirect_uri == baseline_redirect_uri
     authorize_now = True
-    if existing_matches_app:
+    if not client_id:
+        # Authorization belongs to one Spotify app, so an abandoned Client ID finishes setup incomplete instead of looping
+        authorize_now = False
+    elif existing_matches_app:
         authorize_now = _wizard_ask_yes_no("Replace the existing Spotify recent-play authorization?", default=False)
     elif not _wizard_ask_yes_no("Authorize Spotify recent-play access now?", default=True):
         authorize_now = False
@@ -11232,6 +11312,8 @@ def main():
     # Config loading can replace these globals, so reapply explicit flags to preserve CLI precedence
     apply_diagnostic_cli_overrides(args)
 
+    apply_tls_verification_setting()
+
     try:
         requested_monitor_mode = "scrobble_health" if args.authorize_scrobble_health else args.monitor_mode
         MONITOR_MODE = select_monitor_mode(MONITOR_MODE, requested_monitor_mode)
@@ -11510,11 +11592,6 @@ def main():
             FLAG_FILE = os.path.expanduser(FLAG_FILE)
     if FLAG_FILE and not flag_file_delete():
         sys.exit(1)
-
-    # Honor a config file or dotenv VERIFY_SSL by suppressing insecure-request warnings before any request
-    # (the import-time guard only sees the built-in default)
-    if not VERIFY_SSL:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     if not check_internet():
         sys.exit(1)

@@ -367,6 +367,19 @@ Pass that profile URL directly to the tool. You do not need to extract the ID. A
 
 Alternatively you can use [Listing mode](usage.md#listing-mode) to see the Spotify user IDs and profile URLs of accounts you follow. Either displayed form can be used as the monitoring target.
 
+<a id="tls-verification"></a>
+## TLS Verification
+
+Spotify Monitor verifies the TLS certificate of every server it contacts: Spotify, Last.fm, the connectivity check endpoint, downloaded artwork and, when enabled, the webhook service.
+
+Set `VERIFY_SSL` to `False` only on a network that intercepts TLS with its own certificate authority, such as a corporate proxy. With verification off, an intercepted connection cannot be told apart from the real service.
+
+```ini
+VERIFY_SSL = True
+```
+
+The startup summary shows `TLS verification` and [`--doctor`](troubleshooting.md#doctor-preflight) reports a warning while it is off.
+
 <a id="smtp-settings"></a>
 ## SMTP Settings
 

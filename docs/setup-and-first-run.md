@@ -9,6 +9,8 @@ Then use the regular interactive setup wizard for Friend Activity monitoring. It
 
 Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup.
 
+Every answer setup cannot use offers a way out, so one value you cannot produce right now does not cost you the answers already given. A blank answer asks whether to continue without it and names what stops working, and a rejected one offers to enter it again. Declining switches the part that needed it off, so half a mail server or a webhook with no destination is never written.
+
 For a local install, the wizard can check the setup and start monitoring immediately.
 
 Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.

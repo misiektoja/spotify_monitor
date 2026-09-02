@@ -1060,3 +1060,40 @@ def test_scrobble_health_state_rejects_malformed_pending_channels(monkeypatch):
     finally:
         if state_path.exists():
             state_path.unlink()
+
+
+# Verifies an abandoned Last.fm API key is never queued as an empty secret
+def test_an_abandoned_lastfm_api_key_is_not_queued(monkeypatch):
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {"SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:9999/callback"}, {}, "lastfm-user", {}, [], [])
+    labels = []
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "a" * 32)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: False)
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append((label, consequence)) or False)
+
+    monitor._wizard_collect_scrobble_health_auth_section(state, "manual")
+
+    assert labels == [("Last.fm API key", "Scrobble health checks stay off until one is set")]
+    assert "LASTFM_API_KEY" not in state.secret_updates
+
+
+# Verifies a Client ID the validator rejects can be abandoned, which finishes setup without authorizing
+def test_a_rejected_spotify_client_id_can_be_abandoned(monkeypatch):
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {"SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:9999/callback"}, {}, "lastfm-user", {}, [], [])
+    labels = []
+    authorize = Mock()
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-api-key")
+    monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "too-short")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", authorize)
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append(label) or False)
+
+    monitor._wizard_collect_scrobble_health_auth_section(state, "manual")
+
+    assert labels == ["Spotify app Client ID"]
+    assert state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] == ""
+    assert state.auth["complete"] is False
+    authorize.assert_not_called()
