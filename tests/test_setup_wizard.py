@@ -137,6 +137,17 @@ def test_polling_section_uses_duration_input(monkeypatch, tmp_path):
     duration_mock.assert_called_once_with("Spotify polling interval (seconds or use s/m/h/d)", monitor.SPOTIFY_CHECK_INTERVAL)
 
 
+# Verifies a CSV answer without an extension is saved as a .csv file while an explicit extension is left alone
+def test_the_csv_answer_gains_a_csv_extension_when_it_has_none(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    for typed, expected in (("activity", "activity.csv"), ("activity.csv", "activity.csv"), ("activity.txt", "activity.txt"), ("", "")):
+        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", **kwargs: typed)
+        monitor._wizard_collect_output_section(state)
+        assert state.config_values["CSV_FILE"] == expected
+
+
 # Verifies Ctrl+C and Ctrl+D end the prompt line and reach the handler that reports what was written
 @pytest.mark.parametrize("error_type", [KeyboardInterrupt, EOFError])
 def test_input_cancellation_is_clean(monkeypatch, capsys, error_type):
@@ -520,9 +531,11 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
 # Verifies disabled email clears every generated notification flag without SMTP access
 def test_email_disabled_clears_all_flags(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
-    config_values = {name: True for name in ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")}
+    notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+    config_values = {name: True for name in notification_names}
     assert monitor._wizard_collect_email(config_values, {}, Path("unused.env")) == []
-    assert not any(config_values.values())
+    assert not any(config_values[name] for name in notification_names)
+    assert config_values["SMTP_HOST"] == "your_smtp_server_ssl"
 
 
 # Verifies the recommended email preset validates locally and queues only the password secret
@@ -987,7 +1000,8 @@ def test_an_unusable_target_can_be_abandoned(monkeypatch, answer, expected_offer
 # Verifies abandoning any mail server answer switches every email alert off rather than saving half a server
 @pytest.mark.parametrize("abandoned", ["SMTP host", "SMTP username", "Sender email", "Receiver email"])
 def test_an_abandoned_mail_server_answer_switches_email_off(monkeypatch, tmp_path, abandoned):
-    config_values = {name: True for name in ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")}
+    notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+    config_values = {name: True for name in notification_names}
     secret_updates = {}
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "" if question == abandoned else "answer@example.test")
@@ -995,7 +1009,8 @@ def test_an_abandoned_mail_server_answer_switches_email_off(monkeypatch, tmp_pat
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
 
     assert monitor._wizard_collect_email(config_values, secret_updates, tmp_path / ".env") == []
-    assert not any(config_values.values())
+    assert not any(config_values[name] for name in notification_names)
+    assert config_values["SMTP_HOST"] == "your_smtp_server_ssl"
     assert secret_updates == {}
 
 
