@@ -8227,17 +8227,17 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     return " ".join(parts)
 
 
-# Prints the install-aware monitoring command after a successful Doctor run
-def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, target_is_saved: bool = False) -> None:
+def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, target_is_saved: bool = False, doctor_exit: int = 0) -> None:
     method = _wizard_install_method()
     command_target = None if target_is_saved else target or "SPOTIFY_USER_URI_ID"
     command = _wizard_action_command(method, "", config_path, env_path, command_target)
     print(colorize('header', "\nNext steps\n"))
-    _wizard_print_command("After Doctor passes, start monitoring:", command)
+    _wizard_print_command("After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:", command)
+    print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
 
 
 # Prints the install-aware scrobble health command after a successful Doctor run
-def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None, client_id: Optional[str] = None, redirect_uri: Optional[str] = None, include_api_key_placeholder: bool = False, include_refresh_token_placeholder: bool = False) -> None:
+def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None, client_id: Optional[str] = None, redirect_uri: Optional[str] = None, include_api_key_placeholder: bool = False, include_refresh_token_placeholder: bool = False, doctor_exit: int = 0) -> None:
     method = _wizard_install_method()
     action = "--monitor-mode scrobble_health"
     if username:
@@ -8252,9 +8252,10 @@ def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, us
         action += " --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN"
     command = _wizard_action_command(method, action, config_path, env_path)
     print(colorize('header', "\nNext steps\n"))
-    _wizard_print_command("After Doctor passes, start scrobble health monitoring:", command)
+    _wizard_print_command("After Doctor passes, start scrobble health monitoring:" if doctor_exit else "Start scrobble health monitoring:", command)
     if include_api_key_placeholder or include_refresh_token_placeholder:
         print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
+    print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
 
 
 # Returns the path arguments for a command that writes the dotenv file, which is what makes the two sentinels differ
@@ -11960,13 +11961,12 @@ def main():
         else:
             doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
             doctor_exit = run_doctor(doctor_target, doctor_config, env_path, doctor_startup_checks)
-        if doctor_exit == 0:
-            if scrobble_health_mode:
-                _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None)
-            else:
-                command_target = args.user_id if args.user_id is not None else None
-                target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
-                _wizard_print_monitor_after_doctor(command_config, command_env, command_target, target_is_saved=target_is_saved)
+        if scrobble_health_mode:
+            _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None, doctor_exit=doctor_exit)
+        else:
+            command_target = args.user_id if args.user_id is not None else None
+            target_is_saved = args.user_id is None and bool(TARGET_USER_URI_ID)
+            _wizard_print_monitor_after_doctor(command_config, command_env, command_target, target_is_saved=target_is_saved, doctor_exit=doctor_exit)
         sys.exit(doctor_exit)
 
     LIVENESS_CHECK_COUNTER = LIVENESS_CHECK_INTERVAL / SPOTIFY_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL else 0

@@ -759,7 +759,7 @@ def test_cli_doctor_without_target_bypasses_normal_startup():
     assert result.returncode == 0
     assert "connectivity gate called" not in result.stderr
     assert "monitor loop called" not in result.stderr
-    assert "After Doctor passes, start monitoring:" in result.stdout
+    assert "Start monitoring:" in result.stdout
     assert "SPOTIFY_USER_URI_ID --env-file none" in result.stdout
 
 
@@ -768,9 +768,9 @@ def test_cli_doctor_success_prints_compose_monitoring_command():
     setup = "runtime['run_doctor'] = lambda *args: 0; runtime['_wizard_install_method'] = lambda: 'compose';"
     result = run_cli(["friend.user", "--doctor", "--env-file", "none"], setup)
     assert result.returncode == 0
-    assert "After Doctor passes, start monitoring:" in result.stdout
+    assert "Start monitoring:" in result.stdout
     assert "docker compose run --rm spotify_monitor friend.user --env-file none" in result.stdout
-    assert "--doctor" not in result.stdout.split("After Doctor passes, start monitoring:", 1)[1]
+    assert "--doctor" not in result.stdout.split("Start monitoring:", 1)[1]
 
 
 # Verifies successful scrobble Doctor output preserves local script paths and selected files
@@ -782,7 +782,7 @@ def test_cli_scrobble_doctor_success_prints_manual_monitoring_command(tmp_path):
     result = run_cli(["--monitor-mode", "scrobble_health", "--doctor", "--config-file", str(config_path), "--env-file", str(env_path)], "runtime['run_scrobble_health_doctor'] = lambda *args: 0;")
     expected_prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 0
-    assert "After Doctor passes, start scrobble health monitoring:" in result.stdout
+    assert "Start scrobble health monitoring:" in result.stdout
     assert f"{expected_prefix} --monitor-mode scrobble_health --config-file {config_path} --env-file {env_path}" in result.stdout
 
 
@@ -791,7 +791,7 @@ def test_cli_scrobble_doctor_success_prints_compose_monitoring_command():
     setup = "runtime['run_scrobble_health_doctor'] = lambda *args: 0; runtime['_wizard_install_method'] = lambda: 'compose';"
     result = run_cli(["--monitor-mode", "scrobble_health", "--doctor", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "private-api-key", "--scrobble-client-id", "a" * 32, "--scrobble-refresh-token", "private-refresh-token"], setup)
     assert result.returncode == 0
-    assert "After Doctor passes, start scrobble health monitoring:" in result.stdout
+    assert "Start scrobble health monitoring:" in result.stdout
     assert f"docker compose run --rm spotify_monitor --monitor-mode scrobble_health --lastfm-username lastfm-user --scrobble-client-id {'a' * 32} --lastfm-api-key LASTFM_API_KEY --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN --config-file none --env-file none" in result.stdout
     assert "Replace the uppercase credential placeholders before running" in result.stdout
     assert "private-api-key" not in result.stdout
@@ -808,11 +808,11 @@ def test_doctor_monitoring_command_uses_saved_target(monkeypatch, capsys, tmp_pa
     assert f"--env-file {tmp_path / '.env'}" in output
 
 
-# Verifies a failed Doctor command does not suggest starting monitoring
-def test_cli_doctor_failure_does_not_print_monitoring_command():
+# Verifies a failed Doctor still names the command, labelled so the failures are fixed first
+def test_cli_doctor_failure_asks_for_the_failures_first():
     result = run_cli(["friend.user", "--doctor", "--env-file", "none"], "runtime['run_doctor'] = lambda *args: 1;")
     assert result.returncode == 1
-    assert "After Doctor passes, start monitoring:" not in result.stdout
+    assert "After Doctor passes, start monitoring:" in result.stdout
 
 
 # Verifies contradictory doctor action flags are rejected
