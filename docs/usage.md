@@ -289,7 +289,7 @@ Host Spotify auto-play is unavailable by default inside a container because the 
 <a id="terminal-output"></a>
 ## Terminal Output
 
-The `--help` output includes examples for setup, private cookie entry, webhook setup, Firefox import, test alerts, monitoring, Doctor and friend listing. The examples match the detected installation method.
+The `--help` examples are grouped by task: getting started, notifications, information and diagnostics, and scrobble health mode. Each command is preceded by a comment saying what it does, and every command matches the detected installation method.
 
 Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
 

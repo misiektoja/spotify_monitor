@@ -135,11 +135,11 @@ def test_help_banner_once_and_raw_epilog():
     assert result.returncode == 0
     assert result.stdout.count(" .---------------.") == 1
     assert "Show rare operational events plus the complete startup summary" in result.stdout
-    assert f"Examples:\n\nFriend Activity:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
+    assert f"Examples:\n\nGetting started:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
     assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
     assert f"{prefix} --set-sp-dc" in result.stdout
     assert f"{prefix} --set-webhook-url" in result.stdout
-    assert f"{prefix} --send-test-webhook" not in result.stdout
+    assert f"{prefix} --send-test-webhook" in result.stdout
     assert "Select the monitoring mode for this run (default: saved mode or friend_activity)" in result.stdout
     assert "Path to a config file (mode-specific auto-search if omitted, disable with 'none')" in result.stdout
     assert "--scrobble-health" not in result.stdout
@@ -155,8 +155,8 @@ def test_help_banner_once_and_raw_epilog():
     assert "--scrobble-state-file" in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health --doctor --verbose" not in result.stdout
     assert f"{prefix} --monitor-mode friend_activity <spotify_user_id>" not in result.stdout
-    assert f"\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
-    assert result.stdout.index("Friend Activity:") < result.stdout.index("Scrobble Health:")
+    assert f"\n  # Start monitoring, a spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
+    assert result.stdout.index("Getting started:") < result.stdout.index("Scrobble health mode:")
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
 

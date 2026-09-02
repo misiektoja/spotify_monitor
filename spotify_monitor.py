@@ -8015,75 +8015,61 @@ def _wizard_set_webhook_url_cmd(method: str, env_path=None, exact: bool = False)
     return command
 
 
-# Builds install-aware examples for argparse help output
+# Renders the --help examples: one heading per task, then a comment and the command it describes
+def _render_help_examples(groups, guide_url: str) -> str:
+    blocks = []
+    for title, entries in groups:
+        block = [f"{title}:"]
+        for comment, command in entries:
+            if len(block) > 1:
+                block.append("")
+            block.extend(f"  # {line}" for line in comment.split("\n"))
+            if command:
+                block.append(f"  {command}")
+        blocks.append("\n".join(block))
+    return "Examples:\n\n" + "\n\n".join(blocks) + f"\n\nGuide: {guide_url}\n"
+
+
+# Returns the --help epilog, listing the commands worth knowing rather than every command there is
 def _build_help_epilog() -> str:
     method = _wizard_install_method()
     prefix = _wizard_cmd_prefix(method)
-    protobuf_file = "/data/login.protobuf" if method in ("docker", "compose") else "<protobuf_file>"
-    sections = [
-        "Examples:",
-        "",
-        "Friend Activity:",
-        "  # Guided setup, recommended for the first run",
-        f"  {prefix} --setup",
-        "",
-    ]
-    if method in ("docker", "compose"):
-        sections.extend((
-            "  # Linux host example: mount a signed-in Firefox profile read-only",
-            "  # Open https://open.spotify.com/ in Firefox on the host and sign in first",
-            f"  {_wizard_firefox_import_cmd(method, Path.cwd() / '.env', host_os='linux')}",
-            "",
-            "  # Or use the most secure manual method to enter the Spotify cookie",
-            f"  {_wizard_set_sp_dc_cmd(method, Path.cwd() / '.env')}",
-            "",
-            "  # Host Spotify auto-play is unavailable by default inside containers",
-            "  # Run Spotify Monitor locally for TRACK_SONGS or --track-in-spotify",
-            "",
-        ))
+    containerised = method in ("docker", "compose")
+    container_env = Path.cwd() / ".env" if containerised else None
+    if containerised:
+        import_entry = ("Linux host example: mount a signed-in Firefox profile read-only\nOpen https://open.spotify.com/ in Firefox on the host and sign in first", _wizard_firefox_import_cmd(method, container_env, host_os="linux"))
     else:
-        sections.extend((
-            "  # Open https://open.spotify.com/ in Firefox and sign in first",
-            "  # Then import Spotify login from Firefox (recommended for local installs)",
-            f"  {_wizard_firefox_import_cmd(method)}",
-            "",
-            "  # Or use the most secure manual method to enter the Spotify cookie",
-            f"  {_wizard_set_sp_dc_cmd(method)}",
-            "",
-        ))
-    webhook_env = Path.cwd() / ".env" if method in ("docker", "compose") else None
-    sections.extend((
-        "  # Save a Discord or ntfy webhook URL through a hidden prompt",
-        f"  {_wizard_set_webhook_url_cmd(method, webhook_env)}",
-        "",
-    ))
-    sections.extend((
-        "  # Monitor one Spotify user",
-        "  # A spotify:user URI or profile URL is also accepted",
-        f"  {prefix} <spotify_user_id>",
-        "",
-        "  # Check authentication, connectivity and one target",
-        f"  {prefix} --doctor <spotify_user_id>",
-        "",
-        "  # List friends visible to the configured Spotify account",
-        f"  {prefix} --list-friends",
-        "",
-        "  # Advanced Spotify desktop client mode",
-        f"  {prefix} <spotify_user_id> --token-source client --login-request-body-file {protobuf_file}",
-    ))
+        import_entry = ("Open https://open.spotify.com/ in Firefox and sign in first\nThen import Spotify login from Firefox (recommended for local installs)", _wizard_firefox_import_cmd(method))
+    getting_started = [
+        ("Guided setup, recommended for the first run", f"{prefix} --setup"),
+        import_entry,
+        ("Or use the most secure manual method to enter the Spotify cookie", _wizard_set_sp_dc_cmd(method, container_env)),
+        ("Check the setup before relying on it", f"{prefix} --doctor <spotify_user_id>"),
+        ("Start monitoring, a spotify:user URI or profile URL is also accepted", f"{prefix} <spotify_user_id>"),
+        ("Advanced Spotify desktop client mode", f"{prefix} <spotify_user_id> --token-source client --login-request-body-file {'/data/login.protobuf' if containerised else '<protobuf_file>'}"),
+    ]
     if method == "compose":
-        sections.extend(("", "  # Start from the target saved by setup", "  docker compose up --no-log-prefix"))
-    sections.extend((
-        "",
-        "Scrobble Health:",
-        "  # Guided setup for Spotify-to-Last.fm monitoring",
-        f"  {prefix} --setup-scrobble-health",
-        "",
-        "  # Start Spotify-to-Last.fm monitoring",
-        f"  {prefix} --monitor-mode scrobble_health",
-    ))
-    sections.extend(("", f"Guide: {QUICK_START_GUIDE_URL}"))
-    return "\n".join(sections) + "\n"
+        getting_started.append(("Start from the target saved by setup", "docker compose up --no-log-prefix"))
+    if containerised:
+        # A note rather than an example: there is no command that makes host playback reachable from a container
+        getting_started.append(("Host Spotify auto-play is unavailable by default inside containers\nRun Spotify Monitor locally for TRACK_SONGS or --track-in-spotify", ""))
+    groups = (
+        ("Getting started", tuple(getting_started)),
+        ("Notifications", (
+            ("Save a Discord or ntfy webhook URL through a hidden prompt", _wizard_set_webhook_url_cmd(method, container_env)),
+            ("Send one test email", f"{prefix} --send-test-email"),
+            ("Send one test webhook", f"{prefix} --send-test-webhook"),
+        )),
+        ("Information and diagnostics", (
+            ("List friends visible to the configured Spotify account", f"{prefix} --list-friends"),
+            ("Trace what the tool is doing", f"{prefix} <spotify_user_id> --debug"),
+        )),
+        ("Scrobble health mode", (
+            ("Guided setup for Spotify-to-Last.fm monitoring", f"{prefix} --setup-scrobble-health"),
+            ("Start Spotify-to-Last.fm monitoring", f"{prefix} --monitor-mode scrobble_health"),
+        )),
+    )
+    return _render_help_examples(groups, QUICK_START_GUIDE_URL)
 
 
 # Lists browsers supported by the setup wizard in the active environment
@@ -10714,7 +10700,7 @@ def main():
     )
 
     # Notifications
-    notify = parser.add_argument_group("Notifications")
+    notify = parser.add_argument_group("Email notifications")
     notify.add_argument(
         "-a", "--notify-active",
         dest="notify_active",
@@ -10917,7 +10903,7 @@ def main():
     )
 
     # Listing
-    listing = parser.add_argument_group("Listing")
+    listing = parser.add_argument_group("User information & listing")
     listing.add_argument(
         "-l", "--list-friends",
         dest="list_friends",

@@ -214,7 +214,7 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
     monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
     assert monitor._build_help_epilog() == """Examples:
 
-Friend Activity:
+Getting started:
   # Guided setup, recommended for the first run
   python3 spotify_monitor.py --setup
 
@@ -225,23 +225,33 @@ Friend Activity:
   # Or use the most secure manual method to enter the Spotify cookie
   python3 spotify_monitor.py --set-sp-dc
 
-  # Save a Discord or ntfy webhook URL through a hidden prompt
-  python3 spotify_monitor.py --set-webhook-url
-
-  # Monitor one Spotify user
-  # A spotify:user URI or profile URL is also accepted
-  python3 spotify_monitor.py <spotify_user_id>
-
-  # Check authentication, connectivity and one target
+  # Check the setup before relying on it
   python3 spotify_monitor.py --doctor <spotify_user_id>
 
-  # List friends visible to the configured Spotify account
-  python3 spotify_monitor.py --list-friends
+  # Start monitoring, a spotify:user URI or profile URL is also accepted
+  python3 spotify_monitor.py <spotify_user_id>
 
   # Advanced Spotify desktop client mode
   python3 spotify_monitor.py <spotify_user_id> --token-source client --login-request-body-file <protobuf_file>
 
-Scrobble Health:
+Notifications:
+  # Save a Discord or ntfy webhook URL through a hidden prompt
+  python3 spotify_monitor.py --set-webhook-url
+
+  # Send one test email
+  python3 spotify_monitor.py --send-test-email
+
+  # Send one test webhook
+  python3 spotify_monitor.py --send-test-webhook
+
+Information and diagnostics:
+  # List friends visible to the configured Spotify account
+  python3 spotify_monitor.py --list-friends
+
+  # Trace what the tool is doing
+  python3 spotify_monitor.py <spotify_user_id> --debug
+
+Scrobble health mode:
   # Guided setup for Spotify-to-Last.fm monitoring
   python3 spotify_monitor.py --setup-scrobble-health
 
