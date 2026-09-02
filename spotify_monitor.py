@@ -9551,6 +9551,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         config_values["DOTENV_FILE"] = str(env_path)
         state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
         _wizard_collect_target_section(state, initial_target)
+        print()
         _wizard_collect_polling_section(state)
         _wizard_collect_auth_section(state, method)
         print()

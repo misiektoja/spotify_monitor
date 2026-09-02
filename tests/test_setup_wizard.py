@@ -1298,3 +1298,26 @@ def test_a_declined_secret_replacement_reports_the_kept_value(tmp_path, monkeypa
     assert advice.summary == "The saved SMTP password was left as it is and the dotenv file was not changed"
     assert "answer y to replace the saved value" in advice.fix
     assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="original"\n'
+
+
+# Verifies the polling question opens its own group, the way the sibling wizards separate their questions
+def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        answers = iter(["target.user", "y", ""])
+
+        # Echoes each prompt with its answer, so the captured text is the transcript a user reads
+        def answer(prompt=""):
+            typed = next(answers)
+            print(f"{prompt}{typed}")
+            return typed
+
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(builtins, "input", answer)
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor, "_wizard_collect_auth_section", Mock(side_effect=KeyboardInterrupt))
+
+        with pytest.raises(SystemExit):
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+
+        assert "\n\nSpotify polling interval (seconds or use s/m/h/d)" in capsys.readouterr().out
