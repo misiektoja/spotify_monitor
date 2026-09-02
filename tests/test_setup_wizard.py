@@ -1321,3 +1321,7 @@ def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
 
         assert "\n\nSpotify polling interval (seconds or use s/m/h/d)" in capsys.readouterr().out
+
+# Verifies the guide link opens the setup page the sibling monitors link, with no section fragment
+def test_the_welcome_guide_link_opens_the_shared_setup_page():
+    assert monitor.QUICK_START_GUIDE_URL.endswith("/setup-and-first-run/")
