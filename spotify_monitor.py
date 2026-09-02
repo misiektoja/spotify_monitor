@@ -1083,8 +1083,11 @@ STARTUP_BANNER = r"""
 
 import sys
 
-if sys.version_info < (3, 9):
-    print("* Error: Python version 3.9 or higher required !")
+MINIMUM_PYTHON_VERSION = (3, 9)
+MINIMUM_PYTHON_VERSION_TEXT = ".".join(str(part) for part in MINIMUM_PYTHON_VERSION)
+
+if sys.version_info < MINIMUM_PYTHON_VERSION:
+    print(f"* Error: Python version {MINIMUM_PYTHON_VERSION_TEXT} or higher required !")
     sys.exit(1)
 
 import importlib.util
@@ -2426,7 +2429,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     print(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        sp_dc = read_interactively(hidden_prompt, "Enter sp_dc privately: ")
+        sp_dc = read_secret_privately(hidden_prompt, "Enter sp_dc privately: ")
     except (EOFError, KeyboardInterrupt):
         raise BrowserCookieImportError("SP_DC_COOKIE entry was cancelled. The dotenv file was not changed.") from None
     if not isinstance(sp_dc, str) or not sp_dc:
@@ -2479,7 +2482,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     print(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
     try:
-        api_key = read_interactively(hidden_prompt, "Enter the Last.fm API key privately: ").strip()
+        api_key = read_secret_privately(hidden_prompt, "Enter the Last.fm API key privately: ").strip()
     except (EOFError, KeyboardInterrupt):
         raise LastfmConfigurationError("LASTFM_API_KEY entry was cancelled. The dotenv file was not changed.") from None
     if not api_key or "\r" in api_key or "\n" in api_key:
@@ -2578,7 +2581,7 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
             raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        webhook_url = read_interactively(hidden_prompt, "Paste the Discord or ntfy webhook URL (input hidden): ").strip()
+        webhook_url = read_secret_privately(hidden_prompt, "Paste the Discord or ntfy webhook URL (input hidden): ").strip()
     except (EOFError, KeyboardInterrupt):
         raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.") from None
     if not validate_webhook_url(webhook_url):
@@ -2644,7 +2647,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     print(f"* The password is checked by signing in to {SMTP_HOST} as {SMTP_USER}. Nothing is sent")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        smtp_password = str(read_interactively(hidden_prompt, "Enter the SMTP password (input hidden): ")).strip()
+        smtp_password = str(read_secret_privately(hidden_prompt, "Enter the SMTP password (input hidden): ")).strip()
     except (EOFError, KeyboardInterrupt):
         raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed")) from None
     check = smtp_sign_in if sign_in is None else sign_in
@@ -3427,6 +3430,17 @@ def read_interactively(reader, *args, **kwargs):
             signal.signal(signal.SIGINT, previous_handler)
         except (ValueError, OSError):
             pass
+
+
+# Reads one hidden value with debug output forced off, so the secret cannot reach the debug stream while it is handled
+def read_secret_privately(hidden_prompt, prompt_text):
+    global DEBUG_MODE
+    previous_debug_mode = DEBUG_MODE
+    DEBUG_MODE = False
+    try:
+        return read_interactively(hidden_prompt, prompt_text)
+    finally:
+        DEBUG_MODE = previous_debug_mode
 
 
 # Silences the repeated certificate warning once verification is off, so the choice is reported by the summary and the doctor instead of on every request
@@ -7303,11 +7317,12 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
     checks: List[DoctorCheck] = []
     selected_version = sys.version_info if version_info is None else version_info
     version_text = ".".join(str(part) for part in tuple(selected_version)[:3])
-    if tuple(selected_version)[:2] >= (3, 9):
-        checks.append(make_doctor_check("Environment", "PASS", f"Python {version_text} is supported"))
+    minimum_detail = f"Minimum supported version: {MINIMUM_PYTHON_VERSION_TEXT}"
+    if tuple(selected_version)[:2] >= MINIMUM_PYTHON_VERSION:
+        checks.append(make_doctor_check("Environment", "PASS", f"Python {version_text} is supported", minimum_detail))
     else:
-        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", "Install Python 3.9 or newer then retry", False)
-        checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
+        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", False)
+        checks.append(make_doctor_check("Environment", "FAIL", advice.summary, minimum_detail, advice))
 
     find_spec = importlib.util.find_spec if spec_finder is None else spec_finder
     required = (("requests", "requests"), ("dateutil", "python-dateutil"), ("urllib3", "urllib3"), ("dotenv", "python-dotenv"), ("wcwidth", "wcwidth"), ("pyotp", "pyotp"))
@@ -7497,8 +7512,6 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if numeric_errors:
         advice = classify_recovery_error(context="config_invalid", detail="Invalid numeric settings: " + "; ".join(numeric_errors))
         checks.append(make_doctor_check("Configuration", "FAIL", "One or more numeric settings are invalid", advice.detail, advice))
-    else:
-        checks.append(make_doctor_check("Configuration", "PASS", "Numeric intervals and ports are valid"))
 
     if MONITOR_LIST_FILE:
         monitor_path = Path(MONITOR_LIST_FILE).expanduser()
@@ -8454,10 +8467,10 @@ def _wizard_ask_duration(question: str, default: int) -> int:
         print("  Enter a positive duration such as 120, 2m, 1.5h, 1h 30m or 1d.")
 
 
-# Reads a required secret through getpass without echoing the entered value
+# Reads a required secret through getpass without echoing it, coloured like the visible prompts and with debug output off
 def _wizard_ask_secret(question: str) -> str:
     try:
-        return str(read_interactively(getpass.getpass, f"{question}: "))
+        return str(read_secret_privately(getpass.getpass, colorize("info", f"{question}: ")))
     except (EOFError, KeyboardInterrupt):
         print()
         raise

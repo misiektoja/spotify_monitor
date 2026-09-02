@@ -1233,3 +1233,32 @@ def test_prompts_restore_the_default_interrupt_handler(monkeypatch):
         assert signal.getsignal(signal.SIGINT) is monitor.signal_handler
     finally:
         signal.signal(signal.SIGINT, previous_handler)
+
+
+# Verifies hidden prompts are colorized like the visible ones, so one question does not look different
+def test_hidden_prompts_are_colorized_like_the_visible_ones(monkeypatch):
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {name: monitor._build_ansi_sequence(value) for name, value in monitor.DEFAULT_COLOR_THEME.items() if monitor._build_ansi_sequence(value)})
+    prompts = []
+    monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt: prompts.append(prompt) or "secret")
+    monkeypatch.setattr(builtins, "input", lambda prompt: prompts.append(prompt) or "")
+
+    assert monitor._wizard_ask_secret("SMTP password") == "secret"
+    assert monitor._wizard_input("Receiver email: ") == ""
+
+    hidden_prompt, visible_prompt = prompts
+    assert hidden_prompt == monitor.colorize("info", "SMTP password: ")
+    assert hidden_prompt.startswith(visible_prompt[:visible_prompt.index("R")])
+    assert hidden_prompt.endswith(monitor.ANSI_RESET)
+
+
+# Verifies debug output is off while a hidden value is read and restored afterwards
+def test_a_hidden_value_is_read_with_debug_output_off(monkeypatch):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", True)
+    seen = []
+    monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt: seen.append(monitor.DEBUG_MODE) or "secret")
+
+    assert monitor._wizard_ask_secret("SMTP password") == "secret"
+    assert monitor.read_secret_privately(lambda prompt: seen.append(monitor.DEBUG_MODE) or "value", "Enter it: ") == "value"
+    assert seen == [False, False]
+    assert monitor.DEBUG_MODE is True

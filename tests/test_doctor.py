@@ -890,3 +890,22 @@ def test_a_command_line_secret_is_reported_as_such(monkeypatch):
 
     assert "Secrets loaded from the command line" in labels
     assert "Secrets loaded from the configuration file or command line" not in labels
+
+
+# Verifies the Python row states the minimum it was judged against and that the fix names the same minimum
+def test_the_python_row_names_the_minimum_supported_version():
+    supported = monitor.doctor_check_environment((3, 9, 0), all_dependencies_present)[0]
+    unsupported = monitor.doctor_check_environment((3, 8, 18), all_dependencies_present)[0]
+
+    assert supported.detail == f"Minimum supported version: {monitor.MINIMUM_PYTHON_VERSION_TEXT}"
+    assert unsupported.detail == supported.detail
+    assert monitor.MINIMUM_PYTHON_VERSION_TEXT in require_advice(unsupported).fix
+
+
+# Verifies valid numeric settings take no row, since a value that is merely fine is not a finding
+def test_valid_numeric_settings_take_no_row(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+
+    checks = monitor.doctor_check_configuration()
+
+    assert not any("numeric" in check.label.casefold() for check in checks)
