@@ -38,6 +38,16 @@ def test_install_method_detects_docker_and_compose(monkeypatch):
     assert monitor._wizard_install_method() == "compose"
 
 
+# Verifies the startup summary names every detected install method in readable form
+def test_install_method_display_names(monkeypatch):
+    assert monitor.install_method_display_name("manual") == "downloaded script"
+    assert monitor.install_method_display_name("pip") == "PyPI install"
+    assert monitor.install_method_display_name("docker") == "Docker container"
+    assert monitor.install_method_display_name("compose") == "Docker Compose container"
+    force_install_environment(monkeypatch, argv0="spotify_monitor.py")
+    assert monitor.install_method_display_name() == "downloaded script"
+
+
 # Verifies container prefixes use host-side IDs only for selected Linux hosts
 def test_install_method_command_prefixes(monkeypatch):
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")

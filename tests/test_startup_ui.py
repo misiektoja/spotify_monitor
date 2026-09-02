@@ -425,6 +425,28 @@ def test_logging_disabled_summary_behavior(monkeypatch):
     assert "Dotenv:" in concise and "None" in concise
 
 
+# Verifies the complete view alone reports the install method and names the origin of every loaded secret
+def test_full_summary_reports_install_method_and_secret_origins(monkeypatch, tmp_path):
+    configure_summary(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text("SMTP_PASSWORD=known-smtp-secret\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor.os.path, "exists", lambda path: False)
+    monkeypatch.setenv("SP_DC_COOKIE", "known-cookie-secret")
+    rows = monitor.build_startup_summary("target.user", None, str(env_file), None)
+    concise = emit_to_string(rows)
+    full = emit_to_string(rows, show_full=True)
+
+    for label in ("Install method", "Secrets from dotenv", "Secrets from environment"):
+        assert label not in concise
+        assert label in full
+    assert "* Install method:" in full and "downloaded script" in full
+    assert "* Secrets from dotenv:" in full and "SMTP_PASSWORD" in full
+    assert "* Secrets from environment:" in full and "SP_DC_COOKIE" in full
+    for secret in monitor.known_secret_values():
+        assert secret not in full
+
+
 # Verifies known secrets never enter concise, full or log-only summary output
 def test_startup_summaries_never_include_secrets(monkeypatch, tmp_path):
     configure_summary(monkeypatch)

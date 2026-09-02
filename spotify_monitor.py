@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.3.1
+v3.3.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.3.1"
+VERSION = "3.3.2"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -6240,6 +6240,12 @@ def _startup_webhook_notification_categories() -> List[str]:
     return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
 
 
+# Reports the detected install method and which secrets came from the dotenv file or the environment, by name and never by value
+def _startup_install_and_secret_rows(env_path) -> List[StartupSummaryRow]:
+    from_file, from_environment, _ = doctor_secret_sources(env_path)
+    return [StartupSummaryRow("Install method", install_method_display_name()), StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_file)) if from_file else "None"), StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None")]
+
+
 # Builds the concise and complete non-secret startup summary rows
 def build_startup_summary(target: str, config_path, env_path, output_path) -> List[StartupSummaryRow]:
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
@@ -6263,6 +6269,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
+            *_startup_install_and_secret_rows(env_path),
             StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
             StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
         ]
@@ -6281,6 +6288,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
+        *_startup_install_and_secret_rows(env_path),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
         StartupSummaryRow("Spotify playback control", str(TRACK_SONGS), concise=bool(TRACK_SONGS)),
         StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
@@ -7765,6 +7773,12 @@ def _wizard_install_method() -> str:
     if is_container_environment():
         return "compose" if os.environ.get("SPOTIFY_MONITOR_COMPOSE") else "docker"
     return "manual" if os.path.basename(sys.argv[0] or "").endswith(".py") else "pip"
+
+
+# Returns a readable name for the detected install method
+def install_method_display_name(method: Optional[str] = None) -> str:
+    selected = _wizard_install_method() if method is None else method
+    return {"pip": "PyPI install", "manual": "downloaded script", "docker": "Docker container", "compose": "Docker Compose container"}.get(selected, selected)
 
 
 # Returns local command arguments using friendly names or exact runtime paths
