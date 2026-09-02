@@ -7154,7 +7154,7 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
         parsed_values = parse_config_content(source, str(config_path), retired_settings)
         target_namespace.update(parsed_values)
         if report_errors:
-            verbose_print(f"Loaded {len(parsed_values)} settings from the configuration file")
+            debug_print("Configuration applied", path=config_path, settings=len(parsed_values))
         if retired_out is not None:
             retired_out.extend(retired_settings)
         if retired_settings and report_errors:
@@ -11994,6 +11994,7 @@ def main():
         TRACK_SONGS = True
 
     if not SMTP_HOST or SMTP_HOST.startswith("your_smtp_server_"):
+        verbose_print("Email notifications are off because SMTP_HOST is still the shipped placeholder")
         ACTIVE_NOTIFICATION = False
         INACTIVE_NOTIFICATION = False
         TRACK_NOTIFICATION = False

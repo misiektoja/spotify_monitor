@@ -163,3 +163,20 @@ def test_placeholder_secrets_are_not_reported_as_loaded(monkeypatch):
 
     assert "WEBHOOK_URL" not in from_file + from_environment + from_settings
     assert "SMTP_PASSWORD" not in from_file + from_environment + from_settings
+
+
+# Verifies the settings count is a debug trace rather than a verbose line, since it says nothing a user acts on
+def test_the_config_settings_count_is_a_debug_only_trace(tmp_path, monkeypatch, capsys):
+    config = tmp_path / "spotify_monitor.conf"
+    config.write_text("CLEAR_SCREEN = False\nDISABLE_LOGGING = True\n", encoding="utf-8")
+    namespace = {}
+
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monitor.load_config_file(config, namespace=namespace)
+    assert "settings from the configuration file" not in capsys.readouterr().out
+
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", True)
+    monitor.load_config_file(config, namespace=namespace)
+    assert "Configuration applied" in capsys.readouterr().out
