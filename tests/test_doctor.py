@@ -219,13 +219,16 @@ def test_doctor_delivery_tests_can_be_declined_independently(monkeypatch):
     monkeypatch.setattr(monitor, "_doctor_ask_yes_no", consent)
     monkeypatch.setattr(monitor, "send_email", email)
     monkeypatch.setattr(monitor, "send_webhook", webhook)
-    assert [(check.status, check.label) for check in monitor._doctor_offer_notification_tests(report)] == [("SKIP", "Test email was not sent"), ("SKIP", "Test webhook was not sent")]
+    provider = monitor.webhook_provider_display_name()
+    assert [(check.status, check.label) for check in monitor._doctor_offer_notification_tests(report)] == [("SKIP", "Test email was not sent"), ("SKIP", f"Test webhook through {provider} was not sent")]
     assert consent.call_count == 2
     email.assert_not_called()
     webhook.assert_not_called()
     output = stream.getvalue()
     assert "[SKIP] Test email was not sent" in output
-    assert "[SKIP] Test webhook was not sent" in output
+    assert f"[SKIP] Test webhook through {provider} was not sent" in output
+    # The declined row carries the same detail line the report gives every other row
+    assert "  You declined the real delivery test. Run doctor again and approve the email test when ready" in output
 
 
 # Verifies an empty doctor delivery answer defaults safely to no
@@ -253,7 +256,9 @@ def test_doctor_delivery_tests_send_approved_messages(monkeypatch):
     assert [check.status for check in results] == ["PASS", "PASS"]
     email.assert_called_once_with("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5)
     webhook.assert_called_once_with("spotify_monitor: doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
-    assert "[PASS] Doctor test webhook delivered" in stream.getvalue()
+    output = stream.getvalue()
+    assert "[PASS] Doctor test webhook through ntfy delivered" in output
+    assert "  One real test webhook was sent after confirmation" in output
 
 
 # Verifies the delivery-test gate still recognizes the readiness check once its label names the provider

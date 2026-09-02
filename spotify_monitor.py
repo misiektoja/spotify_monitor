@@ -7881,31 +7881,38 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     webhook_ready = _doctor_report_has_pass(report, WEBHOOK_READY_CHECK_LABEL)
     if not email_ready and not webhook_ready:
         return []
-    print("\nOptional delivery tests\n")
+    print("\n" + colorize("section", "Optional delivery tests") + "\n")
     write_notice = "Doctor may safely update a rotated Spotify recent-play refresh token. Each approved test sends one real message." if MONITOR_MODE == "scrobble_health" else "Doctor will not write files. Each approved test sends one real message."
     print(f"{write_notice}\n")
     results: List[DoctorCheck] = []
     if email_ready:
         if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
             result = send_email("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5)
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered. Review the SMTP error above")
         else:
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent", "You declined the real delivery test. Run doctor again and approve the email test when ready")
         results.append(check)
         # Recorded on the report so the summary sentence and the exit code cannot disagree about the same run
         report.checks.append(check)
-        print(f"[{check.status}] {check.label}")
+        _doctor_print_check(check)
     if webhook_ready:
         provider = webhook_provider_display_name()
         if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
             result = send_webhook("spotify_monitor: doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test webhook delivered" if result == 0 else "Doctor test webhook delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", f"Doctor test webhook through {provider} delivered" if result == 0 else f"Doctor test webhook through {provider} delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered. Review the webhook error above")
         else:
-            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test webhook was not sent")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", f"Test webhook through {provider} was not sent", "You declined the real delivery test. Run doctor again and approve the webhook test when ready")
         results.append(check)
         report.checks.append(check)
-        print(f"[{check.status}] {check.label}")
+        _doctor_print_check(check)
     return results
+
+
+# Prints one result the way the report renders it, so a row printed after the report matches the rows above it
+def _doctor_print_check(check) -> None:
+    print(f"[{check.status}] {check.label}")
+    if check.detail:
+        print(f"  {check.detail}")
 
 
 # Builds all independent and dependent doctor checks before rendering
