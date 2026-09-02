@@ -2647,33 +2647,36 @@ SCROBBLE_HEALTH_SESSION.mount("https://", scrobble_health_adapter)
 SCROBBLE_HEALTH_SESSION.mount("http://", scrobble_health_adapter)
 
 
-# Truncates each line of a string to a specified number of characters including tab expansion and multi-line support
+# Truncates each line to a display width, expanding tabs and counting double-width characters correctly
 def truncate_string_per_line(message, truncate_width, tabsize=8):
     try:
         from wcwidth import wcwidth
     except ImportError:
         return message
-
-    lines = message.split('\n')
     truncated_lines = []
-
-    for line in lines:
+    for line in message.split("\n"):
         expanded_line = line.expandtabs(tabsize)
         current_width = 0
-        truncated = ''
-
-        for char in expanded_line:
+        truncated = []
+        position = 0
+        while position < len(expanded_line):
+            # A colour sequence is copied through free of charge, so styling never eats into the visible width
+            escape = SGR_SEQUENCE_RE.match(expanded_line, position)
+            if escape:
+                truncated.append(escape.group(0))
+                position = escape.end()
+                continue
+            char = expanded_line[position]
             char_width = wcwidth(char)
-            if char_width < 0:
-                char_width = 0  # Non-printable or unknown width
+            if char_width is None or char_width < 0:
+                char_width = 0
             if current_width + char_width > truncate_width:
                 break
-            truncated += char
+            truncated.append(char)
             current_width += char_width
-
-        truncated_lines.append(truncated)
-
-    return '\n'.join(truncated_lines)
+            position += 1
+        truncated_lines.append("".join(truncated))
+    return "\n".join(truncated_lines)
 
 
 # Resolves CLI and configured truncation settings while expanding the terminal-width sentinel

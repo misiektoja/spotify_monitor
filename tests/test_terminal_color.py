@@ -515,3 +515,26 @@ def test_recovery_guidance_uses_the_info_colour(colored):
     line = "To fix: Verify the --config-file path then retry"
 
     assert monitor._colorize_line(line).startswith(colored["info"])
+
+
+# Verifies truncation measures what is displayed, so colour codes do not eat into the visible width
+def test_truncation_measures_display_width_not_escape_sequences():
+    pytest.importorskip("wcwidth")
+
+    truncated = monitor.truncate_string_per_line("\x1b[31m0123456789ABCDEF\x1b[0m", 10)
+
+    assert re.sub(r"\x1b\[[0-9;]*m", "", truncated) == "0123456789"
+
+
+# Verifies a double-width character costs two columns, so a CJK title does not wrap past the limit
+def test_truncation_counts_double_width_characters():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("原神原神原神", 4) == "原神"
+
+
+# Verifies each line is measured on its own rather than the whole message being cut at one offset
+def test_truncation_applies_to_every_line():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("abcdef\nabcdef", 3) == "abc\nabc"
