@@ -301,7 +301,7 @@ Use `--verbose` to display the complete startup summary plus rare operational ev
 spotify_monitor <spotify_target> --verbose
 ```
 
-The complete summary also names the detected install method and which secrets came from the dotenv file or the environment, by name only.
+The complete summary also names the detected install method and which secrets came from the dotenv file, the environment or the configuration file, by name only.
 
 Spotify Monitor normally checks every 30 seconds. Verbose mode reports token refreshes, metadata fallback, the first temporary friend-list miss, recovery from temporary problems and a periodic status summary. It does not print every successful check when nothing changed.
 

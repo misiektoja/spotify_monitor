@@ -6266,10 +6266,19 @@ def _startup_webhook_notification_categories() -> List[str]:
     return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
 
 
-# Reports the detected install method and which secrets came from the dotenv file or the environment, by name and never by value
-def _startup_install_and_secret_rows(env_path) -> List[StartupSummaryRow]:
-    from_file, from_environment, _ = doctor_secret_sources(env_path)
-    return [StartupSummaryRow("Install method", install_method_display_name()), StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_file)) if from_file else "None"), StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None")]
+# Reports the install method, which secrets came from where by name and never by value, and the shared output settings
+def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
+    from_file, from_environment, from_settings = doctor_secret_sources(env_path)
+    return [
+        StartupSummaryRow("Install method", install_method_display_name()),
+        StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_file)) if from_file else "None"),
+        StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None"),
+        StartupSummaryRow("Secrets from config file", ", ".join(sorted(from_settings)) if from_settings else "None"),
+        StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
+        StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})"),
+        # The resolved state, not the setting: colour also switches itself off when the output is not a terminal
+        StartupSummaryRow("Coloured output", f"{COLOR_ENABLED} (setting: {COLORED_OUTPUT})"),
+    ]
 
 
 # Builds the concise and complete non-secret startup summary rows
@@ -6283,7 +6292,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
     if MONITOR_MODE == "scrobble_health":
         return [
             StartupSummaryRow("Mode", "Spotify-to-Last.fm scrobble health", concise=True),
-            StartupSummaryRow("Last.fm profile", str(target), concise=True),
+            StartupSummaryRow("Target", str(target), concise=True),
             StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
             StartupSummaryRow("Outage evidence", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
@@ -6291,14 +6300,14 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
             StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
-            StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
-            StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
-            StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
-            *_startup_install_and_secret_rows(env_path),
+            StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
+            *_startup_environment_rows(env_path),
             StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
             StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
+            # Points at the two modes for a reader who does not know they exist, so the full view drops it
+            StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False),
         ]
     rows = [
         StartupSummaryRow("Target", str(target), concise=True),
@@ -6312,27 +6321,27 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
         StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
-        StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})", concise=False),
-        StartupSummaryRow("TLS verification", "On" if VERIFY_SSL else "Off, server certificates are not checked", concise=not VERIFY_SSL),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
-        *_startup_install_and_secret_rows(env_path),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
         StartupSummaryRow("Spotify playback control", str(TRACK_SONGS), concise=bool(TRACK_SONGS)),
         StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
         StartupSummaryRow("CSV output", CSV_FILE or "Disabled", concise=bool(CSV_FILE)),
         StartupSummaryRow("Monitored-track alerts", MONITOR_LIST_FILE or "Disabled", concise=bool(MONITOR_LIST_FILE)),
         StartupSummaryRow("Flag file", FLAG_FILE or "None", concise=bool(FLAG_FILE)),
-        StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
-        StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
-        StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
     ]
     if spotify_has_oauth_app_credentials():
-        oauth_cache = SP_APP_TOKENS_FILE or "None (memory only)"
-        rows.append(StartupSummaryRow("Legacy OAuth cache", oauth_cache, concise=True))
+        rows.append(StartupSummaryRow("Legacy OAuth cache", SP_APP_TOKENS_FILE or "None (memory only)", concise=True))
     else:
         rows.append(StartupSummaryRow("Legacy OAuth cache", "Not used", concise=False))
-    rows.append(StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False))
+    rows.extend([
+        StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        *_startup_environment_rows(env_path),
+        StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
+        StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
+        # Points at the two modes for a reader who does not know they exist, so the full view drops it
+        StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False),
+    ])
     return rows
 
 

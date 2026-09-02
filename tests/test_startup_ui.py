@@ -504,3 +504,28 @@ def test_logger_terminal_only_and_log_only(monkeypatch, tmp_path):
     assert "abcdefgh" not in log_output
     assert "        log-only-value\n" in log_output
     assert "terminal-and-log\n" in log_output
+
+
+# The rows shared with the sibling monitors, in the order every one of them prints
+SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+
+
+# Verifies the shared rows keep the order and the label column width every sibling monitor prints
+def test_the_shared_summary_rows_match_the_sibling_tools(monkeypatch):
+    configure_summary(monkeypatch)
+    rows = monitor.build_startup_summary("target.user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    assert [row.label for row in rows if row.label in SHARED_ROW_ORDER] == list(SHARED_ROW_ORDER)
+    # The renderer pads "<label>:" into a 30-character column, so a longer label swallows the separating space
+    assert max(len(row.label) for row in rows) <= 28
+
+
+# Verifies the scrobble health view keeps the shared tail rows the other modes and tools print
+def test_the_scrobble_health_summary_keeps_the_shared_tail(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+    tail = ("Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+
+    assert [row.label for row in rows if row.label in tail] == list(tail)
+    assert max(len(row.label) for row in rows) <= 28
