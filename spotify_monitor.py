@@ -8645,7 +8645,7 @@ def _wizard_queue_secret(updates: dict, env_path: Path, key: str, value: str) ->
 def _wizard_target(initial_target: Optional[str] = None) -> str:
     default = initial_target or ""
     while True:
-        raw_target = _wizard_ask_text("Spotify profile URL or user ID to monitor", default=default, required=True)
+        raw_target = _wizard_ask_text("Spotify profile URL, spotify:user URI or user ID to monitor", default=default, required=True)
         if not raw_target:
             return ""
         try:

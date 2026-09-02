@@ -302,6 +302,21 @@ def test_target_helper_normalizes_supported_forms(monkeypatch, raw):
     assert monitor._wizard_target() == "target.user"
 
 
+# Verifies the question names every form the helper accepts, so a URI is not left looking unsupported
+def test_the_target_question_names_every_accepted_form(monkeypatch):
+    prompts = []
+
+    def record(prompt=""):
+        prompts.append(prompt)
+        return "target.user"
+
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(builtins, "input", record)
+
+    assert monitor._wizard_target() == "target.user"
+    assert "Spotify profile URL, spotify:user URI or user ID to monitor" in prompts[0]
+
+
 # Verifies a confirmed manual-cookie setup keeps its secret out of the generated config and output
 def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys):
     with make_test_directory() as directory_name:
