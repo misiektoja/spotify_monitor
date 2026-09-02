@@ -704,7 +704,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
         secret = "https://discord.com/api/webhooks/123/private-token"
-        answers = iter([True, False, True, True, False])
+        answers = iter([True, False, True, True, False, False])
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "target.user")
@@ -738,7 +738,7 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
         env_path = directory / ".env"
         topic_url = "https://ntfy.example.test/private-topic"
         token = "tk_private_access_token"
-        answers = iter([True, False, True, True, False])
+        answers = iter([True, False, True, True, False, False])
         choices = iter([0, 1, 0, 0])
         secrets = iter([topic_url, token])
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
@@ -995,3 +995,13 @@ def test_the_test_messages_use_the_shared_wording(monkeypatch):
 
     assert email.call_args.args[:2] == ("spotify_monitor: test email", "This test email was sent by --send-test-email. Your SMTP settings work.")
     assert delivery.call_args.args[:2] == ("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.")
+
+
+# Verifies the webhook question defaults to the saved switch, so a rerun over a configured webhook proposes keeping it
+def test_the_webhook_question_defaults_to_the_saved_switch(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False, **kwargs: seen.append((question, default)) or False)
+
+    assert monitor._wizard_collect_webhook({"WEBHOOK_ENABLED": True}, {}, tmp_path / ".env") == []
+
+    assert seen == [("Set up webhook alerts (Discord, ntfy etc.)?", True)]

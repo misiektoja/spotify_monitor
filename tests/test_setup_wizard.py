@@ -1562,3 +1562,21 @@ def test_a_declined_target_ends_the_section_without_the_persist_question(monkeyp
     assert state.target == ""
     assert state.config_values["TARGET_USER_URI_ID"] == ""
     assert "No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line." in capsys.readouterr().out
+
+
+# Verifies the doctor is offered whenever a target was given, so a setup without authentication can see what is missing
+def test_the_doctor_offer_follows_the_target_rather_than_authentication(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        monkeypatch.chdir(directory)
+        auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+        install_minimal_wizard_flow(monkeypatch, "manual", auth, [True, False, False])
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        prompts = [call.args[0] for call in monitor._wizard_ask_yes_no.call_args_list]
+        assert any(prompt.startswith("Run doctor now?") for prompt in prompts)
+        assert not any(prompt.startswith("Start monitoring now?") for prompt in prompts)
+        assert "Authentication still needs to be completed." in capsys.readouterr().out
+

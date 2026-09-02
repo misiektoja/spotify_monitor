@@ -11,7 +11,7 @@ Both setup wizards explain at the beginning that Enter accepts the shown default
 
 Every answer setup cannot use offers a way out, so one value you cannot produce right now does not cost you the answers already given. A blank answer asks whether to continue without it and names what stops working, and a rejected one offers to enter it again. Declining switches the part that needed it off, so half a mail server or a webhook with no destination is never written. A rebuilt file starts from the settings already in place with your answers applied over them. A section you decline is cleared rather than carried over, so declining email leaves no mail server behind. A manually entered `sp_dc` value is validated before it is queued for saving. Email setup signs in to the mail server before saving, so a wrong password or an unreachable host is caught during setup instead of at the first alert. No email is sent. A refused sign-in offers the mail server questions again, and if the server was only unreachable the answers are kept so `--doctor` can check them later.
 
-For a local install, the wizard can check the setup and start monitoring immediately.
+After saving, the wizard offers the Doctor checks whenever a target was given. For a local install it then offers to start monitoring once those checks passed.
 
 Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.
 

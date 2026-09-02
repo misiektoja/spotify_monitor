@@ -9025,7 +9025,7 @@ def _wizard_disable_webhook(config_values: dict, notification_names: Sequence[st
 # Collects hidden webhook secrets and mode-appropriate alert choices without sending a message
 def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("WEBHOOK_ACTIVE_NOTIFICATION", "WEBHOOK_INACTIVE_NOTIFICATION", "WEBHOOK_TRACK_NOTIFICATION", "WEBHOOK_SONG_NOTIFICATION", "WEBHOOK_SONG_ON_LOOP_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION")
-    if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=False):
+    if not _wizard_ask_yes_no("Set up webhook alerts (Discord, ntfy etc.)?", default=bool(config_values.get("WEBHOOK_ENABLED"))):
         _wizard_disable_webhook(config_values, notification_names, scrobble_health, secret_updates)
         return []
     provider_choice = _wizard_ask_choice("Which webhook service should receive alerts?", [("Discord", "Sends a Discord embed to one channel webhook."), ("ntfy", "Sends a native notification to one ntfy topic URL.")])
@@ -9871,9 +9871,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             else:
                 print(colorize('header', "\nFollowing check\n"))
                 print("Follow status could not be checked because the saved setup could not be loaded.")
-        if auth["complete"]:
+        # A container Firefox import still has to run on the host, so doctor would only report the missing login
+        doctor_offered = bool(target) and not (auth.get("browser") and method in ("docker", "compose"))
+        if doctor_offered:
             print()
-        if auth["complete"] and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
+        if doctor_offered and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
             doctor_ran = True
             if _wizard_load_effective_setup(config_path, env_path):
                 render_doctor_notice()
@@ -11687,9 +11689,11 @@ def main():
         if setup_scrobble_conflicts:
             parser.error("--setup-scrobble-health cannot be combined with " + ", ".join(setup_scrobble_conflicts))
         if args.config_file is not None and args.config_file.casefold() == "none":
-            parser.error("--setup-scrobble-health requires a config destination and cannot use --config-file none")
+            print("Setup cannot start: --setup-scrobble-health requires a config destination. Replace '--config-file none' with a writable path.")
+            sys.exit(1)
         if args.env_file is not None and args.env_file.casefold() == "none":
-            parser.error("--setup-scrobble-health requires a dotenv destination and cannot use --env-file none")
+            print("Setup cannot start: --setup-scrobble-health requires a dotenv destination. Replace '--env-file none' with a writable path.")
+            sys.exit(1)
         run_scrobble_health_setup_wizard(args.config_file, args.env_file)
         sys.exit(0)
 
@@ -11890,9 +11894,11 @@ def main():
         if setup_conflicts:
             parser.error("--setup cannot be combined with " + ", ".join(setup_conflicts))
         if args.config_file is not None and args.config_file.casefold() == "none":
-            parser.error("--setup requires a config destination and cannot use --config-file none")
+            print("Setup cannot start: --setup requires a config destination. Replace '--config-file none' with a writable path.")
+            sys.exit(1)
         if args.env_file is not None and args.env_file.casefold() == "none":
-            parser.error("--setup requires a dotenv destination and cannot use --env-file none")
+            print("Setup cannot start: --setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
+            sys.exit(1)
         run_setup_wizard(args.user_id, args.config_file, args.env_file)
         sys.exit(0)
 

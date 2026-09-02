@@ -290,8 +290,9 @@ def test_scrobble_health_setup_accepts_file_options():
 # Confirms focused setup cannot disable the config file it must create
 def test_scrobble_health_setup_rejects_disabled_config_destination():
     result = run_cli("--setup-scrobble-health", "--config-file", "none")
-    assert result.returncode == 2
-    assert "requires a config destination and cannot use --config-file none" in result.stderr
+    assert result.returncode == 1
+    assert "Setup cannot start: --setup-scrobble-health requires a config destination. Replace '--config-file none' with a writable path." in result.stdout
+    assert "usage:" not in result.stderr
 
 
 # Confirms standalone reauthorization accepts only app settings plus file destinations
