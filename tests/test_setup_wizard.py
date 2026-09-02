@@ -60,7 +60,8 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
     if report is not None:
         monkeypatch.setattr(monitor, "build_doctor_report", Mock(return_value=report))
-        monkeypatch.setattr(monitor, "render_doctor_report", lambda selected: "DOCTOR REPORT")
+        monkeypatch.setattr(monitor, "render_doctor_sections", lambda selected: "DOCTOR REPORT")
+        monkeypatch.setattr(monitor, "render_doctor_summary", lambda checks: "DOCTOR SUMMARY")
 
 
 # Verifies required text offers a retry before re-prompting and applies defaults

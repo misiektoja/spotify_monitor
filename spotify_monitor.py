@@ -1281,6 +1281,9 @@ class RecoveryError(Exception):
 # tools, because every state it would cover is a state the others already call PASS
 DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
 
+# Delivery results are printed as they happen rather than inside a section, but they still count in the summary
+DOCTOR_DELIVERY_SECTION = "Optional delivery tests"
+
 
 # Stores one doctor result before the report is rendered
 @dataclass(frozen=True)
@@ -7834,24 +7837,23 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     if email_ready:
         if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
             result = send_email("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5)
-            check = make_doctor_check("Notifications", "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered")
-            results.append(check)
-            print(f"[{check.status}] {check.label}")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test email delivered" if result == 0 else "Doctor test email delivery failed", "One real test email was sent after confirmation" if result == 0 else "The approved test email could not be delivered")
         else:
-            check = make_doctor_check("Notifications", "SKIP", "Test email was not sent")
-            results.append(check)
-            print(f"[{check.status}] {check.label}")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test email was not sent")
+        results.append(check)
+        # Recorded on the report so the summary sentence and the exit code cannot disagree about the same run
+        report.checks.append(check)
+        print(f"[{check.status}] {check.label}")
     if webhook_ready:
         provider = webhook_provider_display_name()
         if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
             result = send_webhook("Spotify Monitor doctor test", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
-            check = make_doctor_check("Notifications", "PASS" if result == 0 else "FAIL", "Doctor test webhook delivered" if result == 0 else "Doctor test webhook delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered")
-            results.append(check)
-            print(f"[{check.status}] {check.label}")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS" if result == 0 else "FAIL", "Doctor test webhook delivered" if result == 0 else "Doctor test webhook delivery failed", "One real test webhook was sent after confirmation" if result == 0 else "The approved test webhook could not be delivered")
         else:
-            check = make_doctor_check("Notifications", "SKIP", "Test webhook was not sent")
-            results.append(check)
-            print(f"[{check.status}] {check.label}")
+            check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "SKIP", "Test webhook was not sent")
+        results.append(check)
+        report.checks.append(check)
+        print(f"[{check.status}] {check.label}")
     return results
 
 
@@ -7890,8 +7892,8 @@ def render_doctor_notice() -> None:
     print(f"Running preflight checks. {write_notice} Interactive email and webhook tests run only after separate approval.\n")
 
 
-# Renders one sectioned ASCII doctor report with action lines for failures
-def render_doctor_report(report: DoctorReport) -> str:
+# Renders the heading and every non-empty section, with an action line on the rows that are not a pass
+def render_doctor_sections(report: DoctorReport) -> str:
     # The install method is context rather than a check: it cannot fail, so it is stated once here
     # instead of taking a result row that no marker describes
     lines = [colorize("header", "Doctor"), f"Detected install method: {colorize('username', _wizard_install_method())}"]
@@ -7902,7 +7904,7 @@ def render_doctor_report(report: DoctorReport) -> str:
             continue
         lines.extend(("", colorize("section", section)))
         for check in section_checks:
-            lines.append(f"[{'PASS' if check.status == 'PASS' else check.status}] {check.label}")
+            lines.append(f"[{check.status}] {check.label}")
             if check.detail:
                 lines.append(f"  {check.detail}")
             rendered_advice = check.advice
@@ -7911,16 +7913,20 @@ def render_doctor_report(report: DoctorReport) -> str:
             if rendered_advice is not None and check.status != "PASS":
                 # The fix carries its own guide line, so each line is indented on its own
                 lines.extend(f"  {advice_line}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
-    failures = sum(check.status == "FAIL" for check in report.checks)
-    warnings = sum(check.status == "WARN" for check in report.checks)
+    return sanitize_error_text("\n".join(lines))
+
+
+# Renders the one sentence that says whether the setup is usable and where to read more
+def render_doctor_summary(checks: Sequence[DoctorCheck]) -> str:
+    failures = sum(check.status == "FAIL" for check in checks)
+    warnings = sum(check.status == "WARN" for check in checks)
     if failures:
         summary_line = colorize("error", f"  {failures} check(s) failed, {warnings} warning(s). Fix the failures above before relying on the tool.")
     elif warnings:
         summary_line = colorize("warning", f"  All critical checks passed with {warnings} warning(s). Review the warnings above.")
     else:
         summary_line = colorize("boolean_true", "  All checks passed. You are good to go!")
-    lines.extend(("", colorize("header", "Summary"), summary_line, "", f"Guide: {DOCTOR_GUIDE_URL}"))
-    return sanitize_error_text("\n".join(lines))
+    return "\n".join(("", colorize("header", "Summary"), summary_line, "", f"Guide: {DOCTOR_GUIDE_URL}"))
 
 
 # Returns the raw terminal stream for trusted Doctor cursor movement
@@ -7964,9 +7970,10 @@ def run_doctor(target_value=None, config_path=None, env_path=None, startup_check
         report = build_doctor_report(target_value, config_path, env_path, startup_checks, progress=progress)
     finally:
         _doctor_progress_clear()
-    print(render_doctor_report(report))
-    delivery_checks = _doctor_offer_notification_tests(report)
-    return 1 if any(check.status == "FAIL" for check in (*report.checks, *delivery_checks)) else 0
+    print(render_doctor_sections(report))
+    _doctor_offer_notification_tests(report)
+    print(render_doctor_summary(report.checks))
+    return 1 if any(check.status == "FAIL" for check in report.checks) else 0
 
 
 # Runs focused preflight checks for Spotify-to-Last.fm scrobble health mode
@@ -8030,12 +8037,13 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
         report.checks.extend(doctor_check_webhook_notifications())
     finally:
         _doctor_progress_clear()
-    print(render_doctor_report(report))
+    print(render_doctor_sections(report))
     if VERBOSE_MODE and evaluation is not None:
         print()
         print(render_scrobble_history_comparison(spotify_plays, lastfm_scrobbles, evaluation))
-    delivery_checks = _doctor_offer_notification_tests(report)
-    return 1 if any(check.status == "FAIL" for check in (*report.checks, *delivery_checks)) else 0
+    _doctor_offer_notification_tests(report)
+    print(render_doctor_summary(report.checks))
+    return 1 if any(check.status == "FAIL" for check in report.checks) else 0
 
 
 # Resolves an executable path by checking if it's a valid file or searching in $PATH
@@ -9607,12 +9615,14 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
                     report = build_doctor_report(target, str(config_path), str(env_path), progress=_doctor_progress)
                 finally:
                     _doctor_progress_clear()
-                print(render_doctor_report(report))
+                print(render_doctor_sections(report))
+                # Authentication is decided by the preflight alone, so a declined delivery test cannot invalidate it
                 doctor_failed = any(check.status == "FAIL" for check in report.checks)
                 if not doctor_failed:
                     auth["validated"] = True
-                delivery_checks = _doctor_offer_notification_tests(report)
-                doctor_failed = doctor_failed or any(check.status == "FAIL" for check in delivery_checks)
+                _doctor_offer_notification_tests(report)
+                print(render_doctor_summary(report.checks))
+                doctor_failed = any(check.status == "FAIL" for check in report.checks)
             else:
                 doctor_failed = True
     except (EOFError, KeyboardInterrupt):

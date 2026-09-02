@@ -576,7 +576,8 @@ def test_wizard_prompt_and_menu_are_coloured(colored, capsys, monkeypatch):
 
 # Verifies the Doctor report headings and verdict are coloured, matching the sibling monitors
 def test_doctor_report_headings_are_coloured(colored):
-    report = monitor.render_doctor_report(monitor.build_doctor_report(None, None, "none"))
+    built = monitor.build_doctor_report(None, None, "none")
+    report = monitor.render_doctor_sections(built) + monitor.render_doctor_summary(built.checks)
 
     assert f"{colored['header']}Doctor{monitor.ANSI_RESET}" in report
     assert f"{colored['header']}Summary{monitor.ANSI_RESET}" in report

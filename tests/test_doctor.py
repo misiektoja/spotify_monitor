@@ -12,6 +12,11 @@ import spotify_monitor as monitor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+# Composes the two renderers the way run_doctor does, so a test can assert on the whole transcript
+def render_doctor_report(report):
+    return monitor.render_doctor_sections(report) + "\n" + monitor.render_doctor_summary(report.checks)
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
 
@@ -83,7 +88,7 @@ def require_advice(check):
 def test_report_markers_and_sections(monkeypatch):
     configure_valid_doctor(monkeypatch)
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
     for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications", "Summary"):
         assert section in rendered
     assert "[PASS]" in rendered
@@ -113,7 +118,7 @@ def test_preflight_notice_names_the_scrobble_health_write(monkeypatch, capsys):
 def test_report_states_the_install_method_without_a_marker():
     report = monitor.DoctorReport([monitor.make_doctor_check("Environment", "PASS", "Python 3.12.0 is supported")])
 
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
 
     assert f"Doctor\nDetected install method: {monitor._wizard_install_method()}\n" in rendered
     assert "[PASS] Install method" not in rendered
@@ -125,7 +130,7 @@ def test_report_names_disabled_output_destinations(monkeypatch):
     monkeypatch.setattr(monitor, "CSV_FILE", "")
     monkeypatch.setattr(monitor, "DISABLE_LOGGING", True)
 
-    rendered = monitor.render_doctor_report(monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present))
+    rendered = render_doctor_report(monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present))
 
     # The labels say everything, so neither row carries a detail that only repeats them
     assert "[PASS] CSV logging is disabled\n[PASS] Output logging is disabled\n" in rendered
@@ -135,7 +140,7 @@ def test_report_names_disabled_output_destinations(monkeypatch):
 def test_report_indents_check_details():
     report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "PASS", "Log destination appears writable", "Path: spotify_monitor")])
 
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
 
     assert "[PASS] Log destination appears writable\n  Path: spotify_monitor" in rendered
 
@@ -143,7 +148,7 @@ def test_report_indents_check_details():
 # Verifies reports omit sections that have no checks
 def test_report_omits_empty_sections():
     report = monitor.DoctorReport([monitor.make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded")])
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
     assert "\nScrobble health\n" in rendered
     for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications"):
         assert f"\n{section}\n" not in rendered
@@ -383,7 +388,7 @@ def test_doctor_omits_container_playback_warning_locally(monkeypatch):
 
 # Verifies an explicit missing config appears inside the doctor summary
 def test_explicit_missing_config_is_reported():
-    result = run_cli(["--doctor", "--config-file", "local/does-not-exist-phase3.conf", "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--config-file", "local/does-not-exist-phase3.conf", "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "configuration file was not found" in result.stdout.lower()
     assert "Summary" in result.stdout
@@ -393,7 +398,7 @@ def test_explicit_missing_config_is_reported():
 def test_malformed_config_is_reported_inside_summary(tmp_path):
     config_path = tmp_path / "broken.conf"
     config_path.write_text('TOKEN_SOURCE = "cookie"\nTARGET_USER_URI_ID = "broken\n', encoding="utf-8")
-    result = run_cli(["--doctor", "--config-file", str(config_path), "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--config-file", str(config_path), "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "Line: 2" in result.stdout
     assert 'TARGET_USER_URI_ID = "broken' in result.stdout
@@ -402,7 +407,7 @@ def test_malformed_config_is_reported_inside_summary(tmp_path):
 
 # Verifies an explicit missing dotenv file is a doctor failure
 def test_explicit_missing_dotenv_is_reported():
-    result = run_cli(["--doctor", "--env-file", "local/does-not-exist-phase3.env"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--env-file", "local/does-not-exist-phase3.env"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "dotenv file was not found" in result.stdout.lower()
 
@@ -633,7 +638,7 @@ def test_target_absent_from_buddy_list_is_not_visible(target_value):
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else")), target_value)[0]
     assert check.status == "FAIL"
     assert require_advice(check).code == "target.not_visible"
-    rendered = monitor.render_doctor_report(monitor.DoctorReport([check]))
+    rendered = render_doctor_report(monitor.DoctorReport([check]))
     assert "deleted" not in rendered.lower()
     assert rendered.count("https://open.spotify.com/user/friend.user") == 1
 
@@ -744,7 +749,7 @@ def test_doctor_output_contains_no_secret(monkeypatch):
     secret = "FAKE-DOCTOR-SECRET"
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", secret)
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    assert secret not in monitor.render_doctor_report(report)
+    assert secret not in render_doctor_report(report)
 
 
 # Verifies the doctor CLI can run without a positional target and bypass normal startup
@@ -987,7 +992,40 @@ def test_the_action_lines_sit_indented_under_their_marker(monkeypatch):
         monitor.make_doctor_check("Configuration", "PASS", "a passing row", "", advice),
     ])
 
-    lines = monitor.render_doctor_report(report).splitlines()
+    lines = render_doctor_report(report).splitlines()
     rows = lines[lines.index("[WARN] a warning row"):]
 
     assert rows[:5] == ["[WARN] a warning row", "  a detail worth keeping", "  To fix: do the thing", f"  Guide: {monitor.DOCTOR_GUIDE_URL}", "[PASS] a passing row"]
+
+
+# Verifies an approved delivery test that failed reaches the summary, so a failing run cannot report a clean one
+def test_a_failed_delivery_test_reaches_the_summary(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", monitor.SMTP_READY_CHECK_LABEL)])
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", TTYBuffer())
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "send_email", Mock(return_value=1))
+
+    monitor._doctor_offer_notification_tests(report)
+
+    assert [(check.section, check.status, check.label) for check in report.checks][-1] == (monitor.DOCTOR_DELIVERY_SECTION, "FAIL", "Doctor test email delivery failed")
+    assert "1 check(s) failed, 0 warning(s)." in monitor.render_doctor_summary(report.checks)
+
+
+# Verifies every doctor entry point renders its summary after the delivery tests, so the sentence and the exit code describe one run
+def test_the_summary_is_rendered_after_the_delivery_tests():
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(monitor))
+    checked = 0
+    for function in [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]:
+        calls = [(call.lineno, ast.unparse(call.func)) for call in ast.walk(function) if isinstance(call, ast.Call)]
+        offers = [lineno for lineno, name in calls if name.endswith("_doctor_offer_notification_tests")]
+        summaries = [lineno for lineno, name in calls if name.endswith("render_doctor_summary")]
+        if not offers or not summaries:
+            continue
+        checked += 1
+        assert max(offers) < min(summaries), f"{function.name} renders the summary before the delivery tests"
+
+    assert checked, "no doctor entry point runs the delivery tests and then the summary"
