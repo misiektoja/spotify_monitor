@@ -2375,8 +2375,8 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
             raise BrowserCookieImportError(f"Dotenv destination '{destination}' already contains SP_DC_COOKIE. Re-run with --force to replace it in a noninteractive environment.")
         prompt = input if input_func is None else input_func
         try:
-            confirmed = prompt(f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
-        except EOFError:
+            confirmed = read_interactively(prompt, f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
             raise BrowserCookieImportError("Browser cookie import cancelled. The dotenv file was not changed.")
@@ -2409,7 +2409,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     prompt = input if input_func is None else input_func
     if _dotenv_contains_key(destination, "SP_DC_COOKIE"):
         try:
-            confirmed = prompt(f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace SP_DC_COOKIE in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
@@ -2418,7 +2418,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     print(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        sp_dc = hidden_prompt("Enter sp_dc privately: ")
+        sp_dc = read_interactively(hidden_prompt, "Enter sp_dc privately: ")
     except (EOFError, KeyboardInterrupt):
         raise BrowserCookieImportError("SP_DC_COOKIE entry was cancelled. The dotenv file was not changed.") from None
     if not isinstance(sp_dc, str) or not sp_dc:
@@ -2463,7 +2463,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         raise LastfmConfigurationError(f"Could not read dotenv destination '{destination}'. Check that it is a readable UTF-8 file.") from None
     if existing_key:
         try:
-            confirmed = prompt(f"Replace LASTFM_API_KEY in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace LASTFM_API_KEY in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
@@ -2471,7 +2471,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     print(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
     try:
-        api_key = hidden_prompt("Enter the Last.fm API key privately: ").strip()
+        api_key = read_interactively(hidden_prompt, "Enter the Last.fm API key privately: ").strip()
     except (EOFError, KeyboardInterrupt):
         raise LastfmConfigurationError("LASTFM_API_KEY entry was cancelled. The dotenv file was not changed.") from None
     if not api_key or "\r" in api_key or "\n" in api_key:
@@ -2524,7 +2524,7 @@ def run_authorize_scrobble_health(client_id: Optional[str] = None, redirect_uri:
         raise SpotifyScrobbleAuthorizationError(f"Could not read dotenv destination '{destination}'. Check that it is a readable UTF-8 file") from None
     if existing_authorization:
         try:
-            confirmed = prompt(f"Replace the saved Spotify recent-play authorization in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace the saved Spotify recent-play authorization in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
@@ -2563,14 +2563,14 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
         raise WebhookConfigurationError(str(exc)) from None
     if existing_assignment:
         try:
-            confirmed = prompt(f"Replace the saved webhook URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
+            confirmed = read_interactively(prompt, f"Replace the saved webhook URL in '{destination}'? [y/N]: ").strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
             raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        webhook_url = hidden_prompt("Paste the Discord or ntfy webhook URL (input hidden): ").strip()
+        webhook_url = read_interactively(hidden_prompt, "Paste the Discord or ntfy webhook URL (input hidden): ").strip()
     except (EOFError, KeyboardInterrupt):
         raise WebhookConfigurationError("Webhook setup was cancelled. The private settings file was not changed.") from None
     if not validate_webhook_url(webhook_url):
@@ -2628,7 +2628,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     prompt = input if input_func is None else input_func
     if _dotenv_contains_key(destination, "SMTP_PASSWORD"):
         try:
-            confirmed = str(prompt(f"Replace the saved SMTP password in '{destination}'? [y/N]: ")).strip().casefold() in ("y", "yes")
+            confirmed = str(read_interactively(prompt, f"Replace the saved SMTP password in '{destination}'? [y/N]: ")).strip().casefold() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
             confirmed = False
         if not confirmed:
@@ -2636,7 +2636,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     print(f"* The password is checked by signing in to {SMTP_HOST} as {SMTP_USER}. Nothing is sent")
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
-        smtp_password = str(hidden_prompt("Enter the SMTP password (input hidden): ")).strip()
+        smtp_password = str(read_interactively(hidden_prompt, "Enter the SMTP password (input hidden): ")).strip()
     except (EOFError, KeyboardInterrupt):
         raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed")) from None
     check = smtp_sign_in if sign_in is None else sign_in
@@ -3383,6 +3383,23 @@ def signal_handler(sig, frame):
     if FLAG_FILE:
         flag_file_delete()
     sys.exit(0)
+
+
+# Reads one answer with Python's default Ctrl+C behavior, so the prompt reports the outcome instead of the signal handler
+def read_interactively(reader, *args, **kwargs):
+    try:
+        previous_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    except (ValueError, OSError):
+        # Handlers can only be replaced from the main thread, which is where every prompt runs
+        return reader(*args, **kwargs)
+    try:
+        return reader(*args, **kwargs)
+    finally:
+        try:
+            signal.signal(signal.SIGINT, previous_handler)
+        except (ValueError, OSError):
+            pass
 
 
 # Silences the repeated certificate warning once verification is off, so the choice is reported by the summary and the doctor instead of on every request
@@ -5067,7 +5084,7 @@ def spotify_authorize_scrobble_health(client_id: str, redirect_uri: str, input_f
     print(f"Spotify will redirect to {redirect_uri}. The page may not load because no web server is required.")
     print("Copy the complete URL from the browser address bar after the redirect.")
     try:
-        callback_url = prompt("Paste the complete redirected URL: ").strip()
+        callback_url = read_interactively(prompt, "Paste the complete redirected URL: ").strip()
     except (EOFError, KeyboardInterrupt):
         raise SpotifyScrobbleAuthorizationError("Spotify recent-play authorization was cancelled") from None
     code = spotify_parse_scrobble_callback(callback_url, redirect_uri, state)
@@ -7651,7 +7668,7 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
 def _doctor_ask_yes_no(question: str) -> bool:
     while True:
         try:
-            value = input(f"{question} [y/N]: ").strip().casefold()
+            value = read_interactively(input, f"{question} [y/N]: ").strip().casefold()
         except (EOFError, KeyboardInterrupt):
             print("\nDelivery test skipped.")
             return False
@@ -8244,7 +8261,7 @@ def _wizard_print_setup_destinations(method: str, config_path: Path, env_path: P
 # Reads one setup line, letting a cancelled prompt reach the handler that knows what was written
 def _wizard_input(prompt_text: str) -> str:
     try:
-        return input(colorize("info", prompt_text))
+        return read_interactively(input, colorize("info", prompt_text))
     except (EOFError, KeyboardInterrupt):
         # The interrupted prompt owns the line break, so every handler prints its message alone
         print()
@@ -8370,7 +8387,7 @@ def _wizard_ask_duration(question: str, default: int) -> int:
 # Reads a required secret through getpass without echoing the entered value
 def _wizard_ask_secret(question: str) -> str:
     try:
-        return str(getpass.getpass(f"{question}: "))
+        return str(read_interactively(getpass.getpass, f"{question}: "))
     except (EOFError, KeyboardInterrupt):
         print()
         raise

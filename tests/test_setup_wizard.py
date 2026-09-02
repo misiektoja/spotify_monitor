@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
 
+import signal
 import pytest
 from dotenv import dotenv_values
 
@@ -1214,3 +1215,21 @@ def test_interrupting_the_launch_offer_keeps_the_saved_setup(monkeypatch, capsys
         assert "Setup is saved. Start monitoring with the command above when ready." in output
         assert "Setup cancelled" not in output
         exec_mock.assert_not_called()
+
+
+# Verifies a prompt runs with Python's default Ctrl+C behavior, so the signal handler cannot pre-empt it
+def test_prompts_restore_the_default_interrupt_handler(monkeypatch):
+    observed = {}
+
+    def answer(_prompt=""):
+        observed["during"] = signal.getsignal(signal.SIGINT)
+        return "value"
+
+    monkeypatch.setattr(builtins, "input", answer)
+    previous_handler = signal.signal(signal.SIGINT, monitor.signal_handler)
+    try:
+        assert monitor._wizard_input("Prompt: ") == "value"
+        assert observed["during"] is signal.default_int_handler
+        assert signal.getsignal(signal.SIGINT) is monitor.signal_handler
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
