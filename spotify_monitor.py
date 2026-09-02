@@ -1025,6 +1025,9 @@ csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity'
 
 CLI_CONFIG_PATH = None
 
+# Set when --config-file none switches discovery off, so no later lookup can find a file the run rejected
+CONFIG_DISCOVERY_DISABLED = False
+
 # Tracks relevant keys supplied by the active dotenv file and their pre-dotenv values
 DOTENV_MANAGED_KEYS: set[str] = set()
 DOTENV_BASE_VALUES: dict[str, object] = {}
@@ -1435,11 +1438,16 @@ def active_dotenv_path():
     return None if not DOTENV_FILE or str(DOTENV_FILE).casefold() == "none" else DOTENV_FILE
 
 
+# Returns the config path this run was given, or the "none" sentinel when discovery was switched off
+def active_config_path():
+    return CLI_CONFIG_PATH or ("none" if CONFIG_DISCOVERY_DISABLED else None)
+
+
 # Returns install-aware cookie recovery guidance with host-specific container instructions
 def cookie_auth_recovery_fix() -> str:
     method = _wizard_install_method()
     if not is_container_environment():
-        firefox_command = _wizard_firefox_import_cmd(method, active_dotenv_path(), config_path=CLI_CONFIG_PATH)
+        firefox_command = _wizard_firefox_import_cmd(method, active_dotenv_path(), config_path=active_config_path())
         return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}"
     private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
     return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in. Then use the host-specific read-only profile import command in the guide below.\nManual fallback with hidden entry: {private_command}"
@@ -11672,14 +11680,14 @@ def main():
 
     doctor_startup_checks = []
 
-    config_discovery_disabled = args.config_file is not None and args.config_file.casefold() == "none"
-    if config_discovery_disabled:
+    CONFIG_DISCOVERY_DISABLED = args.config_file is not None and args.config_file.casefold() == "none"
+    if CONFIG_DISCOVERY_DISABLED:
         CLI_CONFIG_PATH = None
     elif args.config_file:
         CLI_CONFIG_PATH = os.path.expanduser(args.config_file)
 
     scrobble_health_cli_mode = args.monitor_mode == "scrobble_health" or args.authorize_scrobble_health
-    cfg_path = None if config_discovery_disabled else (find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH))
+    cfg_path = None if CONFIG_DISCOVERY_DISABLED else (find_scrobble_health_config_file(CLI_CONFIG_PATH) if scrobble_health_cli_mode else find_config_file(CLI_CONFIG_PATH))
 
     if not cfg_path and CLI_CONFIG_PATH:
         advice = classify_recovery_error(context="config_missing", detail=f"Configuration file not found: {CLI_CONFIG_PATH}")
