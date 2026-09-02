@@ -2929,12 +2929,23 @@ _DEBUG_LINE_RE = re.compile(r"^\[debug \d{2}:\d{2}:\d{2}\]")
 _DOCTOR_MARK_RE = re.compile(r"^\[(PASS|WARN|FAIL|SKIP)\]")
 _DOCTOR_MARK_STYLES = {"PASS": "boolean_true", "WARN": "warning", "FAIL": "error", "SKIP": "info"}
 # Quoted names such as track, playlist and album titles. At least one word character is required so a run of
-# ASCII art between two apostrophes is not read as a name
-_QUOTED_CONTENT_RE = re.compile(r"(')([^'\n]*\w[^'\n]*)(')")
+# ASCII art between two apostrophes is not read as a name. The closing quote has to be followed by whitespace,
+# punctuation or the end of the line, so a name's own apostrophe does not end it early: "Don't Stop Me Now"
+_QUOTED_CONTENT_RE = re.compile(r"(')([^\n]*?\w[^\n]*?)(')(?=[\s.,;:!?)\]]|$)")
 
 # Quoted values shaped like a file name or a filesystem path stay plain, since a log or state destination is
 # not content. Spotify names routinely contain slashes and dots, so only these two shapes are excluded
 _QUOTED_FILE_LIKE_RE = re.compile(r"^[~.]?[\\/]|^[A-Za-z]:[\\/]|\.[A-Za-z0-9]{1,8}$")
+
+# A quoted '<name>' inside a printed command is the placeholder the reader has to replace, not a track title
+_QUOTED_PLACEHOLDER_RE = re.compile(r"^<[^<>]*>$")
+
+# A quoted command-line option is an instruction to retype, not a name
+_QUOTED_OPTION_RE = re.compile(r"^-")
+
+# A quoted piece of a URL, such as the '?code=' or '&state=' a prompt points at. Only a leading '?' or '&' counts,
+# so a name may end in a question mark and a title such as 'Peaches & Cream' is still a name
+_QUOTED_URL_PART_RE = re.compile(r"^[?&]|://")
 
 # Listing rows that name one playlist, for example "- 'Playlist name'"
 _LIST_ITEM_NAME_RE = re.compile(r"^\s*-\s+'")
@@ -3090,7 +3101,7 @@ def _sub_outside_color(pattern, replacement, line):
 # Colours one quoted name unless the quoted value is shaped like a file name or a path
 def _colorize_quoted_name(match, style_name):
     name = match.group(2)
-    if _QUOTED_FILE_LIKE_RE.search(name):
+    if _QUOTED_FILE_LIKE_RE.search(name) or _QUOTED_PLACEHOLDER_RE.match(name) or _QUOTED_OPTION_RE.match(name) or _QUOTED_URL_PART_RE.search(name):
         return match.group(0)
     # What sits right before the quote decides the colour, so a target ID is not read as a track title
     if _QUOTED_USER_ID_CONTEXT_RE.search(match.string[:match.start()]):
@@ -7153,6 +7164,12 @@ def _find_config_file(cli_path, default_filename):
     return None
 
 
+# Keeps argparse from colouring its own help, so the help screen is coloured by this tool alone and --no-color is
+# not left with a second palette to silence. From Python 3.14 argparse colours the help by default on a terminal
+def argparse_color_kwargs() -> dict[str, Any]:
+    return {"color": False} if sys.version_info >= (3, 14) else {}
+
+
 # Finds the optional Friend Activity config file
 def find_config_file(cli_path=None):
     return _find_config_file(cli_path, DEFAULT_CONFIG_FILENAME)
@@ -10746,7 +10763,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog="spotify_monitor",
         description=("Monitor Spotify friend activity or verify that Spotify plays reach Last.fm [ https://github.com/misiektoja/spotify_monitor/ ]"), formatter_class=argparse.RawTextHelpFormatter,
-        epilog=_build_help_epilog()
+        epilog=_build_help_epilog(), **argparse_color_kwargs()
     )
 
     # Positional
