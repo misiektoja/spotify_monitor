@@ -599,7 +599,7 @@ To colour saved log files when you view them later, see [Coloring Log Output wit
 <a id="storing-secrets"></a>
 ## Storing Secrets
 
-A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it.
+A dotenv file is a plain text file that holds private values separately from regular configuration. Friend Activity uses `.env` by default. Scrobble health uses `.env.scrobble_health` by default. Store `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `REFRESH_TOKEN`, `SP_APP_CLIENT_ID`, `SP_APP_CLIENT_SECRET`, `SMTP_PASSWORD`, `WEBHOOK_URL` and `NTFY_ACCESS_TOKEN` in the file selected for that mode. Do not commit either file or share it. Prefer `spotify_monitor --set-smtp-password` for `SMTP_PASSWORD`: the value is entered through a hidden prompt and the mail server has to accept it before it is saved.
 
 You can use operating system environment variables instead of a file. Set them with `export` on Linux, Unix, macOS or WSL:
 

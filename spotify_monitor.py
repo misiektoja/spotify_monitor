@@ -2591,6 +2591,75 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
     return str(destination)
 
 
+# Signs in to the configured mail server with one entered password, so nothing is saved that cannot deliver
+def smtp_sign_in(password: str, timeout: int = 15) -> str:
+    global SMTP_PASSWORD
+
+    candidate = str(password or "")
+    if not candidate or candidate == "your_smtp_password":
+        raise RecoveryError(classify_recovery_error(context="smtp_config", detail="No SMTP password was entered, so the dotenv file was not changed"))
+    previous_password = SMTP_PASSWORD
+    SMTP_PASSWORD = candidate
+    smtp_object = None
+    try:
+        settings_advice = validate_smtp_configuration()
+        if settings_advice is not None:
+            raise RecoveryError(settings_advice)
+        smtp_object = smtp_connect_and_login(SMTP_SSL, smtp_timeout=timeout)
+    finally:
+        if smtp_object is not None:
+            try:
+                smtp_object.quit()
+            except Exception:
+                pass
+        SMTP_PASSWORD = previous_password
+    return str(SMTP_USER)
+
+
+# Privately checks one SMTP password against the mail server and atomically stores it
+def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None, sign_in=None) -> str:
+    try:
+        destination = resolve_import_env_path(env_file)
+    except BrowserCookieImportError as exc:
+        raise RecoveryError(classify_recovery_error(context="secret", detail=str(exc).replace("Browser cookie import", "SMTP password setup"))) from None
+    terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
+    if not terminal_is_interactive:
+        raise RecoveryError(classify_recovery_error(context="secret", detail="--set-smtp-password needs an interactive terminal so the password stays hidden while you type it"))
+    prompt = input if input_func is None else input_func
+    if _dotenv_contains_key(destination, "SMTP_PASSWORD"):
+        try:
+            confirmed = str(prompt(f"Replace the saved SMTP password in '{destination}'? [y/N]: ")).strip().casefold() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            confirmed = False
+        if not confirmed:
+            raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed"))
+    print(f"* The password is checked by signing in to {SMTP_HOST} as {SMTP_USER}. Nothing is sent")
+    hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
+    try:
+        smtp_password = str(hidden_prompt("Enter the SMTP password (input hidden): ")).strip()
+    except (EOFError, KeyboardInterrupt):
+        raise RecoveryError(classify_recovery_error(context="secret", detail="SMTP password setup was cancelled, so the dotenv file was not changed")) from None
+    check = smtp_sign_in if sign_in is None else sign_in
+    try:
+        signed_in_user = check(smtp_password, timeout=5)
+    except RecoveryError:
+        raise
+    except Exception as exc:
+        raise RecoveryError(classify_recovery_error(exc, context="smtp"), exc) from None
+    try:
+        update_dotenv_file(destination, {"SMTP_PASSWORD": smtp_password})
+    except Exception as exc:
+        raise RecoveryError(classify_recovery_error(exc, context="file.unwritable", detail=f"Cannot save SMTP_PASSWORD to '{destination}'"), exc) from None
+    selected_config = config_path or find_config_file()
+    method = _wizard_install_method()
+    print(f"* The mail server accepted the password for {signed_in_user}")
+    print(f"* Updated private settings file: {destination}")
+    print()
+    _wizard_print_command("Send a test email:", _wizard_action_command(method, "--send-test-email", selected_config, destination))
+    _wizard_print_command("Check setup again:", _wizard_action_command(method, "--doctor", selected_config, destination))
+    return str(destination)
+
+
 class CappedRetry(Retry):
     def get_retry_after(self, response):
         retry_after = super().get_retry_after(response)
@@ -10500,7 +10569,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 def main():
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_SECRET_KEYS
 
-    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
+    if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
         # Check if a filename was provided after --generate-config
         try:
@@ -10544,7 +10613,7 @@ def main():
     if not isinstance(sys.stdout, TerminalStream):
         sys.stdout = TerminalStream(sys.stdout)
 
-    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--authorize-scrobble-health", "--doctor"))
+    keep_cli_history = any(flag in sys.argv for flag in ("--import-browser-cookie", "--set-sp-dc", "--set-lastfm-credentials", "--set-smtp-password", "--authorize-scrobble-health", "--doctor"))
     clear_screen(CLEAR_SCREEN and sys.stdout.isatty() and not keep_cli_history)
 
     print_startup_banner()
@@ -10601,6 +10670,12 @@ def main():
         dest="set_lastfm_credentials",
         action="store_true",
         help="Save LASTFM_API_KEY through a hidden prompt",
+    )
+    conf.add_argument(
+        "--set-smtp-password",
+        dest="set_smtp_password",
+        action="store_true",
+        help="Enter the SMTP password privately, check it against the mail server and save it to the dotenv file",
     )
     conf.add_argument(
         "--set-webhook-url",
@@ -11589,6 +11664,18 @@ def main():
         print("To fix: Use the documented positive interval and count values then retry.")
         print(f"Guide: {INTERVALS_GUIDE_URL}")
         sys.exit(1)
+
+    if args.set_smtp_password:
+        # Runs after the config file so the mail server it signs in to is the one monitoring would use
+        smtp_password_conflicts = [flag for value, flag in ((args.setup, "--setup"), (args.setup_scrobble_health, "--setup-scrobble-health"), (args.authorize_scrobble_health, "--authorize-scrobble-health"), (args.set_sp_dc, "--set-sp-dc"), (args.set_lastfm_credentials, "--set-lastfm-credentials"), (args.set_webhook_url, "--set-webhook-url"), (args.doctor, "--doctor"), (args.generate_config, "--generate-config"), (args.import_browser_cookie, "--import-browser-cookie"), (args.send_test_email, "--send-test-email"), (args.send_test_webhook, "--send-test-webhook")) if value]
+        if smtp_password_conflicts:
+            parser.error("--set-smtp-password cannot be combined with " + ", ".join(smtp_password_conflicts))
+        try:
+            run_set_smtp_password(env_file=args.env_file or env_path, config_path=cfg_path or CLI_CONFIG_PATH)
+        except RecoveryError as exc:
+            print_recovery_error(exc, "smtp")
+            sys.exit(1)
+        sys.exit(0)
 
     if args.authorize_scrobble_health:
         try:

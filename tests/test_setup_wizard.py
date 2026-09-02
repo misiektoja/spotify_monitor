@@ -1073,3 +1073,72 @@ def test_a_blank_sp_dc_entry_is_not_queued(monkeypatch, tmp_path):
     assert auth["complete"] is False
     assert auth["source"] == "not configured"
     assert secret_updates == {}
+
+
+# Verifies the one-shot command signs in before the password reaches the dotenv file
+def test_set_smtp_password_signs_in_before_saving(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("# keep\nUNRELATED=stay\n", encoding="utf-8")
+        sign_in = Mock(return_value="monitor@example.test")
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+        monkeypatch.setattr(monitor, "find_config_file", lambda: None)
+        monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+        monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+
+        result = monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "app-password", sign_in=sign_in)
+
+        assert result == str(destination.resolve())
+        sign_in.assert_called_once_with("app-password", timeout=5)
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay", "SMTP_PASSWORD": "app-password"}
+        output = capsys.readouterr().out
+        assert "signing in to smtp.example.test as monitor@example.test" in output
+        assert "The mail server accepted the password for monitor@example.test" in output
+        assert "app-password" not in output
+
+
+# Verifies a password the mail server refuses leaves the dotenv file untouched
+def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatch):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("UNRELATED=stay\n", encoding="utf-8")
+        refuse = Mock(side_effect=monitor.smtplib.SMTPAuthenticationError(535, b"authentication failed"))
+
+        with pytest.raises(monitor.RecoveryError) as error:
+            monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "wrong", sign_in=refuse)
+
+        assert error.value.advice.code == "smtp.authentication"
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
+
+
+# Verifies the command refuses without a terminal or a writable dotenv destination
+def test_set_smtp_password_requires_safe_persistence():
+    with pytest.raises(monitor.RecoveryError, match="interactive terminal"):
+        monitor.run_set_smtp_password(interactive=False, getpass_func=Mock(side_effect=AssertionError("prompted")))
+    with pytest.raises(monitor.RecoveryError, match="dotenv destination"):
+        monitor.run_set_smtp_password(env_file="none", interactive=True, getpass_func=Mock(side_effect=AssertionError("prompted")))
+
+
+# Verifies the sign-in uses the configured mail server and restores the password it borrowed
+def test_smtp_sign_in_uses_the_configured_mail_server(monkeypatch):
+    session = Mock()
+    connect = Mock(return_value=session)
+    monkeypatch.setattr(monitor, "validate_smtp_configuration", lambda: None)
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", connect)
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "saved")
+    monkeypatch.setattr(monitor, "SMTP_SSL", True)
+
+    assert monitor.smtp_sign_in("entered", timeout=5) == "monitor@example.test"
+
+    connect.assert_called_once_with(True, smtp_timeout=5)
+    session.quit.assert_called_once()
+    assert monitor.SMTP_PASSWORD == "saved"
+
+
+# Verifies a blank password is refused rather than saved as an empty secret
+def test_smtp_sign_in_refuses_a_blank_password():
+    with pytest.raises(monitor.RecoveryError) as error:
+        monitor.smtp_sign_in("")
+
+    assert "No SMTP password was entered" in error.value.advice.detail
