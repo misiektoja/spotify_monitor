@@ -1325,3 +1325,33 @@ def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
 # Verifies the guide link opens the setup page the sibling monitors link, with no section fragment
 def test_the_welcome_guide_link_opens_the_shared_setup_page():
     assert monitor.QUICK_START_GUIDE_URL.endswith("/setup-and-first-run/")
+
+
+# Verifies the doctor setup runs credits the dotenv file, not the fallback the empty source map produces
+def test_the_wizard_reload_credits_the_dotenv_file(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("SP_DC_COOKIE = 'your_sp_dc_cookie_value'\n", encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
+    monkeypatch.setattr(monitor, "EXPORTED_SECRET_KEYS", frozenset())
+
+    assert monitor._wizard_load_effective_setup(config_path, env_path)
+
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "dotenv file"
+
+
+# Verifies a secret exported before startup keeps the environment as its source, since the export still wins
+def test_the_wizard_reload_leaves_an_exported_secret_to_the_environment(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("SP_DC_COOKIE = 'your_sp_dc_cookie_value'\n", encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
+    monkeypatch.setenv("SP_DC_COOKIE", "an-exported-cookie-value")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
+    monkeypatch.setattr(monitor, "EXPORTED_SECRET_KEYS", frozenset({"SP_DC_COOKIE"}))
+
+    assert monitor._wizard_load_effective_setup(config_path, env_path)
+
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "environment"
+    assert monitor.SP_DC_COOKIE == "an-exported-cookie-value"

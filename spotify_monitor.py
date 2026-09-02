@@ -9094,17 +9094,24 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     if not load_config_file(config_path):
         return False
     selected_secrets = {key: os.environ.get(key) for key in SECRET_KEYS}
+    # Each value carries the source doctor would name after a restart, rather than the fallback label
+    selected_sources = {key: "environment" for key, value in selected_secrets.items() if value is not None}
     if env_path.is_file():
         try:
             from dotenv import dotenv_values
             parsed = dotenv_values(env_path, interpolate=False)
-            selected_secrets.update({key: parsed.get(key) for key in SECRET_KEYS if parsed.get(key) is not None})
+            # A secret exported before startup still wins at the next start, so the dotenv does not take it over
+            for key in set(SECRET_KEYS).difference(EXPORTED_SECRET_KEYS):
+                if parsed.get(key) is not None:
+                    selected_secrets[key] = parsed[key]
+                    selected_sources[key] = "dotenv file"
         except Exception:
             print(render_recovery_error(context="config_invalid", detail=f"Dotenv file '{env_path}' could not be loaded"))
             return False
     for key, value in selected_secrets.items():
         if value is not None:
             globals()[key] = value
+    SECRET_SOURCES.update(selected_sources)
     if not USER_AGENT:
         USER_AGENT = get_random_spotify_user_agent() if TOKEN_SOURCE == "client" else get_random_user_agent()
     return True
