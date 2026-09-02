@@ -2815,7 +2815,8 @@ _LABEL_STYLES = (
 _FROM_TO_COUNT_RE = re.compile(r"(from\s+)(\d+)(\s+to\s+)(\d+)")
 _DIFF_COUNT_UP_RE = re.compile(r"(\(\+\d+\))")
 _DIFF_COUNT_DOWN_RE = re.compile(r"(\(-\d+\))")
-_USER_TAG_RE = re.compile(r"((?:Spotify user|for user|by user|of user|Monitoring(?:\s+Spotify)?\s+user):?)([\t ]+)((?!ID\b)[\w.:-]+)")
+# The separator is a space in prose and an equals sign in the key=value diagnostic fields
+_USER_TAG_RE = re.compile(r"((?:Spotify user|for user|by user|of user|Monitoring(?:\s+Spotify)?\s+user|\buser):?)([\t ]+|=)((?!ID\b)[\w.:-]+)")
 
 # A quoted value right after "user" is the monitored URI ID, the same value the "User URI ID:" row reports
 _QUOTED_USER_ID_CONTEXT_RE = re.compile(r"\buser(?:\s+id)?\s+$", re.IGNORECASE)
@@ -7055,7 +7056,10 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
     try:
         with open(config_path, "r", encoding="utf-8") as config_file:
             source = config_file.read()
-        target_namespace.update(parse_config_content(source, str(config_path), retired_settings))
+        parsed_values = parse_config_content(source, str(config_path), retired_settings)
+        target_namespace.update(parsed_values)
+        if report_errors:
+            verbose_print(f"Loaded {len(parsed_values)} settings from the configuration file")
         if retired_out is not None:
             retired_out.extend(retired_settings)
         if retired_settings and report_errors:
