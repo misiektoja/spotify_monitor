@@ -4548,11 +4548,7 @@ def check_token_validity(access_token: str, client_id: Optional[str] = None, use
 
     alarm_state = _start_timeout_alarm(FUNCTION_TIMEOUT + 2)
     try:
-        debug_print(
-            f"Token validity check mode={check_mode}, url={url}, "
-            f"client_id_header={'yes' if 'Client-Id' in headers else 'no'}"
-        )
-        debug_print("HTTP GET", url=url, context="token validity", headers=sanitize_debug_headers(headers))
+        debug_print("HTTP GET", url=url, context="token validity", mode=check_mode, client_id_header="yes" if "Client-Id" in headers else "no", headers=sanitize_debug_headers(headers))
         response = req.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         valid = response.status_code == 200 or bool(oauth_app and response.status_code == 403)
         debug_print("HTTP GET", url=url, context="token validity", status=response.status_code, mode=check_mode, valid=valid)
@@ -4817,7 +4813,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 break
         except Exception as e:
             last_error = str(e)
-            debug_print("Token refresh attempt failed", outcome="failed", error=f"{type(e).__name__}: {e}")
+            debug_print("Token refresh attempt", outcome="failed", error=f"{type(e).__name__}: {e}")
             retry += 1
             if retry < max_retries:
                 time.sleep(TOKEN_RETRY_TIMEOUT)
@@ -5005,7 +5001,7 @@ def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
 def spotify_post_scrobble_refresh_token(request_session: req.Session, token_data: dict) -> Any:
     max_attempts = SCROBBLE_HEALTH_HTTP_RETRIES + 1
     for attempt in range(max_attempts):
-        debug_print("HTTP POST", url=SPOTIFY_SCROBBLE_TOKEN_URL, context=f"scrobble health token refresh, attempt {attempt + 1}/{max_attempts}")
+        debug_print("HTTP POST", url=SPOTIFY_SCROBBLE_TOKEN_URL, context="scrobble health token refresh", attempt=f"{attempt + 1}/{max_attempts}")
         try:
             response = request_session.post(SPOTIFY_SCROBBLE_TOKEN_URL, data=token_data, headers={"User-Agent": USER_AGENT}, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
         except (req.ConnectionError, req.Timeout) as exc:
@@ -6025,7 +6021,7 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
         return spotify_get_access_token_from_client(device_id, system_id, user_uri_id, refresh_token, client_token)
     except Exception as e:
         err = str(e).lower()
-        debug_print("Client auth failed", outcome="failed", error=f"{type(e).__name__}: {e}")
+        debug_print("Client auth", outcome="failed", error=f"{type(e).__name__}: {e}")
         if all([
             CLIENTTOKEN_URL,
             APP_VERSION,
@@ -6758,7 +6754,7 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
                 SP_WEB_PLAYLIST_API_FAILURES += 1
                 if spotify_should_latch_web_backend(error, SP_WEB_PLAYLIST_API_FAILURES):
                     SP_WEB_PLAYLIST_BACKEND_PREFERRED = True
-                    debug_print("Playlist metadata backend", api="legacy Web API", outcome="unavailable", failures=SP_WEB_PLAYLIST_API_FAILURES, status=api_status, fallback="web-player backend for remaining playlists")
+                    debug_print("Playlist metadata backend", api="legacy Web API", outcome="degraded", failures=SP_WEB_PLAYLIST_API_FAILURES, status=api_status, fallback="web-player backend for remaining playlists")
                     verbose_print("Playlist metadata switched to the web-player backend after legacy API failures")
                 else:
                     debug_print("Playlist metadata backend", api="legacy Web API", uri=playlist_uri, failures=SP_WEB_PLAYLIST_API_FAILURES, outcome="failed", error=f"{type(error).__name__}: {error}")
@@ -6785,7 +6781,7 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
         debug_print("Playlist image", url=playlist_image_url)
         return playlist_owner, playlist_image_url
     except Exception as web_error:
-        debug_print("spotify_get_playlist_owner_and_image(): web-player backend failed for", uri=f"{playlist_uri}: {web_error}")
+        debug_print("spotify_get_playlist_owner_and_image(): web-player backend", uri=playlist_uri, outcome="failed", error=f"{type(web_error).__name__}: {web_error}")
         if api_error is not None:
             raise RuntimeError(f"Both Spotify playlist metadata backends failed for {playlist_uri}: Web API: {api_error}. Web player: {web_error}")
         raise
@@ -6847,7 +6843,7 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
             SP_WEB_TRACK_API_FAILURES += 1
             if spotify_should_latch_web_backend(error, SP_WEB_TRACK_API_FAILURES):
                 SP_WEB_TRACK_BACKEND_PREFERRED = True
-                debug_print("Track metadata backend", api="legacy Web API", outcome="unavailable", failures=SP_WEB_TRACK_API_FAILURES, status=spotify_get_error_status_code(error), fallback="web-player backend for remaining tracks")
+                debug_print("Track metadata backend", api="legacy Web API", outcome="degraded", failures=SP_WEB_TRACK_API_FAILURES, status=spotify_get_error_status_code(error), fallback="web-player backend for remaining tracks")
                 verbose_print("Track metadata switched to the web-player backend after legacy API failures")
             else:
                 debug_print("Track metadata backend", api="legacy Web API", uri=track_uri, failures=SP_WEB_TRACK_API_FAILURES, outcome="failed", error=f"{type(error).__name__}: {error}")
@@ -6855,7 +6851,7 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
     try:
         return spotify_get_track_info_web(track_uri)
     except Exception as web_error:
-        debug_print("spotify_get_track_info(): web-player backend failed for", uri=f"{track_uri}: {web_error}")
+        debug_print("spotify_get_track_info(): web-player backend", uri=track_uri, outcome="failed", error=f"{type(web_error).__name__}: {web_error}")
         if api_error is not None:
             raise RuntimeError(f"Both Spotify track metadata backends failed for {track_uri}: Web API: {api_error}. Web player: {web_error}")
         raise
@@ -9522,7 +9518,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     # Start loop
     while True:
         retry_pending_activity_notifications()
-        debug_print("Loop tick:", token_source=TOKEN_SOURCE, check_interval=SPOTIFY_CHECK_INTERVAL, error_interval=SPOTIFY_ERROR_INTERVAL)
+        debug_print("Loop tick", token_source=TOKEN_SOURCE, check_interval=SPOTIFY_CHECK_INTERVAL, error_interval=SPOTIFY_ERROR_INTERVAL)
 
         # Sometimes Spotify network functions halt even though we specified the timeout
         # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
@@ -9536,7 +9532,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_friends = spotify_get_friends_json(sp_accessToken)
             sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
             recovery_hint_tracker.reset()
-            debug_print("Friend lookup result:", found=sp_found)
+            debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
             _restore_timeout_alarm(alarm_state)
@@ -9549,7 +9545,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         except Exception as e:
             _restore_timeout_alarm(alarm_state)
 
-            debug_print("Main monitor loop error", outcome="failed", error=f"{type(e).__name__}: {e}")
+            debug_print("Main monitor loop", outcome="failed", error=f"{type(e).__name__}: {e}")
 
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
             advice = print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"* Error, retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}: ")
