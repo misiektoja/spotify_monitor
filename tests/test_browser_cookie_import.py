@@ -590,3 +590,15 @@ def test_validation_buddy_list_rejection_is_distinct(monkeypatch):
 
     with pytest.raises(monitor.BrowserCookieImportError, match="Spotify authentication rejected"):
         monitor.validate_imported_sp_dc("secret-cookie")
+
+
+PROGRESS_LINES = (
+    "* Cookie extracted. Checking it with Spotify ...",
+    "* Checking the entered Spotify cookie before changing the dotenv file ...",
+)
+
+
+# Verifies each wait on a remote service is announced with the wording every sibling monitor uses
+@pytest.mark.parametrize("line", PROGRESS_LINES)
+def test_the_progress_lines_use_the_shared_checking_wording(line):
+    assert line in (PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8"), line

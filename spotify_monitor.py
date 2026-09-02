@@ -2411,7 +2411,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     print(f"* Cookie database: {selected_cookie_file}")
 
     sp_dc = read_firefox_sp_dc(selected_cookie_file) if browser == "firefox" else read_chromium_sp_dc(browser, selected_cookie_file)
-    print("* Cookie extracted. Validating it with Spotify ...")
+    print("* Cookie extracted. Checking it with Spotify ...")
     validate_imported_sp_dc(sp_dc)
     print("* Spotify cookie validation succeeded")
 
@@ -2472,7 +2472,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     if not isinstance(sp_dc, str) or not sp_dc:
         raise BrowserCookieImportError("No nonempty sp_dc cookie was entered. The dotenv file was not changed.")
 
-    print("* Validating the entered Spotify cookie before changing the dotenv file ...")
+    print("* Checking the entered Spotify cookie before changing the dotenv file ...")
     try:
         validate_imported_sp_dc(sp_dc)
     except Exception as exc:
