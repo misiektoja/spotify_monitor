@@ -127,7 +127,7 @@ def test_startup_banner_art_is_unchanged(colored):
 # Verifies labelled Spotify rows colour the value with the expected theme part
 @pytest.mark.parametrize("line,part", [
     ("Username:\t\t\tJohn Doe", "username"),
-    ("User URI ID:\t\t\tsq58", "user_uri_id"),
+    ("User URI ID:\t\t\tsq58", "id"),
     ("Last played:\t\t\tDaft Punk - Around the World", "track"),
     ("Playlist:\t\t\tDiscover Weekly", "playlist"),
     ("Album:\t\t\t\tHomework", "album"),
@@ -462,18 +462,41 @@ def test_every_theme_part_is_used():
     "User '31nnv6eqt4qswvjhcnknimtxqife' not found - make sure your friend is followed",
     "Spotify user '31nnv6eqt4qswvjhcnknimtxqife' (John Doe) has disappeared",
     "User URI ID:\t\t\t31nnv6eqt4qswvjhcnknimtxqife",
+    "* Target:                       31nnv6eqt4qswvjhcnknimtxqife",
 ])
 def test_target_id_uses_the_id_colour_everywhere(colored, line):
     result = monitor._colorize_line(line)
 
     assert monitor.ANSI_ESCAPE_RE.sub("", result) == line
-    assert f"{colored['user_uri_id']}31nnv6eqt4qswvjhcnknimtxqife{monitor.ANSI_RESET}" in result
+    assert f"{colored['id']}31nnv6eqt4qswvjhcnknimtxqife{monitor.ANSI_RESET}" in result
     assert colored["track"] not in result
 
 
 # Verifies a display name still renders as a name, so the two identifiers stay distinguishable
 def test_display_name_still_uses_the_name_colour(colored):
     assert colored["username"] in monitor._colorize_line("Username:\t\t\tJohn Doe")
+
+
+# Verifies a config written against the pre-rename 'user_uri_id' key still colours identifiers
+def test_legacy_theme_key_still_applies(monkeypatch):
+    monkeypatch.setattr(monitor, "COLORED_OUTPUT", True)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {"user_uri_id": "red"})
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", False)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {})
+    monkeypatch.setattr(monitor, "_stream_supports_color", lambda stream: True)
+    monitor.init_color_output(StringIO())
+    assert monitor._COLOR_STYLES["id"] == monitor._build_ansi_sequence("red")
+
+
+# Verifies the current key name wins when a config sets both the old and the new name
+def test_current_theme_key_wins_over_the_legacy_name(monkeypatch):
+    monkeypatch.setattr(monitor, "COLORED_OUTPUT", True)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {"user_uri_id": "red", "id": "green"})
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", False)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {})
+    monkeypatch.setattr(monitor, "_stream_supports_color", lambda stream: True)
+    monitor.init_color_output(StringIO())
+    assert monitor._COLOR_STYLES["id"] == monitor._build_ansi_sequence("green")
 
 
 # Verifies the guided setup surface is coloured, not only the monitoring output. The install method decides
