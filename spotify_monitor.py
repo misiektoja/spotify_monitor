@@ -9931,7 +9931,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         advice = classify_recovery_error(e, auth_context)
 
                         if (advice.code in ("spotify.unavailable", "network.unavailable", "network.timeout", "spotify.rate_limited") or str(e) == '') and not transient_request_failure_active:
-                            verbose_print(f"{advice.summary}. Automatic retries are active")
+                            verbose_notice(f"{advice.summary}. Automatic retries are active")
                             transient_request_failure_active = True
 
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
@@ -12001,6 +12001,9 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = False
         ERROR_NOTIFICATION = False
         SCROBBLE_HEALTH_NOTIFICATION = False
+    if WEBHOOK_ENABLED and not validate_webhook_url():
+        verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
+        WEBHOOK_ENABLED = False
 
     startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH)
     emit_startup_summary(startup_rows, show_full=bool(VERBOSE_MODE or DEBUG_MODE))

@@ -22,6 +22,7 @@ PROBE_SETUP = (
     "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'CHECK_INTERVAL={runtime[\"SPOTIFY_CHECK_INTERVAL\"]}') or print(f'LIVENESS_COUNTER={runtime[\"LIVENESS_CHECK_COUNTER\"]}'); "
 )
 DIAGNOSTIC_CONFIG_PROBE_SETUP = "original_load_config = runtime['load_config_file']; runtime['load_config_file'] = lambda *args, **kwargs: print(f'DEBUG_DURING_CONFIG={runtime[\"DEBUG_MODE\"]}') or print(f'VERBOSE_DURING_CONFIG={runtime[\"VERBOSE_MODE\"]}') or original_load_config(*args, **kwargs); " + PROBE_SETUP
+WEBHOOK_PROBE_SETUP = PROBE_SETUP + "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'WEBHOOK_ENABLED={runtime[\"WEBHOOK_ENABLED\"]}'); "
 
 
 # Creates a disposable test directory under the project local directory
@@ -139,3 +140,26 @@ def test_connectivity_defaults_are_not_bound_at_import():
     defaults = monitor.check_internet.__defaults__
 
     assert defaults == (None, None, None), "resolving these at import time would freeze them before any config file loads"
+
+
+# Confirms an unedited webhook destination switches the channel off while a real one keeps it on
+@pytest.mark.parametrize(("webhook_url", "expected"), (("your_webhook_url", "False"), ("https://ntfy.sh/some-topic", "True")))
+def test_a_placeholder_webhook_url_switches_the_channel_off(webhook_url, expected):
+    with make_temp_directory() as directory_name:
+        config_path = write_config(directory_name, f'WEBHOOK_ENABLED = True\nWEBHOOK_PROVIDER = "ntfy"\nWEBHOOK_URL = "{webhook_url}"\n')
+        result = run_cli(["--config-file", str(config_path)], WEBHOOK_PROBE_SETUP)
+
+    assert result.returncode == 0, result.stderr
+    assert probe_value(result.stdout, "WEBHOOK_ENABLED") == expected
+
+
+# Confirms an unedited placeholder is never reported as a loaded secret, whichever layer recorded it
+def test_placeholder_secrets_are_not_reported_as_loaded(monkeypatch):
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"WEBHOOK_URL": "dotenv file", "SMTP_PASSWORD": "configuration file or command line"})
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "your_webhook_url")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "your_smtp_password")
+
+    from_file, from_environment, from_settings = monitor.doctor_secret_sources(None)
+
+    assert "WEBHOOK_URL" not in from_file + from_environment + from_settings
+    assert "SMTP_PASSWORD" not in from_file + from_environment + from_settings
