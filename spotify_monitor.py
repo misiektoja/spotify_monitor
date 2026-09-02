@@ -923,6 +923,12 @@ SCROBBLE_HEALTH_DOTENV_FILENAME = ".env.scrobble_health"
 # List of secret keys to load from env/config
 SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "WEBHOOK_URL", "NTFY_ACCESS_TOKEN", "LASTFM_API_KEY", "SPOTIFY_SCROBBLE_REFRESH_TOKEN")
 
+# Effective source name for each configured secret without storing another copy of its value
+SECRET_SOURCES = {}
+
+# Secret names already present in the process environment before dotenv loading
+EXPORTED_SECRET_KEYS = frozenset()
+
 # Non-secret Spotify recent-play app settings also supported through environment variables
 ENVIRONMENT_SETTING_KEYS = ("SPOTIFY_SCROBBLE_CLIENT_ID", "SPOTIFY_SCROBBLE_REDIRECT_URI")
 
@@ -1936,18 +1942,24 @@ def apply_dotenv_mapping(values: dict[str, str], initialize_base: bool = False) 
             DOTENV_BASE_VALUES[key] = os.environ[key] if key in os.environ else globals().get(key)
     previous_values = {key: globals().get(key) for key in supported_keys}
     selected_keys = supported_keys.intersection(values)
-    for key in selected_keys:
+    applied_keys = selected_keys.difference(EXPORTED_SECRET_KEYS) if initialize_base else selected_keys
+    for key in applied_keys:
         os.environ[key] = values[key]
         globals()[key] = values[key]
-    for key in DOTENV_MANAGED_KEYS.difference(selected_keys):
+        if key in SECRET_KEYS:
+            SECRET_SOURCES[key] = "dotenv file"
+    for key in DOTENV_MANAGED_KEYS.difference(applied_keys):
         base_value = DOTENV_BASE_VALUES.get(key)
         if base_value is None:
             os.environ.pop(key, None)
             globals()[key] = ""
+            SECRET_SOURCES.pop(key, None)
         else:
             os.environ[key] = str(base_value)
             globals()[key] = base_value
-    DOTENV_MANAGED_KEYS = set(selected_keys)
+            if key in SECRET_KEYS:
+                SECRET_SOURCES[key] = "environment" if key in EXPORTED_SECRET_KEYS else "configuration file or command line"
+    DOTENV_MANAGED_KEYS = set(applied_keys)
     return tuple(sorted(key for key in supported_keys if globals().get(key) != previous_values[key]))
 
 
@@ -7209,22 +7221,16 @@ def doctor_secret_is_set(value) -> bool:
 
 # Groups configured secret names by the source each value actually came from
 def doctor_secret_sources(env_path=None) -> Tuple[List[str], List[str], List[str]]:
-    file_keys = set()
-    if env_path:
-        try:
-            from dotenv import dotenv_values
-            file_keys = {key for key, value in dotenv_values(env_path, interpolate=False).items() if value}
-        except Exception:
-            file_keys = set()
     from_file: List[str] = []
     from_environment: List[str] = []
     from_settings: List[str] = []
     for key in SECRET_KEYS:
         if not doctor_secret_is_set(globals().get(key)):
             continue
-        if key in file_keys:
+        source = SECRET_SOURCES.get(key, "configuration file or command line")
+        if source.startswith("dotenv file"):
             from_file.append(key)
-        elif os.environ.get(key):
+        elif source == "environment":
             from_environment.append(key)
         else:
             from_settings.append(key)
@@ -10262,6 +10268,7 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
         if not validate_webhook_url(args.webhook_url):
             parser.error("--webhook-url must contain a complete HTTPS link without embedded credentials")
         WEBHOOK_URL = str(args.webhook_url).strip()
+        SECRET_SOURCES["WEBHOOK_URL"] = "command line"
         WEBHOOK_ENABLED = True
     if args.webhook_enabled is not None:
         WEBHOOK_ENABLED = args.webhook_enabled
@@ -10311,7 +10318,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_CHECK_COUNTER, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_SECRET_KEYS
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -11228,6 +11235,12 @@ def main():
         if DOTENV_FILE:
             DOTENV_FILE = os.path.expanduser(DOTENV_FILE)
 
+    EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)
+    SECRET_SOURCES.clear()
+    for secret in SECRET_KEYS:
+        if doctor_secret_is_set(globals().get(secret)):
+            SECRET_SOURCES[secret] = "configuration file or command line"
+
     env_path = None
     if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
         env_path = None
@@ -11271,6 +11284,8 @@ def main():
         val = os.getenv(environment_key)
         if val is not None:
             globals()[environment_key] = val
+            if environment_key in EXPORTED_SECRET_KEYS:
+                SECRET_SOURCES[environment_key] = "environment"
 
     if args.no_color is True:
         COLORED_OUTPUT = False
@@ -11295,14 +11310,17 @@ def main():
 
     if args.spotify_dc_cookie:
         SP_DC_COOKIE = args.spotify_dc_cookie
+        SECRET_SOURCES["SP_DC_COOKIE"] = "command line"
     if args.lastfm_api_key is not None:
         LASTFM_API_KEY = args.lastfm_api_key
+        SECRET_SOURCES["LASTFM_API_KEY"] = "command line"
     if args.scrobble_client_id is not None:
         SPOTIFY_SCROBBLE_CLIENT_ID = args.scrobble_client_id
     if args.scrobble_redirect_uri is not None:
         SPOTIFY_SCROBBLE_REDIRECT_URI = args.scrobble_redirect_uri
     if args.scrobble_refresh_token is not None:
         SPOTIFY_SCROBBLE_REFRESH_TOKEN = args.scrobble_refresh_token
+        SECRET_SOURCES["SPOTIFY_SCROBBLE_REFRESH_TOKEN"] = "command line"
 
     if args.login_request_body_file:
         LOGIN_REQUEST_BODY_FILE = os.path.expanduser(args.login_request_body_file)
@@ -11317,6 +11335,8 @@ def main():
     if args.oauth_app_creds:
         try:
             SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET = args.oauth_app_creds.split(":", 1)
+            SECRET_SOURCES["SP_APP_CLIENT_ID"] = "command line"
+            SECRET_SOURCES["SP_APP_CLIENT_SECRET"] = "command line"
         except ValueError as exc:
             print_recovery_error(exc, "config_invalid", detail="--oauth-app-creds must use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format")
             sys.exit(1)

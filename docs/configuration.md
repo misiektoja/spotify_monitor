@@ -36,11 +36,11 @@ If the same setting appears in more than one place, the item later in this list 
 
 1. Built-in defaults
 2. The discovered or explicitly selected configuration file
-3. Secret environment variables
-4. Values from the selected `.env` file
+3. Values from the selected `.env` file
+4. Secret environment variables
 5. Command-line options
 
-The `.env` layer applies to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `SMTP_PASSWORD` and `WEBHOOK_URL`. It also accepts the non-secret `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` settings for externally managed runs. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
+The `.env` layer applies to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `SMTP_PASSWORD` and `WEBHOOK_URL`. It also accepts the non-secret `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` settings for externally managed runs. An exported environment value wins when the same key also exists in the selected `.env` file. A target written directly after the command overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly. Use `--config-file none` and `--env-file none` to disable both automatic searches. See [Storing Secrets](#storing-secrets) for the search rules and supported keys.
 
 Despite its legacy name, `TARGET_USER_URI_ID` accepts a complete Spotify profile URL, a `spotify:user:` URI or a user ID. A positional command-line target takes precedence. With a configured target you can start monitoring with:
 

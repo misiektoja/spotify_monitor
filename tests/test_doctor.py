@@ -790,6 +790,23 @@ def test_environment_secrets_apply_without_a_dotenv_file(monkeypatch):
     assert monitor.NTFY_ACCESS_TOKEN == "tk_from_environment"
 
 
+# Exported values win over duplicate dotenv keys and retain their effective source
+def test_environment_secret_wins_over_duplicate_dotenv_key(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("NTFY_ACCESS_TOKEN=tk_from_file\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", str(env_file)])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {}, raising=False)
+    monkeypatch.setenv("NTFY_ACCESS_TOKEN", "tk_from_environment")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.NTFY_ACCESS_TOKEN == "tk_from_environment"
+    assert monitor.SECRET_SOURCES["NTFY_ACCESS_TOKEN"] == "environment"
+
+
 # Each secret is attributed to the source it actually came from, so the report can name the dotenv path
 def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
@@ -797,7 +814,7 @@ def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "SMTP_PASSWORD", "from-file", raising=False)
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.sh/topic", raising=False)
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", "your_sp_dc_cookie_value", raising=False)
-    monkeypatch.setenv("WEBHOOK_URL", "https://ntfy.sh/topic")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "dotenv file", "WEBHOOK_URL": "environment"}, raising=False)
 
     from_file, from_environment, from_settings = monitor.doctor_secret_sources(str(env_file))
 
