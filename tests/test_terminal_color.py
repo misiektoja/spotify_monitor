@@ -21,12 +21,30 @@ def colored(monkeypatch):
     return styles
 
 
+# Reads a block the template ships commented out, as the parser would see it once uncommented
+def uncomment_block(first_line):
+    lines = monitor.CONFIG_BLOCK.split("\n")
+    start = next(index for index, line in enumerate(lines) if line.startswith(first_line))
+    end = next(index for index in range(start, len(lines)) if lines[index].rstrip() == "# }")
+    return "\n".join(line[2:] if line.startswith("# ") else line[1:] for line in lines[start:end + 1])
+
+
 # Verifies the shipped config template and the built-in theme describe exactly the same keys
 def test_config_template_theme_matches_the_built_in_theme():
     values = monitor.parse_config_content(monitor.CONFIG_BLOCK, "<built-in-config>")
+    commented = monitor.parse_config_content(uncomment_block("# COLOR_THEME = {"), "<built-in-config>")
 
     assert values["COLORED_OUTPUT"] is True
-    assert values["COLOR_THEME"] == monitor.DEFAULT_COLOR_THEME
+    assert "COLOR_THEME" not in values
+    assert commented["COLOR_THEME"] == monitor.DEFAULT_COLOR_THEME
+
+
+# Verifies a configuration that sets the commented-out theme is still accepted, since older files all set it
+def test_a_config_setting_the_theme_is_still_accepted(tmp_path):
+    config = tmp_path / "monitor.conf"
+    config.write_text('COLOR_THEME = { "username": "green" }\n', encoding="utf-8")
+
+    assert monitor.parse_config_content(config.read_text(encoding="utf-8"), str(config)) == {"COLOR_THEME": {"username": "green"}}
 
 
 # Verifies every style word used by the shipped theme resolves, allowing a deliberately uncoloured part
