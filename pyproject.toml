@@ -37,7 +37,7 @@ keywords = ["spotify", "monitoring", "tracking", "real-time", "friend-activity",
 [project.optional-dependencies]
 test = ["build>=1.2", "coverage>=7.10", "hypothesis>=6.100", "Pillow>=11.3.0,<12; python_version < '3.10'", "Pillow>=12.0.0; python_version >= '3.10'", "pyright>=1.1.400", "pytest>=7.0", "pyyaml>=6.0", "setuptools>=61.0", "wheel"]
 # Pinned so a new ruff release cannot fail CI on a rule that did not exist when the change was written
-lint = ["ruff==0.16.4"]
+lint = ["ruff==0.16.5"]
 # Pillow 12 dropped Python 3.9, so 3.9 keeps the last release that supports it while 3.10 and newer get the current one
 notification-images = ["Pillow>=11.3.0,<12; python_version < '3.10'", "Pillow>=12.0.0; python_version >= '3.10'"]
 legacy-oauth = ["spotipy>=2.24.0"]
