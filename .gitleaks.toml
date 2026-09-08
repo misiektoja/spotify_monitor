@@ -3,6 +3,13 @@ title = "Shared monitor repos gitleaks config"
 [extend]
 useDefault = true
 
+[allowlist]
+description = "Skip the RFC 4648 base32 alphabet used as a lookup table by the TOTP code"
+regexTarget = "secret"
+regexes = [
+    '''^ABCDEFGHIJKLMNOPQRSTUVWXYZ234567$''',
+]
+
 [[rules]]
 id = "monitor-secret-assignment"
 description = "Detects monitor project secret assignments with lower entropy tolerance"
