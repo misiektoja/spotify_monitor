@@ -45,7 +45,7 @@ def install_inputs(monkeypatch, responses):
     monkeypatch.setattr(builtins, "input", lambda prompt="": next(iterator))
 
 
-# Installs a minimal mocked wizard flow for doctor and launch boundary tests
+# Installs a minimal mocked wizard flow for doctor and launch boundary tests and returns its yes-or-no and doctor mocks
 def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: method)
@@ -55,13 +55,17 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
     monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
-    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
+    ask_mock = Mock(side_effect=list(answers))
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask_mock)
     monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
+    doctor_mock = None
     if report is not None:
-        monkeypatch.setattr(monitor, "build_doctor_report", Mock(return_value=report))
+        doctor_mock = Mock(return_value=report)
+        monkeypatch.setattr(monitor, "build_doctor_report", doctor_mock)
         monkeypatch.setattr(monitor, "render_doctor_sections", lambda selected: "DOCTOR REPORT")
         monkeypatch.setattr(monitor, "render_doctor_summary", lambda checks: "DOCTOR SUMMARY")
+    return ask_mock, doctor_mock
 
 
 # Verifies required text offers a retry before re-prompting and applies defaults
@@ -143,7 +147,7 @@ def test_the_csv_answer_gains_a_csv_extension_when_it_has_none(monkeypatch, tmp_
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
     for typed, expected in (("activity", "activity.csv"), ("activity.csv", "activity.csv"), ("activity.txt", "activity.txt"), ("", "")):
-        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", **kwargs: typed)
+        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", answer=typed, **kwargs: answer)
         monitor._wizard_collect_output_section(state)
         assert state.config_values["CSV_FILE"] == expected
 
@@ -847,14 +851,14 @@ def test_a_secret_free_save_creates_no_dotenv_and_omits_the_env_file(monkeypatch
         env_path = directory / ".env"
         auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
         report = monitor.DoctorReport(checks=[monitor.DoctorCheck("Environment", "PASS", "All good")])
-        install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, True, True, True], report)
+        _, doctor_mock = install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, True, True, True], report)
         exec_mock = Mock()
         monkeypatch.setattr(monitor.os, "execv", exec_mock)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
         assert error.value.code == 0
         assert not env_path.exists()
-        assert monitor.build_doctor_report.call_args.args[2] is None
+        assert doctor_mock is not None and doctor_mock.call_args.args[2] is None
         arguments = exec_mock.call_args.args[1]
         assert "--config-file" in arguments
         assert "--env-file" not in arguments
@@ -1570,12 +1574,12 @@ def test_the_doctor_offer_follows_the_target_rather_than_authentication(monkeypa
         directory = Path(directory_name)
         monkeypatch.chdir(directory)
         auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
-        install_minimal_wizard_flow(monkeypatch, "manual", auth, [True, False, False])
+        ask_mock, _ = install_minimal_wizard_flow(monkeypatch, "manual", auth, [True, False, False])
         monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
-        prompts = [call.args[0] for call in monitor._wizard_ask_yes_no.call_args_list]
+        prompts = [call.args[0] for call in ask_mock.call_args_list]
         assert any(prompt.startswith("Run doctor now?") for prompt in prompts)
         assert not any(prompt.startswith("Start monitoring now?") for prompt in prompts)
         assert "Authentication still needs to be completed." in capsys.readouterr().out

@@ -363,7 +363,7 @@ def test_missing_colorama_is_reported_on_windows(monkeypatch):
     missing = next(check for check in checks if "colorama" in check.label)
     assert missing.status == "WARN"
     assert "Coloured output may not render in the classic Windows Command Prompt" in missing.detail
-    assert "Windows Terminal, which needs nothing extra" in missing.advice.fix
+    assert "Windows Terminal, which needs nothing extra" in require_advice(missing).fix
 
 
 # Verifies Chromium dependency guidance explicitly preserves Firefox import support
@@ -844,7 +844,7 @@ def test_optional_artwork_dependency_explains_ntfy_images(monkeypatch):
 
     assert check.status == "WARN"
     assert "NTFY_IMAGES is enabled" in check.detail
-    assert "spotify_monitor[notification-images]" in check.advice.fix
+    assert "spotify_monitor[notification-images]" in require_advice(check).fix
 
 
 # Verifies artwork guidance inside a container points at the published images instead of pip
@@ -855,8 +855,8 @@ def test_optional_artwork_dependency_guides_container_users(monkeypatch):
     check = next(item for item in checks if "Pillow" in item.label)
 
     assert "currently disabled" in check.detail
-    assert "Docker images" in check.advice.fix
-    assert "pip install" not in check.advice.fix
+    assert "Docker images" in require_advice(check).fix
+    assert "pip install" not in require_advice(check).fix
 
 
 # Exported secrets are a documented alternative to a dotenv file, so they must apply when no file is loaded
@@ -957,7 +957,7 @@ def test_doctor_details_keep_to_the_agreed_shapes():
         if isinstance(node, ast.Constant):
             return node.value if isinstance(node.value, str) else None
         if isinstance(node, ast.JoinedStr):
-            return "".join(part.value if isinstance(part, ast.Constant) else "{}" for part in node.values)
+            return "".join(part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else "{}" for part in node.values)
         return None
 
     offenders = []
