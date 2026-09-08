@@ -6,6 +6,11 @@ import pytest
 import spotify_monitor as monitor
 
 
+# Returns the interpreter name the printed commands use on the host running the tests
+def interpreter_name():
+    return "python" if monitor.platform.system() == "Windows" else "python3"
+
+
 # Forces install-method inputs to a known environment for one assertion
 def force_install_environment(monkeypatch, dockerenv=False, docker_env=False, compose_env=False, argv0="spotify_monitor"):
     monkeypatch.setattr(monitor.os.path, "exists", lambda path: dockerenv and path == "/.dockerenv")
@@ -336,11 +341,13 @@ def test_the_cookie_recovery_command_names_the_files_this_run_was_given(monkeypa
 
     fix = monitor.cookie_auth_recovery_fix()
 
-    assert f"python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file {config_path} --env-file {env_path}" in fix
+    # The paths are quoted for the host shell, so the expectation is built the same way rather than pinned to POSIX
+    assert f"{interpreter_name()} spotify_monitor.py --import-browser-cookie --browser firefox --config-file {monitor._wizard_quote_argument(config_path.resolve())} --env-file {monitor._wizard_quote_argument(env_path.resolve())}" in fix
 
 
 # Verifies a dotenv switched off with the none sentinel is not printed as a file path
 def test_the_cookie_recovery_command_skips_a_dotenv_switched_off(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
@@ -350,6 +357,7 @@ def test_the_cookie_recovery_command_skips_a_dotenv_switched_off(monkeypatch):
 
 # Verifies the config sentinel is carried, since the import it suggests reads the config rather than writing it
 def test_the_cookie_recovery_command_carries_the_config_sentinel(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", True)
