@@ -1032,6 +1032,32 @@ def test_interactive_welcome_accepts_setup(monkeypatch):
     setup_mock.assert_called_once_with()
 
 
+@pytest.mark.parametrize("command", ["run_setup_wizard", "run_scrobble_health_setup_wizard"])
+# Verifies a destination the wizard cannot use is refused with the fix and the guide rather than a bare line
+def test_an_unusable_setup_destination_is_refused_with_its_fix(monkeypatch, capsys, tmp_path, command):
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+
+    with pytest.raises(SystemExit) as error:
+        getattr(monitor, command)(config_file=str(tmp_path))
+
+    output = capsys.readouterr().out
+    assert error.value.code == 1
+    assert "* Error: Configuration destination must be a file path, not a directory" in output
+    assert "To fix: Choose a file path inside an existing directory you can write to with --config-file or --env-file" in output
+    assert f"Guide: {monitor.CONFIG_GUIDE_URL}" in output
+    assert "Setup cannot start" not in output
+
+
+# Verifies a destination switched off is still reported as the choice it was rather than a permissions problem
+def test_a_setup_destination_switched_off_names_the_flag_to_replace():
+    advice = monitor.classify_recovery_error(context="setup.destination", detail="--setup has nowhere to write the private settings")
+
+    assert advice.code == "file.unwritable"
+    assert "Replace '--env-file none' with a writable path" in advice.fix
+    assert monitor.SECRETS_GUIDE_URL in advice.fix
+
+
 # Verifies setup rejects noninteractive use before touching destination files
 def test_noninteractive_setup_is_rejected(monkeypatch, capsys):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: False))

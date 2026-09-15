@@ -1566,6 +1566,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
     if context == "file_write":
         return make_recovery_advice("file.unwritable", "An output destination is not writable", "Choose a writable path and verify its parent directory permissions then retry", False, safe_detail)
+    if context == "setup.destination":
+        # The wizard reaches this either because a destination was switched off or because the path cannot be written
+        if "nowhere to write the private settings" in message:
+            return setup_destination_advice("--env-file")
+        if "nowhere to write the configuration" in message:
+            return setup_destination_advice("--config-file")
+        return make_recovery_advice("file.unwritable", safe_detail or "A setup destination cannot be used", recovery_fix_with_guide("Choose a file path inside an existing directory you can write to with --config-file or --env-file", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "file.exists":
         return make_recovery_advice("file.exists", safe_detail or "The destination file already exists", recovery_fix_with_guide("Re-run with --force to replace it after a timestamped backup, or write to a different path with '--generate-config <new-file>'", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "smtp_config":
@@ -8832,7 +8839,7 @@ def _wizard_ask_secret(question: str) -> str:
 # Resolves setup destinations without searching parent directories
 def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] = None, default_config_filename: str = DEFAULT_CONFIG_FILENAME, default_env_filename: str = DEFAULT_DOTENV_FILENAME):
     if env_file is not None and str(env_file).casefold() == "none":
-        raise ValueError("--setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
+        raise ValueError("--setup has nowhere to write the private settings")
     default_root = Path("/data") if method in ("docker", "compose") else Path.cwd()
     config_path = Path(config_file) if config_file is not None else default_root / default_config_filename
     env_path = Path(env_file) if env_file is not None else default_root / default_env_filename
@@ -9889,7 +9896,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         config_path, env_path = _wizard_destinations(config_file, env_file, method=method)
     except ValueError as exc:
-        print(f"Setup cannot start: {exc}")
+        print_recovery_error(context="setup.destination", detail=str(exc))
         raise SystemExit(1) from None
     print(colorize('header', "Setup Wizard\n"))
     print("This asks a few questions and writes a ready-to-run configuration.")
@@ -10050,7 +10057,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     try:
         config_path, env_path = _wizard_destinations(config_file, env_file, method=method, default_config_filename=SCROBBLE_HEALTH_CONFIG_FILENAME, default_env_filename=SCROBBLE_HEALTH_DOTENV_FILENAME)
     except ValueError as exc:
-        print(f"Setup cannot start: {exc}")
+        print_recovery_error(context="setup.destination", detail=str(exc))
         raise SystemExit(1) from None
     print("Spotify-to-Last.fm Scrobble Health Setup\n")
     print("This mode compares completed plays from your Spotify account with your public Last.fm recent tracks.")
