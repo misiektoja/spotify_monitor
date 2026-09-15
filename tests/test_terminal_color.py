@@ -499,9 +499,35 @@ def test_change_reports_are_not_painted_end_to_end(colored, line):
 
 
 # Verifies a whole-line style is only ever applied to lines that report a problem, never to a change report
-def test_only_problem_lines_are_painted_end_to_end(colored):
-    for line, part in (("* Error: could not reach Spotify", "error"), ("* Warning: something odd", "warning")):
-        assert monitor._colorize_line(line).startswith(colored[part])
+@pytest.mark.parametrize("line, part", [("* Error: could not reach Spotify", "error"), ("Sending email notification to someone@example.com", "email"), ("Sending webhook notification", "webhook"), ("* Info: the token was refreshed", "info")])
+def test_only_problem_lines_are_painted_end_to_end(colored, line, part):
+    assert monitor._colorize_line(line).startswith(colored[part])
+
+
+# Warning and signal lines mark their own opening word instead of being painted end to end, so a value
+# inside them keeps the colour that says what it is
+def test_a_warning_marks_its_opening_word_and_leaves_the_rest(colored):
+    assert monitor._colorize_line("* Warning: something odd") == f"* {colored['warning']}Warning:{monitor.ANSI_RESET} something odd"
+
+
+def test_a_signal_line_marks_the_signal_it_reports(colored):
+    assert monitor._colorize_line("* Signal SIGUSR1 received") == f"* Signal {colored['signal']}SIGUSR1{monitor.ANSI_RESET} received"
+
+
+# The playlist colour is the yellow the warning line used to paint over, so the name it reports was
+# indistinguishable from the line around it
+def test_a_warning_row_still_shows_the_playlist_inside_it(colored):
+    rendered = monitor._colorize_line("* Warning: playlist 'My Mix' could not be read")
+
+    assert f"{colored['playlist']}My Mix{monitor.ANSI_RESET}" in rendered
+    assert not rendered.startswith(colored["warning"])
+
+
+# A value drawn in the colour of the block enclosing it disappears
+def test_a_block_style_never_hides_a_name(colored):
+    for block in monitor.BLOCK_STYLE_PARTS:
+        for name in monitor.NAME_STYLE_PARTS:
+            assert colored[name] != colored[block], f"{name} is invisible inside a {block} line"
 
 
 # Verifies every part the shipped theme offers is actually looked up somewhere, so the theme documents only

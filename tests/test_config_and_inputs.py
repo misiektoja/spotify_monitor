@@ -271,6 +271,98 @@ def test_dotenv_update_preserves_content_and_escapes_special_values(capsys):
     assert captured.err == ""
 
 
+# Verifies a secret cleared by its owner leaves the file rather than staying behind as an empty value
+def test_a_cleared_secret_is_removed_rather_than_emptied():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('UNRELATED=stay\nNTFY_ACCESS_TOKEN="tk_old"\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        content = destination.read_text(encoding="utf-8")
+        assert "NTFY_ACCESS_TOKEN" not in content
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
+
+
+# Verifies clearing a secret the file never held does not add an empty line for it
+def test_clearing_an_absent_secret_writes_nothing():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("UNRELATED=stay\n", encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        assert destination.read_text(encoding="utf-8") == "UNRELATED=stay\n"
+
+
+# Verifies a generated config asks before it replaces a file, and keeps a backup once it does
+def test_a_generated_config_asks_before_replacing_an_existing_file():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=lambda prompt: "y")
+
+        assert written is True
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+        assert Path(backup_path).read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+
+
+# Verifies a declined replacement leaves the existing file exactly as it was
+def test_a_declined_replacement_keeps_the_existing_config():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=lambda prompt: "n")
+
+        assert (backup_path, written) == (None, False)
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+        assert list(destination.parent.glob("*.bak")) == []
+
+
+# Verifies --force replaces without asking, so a scripted run is not left waiting on a prompt
+def test_force_replaces_an_existing_config_without_asking():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        def refuse(prompt=""):
+            raise AssertionError("asked despite --force")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', force=True, interactive=True, input_func=refuse)
+
+        assert written is True
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+        assert Path(backup_path).exists()
+
+
+# Verifies a new destination is written without a prompt, because there is nothing to replace
+def test_a_new_destination_is_written_without_a_prompt():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+
+        def refuse(prompt=""):
+            raise AssertionError("asked about a file that does not exist")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=refuse)
+
+        assert (backup_path, written) == (None, True)
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+
+
+# Verifies a run with no terminal refuses instead of silently replacing a file nobody can confirm
+def test_a_replacement_without_a_terminal_is_refused():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=False)
+
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+
+
 # Verifies dotenv updates reject keys outside the secret allowlist
 def test_dotenv_update_rejects_unknown_keys():
     with make_temp_directory() as directory_name:

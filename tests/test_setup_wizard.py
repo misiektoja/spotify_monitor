@@ -19,6 +19,14 @@ ARTIFACT_ROOT = PROJECT_ROOT / "local" / "wizard_test_artifacts"
 COLLECT_WEBHOOK = monitor._wizard_collect_webhook
 
 
+# Completes the mail settings a sign-in needs, so a test about the password is not stopped by the guard in front of it
+def configure_mail(monkeypatch):
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "owner@example.test")
+
+
 # Keeps wizard scenarios on deterministic Linux behavior and their original notification channel
 @pytest.fixture(autouse=True)
 def disable_webhook_collection_by_default(monkeypatch):
@@ -1223,8 +1231,7 @@ def test_set_smtp_password_signs_in_before_saving(monkeypatch, capsys):
         sign_in = Mock(return_value="monitor@example.test")
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
         monkeypatch.setattr(monitor, "find_config_file", lambda: None)
-        monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
-        monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+        configure_mail(monkeypatch)
 
         result = monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "app-password", sign_in=sign_in)
 
@@ -1242,6 +1249,7 @@ def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatc
     with make_test_directory() as directory_name:
         destination = Path(directory_name) / ".env"
         destination.write_text("UNRELATED=stay\n", encoding="utf-8")
+        configure_mail(monkeypatch)
         refuse = Mock(side_effect=monitor.smtplib.SMTPAuthenticationError(535, b"authentication failed"))
 
         with pytest.raises(monitor.RecoveryError) as error:
@@ -1249,6 +1257,34 @@ def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatc
 
         assert error.value.advice.code == "smtp.authentication"
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
+
+
+# Verifies incomplete mail settings are reported before the password is asked for, not after the sign-in fails
+def test_incomplete_mail_settings_are_refused_before_the_prompt(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=Mock(side_effect=AssertionError("hidden prompt used")), sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    assert raised.value.advice.summary == "The mail server settings are incomplete, SENDER_EMAIL and RECEIVER_EMAIL are not set"
+    assert "Set SENDER_EMAIL and RECEIVER_EMAIL in the config file" in raised.value.advice.fix
+    assert not destination.exists()
+
+
+# Verifies a host still holding its shipped placeholder counts as unset, so a first run is not sent to it
+def test_a_placeholder_mail_host_is_refused_before_the_prompt(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    configure_mail(monkeypatch)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "your_smtp_server_ssl")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=Mock(side_effect=AssertionError("hidden prompt used")), sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    assert raised.value.advice.summary == "The mail server settings are incomplete, SMTP_HOST is not set"
 
 
 # Verifies the command refuses without a terminal or a writable dotenv destination
@@ -1407,8 +1443,7 @@ def test_a_hidden_value_is_read_with_debug_output_off(monkeypatch):
 # Verifies an interrupted entry reports the cancel itself, with the command that resumes it
 def test_an_interrupted_secret_entry_reports_the_cancel(tmp_path, monkeypatch):
     destination = tmp_path / ".env"
-    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
-    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    configure_mail(monkeypatch)
 
     def interrupt(prompt=""):
         raise KeyboardInterrupt
@@ -1427,8 +1462,7 @@ def test_an_interrupted_secret_entry_reports_the_cancel(tmp_path, monkeypatch):
 def test_a_declined_secret_replacement_reports_the_kept_value(tmp_path, monkeypatch):
     destination = tmp_path / ".env"
     destination.write_text('SMTP_PASSWORD="original"\n', encoding="utf-8")
-    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
-    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    configure_mail(monkeypatch)
 
     with pytest.raises(monitor.RecoveryError) as raised:
         monitor.run_set_smtp_password(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=Mock(side_effect=AssertionError("hidden prompt used")))

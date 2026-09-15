@@ -1257,7 +1257,7 @@ TARGET_INPUT_ERROR = "Invalid Spotify target. Use a raw user ID, spotify:user:US
 SPOTIFY_OBJECT_TYPES = frozenset({"user", "artist", "track", "album", "playlist"})
 
 # Stable machine-readable recovery categories exposed to tests and future renderers
-RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "secret.entry", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "unknown"})
+RECOVERY_CODES = frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "secret.entry", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "file.exists", "unknown"})
 
 
 # Stores one stable recovery category with safe user-facing guidance
@@ -1564,6 +1564,8 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
     if context == "file_write":
         return make_recovery_advice("file.unwritable", "An output destination is not writable", "Choose a writable path and verify its parent directory permissions then retry", False, safe_detail)
+    if context == "file.exists":
+        return make_recovery_advice("file.exists", safe_detail or "The destination file already exists", recovery_fix_with_guide("Re-run with --force to replace it after a timestamped backup, or write to a different path with '--generate-config <new-file>'", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "smtp_config":
         return make_recovery_advice("smtp.invalid", "The SMTP configuration is incomplete or invalid", recovery_fix_with_guide("Correct SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SENDER_EMAIL and RECEIVER_EMAIL then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if context == "webhook_config":
@@ -1984,6 +1986,30 @@ def write_config_file(destination, content: str):
     return {"path": str(destination_path), "backup_path": str(backup_path) if backup_path is not None else None}
 
 
+# Asks before replacing a config file that already exists, so a generated template cannot land silently
+def confirm_generated_config_replacement(destination, force: bool = False, interactive=None, input_func=input) -> bool:
+    destination_path = Path(destination).expanduser()
+    if not destination_path.exists() or force:
+        return True
+    terminal_is_interactive = bool(sys.stdin.isatty()) if interactive is None else bool(interactive)
+    if not terminal_is_interactive:
+        raise FileExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
+    try:
+        answer = str(read_interactively(input_func, f"Config file '{destination_path}' exists. Replace it and keep a timestamped backup? [y/N]: ")).strip().casefold()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        answer = ""
+    return answer in ("y", "yes")
+
+
+# Writes one generated config atomically, backing up whatever was there first
+def write_generated_config(output_file, content: str, force: bool = False, interactive=None, input_func=input):
+    destination = Path(output_file).expanduser()
+    if not confirm_generated_config_replacement(destination, force, interactive, input_func):
+        return None, False
+    return write_config_file(destination, content)["backup_path"], True
+
+
 # Quotes one secret value for lossless parsing by python-dotenv
 def _format_dotenv_value(value: str) -> str:
     if not isinstance(value, str):
@@ -2023,11 +2049,14 @@ def update_dotenv_file(destination, updates):
             continue
         if key in seen_keys:
             continue
-        output_lines.append(f"{key}={_format_dotenv_value(values_by_key[key])}")
         seen_keys.add(key)
+        # A secret cleared by its owner is removed rather than emptied, so a disabled value cannot linger here
+        if not values_by_key[key]:
+            continue
+        output_lines.append(f"{key}={_format_dotenv_value(values_by_key[key])}")
 
     for key, value in update_items:
-        if key not in seen_keys:
+        if key not in seen_keys and value:
             output_lines.append(f"{key}={_format_dotenv_value(value)}")
             seen_keys.add(key)
 
@@ -2729,6 +2758,20 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
     return str(destination)
 
 
+# The settings a sign-in needs before a password can be checked, with the placeholder each one ships with
+MAIL_SIGN_IN_SETTINGS = (("SMTP_HOST", "your_smtp_server_ssl"), ("SMTP_USER", "your_smtp_user"), ("SENDER_EMAIL", "your_sender_email"), ("RECEIVER_EMAIL", "your_receiver_email"))
+
+
+# Returns the mail settings a sign-in needs that are still empty or still hold their shipped placeholder
+def mail_sign_in_settings_missing() -> List[str]:
+    return [name for name, placeholder in MAIL_SIGN_IN_SETTINGS if is_missing_or_placeholder(globals().get(name), (placeholder,))]
+
+
+# Joins setting names into the phrase a message reads out, for example "SMTP_HOST and SMTP_USER"
+def join_setting_names(names: Sequence[str], conjunction: str) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} {conjunction} {names[-1]}"
+
+
 # Signs in to the configured mail server with one entered password, so nothing is saved that cannot deliver
 def smtp_sign_in(password: str, timeout: int = 15) -> str:
     global SMTP_PASSWORD
@@ -2763,6 +2806,11 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
     if not terminal_is_interactive:
         raise RecoveryError(classify_recovery_error(context="secret", detail="--set-smtp-password needs an interactive terminal so the password stays hidden while you type it"))
+    # Checked before the prompts, so nobody types a password only to be told the mail server was never configured
+    missing = mail_sign_in_settings_missing()
+    if missing:
+        names = join_setting_names(missing, "and")
+        raise RecoveryError(make_recovery_advice("smtp.invalid", f"The mail server settings are incomplete, {names} {'is' if len(missing) == 1 else 'are'} not set", recovery_fix_with_guide(f"Set {names} in the config file, or run --setup, then run --set-smtp-password again", SMTP_GUIDE_URL), False))
     prompt = input if input_func is None else input_func
     if _dotenv_contains_key(destination, "SMTP_PASSWORD"):
         try:
@@ -2940,6 +2988,13 @@ def sanitize_terminal_text(message):
     return "".join(parts)
 
 
+# A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
+# block's own colour would disappear inside it and the two sets are kept disjoint. Warnings and signals are
+# not on the block list: both were yellow, which is the playlist colour, so they mark their own opening
+# words instead of painting the line and the values inside keep carrying the meaning
+BLOCK_STYLE_PARTS = ("error", "email", "webhook", "info")
+NAME_STYLE_PARTS = ("username", "id", "artist", "track", "album", "playlist", "link")
+
 # Internal flag & style map for colour handling
 COLOR_ENABLED = False
 _COLOR_STYLES: dict = {}
@@ -3092,6 +3147,10 @@ _PLAYBACK_STARTED_RE = re.compile(r"\b(RESUMED|LOOP|PLAYING)\b")
 _PLAYBACK_CHANGED_RE = re.compile(r"\b(CONT)\b")
 _ACTIVE_WORD_RE = re.compile(r"\b(ACTIVE|PRIVATE MODE)\b")
 _INACTIVE_WORD_RE = re.compile(r"\b(INACTIVE|OFFLINE)\b")
+
+# The opening word of a warning and the name of a reported signal, marked instead of painting the line
+_WARNING_LABEL_RE = re.compile(r"^\*+\s*(Warning:|Caution:)")
+_SIGNAL_NAME_RE = re.compile(r"(?<=^\* Signal )(\w+)(?= received$)")
 
 
 # Builds ANSI escape sequence from a style description string
@@ -3332,6 +3391,10 @@ def _colorize_line(line):
     line = _sub_outside_color(_BOOLEAN_TRUE_RE, lambda mo: colorize("boolean_true", mo.group(0)), line)
     line = _sub_outside_color(_BOOLEAN_FALSE_RE, lambda mo: colorize("boolean_false", mo.group(0)), line)
 
+    # Mark the opening word of a warning and the name of a reported signal, rather than painting the whole line
+    line = _sub_outside_color(_WARNING_LABEL_RE, lambda mo: mo.group(0)[:mo.start(1) - mo.start(0)] + colorize("warning", mo.group(1)), line)
+    line = _sub_outside_color(_SIGNAL_NAME_RE, lambda mo: colorize("signal", mo.group(0)), line)
+
     # Highlight playback and presence keywords
     line = _sub_outside_color(_PLAYBACK_STOPPED_RE, lambda mo: colorize("status_inactive", mo.group(0)), line)
     line = _sub_outside_color(_PLAYBACK_STARTED_RE, lambda mo: colorize("status_active", mo.group(0)), line)
@@ -3349,18 +3412,12 @@ def _colorize_line(line):
             "* error" in lowered and "[errors =" not in lowered
         )
     )
-    is_warning = any(w in lowered for w in ("* warning:", "caution:")) and "[warnings =" not in lowered
-    is_signal = "* signal" in lowered and "received" in lowered
     is_info = "* info:" in lowered
 
     if lowered.startswith("to fix:"):
         line = _apply_style_nested(line, "info")
     elif is_error:
         line = _apply_style_nested(line, "error")
-    elif is_warning:
-        line = _apply_style_nested(line, "warning")
-    elif is_signal:
-        line = _apply_style_nested(line, "signal")
     elif "sending email" in lowered:
         line = _apply_style_nested(line, "email")
     elif "sending webhook" in lowered:
@@ -11103,13 +11160,19 @@ def main():
                 # Write directly to file (bypasses PowerShell UTF-16 encoding issue on Windows)
                 output_file = sys.argv[idx + 1]
                 try:
-                    write_status = write_config_file(output_file, config_content)
+                    backup_path, written = write_generated_config(output_file, config_content, force="--force" in sys.argv)
+                except FileExistsError as exc:
+                    print_recovery_error(context="file.exists", detail=str(exc))
+                    sys.exit(1)
                 except Exception as exc:
                     print(f"* Error: Could not write config file '{output_file}': {type(exc).__name__}: {exc}")
                     sys.exit(1)
-                print(f"Config written to: {write_status['path']}")
-                if write_status["backup_path"]:
-                    print(f"Backup written to: {write_status['backup_path']}")
+                if not written:
+                    print("Config was not replaced. The existing file is unchanged")
+                    sys.exit(1)
+                print(f"Config written to: {Path(output_file).expanduser()}")
+                if backup_path:
+                    print(f"Backup written to: {backup_path}")
                 sys.exit(0)
         except (ValueError, IndexError):
             pass
@@ -11321,7 +11384,7 @@ def main():
     browser_import.add_argument(
         "--force",
         action="store_true",
-        help="Replace an existing SP_DC_COOKIE without a prompt"
+        help="Replace without a prompt: the saved SP_DC_COOKIE here, or an existing file with --generate-config"
     )
 
     # Auth details used when token source is set to client
