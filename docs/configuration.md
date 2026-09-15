@@ -137,7 +137,7 @@ The default alert requires five consecutive unmatched completed plays. The oldes
 
 | Setting | One-run option | Default | Purpose |
 | --- | --- | ---: | --- |
-| `SCROBBLE_HEALTH_CHECK_INTERVAL` | `--scrobble-check-interval` | 120 seconds | Time between comparisons |
+| `SCROBBLE_HEALTH_CHECK_INTERVAL` | `--scrobble-check-interval` | 180 seconds | Time between comparisons |
 | `SCROBBLE_HEALTH_DEAD_PERIOD` | `--scrobble-dead-period` | 1200 seconds | Required age of the oldest unmatched play |
 | `SCROBBLE_HEALTH_MIN_UNMATCHED` | `--scrobble-min-unmatched` | 5 plays | Required consecutive unmatched completed plays |
 | `SCROBBLE_HEALTH_MATCH_WINDOW` | `--scrobble-match-window` | 300 seconds | Allowed timestamp difference for the same artist and track |

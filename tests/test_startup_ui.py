@@ -531,6 +531,40 @@ def test_the_scrobble_health_summary_keeps_the_shared_tail(monkeypatch):
     assert max(len(row.label) for row in rows) <= 28
 
 
+# Verifies the scrobble health view reports the matching settings, the reminder interval and the shared output rows
+def test_the_scrobble_health_summary_reports_the_matching_settings(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_MATCH_WINDOW", 300)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_REPEAT_INTERVAL", 86400)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 86400)
+    monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    concise = emit_to_string(rows)
+    full = emit_to_string(rows, show_full=True)
+    assert "* Liveness output:              1 day" in concise
+    for advanced in ("Comparison period", "Timestamp tolerance", "Outage reminders", "Error retry timer", "Terminal truncation"):
+        assert advanced not in concise
+    for visible in ("* Comparison period:            6 hours", "* Timestamp tolerance:          5 minutes", "* Outage reminders:             1 day", "* Error retry timer:            3 minutes", "* Terminal truncation:          Disabled"):
+        assert visible in full
+
+
+# Verifies disabled scrobble health reminders and liveness output stay visible in the concise view
+def test_the_scrobble_health_summary_flags_disabled_reminders(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_REPEAT_INTERVAL", 0)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    concise = emit_to_string(rows)
+    assert "* Outage reminders:             Disabled" in concise
+    assert "Liveness output" not in concise
+    assert "* Liveness output:              Disabled" in emit_to_string(rows, show_full=True)
+
+
 # Verifies a first run without a target is told about the target before it is told about the cookie
 def test_a_missing_target_is_reported_before_the_credentials():
     result = run_cli("--config-file", "none", "--env-file", "none")

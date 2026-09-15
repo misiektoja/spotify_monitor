@@ -432,7 +432,7 @@ USER_AGENT = ""
 
 # How often to print a liveness message in seconds
 # Set to 0 to disable
-LIVENESS_CHECK_INTERVAL = 43200  # 12 hours
+LIVENESS_CHECK_INTERVAL = 86400  # 24 hours
 
 # URL used to verify internet connectivity at startup
 CHECK_INTERNET_URL = 'https://api.spotify.com/v1'
@@ -6684,6 +6684,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
             StartupSummaryRow("Outage evidence", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
+            StartupSummaryRow("Comparison period", display_time(SCROBBLE_HEALTH_LOOKBACK), concise=False),
+            StartupSummaryRow("Timestamp tolerance", display_time(SCROBBLE_HEALTH_MATCH_WINDOW), concise=False),
+            StartupSummaryRow("Outage reminders", display_time(SCROBBLE_HEALTH_REPEAT_INTERVAL) if SCROBBLE_HEALTH_REPEAT_INTERVAL else "Disabled", concise=not SCROBBLE_HEALTH_REPEAT_INTERVAL),
+            StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
             StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
             StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
@@ -6691,6 +6695,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
+            StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
+            StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
             *_startup_environment_rows(env_path),
             StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
             StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
