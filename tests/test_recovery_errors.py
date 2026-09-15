@@ -260,3 +260,21 @@ def test_a_caller_supplied_detail_does_not_hide_the_error(message, expected):
 
     assert advice.code == expected
     assert "Cannot read the recent plays" in advice.detail
+
+
+# Verifies a configured Protobuf file that is not there is reported with a fix instead of a bare line
+@pytest.mark.parametrize("setting", ["LOGIN_REQUEST_BODY_FILE", "CLIENTTOKEN_REQUEST_BODY_FILE"])
+def test_a_missing_protobuf_file_is_reported_with_a_fix(monkeypatch, tmp_path, capsys, setting):
+    if not hasattr(monitor.signal, "SIGHUP"):
+        pytest.skip("SIGHUP is unavailable on Windows")
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "client")
+    monkeypatch.setattr(monitor, "LOGIN_REQUEST_BODY_FILE", "")
+    monkeypatch.setattr(monitor, "CLIENTTOKEN_REQUEST_BODY_FILE", "")
+    monkeypatch.setattr(monitor, setting, str(tmp_path / "absent.bin"))
+
+    monitor.reload_secrets_signal_handler(monitor.signal.SIGHUP, None)
+
+    printed = capsys.readouterr().out
+    assert "* Error: A required file could not be read" in printed
+    assert "To fix: Verify the path, file format and read permissions then retry" in printed

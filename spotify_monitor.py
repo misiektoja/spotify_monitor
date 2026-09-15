@@ -1053,6 +1053,7 @@ WEBHOOK_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#webhook-settings"
 SECRETS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#storing-secrets"
 TLS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#tls-verification"
 INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
+TERMINAL_GUIDE_URL = DOCUMENTATION_URL + "/usage/#terminal-output"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
 
 # Labels of the two Doctor checks that gate the optional delivery tests, matched by prefix so each can name its channel
@@ -4748,7 +4749,7 @@ def reload_secrets_signal_handler(sig, frame):
                     print(" - User URI ID:\t\t", USER_URI_ID)
                     print(" - Refresh Token:\t<<hidden>>\n")
             else:
-                print(f"* Error: Protobuf file ({LOGIN_REQUEST_BODY_FILE}) does not exist")
+                print_recovery_error(context="file_read", detail=f"Login Protobuf file '{LOGIN_REQUEST_BODY_FILE}' does not exist")
 
         # Process the client token request body file
         if CLIENTTOKEN_REQUEST_BODY_FILE:
@@ -4767,7 +4768,7 @@ def reload_secrets_signal_handler(sig, frame):
                     print(" - OS minor:\t\t", OS_MINOR)
                     print(" - Client model:\t", CLIENT_MODEL, "\n")
             else:
-                print(f"* Error: Protobuf file ({CLIENTTOKEN_REQUEST_BODY_FILE}) does not exist")
+                print_recovery_error(context="file_read", detail=f"Client-token Protobuf file '{CLIENTTOKEN_REQUEST_BODY_FILE}' does not exist")
 
     auth_values_after = (REFRESH_TOKEN, SP_DC_COOKIE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, DEVICE_ID, SYSTEM_ID, USER_URI_ID)
     if auth_values_after != auth_values_before:
@@ -11196,7 +11197,7 @@ def main():
                     print_recovery_error(context="file.exists", detail=str(exc))
                     sys.exit(1)
                 except Exception as exc:
-                    print(f"* Error: Could not write config file '{output_file}': {type(exc).__name__}: {exc}")
+                    print_recovery_error(exc, "file_write", detail=f"Config file '{output_file}' could not be written: {exc}")
                     sys.exit(1)
                 if not written:
                     print("Config was not replaced. The existing file is unchanged")
@@ -12262,7 +12263,7 @@ def main():
     try:
         ascii_log_separators_enabled()
     except ValueError as e:
-        print(f"* Error: {e}")
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", str(e), recovery_fix_with_guide('Set ASCII_LOG_SEPARATORS to "Auto", "On" or "Off"', TERMINAL_GUIDE_URL), False)))
         sys.exit(1)
     if args.disable_logging is True:
         DISABLE_LOGGING = True
@@ -12579,7 +12580,7 @@ def main():
     try:
         TRUNCATE_CHARS = resolve_truncate_chars(args.truncate, TRUNCATE_CHARS, DISABLE_LOGGING)
     except OSError as e:
-        print(f"Error: Cannot determine terminal screen width: {e}")
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", f"Cannot determine the terminal screen width: {e}", recovery_fix_with_guide("Pass a fixed width with --truncate <chars>, since the terminal size cannot be detected here", TERMINAL_GUIDE_URL), False)))
         sys.exit(1)
 
     if not DISABLE_LOGGING:

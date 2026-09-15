@@ -248,3 +248,28 @@ def test_each_secret_source_lands_in_its_own_bucket(monkeypatch, source, positio
 
     assert buckets[position] == ["SMTP_PASSWORD"]
     assert [names for index, names in enumerate(buckets) if index != position] == [[], [], []]
+
+
+# Confirms an unusable separator mode names the three values it accepts instead of repeating the raised text alone
+def test_an_unusable_separator_mode_names_the_accepted_values():
+    with make_temp_directory() as directory_name:
+        config_path = write_config(directory_name, 'ASCII_LOG_SEPARATORS = "Maybe"\n')
+        result = run_cli(["--config-file", str(config_path)], PROBE_SETUP)
+
+    assert result.returncode == 1, result.stdout
+    assert "* Error: ASCII_LOG_SEPARATORS must be" in result.stdout
+    assert 'To fix: Set ASCII_LOG_SEPARATORS to "Auto", "On" or "Off"' in result.stdout
+    assert f"Guide: {monitor.TERMINAL_GUIDE_URL}" in result.stdout
+
+
+# Confirms a terminal whose width cannot be detected asks for a fixed width rather than printing the OS error alone
+def test_an_undetectable_terminal_width_asks_for_a_fixed_width():
+    with make_temp_directory() as directory_name:
+        config_path = write_config(directory_name, "")
+        raising_size = "runtime['resolve_truncate_chars'] = lambda *args, **kwargs: (_ for _ in ()).throw(OSError('no terminal')); "
+        result = run_cli(["--config-file", str(config_path), "--truncate", "999"], PROBE_SETUP + raising_size)
+
+    assert result.returncode == 1, result.stdout
+    assert "* Error: Cannot determine the terminal screen width: no terminal" in result.stdout
+    assert "To fix: Pass a fixed width with --truncate <chars>" in result.stdout
+    assert f"Guide: {monitor.TERMINAL_GUIDE_URL}" in result.stdout

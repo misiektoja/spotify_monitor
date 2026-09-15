@@ -596,3 +596,20 @@ def test_convert_uri_to_url_matches_whole_parts():
 def test_ntfy_images_ships_disabled_and_documents_optional_dependency():
     assert "NTFY_IMAGES = False" in monitor.CONFIG_BLOCK
     assert 'pip install "spotify_monitor[notification-images]"' in monitor.CONFIG_BLOCK
+
+
+# Confirms a generated config that cannot be written reports the destination problem with a fix
+def test_a_generated_config_that_cannot_be_written_is_reported_with_a_fix():
+    with make_temp_directory() as directory_name:
+        read_only = Path(directory_name) / "read-only"
+        read_only.mkdir()
+        read_only.chmod(0o500)
+        target = read_only / "spotify_monitor.conf"
+        try:
+            result = run_cli(["--generate-config", str(target)])
+        finally:
+            read_only.chmod(0o700)
+
+    assert result.returncode == 1, result.stdout
+    assert "* Error: An output destination is not writable" in result.stdout
+    assert "To fix: Choose a writable path and verify its parent directory permissions then retry" in result.stdout
