@@ -576,3 +576,58 @@ def test_a_status_code_inside_a_longer_number_is_not_matched():
     assert monitor.mentions_status_code("429", "https://example.test/429/status") is False
     assert monitor.mentions_status_code("429", "HTTP 429 Too Many Requests") is True
     assert monitor.mentions_status_code("429", "request 14290 failed") is False
+
+
+# Verifies a channel that could not deliver the error alert is held for five minutes, then for twice the previous wait
+def test_a_failed_channel_backs_off_before_it_is_tried_again(capsys):
+    state = monitor.ErrorAlertState()
+    attempts = []
+    for offset in (0, 60, 299, 300, 600, 899, 900, 1200):
+        now = 1_700_000_000 + offset
+        if state.pending("email", True, now):
+            attempts.append(offset)
+            state.record("email", True, False, now)
+    assert attempts == [0, 300, 900]
+    assert state.email_failures == 3
+    assert state.email_retry_at == 1_700_000_000 + 900 + 1200
+    output = capsys.readouterr().out
+    assert "* The email alert is on hold for 5 minutes after 1 attempt, then tried again" in output
+    assert "* The email alert is on hold for 10 minutes after 2 attempts, then tried again" in output
+    assert "* The email alert is on hold for 20 minutes after 3 attempts, then tried again" in output
+
+
+# Verifies the wait stops growing at one hour, so a channel that is down for a day is still tried every hour
+def test_the_backoff_is_capped(capsys):
+    state = monitor.ErrorAlertState()
+    for _ in range(6):
+        state.record("webhook", True, False, 0)
+    assert state.webhook_retry_at == monitor.ERROR_ALERT_RETRY_MAX_SECONDS
+    assert "on hold for 1 hour after 6 attempts" in capsys.readouterr().out
+
+
+# Verifies a delivery, a reset and an unattempted channel leave no hold behind, while a disabled channel is never pending
+def test_a_delivery_or_a_reset_clears_the_hold(capsys):
+    state = monitor.ErrorAlertState()
+    state.record("email", True, False, 0)
+    state.record("webhook", False, False, 0)
+    assert state.pending("email", True, 100) is False
+    assert state.pending("email", True, 300) is True
+    assert state.pending("webhook", True, 0) is True
+    assert state.pending("webhook", False, 0) is False
+    state.record("email", True, True, 300)
+    assert state.email_sent is True
+    assert (state.email_failures, state.email_retry_at) == (0, 0)
+    assert state.pending("email", True, 300) is False
+    state.reset()
+    assert state.pending("email", True, 0) is True
+    assert "on hold" in capsys.readouterr().out
+
+
+# Verifies every alert site in the loop asks the state before sending and records the outcome, so no channel is tracked by a loose flag
+def test_the_loop_tracks_the_error_alert_through_the_state():
+    source = inspect.getsource(monitor)
+    assert source.count("error_alert = ErrorAlertState()") == 1
+    assert source.count("error_alert.reset()") >= 1
+    assert source.count('error_alert.pending("email"') == source.count('error_alert.record("email"') >= 1
+    assert source.count('error_alert.pending("webhook"') == source.count('error_alert.record("webhook"') >= 1
+    assert not re.search(r"^\s*error_(email|webhook)_sent = ", source, re.MULTILINE)

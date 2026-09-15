@@ -1030,6 +1030,44 @@ SP_CLIENT_TOKEN_EXPIRES_AT = 0
 LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL > 0 else 0
 # How long a failure the tool can retry away must last before it is alerted, a failure it cannot is alerted at once
 ERROR_ALERT_AFTER_SECONDS = 300  # 5 minutes
+# How long a channel that could not deliver an error alert waits before the next attempt, doubled on every further failure up to the cap
+ERROR_ALERT_RETRY_SECONDS = 300  # 5 minutes
+ERROR_ALERT_RETRY_MAX_SECONDS = 3600  # 1 hour
+
+
+# Tracks the error alert per channel: what was delivered, and how long a channel that failed waits before the next attempt
+class ErrorAlertState:
+    # Starts with nothing delivered and no channel on hold
+    def __init__(self) -> None:
+        self.email_sent = False
+        self.webhook_sent = False
+        self.email_failures = 0
+        self.webhook_failures = 0
+        self.email_retry_at = 0
+        self.webhook_retry_at = 0
+
+    # Forgets the delivered alert and any hold, so the next failure earns each channel a new one
+    def reset(self) -> None:
+        self.__init__()
+
+    # Tells whether a channel still owes the alert and its wait after a failed attempt, if any, has passed
+    def pending(self, channel: str, enabled, now: int) -> bool:
+        return bool(enabled) and not getattr(self, f"{channel}_sent") and now >= getattr(self, f"{channel}_retry_at")
+
+    # Records one attempt, holding a channel that failed for a growing wait so a broken server is not dialled on every check
+    def record(self, channel: str, attempted: bool, delivered: bool, now: int) -> None:
+        if not attempted:
+            return
+        if delivered:
+            setattr(self, f"{channel}_sent", True)
+            setattr(self, f"{channel}_failures", 0)
+            setattr(self, f"{channel}_retry_at", 0)
+            return
+        failures = getattr(self, f"{channel}_failures") + 1
+        delay = min(ERROR_ALERT_RETRY_SECONDS * 2 ** (failures - 1), ERROR_ALERT_RETRY_MAX_SECONDS)
+        setattr(self, f"{channel}_failures", failures)
+        setattr(self, f"{channel}_retry_at", now + delay)
+        print(f"* The {channel} alert is on hold for {display_time(delay)} after {failures} {'attempt' if failures == 1 else 'attempts'}, then tried again")
 
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
@@ -10524,8 +10562,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     email_sent = False
     webhook_sent = False
     # The error alert is tracked apart from the event alerts, once per channel and per failure category
-    error_email_sent = False
-    error_webhook_sent = False
+    error_alert = ErrorAlertState()
     error_delivery_code = None
 
     mark_monitoring_started()
@@ -10560,8 +10597,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
-            error_email_sent = False
-            error_webhook_sent = False
+            error_alert.reset()
             error_delivery_code = None
             _restore_timeout_alarm(alarm_state)
         except TimeoutException:
@@ -10581,8 +10617,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
             # internet outage that flaps between a timeout and an unreachable host stays one failure
             if outage_family(advice.code) != outage_family(error_delivery_code):
-                error_email_sent = False
-                error_webhook_sent = False
+                error_alert.reset()
                 error_delivery_code = advice.code
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
@@ -10609,10 +10644,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
             # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
             alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
-            if alert_due and ((ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent)):
-                email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not error_email_sent, webhook_event_enabled("error") and not error_webhook_sent)
-                error_email_sent = error_email_sent or email_succeeded
-                error_webhook_sent = error_webhook_sent or webhook_succeeded
+            now = int(time.time())
+            error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
+            error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
+            if error_email_pending or error_webhook_pending:
+                email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, error_email_pending, error_webhook_pending)
+                error_alert.record("email", error_email_pending, email_succeeded, now)
+                error_alert.record("webhook", error_webhook_pending, webhook_succeeded, now)
                 delivery_reported = True
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
@@ -10835,8 +10873,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
-                        error_email_sent = False
-                        error_webhook_sent = False
+                        error_alert.reset()
                         error_delivery_code = None
                         _restore_timeout_alarm(alarm_state)
                         break
@@ -10853,8 +10890,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
                         # internet outage that flaps between a timeout and an unreachable host stays one failure
                         if outage_family(advice.code) != outage_family(error_delivery_code):
-                            error_email_sent = False
-                            error_webhook_sent = False
+                            error_alert.reset()
                             error_delivery_code = advice.code
 
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
@@ -10881,10 +10917,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
                         # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
                         alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
-                        if alert_due and ((ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent)):
-                            email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not error_email_sent, webhook_event_enabled("error") and not error_webhook_sent)
-                            error_email_sent = error_email_sent or email_succeeded
-                            error_webhook_sent = error_webhook_sent or webhook_succeeded
+                        now = int(time.time())
+                        error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
+                        error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
+                        if error_email_pending or error_webhook_pending:
+                            email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, error_email_pending, error_webhook_pending)
+                            error_alert.record("email", error_email_pending, email_succeeded, now)
+                            error_alert.record("webhook", error_webhook_pending, webhook_succeeded, now)
                             delivery_reported = True
 
                         # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
