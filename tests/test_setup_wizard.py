@@ -109,7 +109,7 @@ def test_webhook_prompt_names_supported_services(monkeypatch):
 
 # Verifies positive integer input rejects zero and non-numeric values
 def test_positive_integer_helper_reprompts(monkeypatch, capsys):
-    install_inputs(monkeypatch, ["bad", "0", "15"])
+    install_inputs(monkeypatch, ["bad", "y", "0", "y", "15"])
     assert monitor._wizard_ask_positive_int("Interval", 30) == 15
     assert capsys.readouterr().out.count("positive whole number") == 2
 
@@ -123,10 +123,10 @@ def test_duration_helper_accepts_supported_units(monkeypatch, value, expected):
 
 # Verifies duration prompts show readable defaults and explain invalid input
 def test_duration_helper_shows_readable_default_and_reprompts(monkeypatch, capsys):
-    input_mock = Mock(side_effect=["bad", "2m"])
+    input_mock = Mock(side_effect=["bad", "y", "2m"])
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Comparison interval", 120) == 120
-    assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Comparison interval [120s - 2m]: ",)]
+    assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Try entering the Comparison interval again? [Y/n]: ",), ("Comparison interval [120s - 2m]: ",)]
     assert "120, 2m, 1.5h, 1h 30m or 1d" in capsys.readouterr().out
 
 
@@ -1571,7 +1571,7 @@ def test_a_rejected_cookie_is_not_queued(monkeypatch, capsys):
 
 # Verifies the port question rejects a number no TCP port can be, instead of saving it for the doctor to reject
 def test_the_smtp_port_question_rejects_a_number_above_the_port_range(monkeypatch, capsys):
-    answers = iter(["70000", "2525"])
+    answers = iter(["70000", "y", "2525"])
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
     chosen = monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535)
@@ -1582,7 +1582,7 @@ def test_the_smtp_port_question_rejects_a_number_above_the_port_range(monkeypatc
 
 # Verifies declining the retry offer keeps the saved value rather than asking the same question forever
 def test_declining_the_retry_offer_keeps_the_saved_number(monkeypatch, capsys):
-    answers = iter(["", "n"])
+    answers = iter(["70000", "n"])
     monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
 
     assert monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535) == 587
@@ -1638,3 +1638,20 @@ def test_the_email_question_defaults_to_the_saved_alerts(monkeypatch, tmp_path):
 
     monitor._wizard_collect_email({"SCROBBLE_HEALTH_NOTIFICATION": True, "SMTP_HOST": "smtp.example.test"}, {}, tmp_path / ".env", scrobble_health=True)
     assert seen[-1] == ("Configure email notifications?", True)
+
+
+# Verifies declining the retry offer after a value the wizard cannot use keeps the default rather than asking again
+def test_a_rejected_duration_keeps_the_default(monkeypatch, capsys):
+    prompts = []
+    answers = iter(["later", "n"])
+
+    def script(prompt=""):
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", script)
+
+    assert monitor._wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", 60) == 60
+    assert "Keeping 60s - 1m." in capsys.readouterr().out
+    # The hint the question carries belongs in the prompt, not in the offer that repeats it
+    assert any("Try entering the Spotify polling interval again? [Y/n]: " in prompt for prompt in prompts), prompts
