@@ -30,7 +30,7 @@
 -
 
 # ----------------------------------------------------------------------------
-# Rows the tools colour and then stop reading
+# Rows the tools colour and then stop reading. A label sits behind a - or * bullet or behind nothing
 # ---------------------------------------------------------------------------
 
 regexp=^(\* Notifications \((?:email|webhook)\):[\t ]+)(On)
@@ -58,7 +58,7 @@ regexp=^\[SKIP\]
 colours=cyan
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Timestamp:|Liveness check, timestamp:)[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Timestamp:|Liveness check, timestamp:)[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, cyan
 count=stop
 -
@@ -68,81 +68,81 @@ regexp=URL:[\t ]+(https?://[^\s\]]+?)(?=[.,;:!?'")>]*(?:[\s\]]|$))
 colours=unchanged, blue underline
 count=stop
 -
-regexp=(?i)^[\t ]*\*?[\t ]*STATUS:[\t ]+(online|available|active|playing|private mode)[\t ]*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?STATUS:[\t ]+(online|available|active|playing|private mode)[\t ]*$
 colours=unchanged, green
 count=stop
 -
-regexp=(?i)^[\t ]*\*?[\t ]*STATUS:[\t ]+(away)[\t ]*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?STATUS:[\t ]+(away)[\t ]*$
 colours=unchanged, yellow
 count=stop
 -
-regexp=(?i)^[\t ]*\*?[\t ]*STATUS:[\t ]+(snooze)[\t ]*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?STATUS:[\t ]+(snooze)[\t ]*$
 colours=unchanged, magenta
 count=stop
 -
-regexp=(?i)^[\t ]*\*?[\t ]*STATUS:[\t ]+(offline|invisible|inactive|standby)[\t ]*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?STATUS:[\t ]+(offline|invisible|inactive|standby)[\t ]*$
 colours=unchanged, red
 count=stop
 -
-regexp=(?i)^[\t ]*\*?[\t ]*STATUS:[\t ]+(\S.*?)[\t ]*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?STATUS:[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, white
 count=stop
 -
 # The monitored target is a handle in most tools and an opaque identifier in spotify_monitor
 # and steam_monitor, which a saved log can only tell apart by the shape of the value
-regexp=^[\t ]*\*?[\t ]*Targets?:[\t ]+([A-Za-z0-9]{20,}|\d{17})[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?Targets?:[\t ]+([A-Za-z0-9]{20,}|\d{17})[\t ]*$
 colours=unchanged, bright_magenta
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*Targets?:[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?Targets?:[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_cyan underline
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Username|Display name|Spotify user|Owner|Last\.fm user|Token belongs to|Event actor login|Event actor name|Published by|Commit author|Issue author|Comment author|Discussion comment by|Member added|Assignee|Requested reviewer|Author|Gamertag|PlayStation ID|PSN ID):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Username|Display name|Spotify user|Owner|Last\.fm user|Token belongs to|Event actor login|Event actor name|Published by|Commit author|Issue author|Comment author|Discussion comment by|Member added|Assignee|Requested reviewer|Author|Gamertag|PlayStation ID|PSN ID):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_cyan underline
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:User URI ID|Spotify user ID|User URI|Playlist ID|Event ID|Review ID|Commit SHA reviewed|Commit SHA|XUID|PSN account ID|Account ID|User ID|Steam64 ID):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:User URI ID|Spotify user ID|User URI|Playlist ID|Event ID|Review ID|Commit SHA reviewed|Commit SHA|XUID|PSN account ID|Account ID|User ID|Steam64 ID):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_magenta
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Last played|Last track|Track|Context \(Artist\)|Artist):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Last played|Last track|Track|Context \(Artist\)|Artist):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_yellow
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Context \(Album\)|Last album|Album|Playlist):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Context \(Album\)|Last album|Album|Playlist):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, yellow
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Last track duration|Duration):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Last track duration|Duration):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, green
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Current game|Title name|User is currently in-game|In-game|Game|Commit message):[\t ]+(\S.*?)(?:[\t ]*\((PS[A-Z0-9_]*|MOBILE_APP)\))?[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Current game|Title name|User is currently in-game|In-game|Game|Commit message):[\t ]+(\S.*?)(?:[\t ]*\((PS[A-Z0-9_]*|MOBILE_APP)\))?[\t ]*$
 colours=unchanged, bright_yellow, blue
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*Platform:[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?Platform:[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, blue
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Gamerscore|Trophies earned|Trophy level):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Gamerscore|Trophies earned|Trophy level):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_green
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Repo name|Forked to repo):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Repo name|Forked to repo):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, green
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Event type|Release name|Release tag name|Issue title|Discussion title):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Event type|Release name|Release tag name|Issue title|Discussion title):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_green
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*(?:Object name|Target commitish|Branch \(default\)):[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Object name|Target commitish|Branch \(default\)):[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_magenta
 count=stop
 -
-regexp=^[\t ]*\*?[\t ]*Email:[\t ]+(\S.*?)[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?Email:[\t ]+(\S.*?)[\t ]*$
 colours=unchanged, bright_cyan
 count=stop
 
@@ -164,12 +164,12 @@ regexp=(?i)^.*\bsending email\b.*$
 colours=bright_cyan
 count=once
 -
-regexp=(?i)^[\t ]*\*?[\t ]*(?:error\b|critical:|failure\b).*$
+regexp=(?i)^[\t ]*(?:[-*][\t ]+)?(?:error\b|critical:|failure\b).*$
 colours=red
 count=once
 -
 # A problem word used as a key in a "key=value" detail names a setting or a counter, not a failure
-regexp=(?i)^.*\b(?:failures?|failed|forbidden|timeout|disappeared)\b(?![\t ]*=).*$
+regexp=(?i)^[^'\n]*\b(?:failures?|failed|forbidden|timeout|disappeared)\b(?![\t ]*=).*$
 colours=red
 count=once
 -
@@ -272,47 +272,53 @@ colours=unchanged, yellow
 # Values inside a line
 # ---------------------------------------------------------------------------
 
-regexp=\bTrue\b|\bEnabled\b|\bYes\b
+regexp=\bTrue\b|\bEnabled\b
 colours=green
 -
-regexp=\bFalse\b|\bDisabled\b|\bNo\b
+regexp=:[\t ]+(Yes)[\t ]*$
+colours=unchanged, green
+-
+regexp=\bFalse\b|\bDisabled\b
 colours=red
 -
+regexp=:[\t ]+(No)[\t ]*$
+colours=unchanged, red
+-
 # A quoted value takes the colour of what the line is about
-regexp='(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'(?=[\s.,;:!?)\]]|$)
+regexp='(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)(?=[\s.,;:!?)\]]|$)
 colours=unchanged, bright_yellow
 -
-regexp=(?i)\bplaylist\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'(?=[\s.,;:!?)\]]|$)
+regexp=(?i)\bplaylist\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)(?=[\s.,;:!?)\]]|$)
 colours=unchanged, yellow
 -
-regexp=(?i)\busername\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'(?=[\s.,;:!?)\]]|$)
+regexp=(?i)\busername\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)(?=[\s.,;:!?)\]]|$)
 colours=unchanged, bright_cyan underline
 -
-regexp=^[\t ]*-[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'(?=[\s.,;:!?)\]]|$)
+regexp=^[\t ]*-[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)(?=[\s.,;:!?)\]]|$)
 colours=unchanged, yellow
 -
-regexp=^[\t ]*-[\t ]+.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'[^'\n]*$
+regexp=^[\t ]*-[\t ]+'.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)[^'\n]*$
 colours=unchanged, yellow
 -
 # A quoted value right after the word it belongs to takes that word's colour, whichever
 # quote on the line it is
-regexp=(?i)\bplaylist\b[^'\n]*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'
+regexp=(?i)\bplaylist\b[^'\n]*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)
 colours=unchanged, yellow
 -
-regexp=(?i)\bplaylist\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'[^'\n]*$
+regexp=(?i)\bplaylist\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)[^'\n]*$
 colours=unchanged, yellow
 -
-regexp=(?i)\busername\b[^'\n]*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'
+regexp=(?i)\busername\b[^'\n]*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)
 colours=unchanged, bright_cyan underline
 -
-regexp=(?i)\busername\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'[^'\n]*$
+regexp=(?i)\busername\b.*'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)[^'\n]*$
 colours=unchanged, bright_cyan underline
 -
-regexp=(?i)\b(?:user|owner|username|owned by|added by|listened by|tracks of)[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'
+regexp=(?i)\b(?:user|owner|username|owned by|added by|listened by|tracks of)[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)
 colours=unchanged, bright_cyan underline
 -
 # Only the Spotify tools print "user ID", and that value is an identifier
-regexp=(?i)\buser[\t ]+ID[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,8}'))([^'\n]*\w[^'\n]*)'
+regexp=(?i)\buser[\t ]+ID[\t ]+'(?!(?:[~.]?[\\/]|[A-Za-z]:[\\/]|<|-|[?&]|[^'\n]*://|[^'\n]*\.[A-Za-z0-9]{1,12}'))([^'\n]*\w[^'\n]*)'(?![\t ]*-[\t ]*(?:modified|added|removed|renamed|deleted|changed)\b)
 colours=unchanged, bright_magenta
 -
 # A quoted value with the shape of a Spotify URI ID or a Steam64 ID names an account
