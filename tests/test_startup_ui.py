@@ -286,7 +286,7 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     assert "known-webhook-secret" not in output
 
 
-# Verifies the provider row names the service and its host without the path that carries the topic or the token
+# Verifies the provider row names the service and its state without the path that carries the topic or the token
 def test_the_webhook_provider_row_names_the_service(monkeypatch):
     configure_summary(monkeypatch)
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
@@ -296,7 +296,7 @@ def test_the_webhook_provider_row_names_the_service(monkeypatch):
 
     output = emit_to_string(summary_rows(), show_full=True)
 
-    assert "* Webhook provider:             ntfy (ntfy.sh, access token set)" in output
+    assert "*   Webhook provider:           ntfy (enabled)" in output
     assert "private-topic" not in output
     assert "tk_secret" not in output
 
