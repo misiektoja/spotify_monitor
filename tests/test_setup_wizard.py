@@ -1028,7 +1028,7 @@ def test_interactive_welcome_accepts_setup(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
     setup_mock = Mock()
     monkeypatch.setattr(monitor, "run_setup_wizard", setup_mock)
-    monitor._wizard_welcome()
+    monitor.print_welcome_screen()
     setup_mock.assert_called_once_with()
 
 
@@ -1372,7 +1372,7 @@ def test_interrupting_the_welcome_offer_reports_a_cancellation(monkeypatch, caps
     monkeypatch.setattr(monitor, "run_setup_wizard", lambda *args, **kwargs: pytest.fail("the wizard ran after being interrupted"))
 
     with pytest.raises(SystemExit) as exit_error:
-        monitor._wizard_welcome()
+        monitor.print_welcome_screen()
 
     assert exit_error.value.code == 1
     assert "Setup cancelled." in capsys.readouterr().out

@@ -197,7 +197,7 @@ def test_interactive_welcome_declines_setup(monkeypatch, capsys):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
-    monitor._wizard_welcome()
+    monitor.print_welcome_screen()
     output = capsys.readouterr().out
     assert "Welcome to Spotify Monitor" not in output
     assert "For <spotify_target>, use a complete Spotify profile URL, spotify:user URI or user ID.\n" in output
@@ -215,7 +215,7 @@ def test_noninteractive_welcome_does_not_prompt(monkeypatch, capsys):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: False))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=AssertionError("prompted")))
-    monitor._wizard_welcome()
+    monitor.print_welcome_screen()
     output = capsys.readouterr().out
     assert "Quickest start (already configured)" in output
     assert "Easiest start (guided setup wizard)" in output
