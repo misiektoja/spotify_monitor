@@ -41,6 +41,13 @@ def test_a_file_descriptor_limit_is_not_reported_as_a_service_failure():
     assert "ulimit -n 4096" in advice.fix
 
 
+# Verifies the descriptor limit is matched as a whole errno, so errno 240 or 241 in a message is not mistaken for it
+def test_a_neighbouring_errno_is_not_a_file_descriptor_limit():
+    assert monitor.is_too_many_open_files(RuntimeError("[Errno 24] Too many open files")) is True
+    assert monitor.is_too_many_open_files(RuntimeError("[Errno 240] something else")) is False
+    assert monitor.is_too_many_open_files(RuntimeError("[Errno 241] something else")) is False
+
+
 # Verifies HTTP status classification uses explicit Spotify context
 @pytest.mark.parametrize("status,context,code", [(401, "cookie_auth", "auth.cookie_invalid"), (401, "client_auth", "auth.client_invalid"), (403, "metadata", "spotify.unavailable"), (403, "cookie_auth", "auth.rejected"), (404, "target", "target.not_found"), (429, "runtime", "spotify.rate_limited"), (500, "runtime", "spotify.unavailable"), (503, "runtime", "spotify.unavailable")])
 def test_http_status_classification_is_context_sensitive(status, context, code):

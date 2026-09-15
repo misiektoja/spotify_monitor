@@ -1318,8 +1318,10 @@ def test_a_placeholder_mail_host_is_refused_before_the_prompt(tmp_path, monkeypa
 def test_set_smtp_password_requires_safe_persistence():
     with pytest.raises(monitor.RecoveryError, match="interactive terminal"):
         monitor.run_set_smtp_password(interactive=False, getpass_func=Mock(side_effect=AssertionError("prompted")))
-    with pytest.raises(monitor.RecoveryError, match="dotenv destination"):
+    with pytest.raises(monitor.RecoveryError) as raised:
         monitor.run_set_smtp_password(env_file="none", interactive=True, getpass_func=Mock(side_effect=AssertionError("prompted")))
+    assert raised.value.advice.summary == "--set-smtp-password has nowhere to write the private settings"
+    assert "Replace '--env-file none' with a writable path" in raised.value.advice.fix
 
 
 # Verifies each setup destination switched off is refused with the flag to replace and the matching guide
@@ -1549,7 +1551,7 @@ def test_the_wizard_reload_credits_the_dotenv_file(monkeypatch, tmp_path):
     env_path = tmp_path / ".env"
     env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
     monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
-    monkeypatch.setattr(monitor, "EXPORTED_SECRET_KEYS", frozenset())
+    monkeypatch.setattr(monitor, "EXPORTED_ENVIRONMENT_KEYS", frozenset())
 
     assert monitor._wizard_load_effective_setup(config_path, env_path)
 
@@ -1564,7 +1566,7 @@ def test_the_wizard_reload_leaves_an_exported_secret_to_the_environment(monkeypa
     env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
     monkeypatch.setenv("SP_DC_COOKIE", "an-exported-cookie-value")
     monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
-    monkeypatch.setattr(monitor, "EXPORTED_SECRET_KEYS", frozenset({"SP_DC_COOKIE"}))
+    monkeypatch.setattr(monitor, "EXPORTED_ENVIRONMENT_KEYS", frozenset({"SP_DC_COOKIE"}))
 
     assert monitor._wizard_load_effective_setup(config_path, env_path)
 

@@ -447,6 +447,25 @@ def test_the_outage_reminder_follows_the_clock_not_the_check_count(monkeypatch):
     assert outcomes.count("degraded") == 1
 
 
+# Verifies a category change mid-outage keeps the outage start, so the alert delay and the reminder still elapse
+def test_an_outage_that_changes_category_keeps_its_start(monkeypatch):
+    clock = [1000000.0]
+    monkeypatch.setattr(monitor.time, "time", lambda: clock[0])
+    reporter = monitor.OutageReporter()
+    first = monitor.classify_recovery_error(Exception("503 Server Error: Service Unavailable"), "cookie_auth")
+    second = monitor.classify_recovery_error(Exception("Connection timed out"), "cookie_auth")
+    assert first.code != second.code
+
+    assert reporter.failed(first, 900) == "full"
+    outcomes = []
+    for index in range(60):
+        clock[0] += 15
+        outcomes.append(reporter.failed(second if index % 2 else first, 900))
+
+    assert reporter.since == 1000000
+    assert reporter.recovered() == 900
+
+
 # Verifies a failure that clears is reported as recovered, since a throttled failure stops printing while it lasts
 def test_a_cleared_outage_reports_its_recovery(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")

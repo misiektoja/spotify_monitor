@@ -306,6 +306,7 @@ def test_a_generated_config_asks_before_replacing_an_existing_file():
         backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=lambda prompt: "y")
 
         assert written is True
+        assert backup_path is not None
         assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
         assert Path(backup_path).read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
 
@@ -335,6 +336,7 @@ def test_force_replaces_an_existing_config_without_asking():
         backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', force=True, interactive=True, input_func=refuse)
 
         assert written is True
+        assert backup_path is not None
         assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
         assert Path(backup_path).exists()
 
@@ -655,6 +657,7 @@ def test_the_backup_carries_the_family_name_and_mode(tmp_path):
 
     backup_path = monitor.create_timestamped_backup(destination)
 
+    assert backup_path is not None
     assert re.fullmatch(r"monitor\.conf\.\d{14}\.bak", Path(backup_path).name)
     assert Path(backup_path).read_text(encoding="utf-8") == "SETTING = 1\n"
     assert stat.S_IMODE(Path(backup_path).stat().st_mode) == 0o600
@@ -669,6 +672,7 @@ def test_a_second_backup_in_the_same_second_keeps_the_first(tmp_path):
 
     second = monitor.create_timestamped_backup(destination)
 
+    assert first is not None and second is not None
     assert first != second
     assert Path(first).read_text(encoding="utf-8") == "first\n"
     assert Path(second).read_text(encoding="utf-8") == "second\n"

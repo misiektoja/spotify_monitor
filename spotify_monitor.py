@@ -939,8 +939,8 @@ SECRET_SOURCE_ORDER = ("configuration file or command line", "dotenv file", "env
 # Secrets the provider issues at one length, where a wrong character count is the fault a diagnostic run has to show
 FIXED_LENGTH_SECRET_KEYS = frozenset(("SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "LASTFM_API_KEY"))
 
-# Secret names already present in the process environment before dotenv loading
-EXPORTED_SECRET_KEYS = frozenset()
+# Keys with a non-empty value in the process environment before dotenv loading, which the dotenv file never overrides
+EXPORTED_ENVIRONMENT_KEYS = frozenset()
 
 # Non-secret Spotify recent-play app settings also supported through environment variables
 ENVIRONMENT_SETTING_KEYS = ("SPOTIFY_SCROBBLE_CLIENT_ID", "SPOTIFY_SCROBBLE_REDIRECT_URI")
@@ -1508,7 +1508,7 @@ def is_too_many_open_files(error):
         if isinstance(current, OSError) and getattr(current, "errno", None) == 24:
             return True
         message = str(current).lower()
-        if "too many open files" in message or "errno 24" in message:
+        if "too many open files" in message or re.search(r"\berrno 24\b", message):
             return True
     return False
 
@@ -1741,8 +1741,10 @@ class OutageReporter:
     def failed(self, advice: RecoveryAdvice, liveness_interval: int) -> str:
         now = int(time.time())
         if advice.code != self.code:
+            # A category change mid-outage is still the same outage, so its start and the alert delay it feeds are kept
+            if not self.code:
+                self.since = now
             self.code = advice.code
-            self.since = now
             self.reported_at = now
             return "full"
         # With the liveness banner off there is nothing to carry the reminder, so the summary keeps its old cadence
@@ -2190,7 +2192,7 @@ def apply_dotenv_mapping(values: dict[str, str], initialize_base: bool = False) 
             DOTENV_BASE_VALUES[key] = os.environ[key] if key in os.environ else globals().get(key)
     previous_values = {key: globals().get(key) for key in supported_keys}
     selected_keys = supported_keys.intersection(values)
-    applied_keys = selected_keys.difference(EXPORTED_SECRET_KEYS) if initialize_base else selected_keys
+    applied_keys = selected_keys.difference(EXPORTED_ENVIRONMENT_KEYS) if initialize_base else selected_keys
     for key in applied_keys:
         os.environ[key] = values[key]
         globals()[key] = values[key]
@@ -2208,7 +2210,7 @@ def apply_dotenv_mapping(values: dict[str, str], initialize_base: bool = False) 
             os.environ[key] = str(base_value)
             globals()[key] = base_value
             if key in SECRET_KEYS:
-                record_secret_source(key, "environment" if key in EXPORTED_SECRET_KEYS else "configuration file or command line", base_value)
+                record_secret_source(key, "environment" if key in EXPORTED_ENVIRONMENT_KEYS else "configuration file or command line", base_value)
     DOTENV_MANAGED_KEYS = set(applied_keys)
     return tuple(sorted(key for key in supported_keys if globals().get(key) != previous_values[key]))
 
@@ -2889,10 +2891,9 @@ def smtp_sign_in(password: str, timeout: int = 15) -> str:
 
 # Privately checks one SMTP password against the mail server and atomically stores it
 def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getpass_func=None, config_path=None, sign_in=None) -> str:
-    try:
-        destination = resolve_import_env_path(env_file)
-    except BrowserCookieImportError as exc:
-        raise RecoveryError(classify_recovery_error(context="secret", detail=str(exc).replace("Browser cookie import", "SMTP password setup"))) from None
+    if env_file is not None and str(env_file).casefold() == "none":
+        raise RecoveryError(setup_destination_advice("--env-file", "--set-smtp-password"))
+    destination = resolve_import_env_path(env_file)
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
     if not terminal_is_interactive:
         raise RecoveryError(classify_recovery_error(context="secret", detail="--set-smtp-password needs an interactive terminal so the password stays hidden while you type it"))
@@ -5973,8 +5974,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             else:
                 alive_counter += 1
                 if liveness_after and alive_counter >= liveness_after:
-                    verbose_print(f"Scrobble health monitoring healthy for {username}. The result is unchanged since the last check")
-                    print_cur_ts("Liveness check, timestamp:\t")
+                    print_liveness_banner(f"Scrobble health monitoring healthy for {username}. The result is unchanged since the last check")
                     alive_counter = 0
             # Waiting is one play Last.fm has not caught up with yet, so it neither reports nor replaces the last reported status
             if evaluation.status != "suspect":
@@ -9491,7 +9491,7 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
             from dotenv import dotenv_values
             parsed = dotenv_values(env_path, interpolate=False)
             # A secret exported before startup still wins at the next start, so the dotenv does not take it over
-            for key in set(SECRET_KEYS).difference(EXPORTED_SECRET_KEYS):
+            for key in set(SECRET_KEYS).difference(EXPORTED_ENVIRONMENT_KEYS):
                 if parsed.get(key) is not None:
                     selected_secrets[key] = parsed[key]
                     selected_sources[key] = "dotenv file"
@@ -11282,7 +11282,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_SECRET_KEYS
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -12222,7 +12222,8 @@ def main():
         if DOTENV_FILE:
             DOTENV_FILE = os.path.expanduser(DOTENV_FILE)
 
-    EXPORTED_SECRET_KEYS = frozenset(secret for secret in SECRET_KEYS if os.getenv(secret) is not None)
+    # An empty export is treated as absent, so a stray "export NAME=" in a shell profile cannot blank a saved value
+    EXPORTED_ENVIRONMENT_KEYS = frozenset(key for key in (*SECRET_KEYS, *ENVIRONMENT_SETTING_KEYS) if os.getenv(key))
     SECRET_SOURCES.clear()
     for secret in SECRET_KEYS:
         if doctor_secret_is_set(globals().get(secret)):
@@ -12271,7 +12272,7 @@ def main():
         val = os.getenv(environment_key)
         if val is not None:
             globals()[environment_key] = val
-            if environment_key in EXPORTED_SECRET_KEYS:
+            if environment_key in EXPORTED_ENVIRONMENT_KEYS and environment_key in SECRET_KEYS:
                 record_secret_source(environment_key, "environment")
 
     if args.no_color is True:

@@ -750,7 +750,7 @@ def test_scrobble_health_monitor_reports_a_changed_result(monkeypatch, capsys):
     assert output.count("Scrobble health result: Healthy") == 1
 
 
-# Confirms an unchanged result still reports the loop is alive once the liveness interval has passed
+# Confirms an unchanged result still reports the loop is alive once the liveness interval has passed, in any mode
 def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys):
     state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("idle")
@@ -762,15 +762,16 @@ def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys)
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_CHECK_INTERVAL", 120)
     monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
     monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 240)
-    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", False)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
 
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
     output = capsys.readouterr().out
-    assert "Scrobble health monitoring healthy for lastfm-user. The result is unchanged since the last check" in output
-    assert "Liveness check, timestamp:" in output
+    assert "* Scrobble health monitoring healthy for lastfm-user. The result is unchanged since the last check" in output
+    assert output.count("Liveness check, timestamp:") == 1
 
 
 # Confirms scrobble alerts format play dates and deliver notifications before the console timestamp

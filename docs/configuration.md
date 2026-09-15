@@ -653,7 +653,7 @@ NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 
 By default, Friend Activity looks for `.env` while an explicit scrobble health run looks for `.env.scrobble_health`. The search starts in the current directory then continues in each parent directory.
 
-On macOS, Linux and Unix, `SIGHUP` reloads the selected dotenv file. Replacing a value activates the replacement. Removing a key clears the file-provided value and restores the underlying environment or configuration value, then clears affected Spotify authentication caches.
+On macOS, Linux and Unix, `SIGHUP` reloads the selected dotenv file. Replacing a value activates the replacement, including a key that an exported environment variable won at startup, so the edited file always takes effect. Removing a key clears the file-provided value and restores the underlying environment or configuration value, then clears affected Spotify authentication caches.
 
 Browser import does not use the parent-directory search when choosing where to write. Without `--env-file`, it writes to `.env` in the current directory.
 
