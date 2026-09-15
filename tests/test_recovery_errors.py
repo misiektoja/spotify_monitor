@@ -388,3 +388,76 @@ def test_the_classifier_guard_still_inspects_the_source():
 
     assert len(inspected) > 300
     assert all(any(marker in text for _, text in problems) for marker in CLASSIFIER_EXEMPTIONS), "an exemption stopped matching a printed line"
+
+
+# The only advice that names no page, and the reason no page covers it
+GUIDELESS_ADVICE = {
+    "The connectivity endpoint did not answer in time": "no page covers this check and the doctor report already ends with the troubleshooting link",
+    "The connectivity endpoint could not be reached": "no page covers this check and the doctor report already ends with the troubleshooting link",
+}
+
+# The guide sits in this positional slot for each builder, or inside the fix when the signature carries no slot
+GUIDE_SLOT = {"advice": 4, "make_recovery_advice": 5}
+
+
+# True when this builder attaches a documentation link in any of the three shapes the tool uses
+def attaches_a_guide(node, source):
+    slot = GUIDE_SLOT.get(getattr(node.func, "id", ""))
+    if slot is not None and len(node.args) > slot:
+        return True
+    if any(keyword.arg in ("guide_url", "guide") for keyword in node.keywords):
+        return True
+    return "recovery_fix_with_guide" in (ast.get_source_segment(source, node.args[2]) or "")
+
+
+# Returns every expression assigned to each plain name in the module, so a fix held in a variable can be read
+def assigned_expressions(tree):
+    assignments = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assignments.setdefault(target.id, []).append(node.value)
+    return assignments
+
+
+# Returns the text of the summary or fix, resolving one level of plain-name assignment
+def resolved_text(node, source, assignments):
+    if isinstance(node, ast.Name):
+        return " ".join(ast.get_source_segment(source, value) or "" for value in assignments.get(node.id, []))
+    return ast.get_source_segment(source, node) or ""
+
+
+# Returns every advice builder that names no page, paired with the summary it reports
+def guideless_advice(source):
+    tree = ast.parse(source)
+    assignments = assigned_expressions(tree)
+    found = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") in GUIDE_SLOT) or len(node.args) < 3:
+            continue
+        # A builder that re-wraps an already-classified advice carries whatever guide that advice was given
+        if isinstance(node.args[2], ast.Attribute) and node.args[2].attr == "fix":
+            continue
+        if attaches_a_guide(node, source) or "recovery_fix_with_guide" in resolved_text(node.args[2], source, assignments):
+            continue
+        found.append((node.lineno, resolved_text(node.args[1], source, assignments)))
+    return found
+
+
+# A failure with no page to read leaves the operator with a one-line fix and nowhere to go next
+def test_every_failure_names_a_page():
+    source = inspect.getsource(monitor)
+    unexplained = [f"line {line}: {summary[:100]}" for line, summary in guideless_advice(source) if not any(marker in summary for marker in GUIDELESS_ADVICE)]
+
+    assert unexplained == []
+
+
+# An allowlist that stopped matching anything would quietly cover every failure in the file
+def test_the_guide_guard_still_inspects_the_source():
+    source = inspect.getsource(monitor)
+    inspected = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and getattr(node.func, "id", "") in GUIDE_SLOT]
+    bare = guideless_advice(source)
+
+    assert len(inspected) > 60
+    assert all(any(marker in summary for _, summary in bare) for marker in GUIDELESS_ADVICE), "an allowlisted summary stopped matching a builder"

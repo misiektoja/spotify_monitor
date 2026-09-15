@@ -1055,6 +1055,7 @@ TLS_GUIDE_URL = DOCUMENTATION_URL + "/configuration/#tls-verification"
 INTERVALS_GUIDE_URL = DOCUMENTATION_URL + "/usage/#check-intervals"
 TERMINAL_GUIDE_URL = DOCUMENTATION_URL + "/usage/#terminal-output"
 DOCTOR_GUIDE_URL = DOCUMENTATION_URL + "/troubleshooting/#doctor-preflight"
+DIAGNOSTICS_GUIDE_URL = DOCUMENTATION_URL + "/debugging/#cli-output-modes"
 
 # Labels of the two Doctor checks that gate the optional delivery tests, matched by prefix so each can name its channel
 SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
@@ -1511,35 +1512,35 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
             return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
-            return make_recovery_advice("file.unreadable", safe_detail or "The browser cookie database could not be read", "Close the browser, verify the selected profile or cookie database path then retry", False, safe_detail)
+            return make_recovery_advice("file.unreadable", safe_detail or "The browser cookie database could not be read", recovery_fix_with_guide("Close the browser, verify the selected profile or cookie database path then retry", COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("update dotenv", "dotenv destination", "file permissions")):
-            return make_recovery_advice("file.unwritable", safe_detail or "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
+            return make_recovery_advice("file.unwritable", safe_detail or "The dotenv destination could not be updated", recovery_fix_with_guide("Choose a writable --env-file path then retry", SECRETS_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("unknown", safe_detail or "Browser cookie import failed", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
 
     if context == "set_sp_dc":
         if "interactive terminal" in message:
-            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", "Run --set-sp-dc from an interactive shell so getpass can hide the cookie", False, safe_detail)
+            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", recovery_fix_with_guide("Run --set-sp-dc from an interactive shell so getpass can hide the cookie", COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
             return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no nonempty", "rejected")):
             return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
-            return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", "Choose a writable --env-file path then retry", False, safe_detail)
+            return make_recovery_advice("file.unwritable", "The dotenv destination could not be updated", recovery_fix_with_guide("Choose a writable --env-file path then retry", SECRETS_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("unknown", "SP_DC_COOKIE was not changed", recovery_fix_with_guide("Run the private entry command again or use Firefox import", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
 
     if context == "set_webhook_url":
         if "interactive terminal" in message:
-            return make_recovery_advice("webhook.invalid", "--set-webhook-url needs an interactive terminal", "Run --set-webhook-url in a terminal window so the webhook URL stays hidden while you paste it", False, safe_detail)
+            return make_recovery_advice("webhook.invalid", "--set-webhook-url needs an interactive terminal", recovery_fix_with_guide("Run --set-webhook-url in a terminal window so the webhook URL stays hidden while you paste it", WEBHOOK_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
-            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the webhook URL in the private settings file", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
+            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the webhook URL in the private settings file", recovery_fix_with_guide("Check file permissions or choose another file with --env-file PATH", SECRETS_GUIDE_URL), False, safe_detail)
         return make_recovery_advice("webhook.invalid", "The webhook URL was not changed", recovery_fix_with_guide("Copy a fresh Discord or ntfy webhook URL then run --set-webhook-url again", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context == "set_lastfm_credentials":
         if "interactive terminal" in message:
-            return make_recovery_advice("secret.missing", "--set-lastfm-credentials needs an interactive terminal", "Run --set-lastfm-credentials in a terminal window so the API key stays hidden while you paste it", False, safe_detail)
+            return make_recovery_advice("secret.missing", "--set-lastfm-credentials needs an interactive terminal", recovery_fix_with_guide("Run --set-lastfm-credentials in a terminal window so the API key stays hidden while you paste it", SECRETS_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path", "readable utf-8")):
-            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the Last.fm API key", "Check file permissions or choose another file with --env-file PATH", False, safe_detail)
-        return make_recovery_advice("secret.missing", "The Last.fm API key was not changed", "Run --set-lastfm-credentials again and enter the API key through the hidden prompt", False, safe_detail)
+            return make_recovery_advice("file.unwritable", "Spotify Monitor could not save the Last.fm API key", recovery_fix_with_guide("Check file permissions or choose another file with --env-file PATH", SECRETS_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("secret.missing", "The Last.fm API key was not changed", recovery_fix_with_guide("Run --set-lastfm-credentials again and enter the API key through the hidden prompt", SECRETS_GUIDE_URL), False, safe_detail)
 
     if context == "config_missing":
         summary = "The requested configuration file was not found"
@@ -1569,9 +1570,9 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\nProfile: {spotify_user_profile_url(target_user_id)}\nThe target also needs to share listening activity"
         return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
-        return make_recovery_advice("file.unreadable", "A required file could not be read", "Verify the path, file format and read permissions then retry", False, safe_detail)
+        return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
     if context == "file_write":
-        return make_recovery_advice("file.unwritable", "An output destination is not writable", "Choose a writable path and verify its parent directory permissions then retry", False, safe_detail)
+        return make_recovery_advice("file.unwritable", "An output destination is not writable", recovery_fix_with_guide("Choose a writable path and verify its parent directory permissions then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "setup.destination":
         # The wizard reaches this either because a destination was switched off or because the path cannot be written
         if "nowhere to write the private settings" in message:
@@ -1587,7 +1588,8 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("webhook.invalid", "The webhook configuration is invalid", recovery_fix_with_guide("Check the webhook provider, URL, customization, headers and ntfy access token then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
 
     if context == "connectivity":
-        # Classified from the error, because the detail names the endpoint rather than the failure
+        # Classified from the error, because the detail names the endpoint rather than the failure. No guide,
+        # since no page covers this check and the doctor report already ends with the troubleshooting link
         cause = str(error or "").lower()
         if "timed out" in cause or "timeout" in cause:
             return make_recovery_advice("network.timeout", "The connectivity endpoint did not answer in time", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True, safe_detail)
@@ -1613,16 +1615,16 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
         code = "smtp.connection" if context.startswith("smtp") else "network.timeout"
         summary = "The SMTP connection timed out" if context.startswith("smtp") else "The Spotify request timed out"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else "Check connectivity and retry. If timeouts continue run --doctor --debug"
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check connectivity and retry. If timeouts continue run --doctor --debug", DIAGNOSTICS_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
     if isinstance(error, req.exceptions.SSLError) or any(term in message for term in ("certificate verify failed", "tls", "ssl error")):
         if context.startswith("smtp"):
             return make_recovery_advice("smtp.connection", "A secure SMTP connection could not be established", recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and SMTP_SSL plus the system CA certificates then run --send-test-email", SMTP_GUIDE_URL), True, safe_detail)
-        return make_recovery_advice("network.unavailable", "A secure connection to Spotify could not be established", "Check the system clock, CA certificates, firewall and TLS-inspecting proxy settings then retry", True, safe_detail)
+        return make_recovery_advice("network.unavailable", "A secure connection to Spotify could not be established", recovery_fix_with_guide("Check the system clock, CA certificates, firewall and TLS-inspecting proxy settings then retry", TLS_GUIDE_URL), True, safe_detail)
     if isinstance(error, (req.ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
         code = "smtp.connection" if context.startswith("smtp") else "network.unavailable"
         summary = "The SMTP server could not be reached" if context.startswith("smtp") else "Spotify could not be reached"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else "Check DNS, internet access, firewall and proxy settings then retry"
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check DNS, internet access, firewall and proxy settings then retry", DIAGNOSTICS_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
@@ -1631,7 +1633,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
         return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide(rate_limit_fix, INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
-        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", "Wait and retry later. Run --doctor if the failure continues", True, safe_detail)
+        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Wait and retry later. Run --doctor if the failure continues", DOCTOR_GUIDE_URL), True, safe_detail)
     if status == 404 and context.startswith("target"):
         return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
@@ -1639,13 +1641,13 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the sp_dc cookie", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if context.startswith("client"):
             return make_recovery_advice("auth.client_invalid", "Spotify rejected the client credentials", recovery_fix_with_guide("Re-export the Spotify Desktop Client login request", CLIENT_GUIDE_URL), False, safe_detail)
-        return make_recovery_advice("auth.rejected", "Spotify rejected authentication", "Refresh the configured credentials then run --doctor", False, safe_detail)
+        return make_recovery_advice("auth.rejected", "Spotify rejected authentication", recovery_fix_with_guide("Refresh the configured credentials then run --doctor", DOCTOR_GUIDE_URL), False, safe_detail)
     if status == 403 and context == "metadata":
         return make_recovery_advice("spotify.unavailable", "The legacy Spotify metadata path is restricted", recovery_fix_with_guide("For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove the optional OAuth credentials and use the automatic web-player fallback", OAUTH_GUIDE_URL), False, safe_detail)
     if status == 403:
         if context.startswith("cookie"):
             return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated cookie request", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
-        return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated request", "Refresh the configured credentials then run --doctor", False, safe_detail)
+        return make_recovery_advice("auth.rejected", "Spotify rejected the authenticated request", recovery_fix_with_guide("Refresh the configured credentials then run --doctor", DOCTOR_GUIDE_URL), False, safe_detail)
     if context.startswith("cookie") and any(term in message for term in ("sp_dc", "unsuccessful token request", "valid spotify access token", "access token after")):
         return make_recovery_advice("auth.cookie_invalid", "The sp_dc cookie is invalid, expired or was rejected", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
     if context.startswith("client") and any(term in message for term in ("refresh token", "client token", "invalid grant", "access token not found")):
@@ -7568,7 +7570,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
     if tuple(selected_version)[:2] >= MINIMUM_PYTHON_VERSION:
         checks.append(make_doctor_check("Environment", "PASS", f"Python {version_text} is supported", minimum_detail))
     else:
-        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", False)
+        advice = make_recovery_advice("dependency.missing", f"Python {version_text} is unsupported", recovery_fix_with_guide(f"Install Python {MINIMUM_PYTHON_VERSION_TEXT} or newer then retry", INSTALLATION_GUIDE_URL), False)
         checks.append(make_doctor_check("Environment", "FAIL", advice.summary, minimum_detail, advice))
 
     find_spec = importlib.util.find_spec if spec_finder is None else spec_finder
@@ -7581,7 +7583,7 @@ def doctor_check_environment(version_info=None, spec_finder: Optional[Callable[[
         if present:
             checks.append(make_doctor_check("Environment", "PASS", f"Required dependency {package_name} is installed"))
         else:
-            advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", f'Install it with: pip3 install "{package_name}"', False)
+            advice = make_recovery_advice("dependency.missing", f"Required dependency {package_name} is missing", recovery_fix_with_guide(f'Install it with: pip3 install "{package_name}"', INSTALLATION_GUIDE_URL), False)
             checks.append(make_doctor_check("Environment", "FAIL", advice.summary, advice=advice))
 
     optional = (("spotipy", "Spotipy", "Used only for legacy OAuth metadata"), ("pycookiecheat", "pycookiecheat", "Used only for importing cookies from Chromium-based browsers. Firefox cookie import does not need it"), ("PIL", "Pillow", "Used only for artwork attachments in ntfy alerts"))
@@ -7624,7 +7626,7 @@ def doctor_check_container_playback() -> List[DoctorCheck]:
     warning = container_playback_warning()
     if warning is None:
         return []
-    advice = make_recovery_advice("config.invalid", "Container host Spotify auto-play is unavailable by default", "Run Spotify Monitor on the host, or disable TRACK_SONGS inside the container", False)
+    advice = make_recovery_advice("config.invalid", "Container host Spotify auto-play is unavailable by default", recovery_fix_with_guide("Run Spotify Monitor on the host, or disable TRACK_SONGS inside the container", CONFIG_GUIDE_URL), False)
     return [make_doctor_check("Environment", "WARN", advice.summary, warning, advice)]
 
 
@@ -7831,7 +7833,7 @@ def doctor_check_authentication(report: DoctorReport) -> List[DoctorCheck]:
                     return checks + [make_doctor_check("Authentication", "FAIL", "Login Protobuf file is unreadable or malformed", advice.detail, advice)]
             missing = [name for name, value in values.items() if is_missing_or_placeholder(value, (placeholders[name],))]
             if missing:
-                advice = make_recovery_advice("secret.missing", "Client mode is missing required values", "Provide " + ", ".join(missing) + " or re-export the Spotify desktop login request as documented", False)
+                advice = make_recovery_advice("secret.missing", "Client mode is missing required values", recovery_fix_with_guide("Provide " + ", ".join(missing) + " or re-export the Spotify desktop login request as documented", CLIENT_GUIDE_URL), False)
                 report.authentication_advice = advice
                 return checks + [make_doctor_check("Authentication", "FAIL", advice.summary, "Missing: " + ", ".join(missing), advice)]
             if CLIENTTOKEN_REQUEST_BODY_FILE:
@@ -7922,14 +7924,14 @@ def doctor_check_optional_oauth() -> List[DoctorCheck]:
     if not client_present and not secret_present:
         return [make_doctor_check("Metadata", "PASS", "Legacy OAuth metadata credentials are not configured", "The web-player metadata backend remains available")]
     if client_present != secret_present:
-        advice = make_recovery_advice("secret.missing", "Legacy OAuth metadata credentials are incomplete", "Set both SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET or remove both to use the web-player backend", False)
+        advice = make_recovery_advice("secret.missing", "Legacy OAuth metadata credentials are incomplete", recovery_fix_with_guide("Set both SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET or remove both to use the web-player backend", OAUTH_GUIDE_URL), False)
         return [make_doctor_check("Metadata", "WARN", advice.summary, "The web-player metadata backend remains available", advice)]
     try:
         spotipy_present = importlib.util.find_spec("spotipy") is not None
     except (ImportError, ValueError):
         spotipy_present = False
     if not spotipy_present:
-        advice = make_recovery_advice("dependency.missing", "Spotipy is missing for configured legacy OAuth metadata credentials", "Install spotify_monitor[legacy-oauth] or remove the optional credentials. The web-player fallback remains available", False)
+        advice = make_recovery_advice("dependency.missing", "Spotipy is missing for configured legacy OAuth metadata credentials", recovery_fix_with_guide("Install spotify_monitor[legacy-oauth] or remove the optional credentials. The web-player fallback remains available", INSTALLATION_GUIDE_URL), False)
         return [make_doctor_check("Metadata", "WARN", advice.summary, advice=advice)]
     try:
         oauth_token = spotify_get_access_token_from_oauth_app(SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, use_file_cache=False)
@@ -7942,10 +7944,10 @@ def doctor_check_optional_oauth() -> List[DoctorCheck]:
             spotify_get_track_info_web(OAUTH_APP_VALIDATION_TRACK_URI)
         except Exception as web_error:
             detail = f"Legacy Web API: {legacy_error}. Web player: {web_error}"
-            advice = make_recovery_advice("spotify.unavailable", "Both Spotify metadata backends are unavailable", "Check connectivity and Spotify service availability then run --doctor again with --debug", True, detail)
+            advice = make_recovery_advice("spotify.unavailable", "Both Spotify metadata backends are unavailable", recovery_fix_with_guide("Check connectivity and Spotify service availability then run --doctor again with --debug", DOCTOR_GUIDE_URL), True, detail)
             return [make_doctor_check("Metadata", "FAIL", advice.summary, advice.detail, advice)]
         detail = f"Automatic web-player fallback succeeded after the legacy check failed: {legacy_error}"
-        advice = make_recovery_advice("spotify.unavailable", "Legacy OAuth metadata access is unavailable", "For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET to use the web-player backend directly or keep them while automatic fallback remains available", False, detail)
+        advice = make_recovery_advice("spotify.unavailable", "Legacy OAuth metadata access is unavailable", recovery_fix_with_guide("For a Development Mode app confirm its owner has active Spotify Premium. If Premium is inactive or legacy access remains restricted remove SP_APP_CLIENT_ID and SP_APP_CLIENT_SECRET to use the web-player backend directly or keep them while automatic fallback remains available", OAUTH_GUIDE_URL), False, detail)
         return [make_doctor_check("Metadata", "WARN", advice.summary, advice.detail, advice)]
 
 
@@ -10598,7 +10600,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if user_not_found is False:
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                            not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", "Check the target ID, URI or profile URL then retry", False)
+                            not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
@@ -11105,7 +11107,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if user_not_found is False:
                 if is_user_removed(sp_accessToken, user_uri_id):
                     print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                    not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", "Check the target ID, URI or profile URL then retry", False)
+                    not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
