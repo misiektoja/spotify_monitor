@@ -60,6 +60,12 @@ def test_timestamp_label_is_uncolored(colored):
     assert monitor._colorize_line("Timestamp:\t\t\tWed 26 Aug 2026, 20:23:03") == f"Timestamp:\t\t\t{colored['timestamp_value']}Wed 26 Aug 2026, 20:23:03{monitor.ANSI_RESET}"
 
 
+# Verifies the liveness banner timestamp carries the timestamp colour instead of the generic date colour
+def test_liveness_check_timestamp_uses_timestamp_style(colored):
+    line = monitor._colorize_line("Liveness check, timestamp:\tWed 26 Aug 2026, 20:23:03")
+    assert line == f"Liveness check, timestamp:\t{colored['timestamp_value']}Wed 26 Aug 2026, 20:23:03{monitor.ANSI_RESET}"
+
+
 # Verifies a startup summary row is not block-coloured just because it names a mode
 def test_startup_summary_rows_are_not_block_colored(colored):
     for line in ("* Mode:                         Spotify-to-Last.fm scrobble health", "* Target:                       misiektoja", "* Polling interval:             1 minute"):

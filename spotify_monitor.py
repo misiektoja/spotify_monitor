@@ -3323,7 +3323,7 @@ def _colorize_line(line):
         return colorize(_DOCTOR_MARK_STYLES[doctor_match.group(1)], doctor_match.group(0)) + line[doctor_match.end():]
 
     # Timestamp lines get a dimmed label and a coloured value
-    labeled_value = _split_output_label(line, ("Timestamp:",))
+    labeled_value = _split_output_label(line, ("Timestamp:", "Liveness check, timestamp:"))
     if labeled_value:
         label, rest = labeled_value
         colored = f"{colorize('timestamp_label', label)}{colorize('timestamp_value', rest)}"
