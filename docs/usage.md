@@ -314,6 +314,8 @@ Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `99
 
 Spotify Monitor colours live terminal output by default. Usernames, track, playlist and album names, dates, durations, counters, links and activity headers each get their own colour, and errors, warnings and received signals are highlighted as a whole line.
 
+The `--help` screen is coloured too. Group headings, option names, the values those options take, the example commands and the comments above them each get their own colour, so the screen can be scanned instead of read.
+
 Colour never reaches saved output: log files are written with the escape sequences stripped, so `grep`, `tail` and any log viewer see plain text.
 
 Turn it off for one run with `--no-color`, or permanently with `COLORED_OUTPUT = False` in the configuration file. The setting is read before the startup banner is printed, so a configured value applies to the very first line of output. Colour also switches itself off when it cannot be displayed safely: when output is redirected or piped, when `TERM` is unset or `dumb`, and when the standard [`NO_COLOR`](https://no-color.org/) environment variable is set. On Windows, install the optional `colorama` package for the best results in the classic Command Prompt.

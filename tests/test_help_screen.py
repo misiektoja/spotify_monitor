@@ -1,7 +1,10 @@
-"""Tests the --help screen: the shared argument group names, the task-grouped examples and the startup banner."""
+"""Tests the --help screen: the shared argument group names, the task-grouped examples, the palette and the startup banner."""
 
+import argparse
+import re
 import subprocess
 import sys
+from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -93,8 +96,10 @@ def test_argparse_adds_no_palette_of_its_own():
 # Verifies the switch is actually passed to the parser, since the helper alone colours nothing
 def test_the_parser_is_built_with_the_argparse_colour_switch():
     source = Path(monitor.__file__).read_text(encoding="utf-8")
+    construction = re.search(r"\n    parser = \w+\(\n(.*?)\n\n", source, re.S)
 
-    assert "**argparse_color_kwargs()" in source.split("argparse.ArgumentParser(", 1)[1].split("\n\n", 1)[0]
+    assert construction is not None, "the parser construction could not be found"
+    assert "**argparse_color_kwargs()" in construction.group(1)
 
 
 # The one sentence each shared one-shot flag uses across the sibling monitors
@@ -114,3 +119,92 @@ def test_the_shared_flags_use_the_shared_help_sentences(help_screen):
 
     for flag, sentence in SHARED_FLAG_HELP.items():
         assert f"{flag} {sentence}" in compact, f"the '{flag}' help sentence has drifted from the shared wording"
+
+
+SAMPLE_HELP = """usage: spotify_monitor [-h] [--config-file PATH] [SPOTIFY_USER_URI_ID]
+
+positional arguments:
+  SPOTIFY_USER_URI_ID   Spotify user ID
+
+Configuration & dotenv files:
+  --config-file PATH    Path to a config file
+  -m, --disappeared-timer SECONDS
+                        Wait time between checks (default: 60)
+
+Examples:
+
+Getting started:
+  # Guided setup, see https://example.invalid/guide/
+  python3 spotify_monitor.py --setup <spotify_target>
+
+Guide: https://example.invalid/guide/
+"""
+
+SAMPLE_EPILOG = SAMPLE_HELP[SAMPLE_HELP.index("Examples:"):]
+
+
+# Enables colour with a known style map so assertions do not depend on the shipped theme
+@pytest.fixture
+def colored(monkeypatch):
+    styles = {name: monitor._build_ansi_sequence(value) for name, value in monitor.DEFAULT_COLOR_THEME.items() if monitor._build_ansi_sequence(value)}
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", styles)
+    return styles
+
+
+# Returns the sample help screen with the help palette applied
+@pytest.fixture
+def colored_help(colored):
+    return monitor.colorize_help_text(SAMPLE_HELP, SAMPLE_EPILOG)
+
+
+# Verifies colouring changes no character of the screen, since argparse laid out its columns on the plain text
+def test_the_coloured_help_keeps_the_plain_layout(colored_help):
+    assert monitor.ANSI_ESCAPE_RE.sub("", colored_help) == SAMPLE_HELP
+
+
+# Verifies the argument groups and the example tasks share one heading colour, the anchors the reader scans for
+def test_the_headings_carry_the_heading_colour(colored, colored_help):
+    for heading in ("positional arguments:", "Configuration & dotenv files:", "Examples:", "Getting started:"):
+        assert f"{colored['help_heading']}{heading}{monitor.ANSI_RESET}" in colored_help
+
+
+# Verifies an option name and the value it takes are coloured apart, in the usage block and in the option rows
+def test_the_option_names_and_their_values_are_coloured_apart(colored, colored_help):
+    option = f"{colored['help_option']}--config-file{monitor.ANSI_RESET}"
+    metavar = f"{colored['help_metavar']}PATH{monitor.ANSI_RESET}"
+
+    assert f"{option} {metavar}" in colored_help
+    assert f"[{option} {metavar}]" in colored_help
+    assert f"{colored['help_usage']}usage:{monitor.ANSI_RESET}" in colored_help
+    assert f"{colored['help_metavar']}SPOTIFY_USER_URI_ID{monitor.ANSI_RESET}   Spotify user ID" in colored_help
+
+
+# Verifies the examples separate the comment from the command and mark the value the reader has to replace
+def test_the_examples_mark_comments_commands_and_placeholders(colored, colored_help):
+    assert f"{colored['help_comment']}  # Guided setup" in colored_help
+    assert f"{colored['help_command']}  python3 spotify_monitor.py --setup" in colored_help
+    assert f"{colored['help_placeholder']}<spotify_target>{monitor.ANSI_RESET}" in colored_help
+
+
+# Verifies a default note is dimmed and a documentation link keeps the shared link colour
+def test_the_default_notes_and_links_stay_secondary(colored, colored_help):
+    assert f"{colored['help_default']}(default: 60){monitor.ANSI_RESET}" in colored_help
+    assert f"{colored['link']}https://example.invalid/guide/{monitor.ANSI_RESET}" in colored_help
+
+
+# Verifies the help screen stays plain while colour is switched off, so --no-color and NO_COLOR clear all of it
+def test_the_help_palette_switches_off_with_colour():
+    assert monitor.colorize_help_text(SAMPLE_HELP, SAMPLE_EPILOG) == SAMPLE_HELP
+
+
+# Verifies the help screen is written past the output colouriser, which paints a row naming a problem word red
+def test_the_help_screen_is_not_repainted_by_the_monitoring_rules(colored):
+    buffer = StringIO()
+    parser = monitor.ColoredHelpParser(prog="spotify_monitor", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-m", "--disappeared-timer", metavar="SECONDS", help="Wait time between checks once the user disappears")
+    parser.print_help(monitor.TerminalStream(buffer))
+
+    written = buffer.getvalue()
+    assert written == parser.format_help()
+    assert colored["error"] not in written

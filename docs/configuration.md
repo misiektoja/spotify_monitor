@@ -595,6 +595,14 @@ Parts with the same name mean the same thing in [spotify_profile_monitor](https:
 | `boolean_true`, `boolean_false` | `True` / `Enabled` and `False` / `Disabled` |
 | `count_up`, `count_down` | Reported changes only, such as `from 10 to 12` and the `(+2)` / `(-2)` differences. A static count is left plain |
 | `link` | URLs |
+| `help_heading` | The `--help` group headings and example task names |
+| `help_usage` | The `usage:` label |
+| `help_option` | Option names such as `--doctor` |
+| `help_metavar` | The values options take, such as `PATH` and `SECONDS` |
+| `help_placeholder` | Values to replace in the help examples, such as `<spotify_target>` |
+| `help_command` | The commands in the help examples |
+| `help_comment` | The `#` comment above each help example |
+| `help_default` | The `(default: ...)` notes |
 
 On Windows, install the optional `colorama` package for the best results in the classic Command Prompt. Windows Terminal needs nothing extra.
 
