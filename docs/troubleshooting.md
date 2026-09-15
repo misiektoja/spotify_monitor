@@ -13,14 +13,14 @@ spotify_monitor --doctor
 
 The report shows only sections relevant to the checks it performed. It uses `[PASS]`, `[WARN]`, `[FAIL]` and `[SKIP]` markers, colour-coded by status when colour output is on, in these possible sections:
 
-* Environment
-* Configuration
-* Authentication
-* Metadata
-* Connectivity
-* Target
-* Scrobble health
-* Notifications
+* **Environment**
+* **Configuration**
+* **Authentication**
+* **Metadata**
+* **Connectivity**
+* **Target**
+* **Scrobble health**
+* **Notifications**
 
 Every `[WARN]` and `[FAIL]` row carries an indented `To fix:` line under its marker, plus a `Guide:` link when a documentation page covers that row. A `[SKIP]` row names a check that could not run and says why.
 
