@@ -164,6 +164,64 @@ def test_a_placeholder_webhook_url_switches_the_channel_off(webhook_url, expecte
     assert probe_value(result.stdout, "WEBHOOK_ENABLED") == expected
 
 
+# The diagnostic line is documented as comma-separated key=value fields, so the length travels as its own field
+@pytest.mark.parametrize("key, value, fields", [
+    ("SP_APP_CLIENT_ID", "0123456789abcdef0123456789abcdef", {"value": "set", "chars": 32}),
+    ("SMTP_PASSWORD", "a-password-the-user-picked", {"value": "set", "chars": None}),
+    ("LASTFM_API_KEY", "your_lastfm_api_key", {"value": "not set", "chars": None}),
+    ("SP_DC_COOKIE", "", {"value": "not set", "chars": None}),
+])
+def test_no_secret_field_value_carries_a_comma(key, value, fields):
+    assert monitor.secret_fields(value, key) == fields
+    assert all("," not in str(part) for part in fields.values())
+
+
+# A source outside the set is a typo rather than a new layer, so it is refused instead of reaching the summary
+def test_an_unsupported_secret_source_is_refused(monkeypatch):
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
+
+    with pytest.raises(ValueError, match="Unsupported secret source"):
+        monitor.record_secret_source("SMTP_PASSWORD", "somewhere else", "a-password-the-user-picked")
+
+    assert monitor.SECRET_SOURCES == {}
+
+
+# A placeholder is not a value, so recording it clears the earlier answer rather than adding a row
+def test_a_placeholder_clears_the_recorded_source(monkeypatch):
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "dotenv file"})
+
+    monitor.record_secret_source("SMTP_PASSWORD", "command line", "your_smtp_password")
+
+    assert monitor.SECRET_SOURCES == {}
+
+
+# Confirms every layer that can supply a secret is traced under the source that actually supplied it
+@pytest.mark.parametrize("arguments, setup, expected", [
+    ([], "", "name=SMTP_PASSWORD, source=configuration file or command line, value=set"),
+    ([], "runtime['os'].environ['NTFY_ACCESS_TOKEN'] = 'tk_exported_token'; ", "name=NTFY_ACCESS_TOKEN, source=environment, value=set"),
+    (["--webhook-url", "https://ntfy.sh/traced-topic"], "", "name=WEBHOOK_URL, source=command line, value=set"),
+    (["--oauth-app-creds", "0123456789abcdef0123456789abcdef:fedcba9876543210fedcba9876543210"], "", "name=SP_APP_CLIENT_ID, source=command line, value=set, chars=32"),
+])
+def test_every_secret_layer_is_traced(arguments, setup, expected):
+    with make_temp_directory() as directory_name:
+        config_path = write_config(directory_name, 'SMTP_PASSWORD = "a-password-the-user-picked"\n')
+        result = run_cli(["--config-file", str(config_path), "--debug", "--doctor"] + arguments, setup)
+
+    assert f"Secret resolution: {expected}" in result.stdout
+    assert "a-password-the-user-picked" not in result.stdout
+
+
+# The command line is the last layer to supply a secret, so a run with none says so only after it has had its say
+def test_a_run_with_no_secret_anywhere_says_so():
+    with make_temp_directory() as directory_name:
+        config_path = Path(directory_name) / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "config.user"\nDOTENV_FILE = "none"\nDISABLE_LOGGING = True\n', encoding="utf-8")
+        result = run_cli(["--config-file", str(config_path), "--env-file", "none", "--debug", "--doctor"])
+
+    assert "Secret resolution:" not in result.stdout
+    assert "No private settings were resolved from config, dotenv, environment or the command line" in result.stdout
+
+
 # Confirms an unedited placeholder is never reported as a loaded secret, whichever layer recorded it
 def test_placeholder_secrets_are_not_reported_as_loaded(monkeypatch):
     monkeypatch.setattr(monitor, "SECRET_SOURCES", {"WEBHOOK_URL": "dotenv file", "SMTP_PASSWORD": "configuration file or command line"})

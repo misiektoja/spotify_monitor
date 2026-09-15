@@ -933,6 +933,12 @@ SECRET_KEYS = ("REFRESH_TOKEN", "SP_DC_COOKIE", "SMTP_PASSWORD", "SP_APP_CLIENT_
 # Effective source name for each configured secret without storing another copy of its value
 SECRET_SOURCES = {}
 
+# Every layer that can supply a secret, so a source outside the set is a typo rather than a new layer
+SECRET_SOURCE_ORDER = ("configuration file or command line", "dotenv file", "environment", "command line")
+
+# Secrets the provider issues at one length, where a wrong character count is the fault a diagnostic run has to show
+FIXED_LENGTH_SECRET_KEYS = frozenset(("SP_APP_CLIENT_ID", "SP_APP_CLIENT_SECRET", "LASTFM_API_KEY"))
+
 # Secret names already present in the process environment before dotenv loading
 EXPORTED_SECRET_KEYS = frozenset()
 
@@ -1140,7 +1146,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import secrets
 import unicodedata
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
 from email.utils import parseaddr, parsedate_to_datetime
 
 import urllib3
@@ -2156,18 +2162,20 @@ def apply_dotenv_mapping(values: dict[str, str], initialize_base: bool = False) 
         os.environ[key] = values[key]
         globals()[key] = values[key]
         if key in SECRET_KEYS:
-            SECRET_SOURCES[key] = "dotenv file"
+            record_secret_source(key, "dotenv file", values[key])
     for key in DOTENV_MANAGED_KEYS.difference(applied_keys):
         base_value = DOTENV_BASE_VALUES.get(key)
         if base_value is None:
             os.environ.pop(key, None)
             globals()[key] = ""
-            SECRET_SOURCES.pop(key, None)
+            # A secret dropped from the dotenv file is a change the trace has to show, which the recorder stays silent about
+            if SECRET_SOURCES.pop(key, None):
+                debug_print("Secret resolution", name=key, source="nowhere", **secret_fields(""))
         else:
             os.environ[key] = str(base_value)
             globals()[key] = base_value
             if key in SECRET_KEYS:
-                SECRET_SOURCES[key] = "environment" if key in EXPORTED_SECRET_KEYS else "configuration file or command line"
+                record_secret_source(key, "environment" if key in EXPORTED_SECRET_KEYS else "configuration file or command line", base_value)
     DOTENV_MANAGED_KEYS = set(applied_keys)
     return tuple(sorted(key for key in supported_keys if globals().get(key) != previous_values[key]))
 
@@ -7712,6 +7720,29 @@ def doctor_secret_is_set(value) -> bool:
     return isinstance(value, str) and bool(value.strip()) and not value.strip().startswith("your_")
 
 
+# Returns the diagnostic fields describing one secret, keeping the length out of the value so a line still splits on ", "
+def secret_fields(value, key=None) -> Dict[str, Any]: return {"value": "set" if doctor_secret_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_secret_is_set(value) else None}
+
+
+# Records where one secret resolved from and traces it, so a later layer overwrites the earlier answer instead of adding to it
+def record_secret_source(name: str, source: str, value: Any = None) -> None:
+    if source not in SECRET_SOURCE_ORDER:
+        raise ValueError(f"Unsupported secret source: {source}")
+    resolved = globals().get(name) if value is None else value
+    # A placeholder is not a value, so it earns neither a source nor a row
+    if not doctor_secret_is_set(resolved):
+        SECRET_SOURCES.pop(name, None)
+        return
+    SECRET_SOURCES[name] = source
+    debug_print("Secret resolution", name=name, source=source, **secret_fields(resolved, name))
+
+
+# Reports that no layer supplied a secret, called once the command line has had its say so the answer is final
+def trace_unresolved_secrets() -> None:
+    if not SECRET_SOURCES:
+        debug_print("No private settings were resolved from config, dotenv, environment or the command line")
+
+
 # Groups configured secret names by the source each value actually came from
 def doctor_secret_sources(env_path=None) -> Tuple[List[str], List[str], List[str], List[str]]:
     from_file: List[str] = []
@@ -9442,7 +9473,8 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     for key, value in selected_secrets.items():
         if value is not None:
             globals()[key] = value
-    SECRET_SOURCES.update(selected_sources)
+    for key, source in selected_sources.items():
+        record_secret_source(key, source)
     if not USER_AGENT:
         USER_AGENT = get_random_spotify_user_agent() if TOKEN_SOURCE == "client" else get_random_user_agent()
     return True
@@ -11156,7 +11188,7 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
         if not validate_webhook_url(args.webhook_url):
             parser.error("--webhook-url must contain a complete HTTPS link without embedded credentials")
         WEBHOOK_URL = str(args.webhook_url).strip()
-        SECRET_SOURCES["WEBHOOK_URL"] = "command line"
+        record_secret_source("WEBHOOK_URL", "command line")
         WEBHOOK_ENABLED = True
     if args.webhook_enabled is not None:
         WEBHOOK_ENABLED = args.webhook_enabled
@@ -12150,7 +12182,7 @@ def main():
     SECRET_SOURCES.clear()
     for secret in SECRET_KEYS:
         if doctor_secret_is_set(globals().get(secret)):
-            SECRET_SOURCES[secret] = "configuration file or command line"
+            record_secret_source(secret, "configuration file or command line")
 
     env_path = None
     if DOTENV_FILE and DOTENV_FILE.lower() == 'none':
@@ -12196,7 +12228,7 @@ def main():
         if val is not None:
             globals()[environment_key] = val
             if environment_key in EXPORTED_SECRET_KEYS:
-                SECRET_SOURCES[environment_key] = "environment"
+                record_secret_source(environment_key, "environment")
 
     if args.no_color is True:
         COLORED_OUTPUT = False
@@ -12221,17 +12253,17 @@ def main():
 
     if args.spotify_dc_cookie:
         SP_DC_COOKIE = args.spotify_dc_cookie
-        SECRET_SOURCES["SP_DC_COOKIE"] = "command line"
+        record_secret_source("SP_DC_COOKIE", "command line")
     if args.lastfm_api_key is not None:
         LASTFM_API_KEY = args.lastfm_api_key
-        SECRET_SOURCES["LASTFM_API_KEY"] = "command line"
+        record_secret_source("LASTFM_API_KEY", "command line")
     if args.scrobble_client_id is not None:
         SPOTIFY_SCROBBLE_CLIENT_ID = args.scrobble_client_id
     if args.scrobble_redirect_uri is not None:
         SPOTIFY_SCROBBLE_REDIRECT_URI = args.scrobble_redirect_uri
     if args.scrobble_refresh_token is not None:
         SPOTIFY_SCROBBLE_REFRESH_TOKEN = args.scrobble_refresh_token
-        SECRET_SOURCES["SPOTIFY_SCROBBLE_REFRESH_TOKEN"] = "command line"
+        record_secret_source("SPOTIFY_SCROBBLE_REFRESH_TOKEN", "command line")
 
     if args.login_request_body_file:
         LOGIN_REQUEST_BODY_FILE = os.path.expanduser(args.login_request_body_file)
@@ -12246,8 +12278,8 @@ def main():
     if args.oauth_app_creds:
         try:
             SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET = args.oauth_app_creds.split(":", 1)
-            SECRET_SOURCES["SP_APP_CLIENT_ID"] = "command line"
-            SECRET_SOURCES["SP_APP_CLIENT_SECRET"] = "command line"
+            record_secret_source("SP_APP_CLIENT_ID", "command line")
+            record_secret_source("SP_APP_CLIENT_SECRET", "command line")
         except ValueError as exc:
             print_recovery_error(exc, "config_invalid", detail="--oauth-app-creds must use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format")
             sys.exit(1)
@@ -12307,6 +12339,7 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
     apply_webhook_cli_overrides(args, parser)
+    trace_unresolved_secrets()
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
@@ -12635,6 +12668,7 @@ def main():
         ERROR_NOTIFICATION = False
 
     apply_webhook_cli_overrides(args, parser)
+    trace_unresolved_secrets()
 
     if args.track_in_spotify is True:
         TRACK_SONGS = True
