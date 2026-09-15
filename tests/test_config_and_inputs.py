@@ -681,3 +681,26 @@ def test_a_second_backup_in_the_same_second_keeps_the_first(tmp_path):
 # Verifies a destination that is not there yet earns no backup, since there is nothing to copy
 def test_a_missing_destination_earns_no_backup(tmp_path):
     assert monitor.create_timestamped_backup(tmp_path / "absent.conf") is None
+
+
+# A parent path that is a file is a write failure, not an existing config, so the advice must not say --force
+def test_a_file_in_the_way_of_the_parent_directory_is_not_an_existing_config(tmp_path):
+    blocker = tmp_path / "configs"
+    blocker.write_text("not a directory\n", encoding="utf-8")
+
+    with pytest.raises(OSError) as raised:
+        monitor.write_generated_config(blocker / "spotify_monitor.conf", "SMTP_PORT = 587\n", interactive=False)
+
+    assert not isinstance(raised.value, monitor.ConfigExistsError)
+    assert blocker.read_text(encoding="utf-8") == "not a directory\n"
+
+
+# Refusing to replace a config without a terminal is its own error, so the generate-config path can tell it apart
+def test_refusing_to_replace_a_config_without_a_terminal_raises_its_own_error(tmp_path):
+    destination = tmp_path / "spotify_monitor.conf"
+    destination.write_text("SMTP_PORT = 587\n", encoding="utf-8")
+
+    with pytest.raises(monitor.ConfigExistsError):
+        monitor.write_generated_config(destination, "SMTP_PORT = 465\n", interactive=False)
+
+    assert destination.read_text(encoding="utf-8") == "SMTP_PORT = 587\n"

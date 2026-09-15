@@ -1520,6 +1520,11 @@ def unknown_failure_fix():
     return "Run --doctor and review the technical detail below, then open an issue with this output if the failure continues" if DEBUG_MODE else "Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail"
 
 
+# Tells whether a status code appears in a message as a whole number, so 4290 or a path segment such as /429 does not read as 429
+def mentions_status_code(code, message):
+    return re.search(rf"(?<![\w/]){code}(?!\w)", message) is not None
+
+
 # Classifies a user-facing failure using typed errors, HTTP status and explicit context
 def classify_recovery_error(error: Any = None, context: str = "runtime", detail: Any = "", target_user_id: Optional[str] = None) -> RecoveryAdvice:
     if isinstance(error, RecoveryError):
@@ -1642,7 +1647,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("network.unavailable", "The connectivity endpoint could not be reached", "Check network, DNS, proxy and CHECK_INTERNET_URL settings", True, safe_detail)
 
     if context.startswith("webhook"):
-        if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
+        if status == 429 or mentions_status_code("429", message) or any(term in message for term in ("too many requests", "rate limit")):
             return make_recovery_advice("webhook.rate_limited", "The webhook service is temporarily limiting new messages", recovery_fix_with_guide("Wait briefly then run --send-test-webhook. Spotify monitoring continues normally", WEBHOOK_GUIDE_URL), True, safe_detail)
         if status is not None and 400 <= status <= 499:
             return make_recovery_advice("webhook.rejected", "The webhook service did not accept the alert", recovery_fix_with_guide("Check that WEBHOOK_PROVIDER matches the saved Discord or ntfy URL then run --send-test-webhook", WEBHOOK_GUIDE_URL), False, safe_detail)
@@ -1673,7 +1678,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check DNS, internet access, firewall and proxy settings then retry", DIAGNOSTICS_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
-    if status == 429 or any(term in message for term in ("429", "too many requests", "rate limit")):
+    if status == 429 or mentions_status_code("429", message) or any(term in message for term in ("too many requests", "rate limit")):
         rate_limit_fix = "Wait before retrying and increase -c or --check-interval to reduce request frequency"
         if context == "scrobble_health":
             rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
@@ -2100,6 +2105,11 @@ def write_config_file(destination, content: str):
     return {"path": str(destination_path), "backup_path": str(backup_path) if backup_path is not None else None}
 
 
+# Raised when an existing config is not replaced because nobody could confirm it, as opposed to a path in the way of writing one
+class ConfigExistsError(FileExistsError):
+    pass
+
+
 # Asks before replacing a config file that already exists, so a generated template cannot land silently
 def confirm_generated_config_replacement(destination, force: bool = False, interactive=None, input_func=input) -> bool:
     destination_path = Path(destination).expanduser()
@@ -2107,7 +2117,7 @@ def confirm_generated_config_replacement(destination, force: bool = False, inter
         return True
     terminal_is_interactive = bool(sys.stdin.isatty()) if interactive is None else bool(interactive)
     if not terminal_is_interactive:
-        raise FileExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
+        raise ConfigExistsError(f"Config file '{destination_path}' already exists and there is no terminal to confirm replacing it")
     try:
         answer = str(read_interactively(input_func, f"Config file '{destination_path}' exists. Replace it and keep a timestamped backup? [y/N]: ")).strip().casefold()
     except (EOFError, KeyboardInterrupt):
@@ -3033,11 +3043,13 @@ def truncate_string_per_line(message, truncate_width, tabsize=8):
         current_width = 0
         truncated = []
         position = 0
+        style_open = False
         while position < len(expanded_line):
             # A colour sequence is copied through free of charge, so styling never eats into the visible width
             escape = SGR_SEQUENCE_RE.match(expanded_line, position)
             if escape:
                 truncated.append(escape.group(0))
+                style_open = escape.group(0) not in ("\x1b[0m", "\x1b[m")
                 position = escape.end()
                 continue
             char = expanded_line[position]
@@ -3045,6 +3057,9 @@ def truncate_string_per_line(message, truncate_width, tabsize=8):
             if char_width is None or char_width < 0:
                 char_width = 0
             if current_width + char_width > truncate_width:
+                # The cut may have dropped the reset, which would leave the colour running into every later line
+                if style_open:
+                    truncated.append(ANSI_RESET)
                 break
             truncated.append(char)
             current_width += char_width
@@ -7942,6 +7957,17 @@ def build_log_path(base_path, suffix: str) -> Path:
     return log_path
 
 
+# Names every on/off setting holding something other than True or False, since a string such as "false" would count as on
+def runtime_boolean_errors() -> List[str]:
+    errors = []
+    for statement in ast.parse(CONFIG_BLOCK, "<built-in-config>", "exec").body:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, bool):
+            value = globals().get(statement.targets[0].id)
+            if not isinstance(value, bool):
+                errors.append(f"{statement.targets[0].id} must be True or False, not {value!r}")
+    return errors
+
+
 # Returns all type and range errors in settings that control runtime timing or counts
 def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
@@ -8077,6 +8103,10 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
     if numeric_errors:
         advice = classify_recovery_error(context="config_invalid", detail="Invalid numeric settings: " + "; ".join(numeric_errors))
         checks.append(make_doctor_check("Configuration", "FAIL", "One or more numeric settings are invalid", advice.detail, advice))
+    boolean_errors = runtime_boolean_errors()
+    if boolean_errors:
+        advice = classify_recovery_error(context="config_invalid", detail="Invalid on/off settings: " + "; ".join(boolean_errors))
+        checks.append(make_doctor_check("Configuration", "FAIL", "One or more on/off settings are invalid", advice.detail, advice))
 
     if MONITOR_LIST_FILE:
         monitor_path = Path(MONITOR_LIST_FILE).expanduser()
@@ -8320,7 +8350,8 @@ def doctor_check_webhook_notifications() -> List[DoctorCheck]:
         return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
     if not validate_webhook_url():
         advice = classify_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
-        return [make_doctor_check("Notifications", "FAIL", advice.summary, advice.detail, advice)]
+        # Labelled with the setting rule itself, the wording every tool in the family uses for this row
+        return [make_doctor_check("Notifications", "FAIL", advice.detail, "", advice)]
     customization_error = validate_webhook_customization(normalized_webhook_provider())
     if customization_error is not None:
         advice = classify_recovery_error(context="webhook_config", detail=customization_error)
@@ -11452,7 +11483,7 @@ def main():
                 output_file = sys.argv[idx + 1]
                 try:
                     backup_path, written = write_generated_config(output_file, config_content, force="--force" in sys.argv)
-                except FileExistsError as exc:
+                except ConfigExistsError as exc:
                     print_recovery_error(context="file.exists", detail=str(exc))
                     sys.exit(1)
                 except Exception as exc:
@@ -12549,6 +12580,10 @@ def main():
     numeric_errors = runtime_configuration_errors()
     if numeric_errors and not args.doctor:
         print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", "One or more numeric settings are invalid: " + "; ".join(numeric_errors), recovery_fix_with_guide("Use the documented positive interval and count values then retry", INTERVALS_GUIDE_URL), False, "Invalid numeric settings: " + "; ".join(numeric_errors))))
+        sys.exit(1)
+    boolean_errors = runtime_boolean_errors()
+    if boolean_errors and not args.doctor:
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", "One or more on/off settings are invalid: " + "; ".join(boolean_errors), recovery_fix_with_guide("Set the reported settings to True or False in the configuration file", CONFIG_GUIDE_URL), False, "Invalid on/off settings: " + "; ".join(boolean_errors))))
         sys.exit(1)
 
     if args.set_smtp_password:
