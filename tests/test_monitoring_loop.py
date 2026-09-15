@@ -7,6 +7,9 @@ import pytest
 
 import spotify_monitor as monitor
 
+# Captured before any fixture replaces it, so a test can put the real delivery path back
+REAL_SEND_NOTIFICATION_CHANNELS = monitor.send_notification_channels
+
 
 # Raised by the patched sleep to end one monitoring iteration deterministically
 class LoopStopped(Exception):
@@ -279,6 +282,28 @@ def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypat
     assert output.count("To fix: ") == 1
     assert "* Monitoring degraded for watched-user. " in output
     assert output.count("Liveness check, timestamp:") == 2
+
+
+# Verifies a retry that reaches the screen on a quiet check still ends with a timestamp
+def test_a_delivery_retry_on_a_quiet_check_ends_with_a_timestamp(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 10 * monitor.SPOTIFY_ERROR_INTERVAL)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "send_notification_channels", REAL_SEND_NOTIFICATION_CHANNELS)
+    monkeypatch.setattr(monitor, "webhook_event_enabled", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(monitor, "send_email", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=http_error(401)))
+    loop_environment.stop_after = 3
+
+    run_one_iteration(loop_environment)
+
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+    deliveries = [index for index, line in enumerate(lines) if line.startswith("Sending email notification")]
+
+    assert len(deliveries) > 1, lines
+    for index in deliveries:
+        assert any(line.startswith("Timestamp:") for line in lines[index + 1:index + 3]), lines[index:index + 3]
 
 
 # Verifies the reminder follows the clock, so a run that retries faster than it polls does not remind more often

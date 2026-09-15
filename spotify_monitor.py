@@ -10237,6 +10237,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
+            delivery_reported = False
             if outage_outcome in ("full", "repeat"):
                 print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
             elif outage_outcome == "degraded":
@@ -10254,6 +10255,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
                     email_sent = email_sent or email_succeeded
                     webhook_sent = webhook_sent or webhook_succeeded
+                    delivery_reported = True
 
             elif TOKEN_SOURCE == 'cookie' and advice.code == "auth.cookie_invalid":
                 if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
@@ -10264,8 +10266,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
                     email_sent = email_sent or email_succeeded
                     webhook_sent = webhook_sent or webhook_succeeded
+                    delivery_reported = True
 
-            if outage_outcome in ("full", "repeat"):
+            # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
+            # with nothing under it reads as a run that stopped there
+            if outage_outcome in ("full", "repeat") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
             continue
