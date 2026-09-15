@@ -251,3 +251,12 @@ def test_captured_recovery_output_is_secret_safe(monkeypatch):
     with redirect_stdout(output):
         monitor.print_recovery_error(RuntimeError(f"refresh token {secret} is invalid"), "client_auth", debug=True)
     assert secret not in output.getvalue()
+
+
+# Verifies added context does not replace the error text the rules read, which used to make every such failure unknown
+@pytest.mark.parametrize("message, expected", [("429 rate limit exceeded", "spotify.rate_limited"), ("Connection timed out", "network.timeout")])
+def test_a_caller_supplied_detail_does_not_hide_the_error(message, expected):
+    advice = monitor.classify_recovery_error(Exception(message), detail="Cannot read the recent plays")
+
+    assert advice.code == expected
+    assert "Cannot read the recent plays" in advice.detail

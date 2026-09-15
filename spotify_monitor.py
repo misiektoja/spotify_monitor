@@ -1478,7 +1478,8 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return error.advice
     raw_message = str(detail or error or "").lower()
     safe_detail = sanitize_error_text(detail or error)
-    message = raw_message
+    # Both are matched, since a caller that adds context would otherwise hide the error text the rules read
+    message = " ".join(part for part in (str(detail or ""), str(error or "")) if part).lower()
     status = recovery_http_status(error)
 
     if isinstance(error, SpotifyQuotaExceededError):
