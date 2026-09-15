@@ -1,3 +1,5 @@
+import ast
+import inspect
 import io
 import smtplib
 import socket
@@ -278,3 +280,44 @@ def test_a_missing_protobuf_file_is_reported_with_a_fix(monkeypatch, tmp_path, c
     printed = capsys.readouterr().out
     assert "* Error: A required file could not be read" in printed
     assert "To fix: Verify the path, file format and read permissions then retry" in printed
+
+
+# Returns every literal string one argument can evaluate to, following a conditional or a code held in a local name
+def literal_values(node, assignments):
+    if isinstance(node, ast.Constant):
+        return {node.value} if isinstance(node.value, str) else set()
+    if isinstance(node, ast.IfExp):
+        return literal_values(node.body, assignments) | literal_values(node.orelse, assignments)
+    if isinstance(node, ast.Name) and assignments.get(node.id):
+        return set().union(*(literal_values(value, assignments) for value in assignments[node.id]))
+    return set()
+
+
+# Returns every code an advice builder can pass, which is what makes a declared code with no producer visible
+def builder_codes(source):
+    tree = ast.parse(source)
+    assignments = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    assignments.setdefault(target.id, []).append(node.value)
+    codes = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") in ("advice", "make_recovery_advice") and node.args:
+            codes |= literal_values(node.args[0], assignments)
+    return codes
+
+
+# Verifies every declared code has a producer, so the set records what the tool reports rather than what it might
+def test_every_declared_code_is_reachable():
+    unreachable = set(monitor.RECOVERY_CODES) - builder_codes(inspect.getsource(monitor))
+
+    assert unreachable == set(), f"codes with no producer: {sorted(unreachable)}"
+
+
+# Verifies no advice builder names a code outside the declared set, so the set stays the whole taxonomy
+def test_no_code_outside_the_declared_set_is_produced():
+    undeclared = builder_codes(inspect.getsource(monitor)) - set(monitor.RECOVERY_CODES)
+
+    assert undeclared == set(), f"codes produced but not declared: {sorted(undeclared)}"
