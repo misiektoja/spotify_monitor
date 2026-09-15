@@ -445,14 +445,6 @@ CHECK_INTERNET_TIMEOUT = 5
 # Switching it off removes the protection against an intercepted connection
 VERIFY_SSL = True
 
-# Number of Spotify 5xx errors allowed within ERROR_500_TIME_LIMIT before showing an alert
-ERROR_500_NUMBER_LIMIT = 6
-ERROR_500_TIME_LIMIT = 240  # 4 minutes
-
-# Number of network errors allowed within ERROR_NETWORK_ISSUES_TIME_LIMIT before showing an alert
-ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 6
-ERROR_NETWORK_ISSUES_TIME_LIMIT = 240  # 4 minutes
-
 # ----------------------------
 # Files and Storage
 # ----------------------------
@@ -878,10 +870,6 @@ LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
 CHECK_INTERNET_TIMEOUT = 0
 VERIFY_SSL = True
-ERROR_500_NUMBER_LIMIT = 0
-ERROR_500_TIME_LIMIT = 0
-ERROR_NETWORK_ISSUES_NUMBER_LIMIT = 0
-ERROR_NETWORK_ISSUES_TIME_LIMIT = 0
 CSV_FILE = ""
 MONITOR_LIST_FILE = ""
 DOTENV_FILE = ""
@@ -1729,41 +1717,59 @@ def setup_destination_advice(flag: str, command: str = "--setup", config_filenam
 
 
 # Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
+# How long a reported failure may go on before the run reminds about it, whatever the liveness banner is set to
+OUTAGE_REMINDER_SECONDS = 3600  # 1 hour
+
+
+# Returns the family a failure code belongs to, so the DNS and timeout failures of one internet outage count as one
+def outage_family(code: Optional[str]) -> str:
+    return "network" if str(code or "").startswith("network.") else str(code or "")
+
+
 class OutageReporter:
-    # Starts with no failure recorded, so the first failure of any category is reported in full
-    def __init__(self) -> None:
+    # Starts with no failure recorded and reports a new retryable failure once confirm_checks checks in a row failed
+    def __init__(self, confirm_checks: int = 1) -> None:
+        self.confirm_checks = max(1, confirm_checks)
         self.code: Optional[str] = None
         self.since: int = 0
         self.reported_at: int = 0
+        self.failures: int = 0
+        self.reported: bool = False
 
-    # Records one failed check and returns "full" for a new failure, "degraded" once the liveness interval has passed,
-    # "repeat" while the liveness banner is switched off or "" while the same failure is merely continuing
-    def failed(self, advice: RecoveryAdvice, liveness_interval: int) -> str:
+    # Records one failed check and returns "full" when the failure is to be reported in full, "changed" when a
+    # reported outage moved to another failure family, "reminder" once OUTAGE_REMINDER_SECONDS passed since the
+    # last report or "" while nothing new is to be said
+    def failed(self, advice: RecoveryAdvice) -> str:
         now = int(time.time())
-        if advice.code != self.code:
-            # A category change mid-outage is still the same outage, so its start and the alert delay it feeds are kept
-            if not self.code:
-                self.since = now
-            self.code = advice.code
+        if not self.code:
+            self.since = now
+        self.failures += 1
+        changed = self.code is not None and outage_family(advice.code) != outage_family(self.code)
+        self.code = advice.code
+        if not self.reported:
+            # A failure the tool cannot retry away is reported at once, one it can waits for the next check to confirm it
+            if advice.retryable and self.failures < self.confirm_checks:
+                return ""
+            self.reported = True
             self.reported_at = now
             return "full"
-        # With the liveness banner off there is nothing to carry the reminder, so the summary keeps its old cadence
-        if not liveness_interval:
-            return "repeat"
-        # Timed rather than counted, because a failing run usually retries on a different interval than a healthy one
-        if now - self.reported_at >= liveness_interval:
+        if changed:
             self.reported_at = now
-            return "degraded"
+            return "changed" if advice.retryable else "full"
+        # Timed rather than counted, because a failing run usually retries on a different interval than a healthy one
+        if now - self.reported_at >= OUTAGE_REMINDER_SECONDS:
+            self.reported_at = now
+            return "reminder"
         return ""
 
-    # Clears the failure after a successful check and returns how long it lasted, or None when none was active
+    # Clears the failure after a successful check and returns how long it lasted, or None when nothing was reported
     def recovered(self) -> Optional[int]:
-        if not self.code:
-            return None
-        lasted = int(time.time()) - self.since
-        self.code = None
-        self.since = 0
-        self.reported_at = 0
+        lasted = int(time.time()) - self.since if self.code and self.reported else None
+        self.code: Optional[str] = None
+        self.since: int = 0
+        self.reported_at: int = 0
+        self.failures: int = 0
+        self.reported: bool = False
         return lasted
 
 
@@ -1773,10 +1779,16 @@ def print_liveness_banner(message: str) -> None:
     print_cur_ts("Liveness check, timestamp:\t")
 
 
-# Reports a lasting failure on the liveness cadence, so a broken run still says it is alive without repeating itself
-def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int) -> None:
-    print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}")
+# Reminds about a lasting failure once an hour, so a broken run still says it is alive without repeating itself
+def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int, failures: int = 0) -> None:
+    count = f", {failures} failed {'check' if failures == 1 else 'checks'}" if failures else ""
+    print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}{count}")
     print_cur_ts("Liveness check, timestamp:\t")
+
+
+# Notes that a reported outage now fails differently, in one line rather than a second full report
+def print_outage_change(target: str, advice: RecoveryAdvice) -> None:
+    print(f"* Monitoring failure changed for {target}. {advice.summary}")
 
 
 # Reports that a failure cleared, since a throttled failure no longer stops printing when it is over
@@ -1911,7 +1923,7 @@ def _format_config_value(value, prefer_double_quotes: bool) -> str:
 # while any other unknown name is still rejected so a typo cannot silently do nothing.
 # SECRET_CIPHER_DICT, SECRET_CIPHER_DICT_URL and TOTP_VER shipped in 2.3.1 through 2.9.2 and were
 # replaced in 3.0 by TOTP_VERSION and TOTP_SECRET_CIPHER_BYTES.
-RETIRED_CONFIG_SETTINGS = frozenset(("SECRET_CIPHER_DICT", "SECRET_CIPHER_DICT_URL", "TOTP_VER"))
+RETIRED_CONFIG_SETTINGS = frozenset(("ERROR_500_NUMBER_LIMIT", "ERROR_500_TIME_LIMIT", "ERROR_NETWORK_ISSUES_NUMBER_LIMIT", "ERROR_NETWORK_ISSUES_TIME_LIMIT", "SECRET_CIPHER_DICT", "SECRET_CIPHER_DICT_URL", "TOTP_VER"))
 
 # Settings the template ships commented out so the built-in default applies, still accepted from a config file
 COMMENTED_CONFIG_SETTINGS = frozenset({"COLOR_THEME"})
@@ -7742,7 +7754,7 @@ def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
     positive_numbers = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
-    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("ERROR_500_NUMBER_LIMIT", ERROR_500_NUMBER_LIMIT), ("ERROR_NETWORK_ISSUES_NUMBER_LIMIT", ERROR_NETWORK_ISSUES_NUMBER_LIMIT), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
+    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
     for name, value in positive_numbers:
         if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
             errors.append(f"{name} must be a number greater than zero, not {value!r}")
@@ -10275,10 +10287,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     sp_track_old = ""
     song_on_loop = 0
     recent_songs_session = []
-    error_500_counter = 0
-    error_500_start_ts = 0
-    error_network_issue_counter = 0
-    error_network_issue_start_ts = 0
     sp_accessToken = ""
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
@@ -10346,19 +10354,22 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
             advice = classify_recovery_error(e, auth_context)
-            # A failure that changes category is a different failure, so each channel earns a new alert for it
-            if advice.code != error_delivery_code:
+            # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
+            # internet outage that flaps between a timeout and an unreachable host stays one failure
+            if outage_family(advice.code) != outage_family(error_delivery_code):
                 error_email_sent = False
                 error_webhook_sent = False
                 error_delivery_code = advice.code
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
-            outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
+            outage_outcome = outage.failed(advice)
             delivery_reported = False
-            if outage_outcome in ("full", "repeat"):
+            if outage_outcome == "full":
                 print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
-            elif outage_outcome == "degraded":
-                print_outage_liveness(user_uri_id, advice, outage.since)
+            elif outage_outcome == "changed":
+                print_outage_change(user_uri_id, advice)
+            elif outage_outcome == "reminder":
+                print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
 
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
@@ -10382,7 +10393,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
             # with nothing under it reads as a run that stopped there
-            if outage_outcome in ("full", "repeat") or delivery_reported:
+            if outage_outcome in ("full", "changed") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
             debug_print("Retry wait", due_in=display_time(SPOTIFY_ERROR_INTERVAL), reason="waiting the error interval after a failed check")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
@@ -10615,8 +10626,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
                         advice = classify_recovery_error(e, auth_context)
-                        # A failure that changes category is a different failure, so each channel earns a new alert for it
-                        if advice.code != error_delivery_code:
+                        # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
+                        # internet outage that flaps between a timeout and an unreachable host stays one failure
+                        if outage_family(advice.code) != outage_family(error_delivery_code):
                             error_email_sent = False
                             error_webhook_sent = False
                             error_delivery_code = advice.code
@@ -10624,46 +10636,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                             SP_CACHED_ACCESS_TOKEN = None
 
-                        if advice.code == "spotify.unavailable":
-                            if not error_500_start_ts:
-                                error_500_start_ts = int(time.time())
-                                error_500_counter = 1
-                            else:
-                                error_500_counter += 1
-
-                        if advice.code in ("network.unavailable", "network.timeout", "spotify.rate_limited") or str(e) == '':
-                            if not error_network_issue_start_ts:
-                                error_network_issue_start_ts = int(time.time())
-                                error_network_issue_counter = 1
-                            else:
-                                error_network_issue_counter += 1
-
-                        # A failure that has not changed is left to the liveness cadence rather than repeated every check
-                        outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
-                        report_in_full = outage_outcome == "full"
-
-                        # With the liveness banner off the aggregated 50x and network summaries keep their old cadence
-                        if outage_outcome == "repeat":
-                            if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
-                                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", label=f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))})", tracker=recovery_hint_tracker)
-                                print_cur_ts("Timestamp:\t\t\t")
-                                error_500_start_ts = 0
-                                error_500_counter = 0
-
-                            elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
-                                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", label=f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))})", tracker=recovery_hint_tracker)
-                                print_cur_ts("Timestamp:\t\t\t")
-                                error_network_issue_start_ts = 0
-                                error_network_issue_counter = 0
-
-                            elif not error_500_start_ts and not error_network_issue_start_ts:
-                                report_in_full = True
-
-                        if outage_outcome == "degraded":
-                            print_outage_liveness(user_uri_id, advice, outage.since)
-
-                        elif report_in_full:
+                        # A failure is reported once, then left to the hourly reminder rather than repeated on every check
+                        outage_outcome = outage.failed(advice)
+                        if outage_outcome == "full":
                             print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
+                        elif outage_outcome == "changed":
+                            print_outage_change(user_uri_id, advice)
+                        elif outage_outcome == "reminder":
+                            print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
 
                         delivery_reported = False
                         if advice.code == "auth.client_invalid":
@@ -10685,7 +10665,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
                         # with nothing under it reads as a run that stopped there
-                        if report_in_full or delivery_reported:
+                        if outage_outcome in ("full", "changed") or delivery_reported:
                             print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
 
@@ -11187,21 +11167,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
 
-                ERROR_500_ZERO_TIME_LIMIT = ERROR_500_TIME_LIMIT + SPOTIFY_CHECK_INTERVAL
-                if SPOTIFY_CHECK_INTERVAL * ERROR_500_NUMBER_LIMIT > ERROR_500_ZERO_TIME_LIMIT:
-                    ERROR_500_ZERO_TIME_LIMIT = SPOTIFY_CHECK_INTERVAL * (ERROR_500_NUMBER_LIMIT + 1)
-
-                if error_500_start_ts and ((int(time.time()) - error_500_start_ts) >= ERROR_500_ZERO_TIME_LIMIT):
-                    error_500_start_ts = 0
-                    error_500_counter = 0
-
-                ERROR_NETWORK_ZERO_TIME_LIMIT = ERROR_NETWORK_ISSUES_TIME_LIMIT + SPOTIFY_CHECK_INTERVAL
-                if SPOTIFY_CHECK_INTERVAL * ERROR_NETWORK_ISSUES_NUMBER_LIMIT > ERROR_NETWORK_ZERO_TIME_LIMIT:
-                    ERROR_NETWORK_ZERO_TIME_LIMIT = SPOTIFY_CHECK_INTERVAL * (ERROR_NETWORK_ISSUES_NUMBER_LIMIT + 1)
-
-                if error_network_issue_start_ts and ((int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ZERO_TIME_LIMIT):
-                    error_network_issue_start_ts = 0
-                    error_network_issue_counter = 0
 
         # User is not found in the Spotify's friend list just after starting the tool
         else:

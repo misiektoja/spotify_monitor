@@ -379,6 +379,7 @@ CLASSIFIER_EXEMPTIONS = {
     "could not write configuration file": "a wizard result that reports what was saved and what was not",
     "Setup was saved": "a wizard result followed by the step that finishes the setup",
     "consecutive missing plays": "a line of setup guidance describing the shipped default",
+    "Monitoring failure changed for": "a one-line note on a classified outage that already had its full report",
 }
 
 # Words that mark a printed line as a report of something going wrong

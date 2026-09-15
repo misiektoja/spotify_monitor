@@ -285,9 +285,10 @@ def test_the_first_failure_while_active_is_reported_in_full(loop_environment, mo
     assert "To fix: " in output
 
 
-# Verifies a failure that keeps repeating is reported once and then carried by the liveness banner
-def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 2 * monitor.SPOTIFY_ERROR_INTERVAL)
+# Verifies a failure that keeps repeating is reported once and then carried by the hourly reminder with a count,
+# on a clock of its own, so the liveness banner being off does not silence it or bring back a block per check
+def test_a_lasting_outage_is_carried_by_the_hourly_reminder(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "OUTAGE_REMINDER_SECONDS", 2 * monitor.SPOTIFY_ERROR_INTERVAL)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=Exception("503 Server Error: Service Unavailable")))
@@ -296,8 +297,11 @@ def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypat
     run_one_iteration(loop_environment)
 
     output = capsys.readouterr().out
+    assert monitor.LIVENESS_REMINDER_SECONDS == 0
+    assert output.count("* Error:") == 1
     assert output.count("To fix: ") == 1
-    assert "* Monitoring degraded for watched-user. " in output
+    assert "* Monitoring degraded for watched-user. Spotify is temporarily unavailable since " in output
+    assert ", 3 failed checks\n" in output and ", 5 failed checks\n" in output
     assert output.count("Liveness check, timestamp:") == 2
 
 
@@ -438,13 +442,14 @@ def test_the_outage_reminder_follows_the_clock_not_the_check_count(monkeypatch):
     reporter = monitor.OutageReporter()
     advice = monitor.classify_recovery_error(Exception("503 Server Error: Service Unavailable"), "cookie_auth")
 
-    assert reporter.failed(advice, 900) == "full"
+    monkeypatch.setattr(monitor, "OUTAGE_REMINDER_SECONDS", 900)
+    assert reporter.failed(advice) == "full"
     outcomes = []
     for _ in range(60):
         clock[0] += 15
-        outcomes.append(reporter.failed(advice, 900))
+        outcomes.append(reporter.failed(advice))
 
-    assert outcomes.count("degraded") == 1
+    assert outcomes.count("reminder") == 1
 
 
 # Verifies a category change mid-outage keeps the outage start, so the alert delay and the reminder still elapse
@@ -456,11 +461,11 @@ def test_an_outage_that_changes_category_keeps_its_start(monkeypatch):
     second = monitor.classify_recovery_error(Exception("Connection timed out"), "cookie_auth")
     assert first.code != second.code
 
-    assert reporter.failed(first, 900) == "full"
+    assert reporter.failed(first) == "full"
     outcomes = []
     for index in range(60):
         clock[0] += 15
-        outcomes.append(reporter.failed(second if index % 2 else first, 900))
+        outcomes.append(reporter.failed(second if index % 2 else first))
 
     assert reporter.since == 1000000
     assert reporter.recovered() == 900
@@ -524,3 +529,59 @@ def test_the_liveness_banner_explains_itself_without_diagnostics(loop_environmen
     output = capsys.readouterr().out
     assert "* Monitoring healthy for watched-user. The target is visible with no activity change since the last check" in output
     assert "Liveness check, timestamp:" in output
+
+
+# Verifies an internet outage that classifies as a timeout on one check and as unreachable on the next is one
+# outage, so it is reported once on screen and alerted once
+def test_an_internet_outage_that_flaps_is_one_outage(loop_environment, monkeypatch, capsys):
+    flapping = [Exception("Connection timed out"), monitor.req.exceptions.ConnectionError("connection refused")] * 6
+    errors = error_alerts_for(loop_environment, monkeypatch, flapping, [(True, True)], 12)
+
+    output = capsys.readouterr().out
+    assert output.count("* Error:") == 1
+    assert output.count("To fix: ") == 1
+    assert "Monitoring failure changed" not in output
+    assert len(errors) == 1
+
+
+# Verifies a reported outage that starts failing differently is still one outage, so the change is one line
+# rather than a second report
+def test_a_second_failure_category_is_noted_in_one_line(loop_environment, monkeypatch, capsys):
+    responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [Exception("Connection timed out")]
+    error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 8)
+
+    lines = capsys.readouterr().out.splitlines()
+    reports = [line for line in lines if line.startswith("* Error:")]
+    changes = [number for number, line in enumerate(lines) if line.startswith("* Monitoring failure changed for watched-user. ")]
+    assert len(reports) == 1 and "temporarily unavailable" in reports[0]
+    assert len(changes) == 1 and lines[changes[0]].endswith("The Spotify request timed out")
+    assert lines[changes[0] + 1].startswith("Timestamp:")
+    assert "\n".join(lines).count("To fix: ") == 1
+
+
+# Verifies the reporter treats every network code as one outage and any other change as a one-line note
+def test_the_outage_reporter_merges_network_codes_and_notes_other_changes(monkeypatch):
+    clock = [1000000.0]
+    monkeypatch.setattr(monitor.time, "time", lambda: clock[0])
+    reporter = monitor.OutageReporter()
+    timeout = monitor.classify_recovery_error(Exception("Connection timed out"), "cookie_auth")
+    unreachable = monitor.classify_recovery_error(monitor.req.exceptions.ConnectionError("connection refused"), "cookie_auth")
+    unavailable = monitor.classify_recovery_error(Exception("503 Server Error: Service Unavailable"), "cookie_auth")
+    rejected = monitor.classify_recovery_error(http_error(401), "cookie_auth")
+    assert (monitor.outage_family(timeout.code), monitor.outage_family(unreachable.code)) == ("network", "network")
+
+    assert reporter.failed(timeout) == "full"
+    assert reporter.failed(unreachable) == ""
+    assert reporter.failed(timeout) == ""
+    assert reporter.failed(unavailable) == "changed"
+    assert reporter.failed(unavailable) == ""
+    assert reporter.failed(rejected) == "full"
+    assert reporter.since == 1000000
+
+
+# Verifies the counted thresholds the reminder replaces are read from an old config file and ignored with a note
+def test_the_aggregation_thresholds_are_retired():
+    retired = {"ERROR_500_NUMBER_LIMIT", "ERROR_500_TIME_LIMIT", "ERROR_NETWORK_ISSUES_NUMBER_LIMIT", "ERROR_NETWORK_ISSUES_TIME_LIMIT"}
+
+    assert retired <= set(monitor.RETIRED_CONFIG_SETTINGS)
+    assert not any(hasattr(monitor, name) for name in retired)
