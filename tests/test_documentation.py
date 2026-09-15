@@ -96,6 +96,12 @@ def assert_concepts(text: str, *concepts: str) -> None:
         assert concept.casefold() in lowered
 
 
+# Returns the regexes the secret scanner treats as placeholders rather than leaked credentials
+def placeholder_allowlist_patterns():
+    block = read_asset(".gitleaks.toml").split('description = "Skip placeholders and variable references"', 1)[1]
+    return re.findall(r"'''(.*)'''", block.split("\\n]", 1)[0])
+
+
 # Reads and parses one repository YAML asset
 def read_yaml_asset(relative_path: str):
     return yaml.safe_load(read_asset(relative_path))
@@ -378,6 +384,17 @@ def test_third_party_notices_cover_every_declared_dependency():
     missing = sorted(name for name in declared if name.casefold() not in notices.casefold())
     assert missing == []
     assert_concepts(notices, "GPL-3.0-or-later", "python:3.13-slim-trixie", "spotipy")
+
+
+# Verifies the secret scanner accepts the placeholder shapes the suite writes, since the scan CI runs over
+# the full history reports a fake credential that looks real
+def test_the_secret_scanner_allows_the_shared_placeholder_shapes():
+    patterns = placeholder_allowlist_patterns()
+    for placeholder in ("{api_key}", "{settings.smtp_password}", "{ENV_TOKEN_NAME}", "github_pat_private_wizard_value", "your_smtp_password", "chosen-smtp-password-value"):
+        assert any(re.search(pattern, placeholder) for pattern in patterns), placeholder
+
+    # A value with no placeholder shape stays reportable, or the allowlist would hide a real leak
+    assert not any(re.search(pattern, "NotAPlaceholderValue123456") for pattern in patterns)
 
 
 # Verifies the code scanning and supply chain workflows stay present and keep analyzing this project's language

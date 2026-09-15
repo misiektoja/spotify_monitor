@@ -3,13 +3,6 @@ title = "Shared monitor repos gitleaks config"
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Skip the RFC 4648 base32 alphabet used as a lookup table by the TOTP code"
-regexTarget = "secret"
-regexes = [
-    '''^ABCDEFGHIJKLMNOPQRSTUVWXYZ234567$''',
-]
-
 [[rules]]
 id = "monitor-secret-assignment"
 description = "Detects monitor project secret assignments with lower entropy tolerance"
@@ -40,8 +33,8 @@ description = "Skip placeholders and variable references"
 regexTarget = "secret"
 regexes = [
     '''^[a-z]{1,20}(?:-[a-z]{1,20}){1,7}$''',
-    '''(?i)^github_pat_private$''',
-    '''^\{api_key\}$''',
+    '''(?i)^github_pat_[a-z0-9_]+$''',
+    '''^\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}$''',
     '''(?i)^your_[a-z0-9_]+$''',
     '''(?i)^example(?:_[a-z0-9_]+)?$''',
     '''(?i)^dummy(?:_[a-z0-9_]+)?$''',
