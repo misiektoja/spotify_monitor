@@ -368,10 +368,26 @@ def test_a_failed_channel_is_retried_and_a_delivered_one_is_not(loop_environment
 # A run that recovered and fails again is in a new outage, which deserves its own alert
 def test_a_new_outage_after_a_recovery_alerts_again(loop_environment, monkeypatch):
     failure = Exception("503 Server Error: Service Unavailable")
-    responses = [failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000), failure, failure]
-    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 5)
+    responses = [failure, failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000), failure, failure, failure]
+    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 7)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True), (True, True)]
+
+
+# A failure the loop can retry away is alerted only once the outage has lasted the alert delay, so a blip of a
+# check or two reaches nobody while a real outage still does
+@pytest.mark.parametrize("stop_after,expected", [(2, []), (3, [(True, True)])])
+def test_a_retryable_failure_is_alerted_once_the_outage_has_lasted(loop_environment, monkeypatch, stop_after, expected):
+    errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")], [(True, True)], stop_after)
+
+    assert [(call["email"], call["webhook"]) for call in errors] == expected
+
+
+# A failure nothing here can retry away is alerted on the first check, since waiting would change nothing
+def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(loop_environment, monkeypatch):
+    errors = error_alerts_for(loop_environment, monkeypatch, [http_error(401)], [(True, True)], 1)
+
+    assert [call["subject"] for call in errors] == ["spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: watched-user)"]
 
 
 # The loop that follows an active listener reports its failures through the same alert as the outer one
