@@ -283,8 +283,22 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     output = emit_to_string(summary_rows(), show_full=True)
     assert "* Notifications (webhook):      On (active, errors)" in output
     assert "Webhook enabled" not in output
-    assert "Webhook provider" not in output
     assert "known-webhook-secret" not in output
+
+
+# Verifies the provider row names the service and its host without the path that carries the topic or the token
+def test_the_webhook_provider_row_names_the_service(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.sh/private-topic")
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "tk_secret")
+
+    output = emit_to_string(summary_rows(), show_full=True)
+
+    assert "* Webhook provider:             ntfy (ntfy.sh, access token set)" in output
+    assert "private-topic" not in output
+    assert "tk_secret" not in output
 
 
 # Verifies client authentication uses the advanced intent label
@@ -511,7 +525,7 @@ def test_logger_terminal_only_and_log_only(monkeypatch, tmp_path):
 
 
 # The rows shared with the sibling monitors, in the order every one of them prints
-SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Notifications (webhook)", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Email transport", "Email recipient", "Notifications (webhook)", "Webhook provider", "Delivery confirmations", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Process id", "Python version", "Operating system", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
 
 
 # Verifies the shared rows keep the order and the label column width every sibling monitor prints

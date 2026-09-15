@@ -39,6 +39,7 @@ same absent-dependency behavior a user would see.
 | `test_set_lastfm_credentials.py` | `--set-lastfm-credentials` prompts, partial updates and replacement confirmation |
 | `test_browser_cookie_import.py` | Firefox and Chromium profile discovery, selection and cookie extraction |
 | `test_spotify_web_backends.py` | TOTP generation, token validity probes, metadata backend selection and running without spotipy |
+| `test_startup_summary_channels.py` | Summary rows naming the webhook provider, the mail server, the masked recipient, the delivery confirmations and the runtime |
 | `test_totp_secret_extraction.py` | Secret extraction from bundles and the debug utility's destination and redirect restrictions |
 | `test_monitoring_loop.py` | Friend Activity loop error and auth recovery, retry timing, activity flags and track-change recording |
 | `test_scrobble_health.py` | Spotify to Last.fm authorization, token retries, play matching and outage detection |

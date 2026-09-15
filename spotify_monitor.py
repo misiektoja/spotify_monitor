@@ -4520,7 +4520,7 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         print(f"Sending email notification to {RECEIVER_EMAIL}")
         email_succeeded = send_email(subject, body, body_html, SMTP_SSL) == 0
     if webhook_selected:
-        print("Sending webhook notification")
+        print(f"Sending webhook notification via {webhook_provider_display_name()}")
         use_short_content = NTFY_SHORT is True and normalized_webhook_provider() == "ntfy"
         webhook_subject = (subject_short or subject) if use_short_content else subject
         webhook_body = (body_short or body) if use_short_content else body
@@ -6780,10 +6780,59 @@ def _startup_webhook_notification_categories() -> List[str]:
     return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
 
 
+
+# Returns the webhook destination's host alone, so a row can name it without exposing the private path
+def webhook_destination_host() -> str:
+    try:
+        return urlsplit(str(WEBHOOK_URL or "").strip()).hostname or ""
+    except ValueError:
+        return ""
+
+
+# Hides the middle of an address's local part, so a log can be shared while the reader can still spot a typo
+def mask_email_address(address) -> str:
+    text = str(address or "").strip()
+    local, at_sign, domain = text.partition("@")
+    if not at_sign or not local or not domain:
+        return text
+    masked = f"{local[0]}{'*' * (len(local) - 2)}{local[-1]}" if len(local) > 2 else f"{local[0]}{'*' * (len(local) - 1)}"
+    return f"{masked}@{domain}"
+
+
+# Reports the mail server and the recipient an alert would reach, without the account that signs in to the server
+def _startup_email_detail_rows() -> List[StartupSummaryRow]:
+    transport = f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})" if SMTP_HOST and SMTP_PORT else "Not configured"
+    return [
+        StartupSummaryRow("Email transport", transport),
+        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if RECEIVER_EMAIL else "Not configured"),
+    ]
+
+
+# Reports the webhook service alerts would reach and whether the delivery lines are printed at all
+def _startup_webhook_detail_rows() -> List[StartupSummaryRow]:
+    if not WEBHOOK_ENABLED or not str(WEBHOOK_URL or "").strip():
+        provider = "Not configured"
+    else:
+        host = webhook_destination_host()
+        details = [host] if host else []
+        if normalized_webhook_provider() == "ntfy":
+            details.append("access token set" if NTFY_ACCESS_TOKEN else "no access token")
+        provider = webhook_provider_display_name() + (f" ({', '.join(details)})" if details else "")
+    rows = [StartupSummaryRow("Webhook provider", provider)]
+    # The ntfy attachment setting says nothing about a run that posts to Discord, which ignores it
+    if normalized_webhook_provider() == "ntfy":
+        rows.append(StartupSummaryRow("ntfy images", str(NTFY_IMAGES)))
+    rows.append(StartupSummaryRow("Delivery confirmations", str(DELIVERY_CONFIRMATIONS)))
+    return rows
+
+
 # Reports the install method, which secrets came from where by name and never by value, and the shared output settings
 def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
     from_file, from_environment, from_settings, from_command_line = doctor_secret_sources(env_path)
     return [
+        StartupSummaryRow("Process id", str(os.getpid())),
+        StartupSummaryRow("Python version", platform.python_version()),
+        StartupSummaryRow("Operating system", f"{platform.platform(terse=True)} ({platform.machine()})"),
         StartupSummaryRow("Install method", install_method_display_name()),
         StartupSummaryRow("Secrets from dotenv", ", ".join(sorted(from_file)) if from_file else "None"),
         StartupSummaryRow("Secrets from environment", ", ".join(sorted(from_environment)) if from_environment else "None"),
@@ -6816,10 +6865,12 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Outage reminders", display_time(SCROBBLE_HEALTH_REPEAT_INTERVAL) if SCROBBLE_HEALTH_REPEAT_INTERVAL else "Disabled", concise=not SCROBBLE_HEALTH_REPEAT_INTERVAL),
             StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
             StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
+            *_startup_email_detail_rows(),
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
+            *_startup_webhook_detail_rows(),
             StartupSummaryRow("Output", output_state, concise=True, full=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
-            StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
+            StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
             StartupSummaryRow("State file", SCROBBLE_HEALTH_STATE_FILE, concise=True),
             StartupSummaryRow("Liveness output", display_time(LIVENESS_CHECK_INTERVAL) if LIVENESS_CHECK_INTERVAL else "Disabled", concise=bool(LIVENESS_CHECK_INTERVAL)),
@@ -6839,10 +6890,12 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
         StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
         StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
+        *_startup_email_detail_rows(),
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
+        *_startup_webhook_detail_rows(),
         StartupSummaryRow("Output", output_state, concise=True, full=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
-        StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
+        StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
         StartupSummaryRow("Spotify playback control", str(TRACK_SONGS), concise=bool(TRACK_SONGS)),
