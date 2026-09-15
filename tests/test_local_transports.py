@@ -187,7 +187,7 @@ def test_a_delivered_webhook_is_reported_in_verbose(monkeypatch: pytest.MonkeyPa
 
     assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
 
-    assert "* Webhook delivered through discord: Now playing" in capsys.readouterr().out
+    assert "* Webhook delivered through Discord: Now playing" in capsys.readouterr().out
 
 
 # Verifies a delivered email names where it went and what it was, so verbose answers whether the alert arrived
