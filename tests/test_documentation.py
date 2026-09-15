@@ -443,6 +443,9 @@ def test_editor_configuration_declares_the_repository_style():
     assert settings["*.toml"]["indent_size"] == "2"
     # Two trailing spaces are a Markdown line break, so they must stay exempt from trimming
     assert settings["*.md"]["trim_trailing_whitespace"] == "false"
+    # LICENSE is verbatim upstream text, so an editor must leave its ending and its spacing alone
+    assert settings["LICENSE"]["insert_final_newline"] == "unset"
+    assert settings["LICENSE"]["trim_trailing_whitespace"] == "unset"
 
 
 # Verifies tracked text files obey those whitespace rules, since an editor setting only warns on the machine that has it
