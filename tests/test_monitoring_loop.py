@@ -358,7 +358,7 @@ def test_a_cleared_outage_reports_its_recovery(loop_environment, monkeypatch, ca
 def test_a_labelled_failure_keeps_the_shared_shape(loop_environment, capsys):
     error = Exception("503 Server Error: Service Unavailable")
 
-    monitor.print_monitor_recovery(error, "cookie_auth", None, "retrying in 3 minutes", "Error 50x (6x times in the last 30 minutes)")
+    monitor.print_recovery_error(error, "cookie_auth", retry_note="retrying in 3 minutes", label="Error 50x (6x times in the last 30 minutes)", tracker=None)
 
     first_line = capsys.readouterr().out.splitlines()[0]
     assert first_line == "* Error 50x (6x times in the last 30 minutes): Spotify is temporarily unavailable (retrying in 3 minutes)"

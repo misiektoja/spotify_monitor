@@ -249,20 +249,20 @@ def test_recovery_exception_string_is_safe(monkeypatch):
 def test_monitoring_hint_deduplication_and_reset(capsys):
     tracker = monitor.RecoveryHintTracker()
     error = requests.ConnectionError("connection refused")
-    monitor.print_monitor_recovery(error, "runtime", tracker, "* Error: ")
-    monitor.print_monitor_recovery(error, "runtime", tracker, "* Error: ")
+    monitor.print_recovery_error(error, "runtime", retry_note="* Error: ", tracker=tracker)
+    monitor.print_recovery_error(error, "runtime", retry_note="* Error: ", tracker=tracker)
     first_output = capsys.readouterr().out
     assert first_output.count("To fix:") == 1
     tracker.reset()
-    monitor.print_monitor_recovery(error, "runtime", tracker, "* Error: ")
+    monitor.print_recovery_error(error, "runtime", retry_note="* Error: ", tracker=tracker)
     assert capsys.readouterr().out.count("To fix:") == 1
 
 
 # Verifies a changed monitoring category prints a new recovery hint
 def test_monitoring_hint_category_change(capsys):
     tracker = monitor.RecoveryHintTracker()
-    monitor.print_monitor_recovery(requests.ConnectionError("connection refused"), "runtime", tracker, "* Error: ")
-    monitor.print_monitor_recovery(make_http_error(429), "runtime", tracker, "* Error: ")
+    monitor.print_recovery_error(requests.ConnectionError("connection refused"), "runtime", retry_note="* Error: ", tracker=tracker)
+    monitor.print_recovery_error(make_http_error(429), "runtime", retry_note="* Error: ", tracker=tracker)
     assert capsys.readouterr().out.count("To fix:") == 2
 
 
@@ -489,3 +489,51 @@ def test_the_guide_guard_still_inspects_the_source():
 
     assert len(inspected) > 60
     assert all(any(marker in summary for _, summary in bare) for marker in GUIDELESS_ADVICE), "an allowlisted summary stopped matching a builder"
+
+
+# One concept carried three names across this family: a renderer taking a built advice, a renderer taking the
+# failure itself, and a third pair named after the monitoring loop. Pinned here so a call copied from a sibling
+# cannot quietly mean something else
+def test_the_recovery_printers_share_one_contract():
+    advice_first = ("advice", "debug", "retry_note", "with_fix", "label")
+    error_first = ("error", "context", "debug", "detail", "retry_note", "with_fix", "label")
+
+    assert tuple(inspect.signature(monitor.render_recovery_advice).parameters) == advice_first
+    assert tuple(inspect.signature(monitor.render_recovery_error).parameters) == error_first
+    # The hint tracker follows the shared parameters, so a call written for a sibling without one still means the same thing
+    assert tuple(inspect.signature(monitor.print_recovery_advice).parameters) == advice_first + ("tracker",)
+    assert tuple(inspect.signature(monitor.print_recovery_error).parameters) == error_first + ("tracker",)
+
+
+# The advice pair prints what the caller built, so a summary the classifier would never produce survives the trip
+def test_the_advice_printer_does_not_reclassify(capsys):
+    monitor.DEBUG_MODE = False
+    advice = monitor.make_recovery_advice("network.timeout", "a summary no rule produces", "a fix of its own", True)
+
+    returned = monitor.print_recovery_advice(advice)
+
+    assert capsys.readouterr().out == "* Error: a summary no rule produces\nTo fix: a fix of its own\n"
+    assert returned is advice
+
+
+# The error pair classifies what the caller hands it, which is the difference between the two front doors
+def test_the_error_printer_classifies_what_it_was_given(capsys):
+    monitor.DEBUG_MODE = False
+
+    returned = monitor.print_recovery_error(make_http_error(429), context="runtime")
+
+    assert returned.code != "unknown"
+    assert capsys.readouterr().out.startswith(f"* Error: {returned.summary}\n")
+
+
+# Both front doors reach the same renderer, so the retry note, the label and a suppressed fix behave the same way
+def test_both_front_doors_render_the_same_line():
+    monitor.DEBUG_MODE = False
+    error = make_http_error(429)
+    advice = monitor.classify_recovery_error(error, "runtime")
+
+    through_advice = monitor.render_recovery_advice(advice, retry_note="retrying in 5 minutes", with_fix=False, label="Warning")
+    through_error = monitor.render_recovery_error(error, "runtime", retry_note="retrying in 5 minutes", with_fix=False, label="Warning")
+
+    assert through_advice == through_error
+    assert through_advice == f"* Warning: {advice.summary} (retrying in 5 minutes)"

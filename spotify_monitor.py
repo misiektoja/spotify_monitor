@@ -1692,14 +1692,19 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     return make_recovery_advice("unknown", "An unexpected error occurred", recovery_fix_with_guide("Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail", DOCTOR_GUIDE_URL), True, safe_detail)
 
 
-# Renders structured recovery advice without exposing secret-bearing exception text
-def render_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "") -> str:
-    advice = classify_recovery_error(error, context, detail)
-    lines = [f"* Error: {advice.summary}", f"To fix: {advice.fix}"]
-    show_debug = DEBUG_MODE if debug is None else debug
-    if show_debug and advice.detail:
-        lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+# Renders one built advice as the shared Error, To fix and optional Technical detail block
+def render_recovery_advice(advice: RecoveryAdvice, debug: Optional[bool] = None, retry_note: str = "", with_fix: bool = True, label: str = "Error") -> str:
+    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
+    if with_fix:
+        lines.append(f"To fix: {advice.fix}")
+        if (DEBUG_MODE if debug is None else debug) and advice.detail:
+            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
     return "\n".join(lines)
+
+
+# Classifies one failure and renders it through the shared recovery block
+def render_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "", retry_note: str = "", with_fix: bool = True, label: str = "Error") -> str:
+    return render_recovery_advice(classify_recovery_error(error, context, detail), debug, retry_note, with_fix, label)
 
 
 # Returns the advice for a setup destination switched off with the "none" sentinel, which names the flag to replace
@@ -1707,13 +1712,6 @@ def setup_destination_advice(flag: str, command: str = "--setup", config_filenam
     if flag == "--config-file":
         return make_recovery_advice("file.unwritable", f"{command} has nowhere to write the configuration", recovery_fix_with_guide(f"Replace '--config-file none' with a writable path, or drop the flag to write {config_filename} in the current directory", CONFIG_GUIDE_URL), False)
     return make_recovery_advice("file.unwritable", f"{command} has nowhere to write the private settings", recovery_fix_with_guide(f"Replace '--env-file none' with a writable path, or drop the flag to write {dotenv_filename} in the current directory", SECRETS_GUIDE_URL), False)
-
-
-# Prints one structured recovery error and returns its stable advice
-def print_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "") -> RecoveryAdvice:
-    advice = classify_recovery_error(error, context, detail)
-    print(render_recovery_error(RecoveryError(advice), debug=debug))
-    return advice
 
 
 # Decides how a lasting failure is reported: in full when it is new, then on the liveness cadence while it lasts
@@ -1786,6 +1784,17 @@ class RecoveryHintTracker:
     # Clears suppression after a successful request cycle
     def reset(self) -> None:
         self.last_code = None
+
+
+# Prints one built advice through the shared recovery block and returns it
+def print_recovery_advice(advice: RecoveryAdvice, debug: Optional[bool] = None, retry_note: str = "", with_fix: bool = True, label: str = "Error", tracker: Optional[RecoveryHintTracker] = None) -> RecoveryAdvice:
+    print(render_recovery_advice(advice, debug, retry_note, with_fix and (tracker is None or tracker.should_render(advice)), label))
+    return advice
+
+
+# Classifies one failure, prints it through the shared recovery block and returns its stable advice
+def print_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "", retry_note: str = "", with_fix: bool = True, label: str = "Error", tracker: Optional[RecoveryHintTracker] = None) -> RecoveryAdvice:
+    return print_recovery_advice(classify_recovery_error(error, context, detail), debug, retry_note, with_fix, label, tracker)
 
 
 # Normalizes a raw Spotify user ID, user URI or profile URL into one user ID
@@ -4761,7 +4770,7 @@ def reload_secrets_signal_handler(sig, frame):
                 print(f"* No {default_dotenv_filename if not DOTENV_FILE else 'dotenv'} file found, skipping env-var reload{suffix}")
         except ImportError:
             env_path = None
-            print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", "The env-var reload was skipped", _wizard_render_command([sys.executable or "python3", "-m", "pip", "install", "python-dotenv"]))), "runtime", label="Warning")
+            print_recovery_advice(missing_dependency_advice("python-dotenv", "The env-var reload was skipped", _wizard_render_command([sys.executable or "python3", "-m", "pip", "install", "python-dotenv"])), label="Warning")
             print(suffix, end="")
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             print_recovery_error(exc, "config_invalid", detail=f"Dotenv file '{env_path}' could not be reloaded: {exc}")
@@ -5426,7 +5435,7 @@ def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
         verbose_notice(f"Saved a rotated Spotify recent-play refresh token in {DOTENV_FILE}")
         return True
     except Exception as exc:
-        print_monitor_recovery(RecoveryError(make_recovery_advice("file.unwritable", f"Spotify rotated the recent-play refresh token but '{DOTENV_FILE}' could not be updated", recovery_fix_with_guide("Check the dotenv file and its directory permissions, then re-authorize if the saved token stops working", SECRETS_GUIDE_URL), False, f"{type(exc).__name__}: {exc}")), "runtime", label="Warning")
+        print_recovery_advice(make_recovery_advice("file.unwritable", f"Spotify rotated the recent-play refresh token but '{DOTENV_FILE}' could not be updated", recovery_fix_with_guide("Check the dotenv file and its directory permissions, then re-authorize if the saved token stops working", SECRETS_GUIDE_URL), False, f"{type(exc).__name__}: {exc}"), label="Warning")
         return False
 
 
@@ -8355,23 +8364,6 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
     return 1 if any(check.status == "FAIL" for check in report.checks) else 0
 
 
-# Renders one monitoring failure in the shape every monitor in this family prints
-def render_monitor_recovery(advice: RecoveryAdvice, retry_note: str = "", with_fix: bool = True, label: str = "Error") -> str:
-    lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
-    if with_fix:
-        lines.append(f"To fix: {advice.fix}")
-        if DEBUG_MODE and advice.detail:
-            lines.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
-    return "\n".join(lines)
-
-
-# Prints a safe monitoring error while suppressing repeated equivalent fix hints
-def print_monitor_recovery(error: Any, context: str, tracker: Optional[RecoveryHintTracker] = None, retry_note: str = "", label: str = "Error") -> RecoveryAdvice:
-    advice = classify_recovery_error(error, context)
-    print(render_monitor_recovery(advice, retry_note, tracker is None or tracker.should_render(advice), label))
-    return advice
-
-
 # Detects how Spotify Monitor was launched so setup can show matching commands
 def _wizard_install_method() -> str:
     if is_container_environment():
@@ -10299,7 +10291,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             _restore_timeout_alarm(alarm_state)
         except TimeoutException:
             _restore_timeout_alarm(alarm_state)
-            print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"retrying in {display_time(ALARM_RETRY)}")
+            print_recovery_error(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", retry_note=f"retrying in {display_time(ALARM_RETRY)}", tracker=recovery_hint_tracker)
             print_cur_ts("Timestamp:\t\t\t")
             debug_print("Retry wait", due_in=display_time(ALARM_RETRY), reason="a Spotify request timed out")
             time.sleep(ALARM_RETRY)
@@ -10316,7 +10308,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
             delivery_reported = False
             if outage_outcome in ("full", "repeat"):
-                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
+                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
             elif outage_outcome == "degraded":
                 print_outage_liveness(user_uri_id, advice, outage.since)
 
@@ -10381,7 +10373,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
             except Exception as e:
-                print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
+                print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
                 print_cur_ts("Timestamp:\t\t\t")
                 time.sleep(SPOTIFY_ERROR_INTERVAL)
                 continue
@@ -10569,7 +10561,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         break
                     except TimeoutException:
                         _restore_timeout_alarm(alarm_state)
-                        print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"retrying in {display_time(ALARM_RETRY)}")
+                        print_recovery_error(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", retry_note=f"retrying in {display_time(ALARM_RETRY)}", tracker=recovery_hint_tracker)
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(ALARM_RETRY)
                     except Exception as e:
@@ -10602,13 +10594,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # With the liveness banner off the aggregated 50x and network summaries keep their old cadence
                         if outage_outcome == "repeat":
                             if error_500_start_ts and (error_500_counter >= ERROR_500_NUMBER_LIMIT and (int(time.time()) - error_500_start_ts) >= ERROR_500_TIME_LIMIT):
-                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))})")
+                                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", label=f"Error 50x ({error_500_counter}x times in the last {display_time((int(time.time()) - error_500_start_ts))})", tracker=recovery_hint_tracker)
                                 print_cur_ts("Timestamp:\t\t\t")
                                 error_500_start_ts = 0
                                 error_500_counter = 0
 
                             elif error_network_issue_start_ts and (error_network_issue_counter >= ERROR_NETWORK_ISSUES_NUMBER_LIMIT and (int(time.time()) - error_network_issue_start_ts) >= ERROR_NETWORK_ISSUES_TIME_LIMIT):
-                                print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))})")
+                                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", label=f"Error with network ({error_network_issue_counter}x times in the last {display_time((int(time.time()) - error_network_issue_start_ts))})", tracker=recovery_hint_tracker)
                                 print_cur_ts("Timestamp:\t\t\t")
                                 error_network_issue_start_ts = 0
                                 error_network_issue_counter = 0
@@ -10620,7 +10612,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             print_outage_liveness(user_uri_id, advice, outage.since)
 
                         elif report_in_full:
-                            print_monitor_recovery(e, auth_context, recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
+                            print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
 
                             if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
                                 if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
@@ -10719,7 +10711,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         else:
                             sp_playlist_image_url = ""
                     except Exception as e:
-                        print_monitor_recovery(e, "metadata", recovery_hint_tracker, f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}")
+                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
                         continue
@@ -12697,7 +12689,7 @@ def main():
         if WEBHOOK_ENABLED and normalized_webhook_provider() == "ntfy":
             install_command = notification_images_install_command()
             print("*" * HORIZONTAL_LINE)
-            print(render_monitor_recovery(missing_dependency_advice("Pillow", "ntfy alerts will be sent as text only", install_command, "Or set NTFY_IMAGES to False in the configuration file to stop this warning"), label="Warning"))
+            print(render_recovery_advice(missing_dependency_advice("Pillow", "ntfy alerts will be sent as text only", install_command, "Or set NTFY_IMAGES to False in the configuration file to stop this warning"), label="Warning"))
             print("*" * HORIZONTAL_LINE + "\n")
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported
