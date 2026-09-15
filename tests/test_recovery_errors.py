@@ -1,6 +1,7 @@
 import ast
 import inspect
 import io
+import re
 import smtplib
 import socket
 from contextlib import redirect_stdout
@@ -321,3 +322,69 @@ def test_no_code_outside_the_declared_set_is_produced():
     undeclared = builder_codes(inspect.getsource(monitor)) - set(monitor.RECOVERY_CODES)
 
     assert undeclared == set(), f"codes produced but not declared: {sorted(undeclared)}"
+
+
+# Every place that reports a problem without the classifier and the reason it cannot use one
+CLASSIFIER_EXEMPTIONS = {
+    "or higher required": "runs at import on an interpreter too old to load the rest of the file",
+    "Cannot clear the screen contents": "a cosmetic notice with nothing for the operator to recover from",
+    "Operational alert deferred": "a note about when the alert fires, printed under the classified failure above it",
+    "Installation could not start": "a wizard result printed above the question that offers another option",
+    "could not be installed": "a wizard result printed above the question that offers another option",
+    "need the optional Pillow package": "a wizard hint above the question that offers to switch the feature off",
+    "artwork cannot be attached": "a wizard hint above the question that offers to switch the feature off",
+    "Follow status could not be checked": "a wizard result followed by the step that resumes the setup",
+    "follow verification failed": "a wizard result followed by the step that resumes the setup",
+    "could not follow the target": "a wizard result followed by the step that resumes the setup",
+    "dotenv destination": "a wizard result that reports what was saved and what was not",
+    "Setup needs a writable dotenv file": "an answer hint inside the question that re-asks, where the next prompt is the recovery",
+    "Redirect URI is invalid": "an answer hint inside the question that re-asks, where the next prompt is the recovery",
+    "Missing-play threshold": "a setup summary label rather than a failure",
+    "operational error alerts": "a setup summary label rather than a failure",
+    "could not write configuration file": "a wizard result that reports what was saved and what was not",
+    "Setup was saved": "a wizard result followed by the step that finishes the setup",
+    "consecutive missing plays": "a line of setup guidance describing the shipped default",
+}
+
+# Words that mark a printed line as a report of something going wrong
+TROUBLE_WORDS = re.compile(r"error|cannot|can't|failed|failure|invalid|not valid|missing|not installed|no such|refused|unsupported|needs to be|could not|couldn't|unable to", re.IGNORECASE)
+
+
+# Returns the literal text one print argument shows, leaving out the parts an f-string fills at runtime
+def printed_text(node):
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else ""
+    if isinstance(node, ast.JoinedStr):
+        return "".join(printed_text(part) for part in node.values)
+    if isinstance(node, ast.BinOp):
+        return printed_text(node.left) + printed_text(node.right)
+    return ""
+
+
+# Returns every printed line that reads as a problem, paired with the line it sits on
+def reported_problems(source):
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") in {"print", "SystemExit"}):
+            continue
+        text = " ".join(printed_text(argument) for argument in node.args)
+        if TROUBLE_WORDS.search(text):
+            found.append((node.lineno, " ".join(text.split())))
+    return found
+
+
+# A problem reported without a category leaves the reader with a message and no next step
+def test_every_reported_problem_goes_through_the_classifier():
+    unexplained = [f"line {line}: {text[:120]}" for line, text in reported_problems(inspect.getsource(monitor)) if not any(marker in text for marker in CLASSIFIER_EXEMPTIONS)]
+
+    assert unexplained == []
+
+
+# An exemption list that stopped matching anything would quietly cover the whole file
+def test_the_classifier_guard_still_inspects_the_source():
+    source = inspect.getsource(monitor)
+    inspected = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and getattr(node.func, "id", "") in {"print", "SystemExit"}]
+    problems = reported_problems(source)
+
+    assert len(inspected) > 300
+    assert all(any(marker in text for _, text in problems) for marker in CLASSIFIER_EXEMPTIONS), "an exemption stopped matching a printed line"

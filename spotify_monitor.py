@@ -1432,6 +1432,10 @@ def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
     return f"{fix}\nGuide: {guide_url}"
 
 
+# Returns the advice an optional package that is missing carries, naming what the run loses and how to install it
+def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice: return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
+
+
 # Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
 def secret_entry_cancelled_advice(subject, flag, guide_url):
     return make_recovery_advice("secret.entry", f"{subject[:1].upper()}{subject[1:]} setup was cancelled and the dotenv file was not changed", recovery_fix_with_guide(f"Run {flag} again when you have the value ready", guide_url), False)
@@ -4722,7 +4726,8 @@ def reload_secrets_signal_handler(sig, frame):
                 print(f"* No {default_dotenv_filename if not DOTENV_FILE else 'dotenv'} file found, skipping env-var reload{suffix}")
         except ImportError:
             env_path = None
-            print(f"* python-dotenv not installed, skipping env-var reload{suffix}")
+            print_monitor_recovery(RecoveryError(missing_dependency_advice("python-dotenv", "The env-var reload was skipped", _wizard_render_command([sys.executable or "python3", "-m", "pip", "install", "python-dotenv"]))), "runtime", label="Warning")
+            print(suffix, end="")
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             print_recovery_error(exc, "config_invalid", detail=f"Dotenv file '{env_path}' could not be reloaded: {exc}")
             env_path = None
@@ -5386,7 +5391,7 @@ def persist_spotify_scrobble_refresh_token(refresh_token: str) -> bool:
         verbose_notice(f"Saved a rotated Spotify recent-play refresh token in {DOTENV_FILE}")
         return True
     except Exception as exc:
-        print(f"* Warning: Spotify rotated the recent-play refresh token but '{DOTENV_FILE}' could not be updated: {sanitize_error_text(exc)}")
+        print_monitor_recovery(RecoveryError(make_recovery_advice("file.unwritable", f"Spotify rotated the recent-play refresh token but '{DOTENV_FILE}' could not be updated", recovery_fix_with_guide("Check the dotenv file and its directory permissions, then re-authorize if the saved token stops working", SECRETS_GUIDE_URL), False, f"{type(exc).__name__}: {exc}")), "runtime", label="Warning")
         return False
 
 
@@ -7497,34 +7502,27 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
         if exc.text:
             details.append(f"Source: {exc.text.rstrip()}")
         details.append(f"Parser: {exc.msg}")
-        advice = classify_recovery_error(exc, "config_invalid", " | ".join(details))
+        summary = f"{details[0]} ({', '.join(details[1:])})" if len(details) > 1 else details[0]
+        advice = make_recovery_advice("config.invalid", summary, recovery_fix_with_guide("Correct the line and matching quotes. For Windows paths use forward slashes or doubled backslashes then retry", CONFIG_GUIDE_URL), False, " | ".join(details))
         if error_out is not None:
             error_out.append(advice)
         if report_errors:
-            print(f"* Error: {details[0]}")
-            for item in details[1:]:
-                print(f"* {item}")
-            print("To fix: Correct the line and matching quotes. For Windows paths use forward slashes or doubled backslashes then retry.")
-            print(f"Guide: {CONFIG_GUIDE_URL}")
+            print(render_recovery_error(RecoveryError(advice)))
         return False
     except UnicodeDecodeError as exc:
-        advice = classify_recovery_error(exc, "config_invalid", f"Config file '{config_path}' is not valid UTF-8")
+        advice = make_recovery_advice("config.invalid", f"Config file '{config_path}' is not valid UTF-8", recovery_fix_with_guide("Save the file as UTF-8 then retry", CONFIG_GUIDE_URL), False, f"{type(exc).__name__}: {exc}")
         if error_out is not None:
             error_out.append(advice)
         if report_errors:
-            print(f"* Error: Config file '{config_path}' is not valid UTF-8")
-            print("To fix: Save the file as UTF-8 then retry.")
-            print(f"Guide: {CONFIG_GUIDE_URL}")
+            print(render_recovery_error(RecoveryError(advice)))
         return False
     except ValueError as exc:
         detail = f"Config file '{config_path}' contains unsupported content: {exc}"
-        advice = classify_recovery_error(exc, "config_invalid", detail)
+        advice = make_recovery_advice("config.invalid", detail, recovery_fix_with_guide("Use only documented NAME = literal assignments from the generated configuration then retry", CONFIG_GUIDE_URL), False, f"{type(exc).__name__}: {exc}")
         if error_out is not None:
             error_out.append(advice)
         if report_errors:
-            print(f"* Error: {detail}")
-            print("To fix: Use only documented NAME = literal assignments from the generated configuration then retry.")
-            print(f"Guide: {CONFIG_GUIDE_URL}")
+            print(render_recovery_error(RecoveryError(advice)))
         return False
     except Exception as exc:
         advice = classify_recovery_error(exc, "config_invalid", f"Config file '{config_path}' failed with {type(exc).__name__}: {exc}")
@@ -12287,11 +12285,7 @@ def main():
 
     numeric_errors = runtime_configuration_errors()
     if numeric_errors and not args.doctor:
-        print("* Error: Invalid numeric settings")
-        for numeric_error in numeric_errors:
-            print(f"* {numeric_error}")
-        print("To fix: Use the documented positive interval and count values then retry.")
-        print(f"Guide: {INTERVALS_GUIDE_URL}")
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", "One or more numeric settings are invalid: " + "; ".join(numeric_errors), recovery_fix_with_guide("Use the documented positive interval and count values then retry", INTERVALS_GUIDE_URL), False, "Invalid numeric settings: " + "; ".join(numeric_errors))))
         sys.exit(1)
 
     if args.set_smtp_password:
@@ -12642,13 +12636,7 @@ def main():
         if WEBHOOK_ENABLED and normalized_webhook_provider() == "ntfy":
             install_command = notification_images_install_command()
             print("*" * HORIZONTAL_LINE)
-            print("* WARNING: ntfy artwork is enabled but the optional Pillow package is not installed")
-            if install_command:
-                print(f"* To attach artwork, install it with: {install_command}")
-            else:
-                print("* To attach artwork, use a published Docker image or add Pillow to your own image build")
-            print("* To stop this warning, set NTFY_IMAGES to False in the configuration file")
-            print("* Sending ntfy alerts as text only...")
+            print(render_monitor_recovery(missing_dependency_advice("Pillow", "ntfy alerts will be sent as text only", install_command, "Or set NTFY_IMAGES to False in the configuration file to stop this warning"), label="Warning"))
             print("*" * HORIZONTAL_LINE + "\n")
 
     # We define signal handlers only for Linux, Unix & MacOS since Windows has limited number of signals supported

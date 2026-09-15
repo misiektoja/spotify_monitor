@@ -390,9 +390,9 @@ def test_config_syntax_error_is_actionable(capsys):
         assert monitor.load_config_file(config_path, {}) is False
     output = capsys.readouterr().out
     assert str(config_path) in output
-    assert "* Line: 2" in output
+    assert "Line: 2" in output
     assert 'TARGET_USER_URI_ID = "broken' in output
-    assert "* Parser:" in output
+    assert "Parser:" in output
     assert "To fix:" in output
     assert "matching quotes" in output
     assert "forward slashes or doubled backslashes" in output
