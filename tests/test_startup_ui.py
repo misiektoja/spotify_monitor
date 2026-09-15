@@ -355,7 +355,7 @@ def test_verbose_runtime_is_event_driven(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", False)
     actual_started_at = monitor.debug_monitor_check_start(3, "target.user", started_at)
     monitor.debug_monitor_check_timing(3, "target.user", actual_started_at, 30, completed_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, completed_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", completed_at)
     monitor.verbose_print("Authentication token refreshed (cookie mode)")
     output = capsys.readouterr().out
     assert actual_started_at == started_at
@@ -373,13 +373,17 @@ def test_debug_runtime_check_timing(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", True)
     actual_started_at = monitor.debug_monitor_check_start(3, "target.user", started_at)
     monitor.debug_monitor_check_timing(3, "target.user", actual_started_at, 30, completed_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, completed_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", completed_at)
     output = capsys.readouterr().out
     assert "Starting check: check=#3, user=target.user" in output
+    # A completed poll is the one traced operation with a result, so it reports the result rather than only its timing
+    assert "Completed check: check=#3, user=target.user, outcome=OK" in output
     assert f"last={monitor.get_date_from_ts(started_at)}" in output
     assert f"next={monitor.get_date_from_ts(completed_at + monitor.timedelta(seconds=30))}" in output
     assert "interval=30 seconds" in output
     assert f"Next visibility check: user=target.user, next={monitor.get_date_from_ts(completed_at + monitor.timedelta(seconds=180))}" in output
+    # A wait that only says how long it is leaves the reader guessing what the run is waiting for
+    assert "interval=3 minutes, reason=the target profile is not visible" in output
 
 
 # Verifies normal mode suppresses verbose events and per-poll debug timing
@@ -389,7 +393,7 @@ def test_normal_mode_suppresses_runtime_check_status(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", False)
     actual_started_at = monitor.debug_monitor_check_start(1, "target.user", started_at)
     monitor.debug_monitor_check_timing(1, "target.user", actual_started_at, 30, started_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, started_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", started_at)
     monitor.verbose_print("Authentication token refreshed (cookie mode)")
     assert actual_started_at == started_at
     assert capsys.readouterr().out == ""

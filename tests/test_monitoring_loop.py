@@ -137,6 +137,23 @@ def test_timed_out_request_retries_on_the_alarm_delay(loop_environment, monkeypa
     assert sleeps == [monitor.ALARM_RETRY]
 
 
+# Verifies each wait a failed check leads into says how long it is and what it is waiting for, since the two
+# paths wait for different reasons and a trace that stops at the failure leaves the pause unexplained
+def test_every_wait_after_a_failed_check_says_how_long_it_is_and_why(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=Exception("503 Server Error: Service Unavailable")))
+
+    run_one_iteration(loop_environment)
+    assert f"Retry wait: due_in={monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}, reason=waiting the error interval after a failed check" in capsys.readouterr().out
+
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=monitor.TimeoutException()))
+
+    run_one_iteration(loop_environment)
+    assert f"Retry wait: due_in={monitor.display_time(monitor.ALARM_RETRY)}, reason=a Spotify request timed out" in capsys.readouterr().out
+
+
 # Verifies retained activity alerts are retried once per monitoring check, before any network work
 def test_pending_notifications_are_retried_each_tick(loop_environment, monkeypatch):
     retry = Mock()

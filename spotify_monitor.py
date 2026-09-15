@@ -4514,16 +4514,16 @@ def debug_monitor_check_timing(check_number: int, user: str, started_at: datetim
         return
     check_completed_at = completed_at or datetime.now()
     next_check = check_completed_at + timedelta(seconds=sleep_time)
-    debug_print("Completed check", check=f"#{check_number}", user=user, last=get_date_from_ts(started_at), next=get_date_from_ts(next_check), interval=display_time(sleep_time))
+    debug_print("Completed check", check=f"#{check_number}", user=user, outcome="OK", last=get_date_from_ts(started_at), next=get_date_from_ts(next_check), interval=display_time(sleep_time))
 
 
 # Logs the exact time of a scheduled target visibility retry in debug mode
-def debug_monitor_wait_timing(user: str, sleep_time: int, current_time: Optional[datetime] = None) -> None:
+def debug_monitor_wait_timing(user: str, sleep_time: int, reason: str, current_time: Optional[datetime] = None) -> None:
     if not DEBUG_MODE:
         return
     now = current_time or datetime.now()
     next_check = now + timedelta(seconds=sleep_time)
-    debug_print("Next visibility check", user=user, next=get_date_from_ts(next_check), interval=display_time(sleep_time))
+    debug_print("Next visibility check", user=user, next=get_date_from_ts(next_check), interval=display_time(sleep_time), reason=reason)
 
 
 # Returns the timestamp/datetime object in human readable format (short version); eg.
@@ -10240,6 +10240,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             _restore_timeout_alarm(alarm_state)
             print_monitor_recovery(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", recovery_hint_tracker, f"retrying in {display_time(ALARM_RETRY)}")
             print_cur_ts("Timestamp:\t\t\t")
+            debug_print("Retry wait", due_in=display_time(ALARM_RETRY), reason="a Spotify request timed out")
             time.sleep(ALARM_RETRY)
             continue
         except Exception as e:
@@ -10287,6 +10288,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # with nothing under it reads as a run that stopped there
             if outage_outcome in ("full", "repeat") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
+            debug_print("Retry wait", due_in=display_time(SPOTIFY_ERROR_INTERVAL), reason="waiting the error interval after a failed check")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
             continue
 
@@ -11111,7 +11113,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
-            debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
+            debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, "the target profile is not visible")
             time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
             continue
 
