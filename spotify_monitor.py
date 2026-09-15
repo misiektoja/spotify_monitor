@@ -2988,13 +2988,6 @@ def sanitize_terminal_text(message):
     return "".join(parts)
 
 
-# A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
-# block's own colour would disappear inside it and the two sets are kept disjoint. Warnings and signals are
-# not on the block list: both were yellow, which is the playlist colour, so they mark their own opening
-# words instead of painting the line and the values inside keep carrying the meaning
-BLOCK_STYLE_PARTS = ("error", "email", "webhook", "info")
-NAME_STYLE_PARTS = ("username", "id", "artist", "track", "album", "playlist", "link")
-
 # Internal flag & style map for colour handling
 COLOR_ENABLED = False
 _COLOR_STYLES: dict = {}
@@ -3040,6 +3033,13 @@ DEFAULT_COLOR_THEME = {
     "count_down": "red",
     "link": "blue underline",
 }
+
+# A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
+# block's own colour would disappear inside it and the two sets are kept disjoint. Warnings and signals are
+# not on the block list: both were yellow, which is the playlist colour, so they mark their own opening
+# words instead of painting the line and the values inside keep carrying the meaning
+BLOCK_STYLE_PARTS = ("error", "email", "webhook", "info")
+NAME_STYLE_PARTS = ("username", "id", "artist", "track", "album", "playlist", "link")
 
 # COLOR_THEME key names used by older releases, still honoured so an existing config keeps working
 _THEME_KEY_ALIASES = {"user_uri_id": "id"}
