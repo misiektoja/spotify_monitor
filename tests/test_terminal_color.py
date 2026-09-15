@@ -680,3 +680,12 @@ def test_truncation_applies_to_every_line():
     pytest.importorskip("wcwidth")
 
     assert monitor.truncate_string_per_line("abcdef\nabcdef", 3) == "abc\nabc"
+
+
+# Verifies the TLS row colours its state word, the one setting whose off state weakens a security property
+def test_the_tls_row_colours_its_state(colored):
+    on_row = monitor._colorize_line("* TLS verification:             On")
+    off_row = monitor._colorize_line("* TLS verification:             Off, server certificates are not checked")
+
+    assert on_row == f"* TLS verification:             {colored['boolean_true']}On{monitor.ANSI_RESET}"
+    assert off_row == f"* TLS verification:             {colored['boolean_false']}Off{monitor.ANSI_RESET}, server certificates are not checked"
