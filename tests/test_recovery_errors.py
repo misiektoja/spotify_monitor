@@ -123,6 +123,18 @@ def test_smtp_recovery_categories():
     assert monitor.classify_recovery_error(requests.ConnectionError("connection refused"), "smtp").code == "smtp.connection"
 
 
+# Verifies the setting that makes delivery impossible is named in the summary rather than only under --debug
+@pytest.mark.parametrize("setting,value,named", [("SMTP_HOST", "not a host", "SMTP_HOST is not a valid IP address or hostname"), ("SMTP_PORT", 0, "SMTP_PORT is not a port number between 1 and 65535"), ("SENDER_EMAIL", "not-an-address", "SENDER_EMAIL or RECEIVER_EMAIL is not an email address"), ("SMTP_USER", "your_smtp_user", "SMTP_USER or SMTP_PASSWORD is empty or still set to its placeholder")])
+def test_an_unusable_mail_setting_is_named_in_the_summary(monkeypatch, capsys, setting, value, named):
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", False)
+    for name, usable in (("SMTP_HOST", "smtp.example.com"), ("SMTP_PORT", 587), ("SMTP_USER", "user"), ("SMTP_PASSWORD", "secret"), ("SENDER_EMAIL", "sender@example.com"), ("RECEIVER_EMAIL", "receiver@example.com")):
+        monkeypatch.setattr(monitor, name, usable)
+    monkeypatch.setattr(monitor, setting, value)
+
+    assert monitor.send_email("subject", "body", "", False) == 1
+    assert f"* Error: {named}" in capsys.readouterr().out
+
+
 # Verifies webhook failures stay distinct from Spotify rate-limit categories
 def test_webhook_recovery_categories():
     assert monitor.classify_recovery_error(context="webhook_config").code == "webhook.invalid"
