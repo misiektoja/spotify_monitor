@@ -142,7 +142,7 @@ regexp=^[\t ]*(?:[-*][\t ]+)?(?:Last track duration|Match duration|Match finishe
 colours=unchanged, green
 count=stop
 -
-regexp=^[\t ]*(?:[-*][\t ]+)?(?:Current game|Title name|User is currently in-game|In-game|Game|Commit message):[\t ]+(\S.*?)(?:[\t ]*\((PS[A-Z0-9_]*|MOBILE_APP)\))?[\t ]*$
+regexp=^[\t ]*(?:[-*][\t ]+)?(?:Current game|Title name|User is currently in-game|In-game|Game|Commit message|IP Address):[\t ]+(\S.*?)(?:[\t ]*\((PS[A-Z0-9_]*|MOBILE_APP)\))?[\t ]*$
 colours=unchanged, bright_yellow, blue
 count=stop
 -
@@ -181,7 +181,7 @@ count=stop
 # Whole-line highlights, painted first so the values inside keep their own colour
 # ---------------------------------------------------------------------------
 
-regexp=(?i)^[\t ]*\*[\t ]*(?:info|note)\b.*$
+regexp=(?i)^[\t ]*\*[\t ]*info\b.*$
 colours=cyan
 count=once
 -
@@ -423,8 +423,11 @@ colours=unchanged, unchanged, green, unchanged, green
 # The monitored user, named in a sentence or in a key=value diagnostic field
 # ---------------------------------------------------------------------------
 
-regexp=(?i)\b(Last\.fm user|GitHub user|Instagram user|Xbox user|Xbox gamer tag|PSN user|PlayStation user|Steam user|LoL user|Monitoring(?:[\t ]+\w+)?[\t ]+user|for user|by user|of user|listened by|owned by|Tracking|user[\t ]+with(?:[\t ]+\w+)?[\t ]+ID|user):?([\t ]+)((?!(?:with|id|agent|played|plays|playing|got|is|was|were|has|have|had|changed|started|stopped|paused|resumed|skipped|active|inactive|offline|online|away|snooze|to|from|and|the|not|no|yes|for|by|of|agreement|list|lists)\b)[\w.#-]+)
+regexp=(?i)\b(Last\.fm user|GitHub user|Instagram user|Xbox user|Xbox gamer tag|PSN user|PlayStation user|Steam user|LoL user|Monitoring(?:[\t ]+\w+)?[\t ]+user|for user|by user|of user|listened by|owned by|user[\t ]+with(?:[\t ]+\w+)?[\t ]+ID|user):?([\t ]+)((?!(?:with|id|agent|played|plays|playing|got|is|was|were|has|have|had|changed|started|stopped|paused|resumed|skipped|active|inactive|offline|online|away|snooze|to|from|and|the|not|no|yes|for|by|of|agreement|list|lists)\b)[\w.#-]+)
 colours=unchanged, unchanged, unchanged, bright_cyan underline
+-
+regexp=^\*[\t ]+Tracking[\t ]+([\w._-]+)
+colours=unchanged, bright_cyan underline
 -
 regexp=\b(user)(=)([\w.:#-]+)
 colours=unchanged, unchanged, unchanged, bright_cyan underline
