@@ -1441,6 +1441,11 @@ def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
     return f"{fix}\nGuide: {guide_url}"
 
 
+# Escapes text for an HTML email body and keeps its line breaks, which HTML would otherwise collapse into spaces
+def html_text(text: str) -> str:
+    return escape(text).replace("\n", "<br>")
+
+
 # Returns the advice an optional package that is missing carries, naming what the run loses and how to install it
 def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice:
     return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
@@ -10365,7 +10370,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             else:
                 m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
             m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-            m_body_html = f"<html><head></head><body>{escape(advice.summary)}<br><br>To fix: {escape(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+            m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
             # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
             # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
             alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
@@ -10668,7 +10673,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         else:
                             m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
                         m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(advice.summary)}<br><br>To fix: {escape(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                        m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                         # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
                         # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
                         alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS

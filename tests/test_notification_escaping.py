@@ -50,7 +50,7 @@ def interpolation_is_safe(expression):
     if isinstance(parsed, ast.Call):
         function = parsed.func
         name = function.id if isinstance(function, ast.Name) else getattr(function, "attr", "")
-        return name in {"escape", "escape_html_attr", *SAFE_HELPERS}
+        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS}
 
     return False
 
@@ -71,7 +71,7 @@ def test_html_body_sweep_covers_every_notification():
 
 
 # Confirms an unescaped interpolation would actually be reported, so the sweep cannot pass vacuously
-@pytest.mark.parametrize("expression,expected", [("escape(sp_username)", True), ("escape_html_attr(sp_track_url)", True), ("music_section_html", True), ("listened_songs", True), ("sp_username", False), ("sp_track", False), ("sp_track_url", False), ("spotify_convert_uri_to_url(uri)", False)])
+@pytest.mark.parametrize("expression,expected", [("escape(sp_username)", True), ("html_text(advice.fix)", True), ("escape_html_attr(sp_track_url)", True), ("music_section_html", True), ("listened_songs", True), ("sp_username", False), ("sp_track", False), ("sp_track_url", False), ("spotify_convert_uri_to_url(uri)", False)])
 def test_interpolation_safety_rule(expression, expected):
     assert interpolation_is_safe(expression) is expected
 
