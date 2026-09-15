@@ -22,7 +22,23 @@ def make_http_error(status_code):
 
 # Verifies the published recovery category set remains stable
 def test_recovery_codes_are_stable():
-    assert monitor.RECOVERY_CODES == frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "secret.entry", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "file.exists", "unknown"})
+    assert monitor.RECOVERY_CODES == frozenset({"config.missing", "config.invalid", "config.insecure", "dependency.missing", "secret.missing", "secret.entry", "auth.cookie_invalid", "auth.client_invalid", "auth.rejected", "auth.scrobble_expired", "network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.quota_exceeded", "spotify.unavailable", "target.invalid", "target.not_found", "target.not_visible", "smtp.invalid", "smtp.authentication", "smtp.connection", "webhook.invalid", "webhook.rejected", "webhook.rate_limited", "webhook.connection", "file.unreadable", "file.unwritable", "file.exists", "resource.exhausted", "unknown"})
+
+
+# Verifies a local file descriptor limit is reported as itself rather than as a failure of the call that hit it
+def test_a_file_descriptor_limit_is_not_reported_as_a_service_failure():
+    try:
+        try:
+            raise OSError(24, "Too many open files")
+        except OSError as inner:
+            raise RuntimeError("the Spotify request failed") from inner
+    except RuntimeError as error:
+        advice = monitor.classify_recovery_error(error)
+
+    assert advice.code == "resource.exhausted"
+    assert advice.retryable is False
+    assert "not a Spotify problem" in advice.summary
+    assert "ulimit -n 4096" in advice.fix
 
 
 # Verifies HTTP status classification uses explicit Spotify context
