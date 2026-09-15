@@ -1288,6 +1288,9 @@ DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
 # A check interval below this invites the Spotify rate limiter, which stops the tool seeing anything
 DOCTOR_MIN_SAFE_CHECK_INTERVAL = 30
 
+# The fixed section order the report renders in, chosen so each section depends only on the ones above it
+DOCTOR_SECTIONS = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
+
 # Delivery results are printed as they happen rather than inside a section, but they still count in the summary
 DOCTOR_DELIVERY_SECTION = "Optional delivery tests"
 
@@ -8129,8 +8132,7 @@ def render_doctor_sections(report: DoctorReport) -> str:
     # The install method is context rather than a check: it cannot fail, so it is stated once here
     # instead of taking a result row that no marker describes
     lines = [colorize("header", "Doctor"), f"Detected install method: {colorize('username', _wizard_install_method())}"]
-    sections = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
-    for section in sections:
+    for section in DOCTOR_SECTIONS:
         section_checks = [item for item in report.checks if item.section == section]
         if not section_checks:
             continue
