@@ -291,7 +291,9 @@ def test_scrobble_health_setup_accepts_file_options():
 def test_scrobble_health_setup_rejects_disabled_config_destination():
     result = run_cli("--setup-scrobble-health", "--config-file", "none")
     assert result.returncode == 1
-    assert "Setup cannot start: --setup-scrobble-health requires a config destination. Replace '--config-file none' with a writable path." in result.stdout
+    assert "* Error: --setup-scrobble-health has nowhere to write the configuration" in result.stdout
+    assert "To fix: Replace '--config-file none' with a writable path, or drop the flag to write spotify_monitor_scrobble_health.conf in the current directory" in result.stdout
+    assert "Guide: https://misiektoja.github.io/spotify_monitor/configuration/#configuration-file" in result.stdout
     assert "usage:" not in result.stderr
 
 

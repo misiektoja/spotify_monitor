@@ -2,6 +2,7 @@ import builtins
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -1293,6 +1294,21 @@ def test_set_smtp_password_requires_safe_persistence():
         monitor.run_set_smtp_password(interactive=False, getpass_func=Mock(side_effect=AssertionError("prompted")))
     with pytest.raises(monitor.RecoveryError, match="dotenv destination"):
         monitor.run_set_smtp_password(env_file="none", interactive=True, getpass_func=Mock(side_effect=AssertionError("prompted")))
+
+
+# Verifies each setup destination switched off is refused with the flag to replace and the matching guide
+@pytest.mark.parametrize("flag, summary, fix, guide", [
+    ("--config-file", "--setup has nowhere to write the configuration", "Replace '--config-file none' with a writable path, or drop the flag to write spotify_monitor.conf in the current directory", "#configuration-file"),
+    ("--env-file", "--setup has nowhere to write the private settings", "Replace '--env-file none' with a writable path, or drop the flag to write .env in the current directory", "#storing-secrets"),
+])
+def test_setup_refuses_a_destination_switched_off(tmp_path, flag, summary, fix, guide):
+    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--setup", flag, "none"], cwd=tmp_path, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 1
+    assert f"* Error: {summary}" in result.stdout
+    assert f"To fix: {fix}" in result.stdout
+    assert f"Guide: https://misiektoja.github.io/spotify_monitor/configuration/{guide}" in result.stdout
+    assert "usage:" not in result.stderr
 
 
 # Verifies the sign-in uses the configured mail server and restores the password it borrowed

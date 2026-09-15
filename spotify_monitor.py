@@ -1656,6 +1656,13 @@ def render_recovery_error(error: Any = None, context: str = "runtime", debug: Op
     return "\n".join(lines)
 
 
+# Returns the advice for a setup destination switched off with the "none" sentinel, which names the flag to replace
+def setup_destination_advice(flag: str, command: str = "--setup", config_filename: str = DEFAULT_CONFIG_FILENAME, dotenv_filename: str = DEFAULT_DOTENV_FILENAME) -> RecoveryAdvice:
+    if flag == "--config-file":
+        return make_recovery_advice("file.unwritable", f"{command} has nowhere to write the configuration", recovery_fix_with_guide(f"Replace '--config-file none' with a writable path, or drop the flag to write {config_filename} in the current directory", CONFIG_GUIDE_URL), False)
+    return make_recovery_advice("file.unwritable", f"{command} has nowhere to write the private settings", recovery_fix_with_guide(f"Replace '--env-file none' with a writable path, or drop the flag to write {dotenv_filename} in the current directory", SECRETS_GUIDE_URL), False)
+
+
 # Prints one structured recovery error and returns its stable advice
 def print_recovery_error(error: Any = None, context: str = "runtime", debug: Optional[bool] = None, detail: Any = "") -> RecoveryAdvice:
     advice = classify_recovery_error(error, context, detail)
@@ -11788,10 +11795,10 @@ def main():
         if setup_scrobble_conflicts:
             parser.error("--setup-scrobble-health cannot be combined with " + ", ".join(setup_scrobble_conflicts))
         if args.config_file is not None and args.config_file.casefold() == "none":
-            print("Setup cannot start: --setup-scrobble-health requires a config destination. Replace '--config-file none' with a writable path.")
+            print(render_recovery_error(RecoveryError(setup_destination_advice("--config-file", "--setup-scrobble-health", SCROBBLE_HEALTH_CONFIG_FILENAME, SCROBBLE_HEALTH_DOTENV_FILENAME))))
             sys.exit(1)
         if args.env_file is not None and args.env_file.casefold() == "none":
-            print("Setup cannot start: --setup-scrobble-health requires a dotenv destination. Replace '--env-file none' with a writable path.")
+            print(render_recovery_error(RecoveryError(setup_destination_advice("--env-file", "--setup-scrobble-health", SCROBBLE_HEALTH_CONFIG_FILENAME, SCROBBLE_HEALTH_DOTENV_FILENAME))))
             sys.exit(1)
         run_scrobble_health_setup_wizard(args.config_file, args.env_file)
         sys.exit(0)
@@ -11993,10 +12000,10 @@ def main():
         if setup_conflicts:
             parser.error("--setup cannot be combined with " + ", ".join(setup_conflicts))
         if args.config_file is not None and args.config_file.casefold() == "none":
-            print("Setup cannot start: --setup requires a config destination. Replace '--config-file none' with a writable path.")
+            print(render_recovery_error(RecoveryError(setup_destination_advice("--config-file"))))
             sys.exit(1)
         if args.env_file is not None and args.env_file.casefold() == "none":
-            print("Setup cannot start: --setup requires a dotenv destination. Replace '--env-file none' with a writable path.")
+            print(render_recovery_error(RecoveryError(setup_destination_advice("--env-file"))))
             sys.exit(1)
         run_setup_wizard(args.user_id, args.config_file, args.env_file)
         sys.exit(0)
