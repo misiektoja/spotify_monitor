@@ -8290,18 +8290,6 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
     return 1 if any(check.status == "FAIL" for check in report.checks) else 0
 
 
-# Resolves an executable path by checking if it's a valid file or searching in $PATH
-def resolve_executable(path):
-    if os.path.isfile(path) and os.access(path, os.X_OK):
-        return path
-
-    found = shutil.which(path)
-    if found:
-        return found
-
-    raise FileNotFoundError(f"Could not find executable '{path}'")
-
-
 # Renders one monitoring failure in the shape every monitor in this family prints
 def render_monitor_recovery(advice: RecoveryAdvice, retry_note: str = "", with_fix: bool = True, label: str = "Error") -> str:
     lines = [f"* {label}: {advice.summary}" + (f" ({retry_note})" if retry_note else "")]
