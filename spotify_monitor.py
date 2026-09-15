@@ -1440,7 +1440,8 @@ def recovery_fix_with_guide(fix: str, guide_url: str) -> str:
 
 
 # Returns the advice an optional package that is missing carries, naming what the run loses and how to install it
-def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice: return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
+def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice:
+    return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
 
 
 # Returns the advice a cancelled secret entry reports, worded the same way by every one-shot secret command
@@ -1504,9 +1505,10 @@ def is_too_many_open_files(error):
             return True
     return False
 
-# Returns the next step for a failure no rule recognized, since a run already printing the technical cause cannot be told to re-run for it
-def unknown_failure_fix(): return "Run --doctor and review the technical detail below, then open an issue with this output if the failure continues" if DEBUG_MODE else "Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail"
 
+# Returns the next step for a failure no rule recognized, since a run already printing the technical cause cannot be told to re-run for it
+def unknown_failure_fix():
+    return "Run --doctor and review the technical detail below, then open an issue with this output if the failure continues" if DEBUG_MODE else "Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail"
 
 
 # Classifies a user-facing failure using typed errors, HTTP status and explicit context
@@ -3730,6 +3732,7 @@ def smtp_ssl_context():
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
     return context
+
 
 # The last connectivity failure, so a quiet caller can classify it instead of the check printing it
 LAST_CONNECTIVITY_ERROR = None
@@ -7745,7 +7748,8 @@ def doctor_secret_is_set(value) -> bool:
 
 
 # Returns the diagnostic fields describing one secret, keeping the length out of the value so a line still splits on ", "
-def secret_fields(value, key=None) -> Dict[str, Any]: return {"value": "set" if doctor_secret_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_secret_is_set(value) else None}
+def secret_fields(value, key=None) -> Dict[str, Any]:
+    return {"value": "set" if doctor_secret_is_set(value) else "not set", "chars": len(str(value).strip()) if key in FIXED_LENGTH_SECRET_KEYS and doctor_secret_is_set(value) else None}
 
 
 # Records where one secret resolved from and traces it, so a later layer overwrites the earlier answer instead of adding to it
