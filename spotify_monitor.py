@@ -10270,6 +10270,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     email_sent = False
     webhook_sent = False
+    # The error alert is tracked apart from the event alerts, once per channel and per failure category
+    error_email_sent = False
+    error_webhook_sent = False
+    error_delivery_code = None
 
     mark_monitoring_started()
     out = f"Monitoring user {user_uri_id}"
@@ -10303,6 +10307,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
+            error_email_sent = False
+            error_webhook_sent = False
+            error_delivery_code = None
             _restore_timeout_alarm(alarm_state)
         except TimeoutException:
             _restore_timeout_alarm(alarm_state)
@@ -10318,6 +10325,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
             advice = classify_recovery_error(e, auth_context)
+            # A failure that changes category is a different failure, so each channel earns a new alert for it
+            if advice.code != error_delivery_code:
+                error_email_sent = False
+                error_webhook_sent = False
+                error_delivery_code = advice.code
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice, LIVENESS_REMINDER_SECONDS)
@@ -10330,27 +10342,20 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
 
-            if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
-                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
-                    safe_error = sanitize_error_text(e)
-                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
-                    m_body = f"Client or refresh token may be invalid or expired!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                    email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
-                    email_sent = email_sent or email_succeeded
-                    webhook_sent = webhook_sent or webhook_succeeded
-                    delivery_reported = True
-
-            elif TOKEN_SOURCE == 'cookie' and advice.code == "auth.cookie_invalid":
-                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
-                    safe_error = sanitize_error_text(e)
-                    m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
-                    m_body = f"sp_dc may be invalid/expired or Spotify has broken sth again!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>sp_dc may be invalid/expired or Spotify has broken sth again!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                    email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
-                    email_sent = email_sent or email_succeeded
-                    webhook_sent = webhook_sent or webhook_succeeded
-                    delivery_reported = True
+            if advice.code == "auth.client_invalid":
+                m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+            elif advice.code == "auth.cookie_invalid":
+                m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
+            else:
+                m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
+            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+            m_body_html = f"<html><head></head><body>{escape(advice.summary)}<br><br>To fix: {escape(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+            # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
+            if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
+                email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not error_email_sent, webhook_event_enabled("error") and not error_webhook_sent)
+                error_email_sent = error_email_sent or email_succeeded
+                error_webhook_sent = error_webhook_sent or webhook_succeeded
+                delivery_reported = True
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
             # with nothing under it reads as a run that stopped there
@@ -10572,6 +10577,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
+                        error_email_sent = False
+                        error_webhook_sent = False
+                        error_delivery_code = None
                         _restore_timeout_alarm(alarm_state)
                         break
                     except TimeoutException:
@@ -10584,6 +10592,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
                         advice = classify_recovery_error(e, auth_context)
+                        # A failure that changes category is a different failure, so each channel earns a new alert for it
+                        if advice.code != error_delivery_code:
+                            error_email_sent = False
+                            error_webhook_sent = False
+                            error_delivery_code = advice.code
 
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                             SP_CACHED_ACCESS_TOKEN = None
@@ -10629,26 +10642,25 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         elif report_in_full:
                             print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
 
-                            if TOKEN_SOURCE == 'client' and advice.code == "auth.client_invalid":
-                                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
-                                    safe_error = sanitize_error_text(e)
-                                    m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
-                                    m_body = f"Client or refresh token may be invalid or expired!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>Client or refresh token may be invalid or expired!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                    email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
-                                    email_sent = email_sent or email_succeeded
-                                    webhook_sent = webhook_sent or webhook_succeeded
+                        delivery_reported = False
+                        if advice.code == "auth.client_invalid":
+                            m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                        elif advice.code == "auth.cookie_invalid":
+                            m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
+                        else:
+                            m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
+                        m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(advice.summary)}<br><br>To fix: {escape(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                        # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
+                        if (ERROR_NOTIFICATION and not error_email_sent) or (webhook_event_enabled("error") and not error_webhook_sent):
+                            email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not error_email_sent, webhook_event_enabled("error") and not error_webhook_sent)
+                            error_email_sent = error_email_sent or email_succeeded
+                            error_webhook_sent = error_webhook_sent or webhook_succeeded
+                            delivery_reported = True
 
-                            elif TOKEN_SOURCE == 'cookie' and advice.code == "auth.cookie_invalid":
-                                if (ERROR_NOTIFICATION and not email_sent) or (webhook_event_enabled("error") and not webhook_sent):
-                                    safe_error = sanitize_error_text(e)
-                                    m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
-                                    m_body = f"sp_dc may be invalid/expired or Spotify has broken sth again!\n{safe_error}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                    m_body_html = f"<html><head></head><body>sp_dc may be invalid/expired or Spotify has broken sth again!<br>{escape(safe_error)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                    email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION and not email_sent, webhook_event_enabled("error") and not webhook_sent)
-                                    email_sent = email_sent or email_succeeded
-                                    webhook_sent = webhook_sent or webhook_succeeded
-
+                        # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
+                        # with nothing under it reads as a run that stopped there
+                        if report_in_full or delivery_reported:
                             print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(SPOTIFY_ERROR_INTERVAL)
 

@@ -301,6 +301,88 @@ def test_a_lasting_outage_rides_the_liveness_cadence(loop_environment, monkeypat
     assert output.count("Liveness check, timestamp:") == 2
 
 
+# Records every alert the loop hands to the delivery helper and answers with the outcome each call is given
+def recording_channels(monkeypatch, outcomes):
+    calls = []
+
+    def record(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, **kwargs):
+        calls.append({"type": notification_type, "subject": subject, "body": body, "email": bool(email_enabled), "webhook": bool(webhook_enabled)})
+        return outcomes[min(len(calls), len(outcomes)) - 1]
+
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_ERROR_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "send_notification_channels", record)
+    return calls
+
+
+# Drives the loop with a cookie token and the given buddy-list outcomes, returning the error alerts it handed out
+def error_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after):
+    calls = recording_channels(monkeypatch, outcomes)
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 100 * monitor.SPOTIFY_ERROR_INTERVAL)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    pending = list(responses)
+
+    # The last outcome repeats for as long as the loop keeps asking, so an exhausted list cannot become a failure of its own
+    def respond(*arguments, **keywords):
+        response = pending.pop(0) if len(pending) > 1 else pending[0]
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", respond)
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = stop_after
+    run_one_iteration(loop_environment)
+    return [call for call in calls if call["type"] == "error"]
+
+
+# An outage used to be printed and never delivered, since only a rejected token earned an alert
+def test_any_failure_alerts_both_channels_once(loop_environment, monkeypatch):
+    errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, True)], 6)
+
+    assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
+    assert errors[0]["subject"] == "spotify_monitor: monitoring error (uri: watched-user)"
+    assert "Spotify is temporarily unavailable" in errors[0]["body"]
+    assert "To fix:" in errors[0]["body"]
+    assert f"retry in {monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}" in errors[0]["body"]
+
+
+# A failure that changes category is a different failure, so it earns each channel a new alert
+def test_a_changed_failure_category_earns_a_new_alert(loop_environment, monkeypatch):
+    responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [http_error(401)] * 3
+    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
+
+    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)", "spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: watched-user)"]
+
+
+# Each channel is tracked on its own, so the one that failed is retried while the one that landed is left alone
+def test_a_failed_channel_is_retried_and_a_delivered_one_is_not(loop_environment, monkeypatch):
+    errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, False), (False, True)], 6)
+
+    assert [(call["email"], call["webhook"]) for call in errors] == [(True, True), (False, True)]
+
+
+# A run that recovered and fails again is in a new outage, which deserves its own alert
+def test_a_new_outage_after_a_recovery_alerts_again(loop_environment, monkeypatch):
+    failure = Exception("503 Server Error: Service Unavailable")
+    responses = [failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000), failure, failure]
+    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 5)
+
+    assert [(call["email"], call["webhook"]) for call in errors] == [(True, True), (True, True)]
+
+
+# The loop that follows an active listener reports its failures through the same alert as the outer one
+def test_a_failure_while_active_alerts_both_channels_too(loop_environment, monkeypatch):
+    responses = [buddy_list(timestamp_ms=int(time.time()) * 1000)] + [Exception("503 Server Error: Service Unavailable")] * 5
+    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
+
+    assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
+    assert errors[0]["subject"] == "spotify_monitor: monitoring error (uri: watched-user)"
+
+
 # Verifies a retry that reaches the screen on a quiet check still ends with a timestamp
 def test_a_delivery_retry_on_a_quiet_check_ends_with_a_timestamp(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 10 * monitor.SPOTIFY_ERROR_INTERVAL)
