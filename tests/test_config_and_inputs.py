@@ -424,7 +424,7 @@ def test_missing_explicit_config_is_actionable():
 
 # Verifies test email mode remains usable without any monitoring target
 def test_send_test_email_does_not_require_target():
-    setup = "runtime['check_internet'] = lambda: True; runtime['send_email'] = lambda *args, **kwargs: 0;"
+    setup = "runtime['check_internet'] = lambda: True; runtime['validate_smtp_configuration'] = lambda: None; runtime['send_email'] = lambda *args, **kwargs: 0;"
     result = run_cli(["--send-test-email", "--env-file", "none"], setup)
     assert result.returncode == 0, result.stderr
     assert "Email sent successfully" in result.stdout

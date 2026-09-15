@@ -976,6 +976,28 @@ def test_webhook_wizard_artwork_in_container_points_at_published_image(monkeypat
     assert "published Docker images" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("flag, announcement", [("--send-test-email", "Sending test email notification"), ("--send-test-webhook", "Sending a test webhook")])
+# Verifies a delivery test checks the settings before it announces an attempt it cannot make
+def test_a_delivery_test_checks_the_settings_before_it_announces(monkeypatch, capsys, flag, announcement):
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: True)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "not a host")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])
+
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+
+    output = capsys.readouterr().out
+    assert error.value.code == 1
+    assert announcement not in output
+    assert "* Error: " in output
+    assert "To fix: " in output
+
+
 # Verifies both test commands carry the subject, title and body shared with the sibling monitors
 def test_the_test_messages_use_the_shared_wording(monkeypatch):
     email = Mock(return_value=0)
@@ -986,6 +1008,8 @@ def test_the_test_messages_use_the_shared_wording(monkeypatch):
     monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
     monkeypatch.setattr(monitor, "send_email", email)
     monkeypatch.setattr(monitor, "send_webhook", delivery)
+    monkeypatch.setattr(monitor, "validate_smtp_configuration", lambda: None)
+    monkeypatch.setattr(monitor, "validate_webhook_url", lambda *args, **kwargs: True)
 
     for flag in ("--send-test-email", "--send-test-webhook"):
         monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])

@@ -12330,6 +12330,9 @@ def main():
     LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL > 0 else 0
 
     if args.send_test_webhook:
+        if not validate_webhook_url():
+            print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
+            sys.exit(1)
         print("* Sending a test webhook ...\n")
         if send_webhook("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True) == 0:
             print("* Test webhook sent successfully !")
@@ -12358,6 +12361,11 @@ def main():
         sys.exit(1)
 
     if args.send_test_email:
+        # Checked before the attempt is announced, so a mail server that was never usable is not reported as a failed send
+        validation_error = validate_smtp_configuration()
+        if validation_error is not None:
+            print(render_recovery_error(RecoveryError(validation_error)))
+            sys.exit(1)
         print("* Sending test email notification ...\n")
         if send_email("spotify_monitor: test email", "This test email was sent by --send-test-email. Your SMTP settings work.", "", SMTP_SSL, smtp_timeout=5) == 0:
             print("* Email sent successfully !")
