@@ -90,7 +90,7 @@ To change which colours are used, see [Terminal Colours](configuration.md#termin
 ## Choosing the Right Logging Level
 
 - **Default mode** reports activity changes and important errors
-- **Verbose mode (`--verbose`)** adds occasional state changes, a line naming where each delivered alert went and a complete startup summary without private values
+- **Verbose mode (`--verbose`)** adds occasional state changes, a line naming where each delivered alert went and a complete startup summary without private values. Set `DELIVERY_CONFIRMATIONS = False` to keep verbose mode without those delivery lines
 - **Debug mode (`--debug`)** adds sanitized request flow, scheduling details and internal diagnostics
 
 Either mode also expands the startup summary with the detected install method and the names of the secrets that came from the dotenv file, the environment or the configuration file. Secret values never appear.

@@ -187,7 +187,7 @@ def test_a_delivered_webhook_is_reported_in_verbose(monkeypatch: pytest.MonkeyPa
 
     assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
 
-    assert "* Webhook delivered through Discord: Now playing" in capsys.readouterr().out
+    assert "* Webhook delivered through Discord: 'Now playing'" in capsys.readouterr().out
 
 
 # Verifies a delivered email names where it went and what it was, so verbose answers whether the alert arrived
@@ -205,4 +205,28 @@ def test_a_delivered_email_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatc
 
     assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
 
-    assert "* Email delivered to receiver@example.test: Now playing" in capsys.readouterr().out
+    assert "* Email delivered to receiver@example.test: 'Now playing'" in capsys.readouterr().out
+
+
+# Verifies DELIVERY_CONFIRMATIONS drops both delivery lines without turning the rest of verbose mode off
+@pytest.mark.integration
+def test_delivery_confirmations_can_be_turned_off(monkeypatch: pytest.MonkeyPatch, webhook_server: tuple[str, type[WebhookRequestHandler]], smtp_server: tuple[int, type[SMTPRequestHandler]], capsys: pytest.CaptureFixture[str]):
+    url, _ = webhook_server
+    port, _ = smtp_server
+    configure_local_webhook(monkeypatch, url)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "127.0.0.1")
+    monkeypatch.setattr(monitor, "SMTP_PORT", port)
+    monkeypatch.setattr(monitor, "SMTP_USER", "local-user")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "local-password")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "sender@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "receiver@example.test")
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monkeypatch.setattr(monitor, "DELIVERY_CONFIRMATIONS", False)
+
+    assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
+    assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
+
+    output = capsys.readouterr().out
+    assert "Webhook delivered" not in output
+    assert "Email delivered" not in output
