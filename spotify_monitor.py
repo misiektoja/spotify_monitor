@@ -1350,7 +1350,6 @@ class StartupSummaryRow:
     value: str
     concise: bool = False
     full: bool = True
-    log: bool = True
 
 
 # Prints the selected ASCII startup banner with a separately aligned version
@@ -6690,7 +6689,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
             StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
             StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
-            StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
+            StartupSummaryRow("Output", output_state, concise=True, full=False),
             StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
             StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
             StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
@@ -6701,7 +6700,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
             StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
             # Points at the two modes for a reader who does not know they exist, so the full view drops it
-            StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False),
+            StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False),
         ]
     rows = [
         StartupSummaryRow("Target", str(target), concise=True),
@@ -6713,7 +6712,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
         StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
-        StartupSummaryRow("Output", output_state, concise=True, full=False, log=False),
+        StartupSummaryRow("Output", output_state, concise=True, full=False),
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else "None", concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
@@ -6734,7 +6733,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
         # Points at the two modes for a reader who does not know they exist, so the full view drops it
-        StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False, log=False),
+        StartupSummaryRow("More details", "use --verbose or --debug", concise=True, full=False),
     ])
     return rows
 
@@ -6753,7 +6752,7 @@ def emit_startup_summary(rows: Sequence[StartupSummaryRow], show_full: bool, str
     routed = hasattr(destination, "terminal_only") and hasattr(destination, "log_only")
     for row in rows:
         line = _format_startup_summary_row(row)
-        if routed and row.full and row.log:
+        if routed and row.full:
             destination.log_only(line)
         show_in_terminal = row.full if show_full else row.concise
         if show_in_terminal:
