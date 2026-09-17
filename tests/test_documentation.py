@@ -213,7 +213,7 @@ def test_installation_docs_cover_optional_extra_contents():
 # Verifies landing pages retain app-free authentication concepts and the stable OAuth anchor
 def test_landing_pages_cover_authentication_policy():
     for relative_path in ("README.md", "docs/index.md"):
-        assert_concepts(read_asset(relative_path), "Cookie", "Desktop Client", "web-player", "optional legacy OAuth")
+        assert_concepts(read_asset(relative_path), "cookie", "Desktop Client", "no developer app required")
     configuration = read_asset("docs/configuration.md")
     assert '<a id="spotify-oauth-app"></a>' in configuration
     assert_concepts(configuration, "migration")
