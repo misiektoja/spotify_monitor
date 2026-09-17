@@ -739,3 +739,15 @@ def test_no_setup_screen_prints_a_plain_link():
             plain.append(f"{owner}:{node.lineno}")
 
     assert plain == []
+
+
+# Verifies a fix block keeps its guide line a link while the rest of the block stays informational
+def test_a_fix_block_guide_line_is_a_link(monkeypatch):
+    link = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["link"])
+    info = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["info"])
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {"link": link, "info": info})
+
+    assert monitor.colorize_fix_line("To fix: Set the key then re-run") == f"{info}To fix: Set the key then re-run{monitor.ANSI_RESET}"
+    assert monitor.colorize_fix_line("Guide: https://example.test/page") == f"Guide: {link}https://example.test/page{monitor.ANSI_RESET}"
+    assert 'colorize("info", f"Guide:' not in Path(monitor.__file__).read_text(encoding="utf-8")
