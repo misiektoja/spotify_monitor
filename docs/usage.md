@@ -80,6 +80,8 @@ Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lin
 
 The default Listening Activity backend shows **Now playing** when Spotify reports playback. **Last played** means the feed reports playback stopped, which does not prove that the track finished. Track changes are detected at the polling interval. Counts describe observed tracks rather than completed plays. The legacy backend reports completed tracks. See [Friend Activity Backend](configuration.md#friend-activity-backend) to select a source and compare their limits.
 
+Use `spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID` for legacy reporting or `--friend-activity-backend listening_activity` for live activity. The flag overrides the saved setting for the current run and also works with `--list-friends`, `--doctor` and `--import-browser-cookie`.
+
 <a id="scrobble-health-mode"></a>
 ## Scrobble Health Mode
 

@@ -43,6 +43,7 @@ TOKEN_SOURCE = "cookie"
 
 # Friend Activity source: "listening_activity" for live activity or "buddylist" for legacy completed plays
 # Applies to monitoring, --list-friends, Doctor and cookie validation
+# Override for one run with --friend-activity-backend
 # Live activity counts observed track changes without skip, crossfade or same-track repeat estimates
 FRIEND_ACTIVITY_BACKEND = "listening_activity"
 
@@ -12332,6 +12333,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
+    global FRIEND_ACTIVITY_BACKEND
     global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
@@ -12486,6 +12488,11 @@ def main():
     )
 
     monitor_mode_options = parser.add_argument_group("Monitoring mode")
+    monitor_mode_options.add_argument(
+        "--friend-activity-backend",
+        choices=["listening_activity", "buddylist"],
+        help="Select the Friend Activity source for this run (default: saved setting or listening_activity)",
+    )
     monitor_mode_options.add_argument(
         "--monitor-mode",
         dest="monitor_mode",
@@ -12987,6 +12994,7 @@ def main():
             (args.send_test_webhook, "--send-test-webhook"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
+            (args.friend_activity_backend, "--friend-activity-backend"),
             (args.spotify_dc_cookie, "--spotify-dc-cookie"),
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
@@ -13051,6 +13059,7 @@ def main():
             (args.send_test_webhook, "--send-test-webhook"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
+            (args.friend_activity_backend, "--friend-activity-backend"),
             (args.spotify_dc_cookie, "--spotify-dc-cookie"),
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
@@ -13112,6 +13121,7 @@ def main():
             (args.send_test_webhook, "--send-test-webhook"),
             (args.list_friends, "--list-friends"),
             (args.token_source, "--token-source"),
+            (args.friend_activity_backend, "--friend-activity-backend"),
             (args.spotify_dc_cookie, "--spotify-dc-cookie"),
             (args.login_request_body_file, "--login-request-body-file"),
             (args.clienttoken_request_body_file, "--clienttoken-request-body-file"),
@@ -13217,6 +13227,8 @@ def main():
 
     # Config loading can replace these globals, so reapply explicit flags to preserve CLI precedence
     apply_diagnostic_cli_overrides(args)
+    if args.friend_activity_backend is not None:
+        FRIEND_ACTIVITY_BACKEND = args.friend_activity_backend
 
     apply_tls_verification_setting()
 

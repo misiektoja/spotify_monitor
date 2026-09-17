@@ -11,11 +11,42 @@ from requests.adapters import HTTPAdapter
 
 import spotify_monitor as monitor
 from test_monitoring_loop import LoopStopped, loop_environment as loop_environment
+from test_doctor import run_cli
 
 
 TRACK_URI = "spotify:track:4cOdK2wGLETKBW3PvgPWqT"
 OTHER_TRACK_URI = "spotify:track:4N1MFKjziFHH4IS3RYYUrU"
 USER_URI = "spotify:user:watched-user"
+
+
+# Verifies the CLI overrides saved activity sources without modifying the configuration
+@pytest.mark.parametrize("saved,override,expected", [("buddylist", None, "buddylist"), ("buddylist", "listening_activity", "listening_activity"), ("listening_activity", "buddylist", "buddylist"), ("invalid", "buddylist", "buddylist")])
+def test_backend_cli_precedence(tmp_path, saved, override, expected):
+    config = tmp_path / "monitor.conf"
+    content = f'FRIEND_ACTIVITY_BACKEND = "{saved}"\n'
+    config.write_text(content, encoding="utf-8")
+    arguments = ["--config-file", str(config), "--env-file", "none", "--doctor"]
+    if override is not None:
+        arguments.extend(["--friend-activity-backend", override])
+    result = run_cli(arguments, "runtime['run_doctor'] = lambda *args, **kwargs: (print('SELECTED_BACKEND=' + runtime['FRIEND_ACTIVITY_BACKEND']), 0)[1];")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"SELECTED_BACKEND={expected}" in result.stdout
+    assert config.read_text(encoding="utf-8") == content
+
+
+# Rejects unsupported activity source names before startup
+def test_backend_cli_invalid_choice():
+    result = run_cli(["--friend-activity-backend", "invalid"])
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
+
+
+# Rejects runtime backend overrides in early commands that do not apply them
+@pytest.mark.parametrize("command", ["--setup", "--set-sp-dc", "--set-webhook-url"])
+def test_backend_cli_early_command_conflict(command):
+    result = run_cli([command, "--friend-activity-backend", "buddylist"])
+    assert result.returncode == 2
+    assert f"{command} cannot be combined with --friend-activity-backend" in result.stderr
 
 
 # Builds the sparse entity shape returned by the listening activity feed

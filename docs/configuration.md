@@ -75,10 +75,17 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-`FRIEND_ACTIVITY_BACKEND` selects the source used by monitoring, `--list-friends`, `--doctor` and cookie validation. Save it in the configuration file and restart to change sources:
+`FRIEND_ACTIVITY_BACKEND` selects the source used by monitoring, `--list-friends`, `--doctor` and cookie validation. Save it in the configuration file to set the default:
 
 ```python
 FRIEND_ACTIVITY_BACKEND = "listening_activity"
+```
+
+Use `--friend-activity-backend` to override the saved setting for one run without changing the configuration file:
+
+```sh
+spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID
+spotify_monitor --friend-activity-backend listening_activity --list-friends
 ```
 
 | Value | Behavior |
