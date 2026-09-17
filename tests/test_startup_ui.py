@@ -138,7 +138,7 @@ def test_help_banner_once_and_raw_epilog():
     assert f"Examples:\n\nGetting started:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
     assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
     assert f"{prefix} --set-sp-dc" in result.stdout
-    assert f"{prefix} --set-webhook-url" in result.stdout
+    assert f"{prefix} <spotify_target> -a -i" in result.stdout
     assert f"{prefix} --send-test-webhook" in result.stdout
     assert "Select the monitoring mode for this run (default: saved mode or friend_activity)" in result.stdout
     assert "Path to a config file (mode-specific auto-search if omitted, disable with 'none')" in result.stdout

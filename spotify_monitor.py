@@ -8905,13 +8905,6 @@ def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_
     return command
 
 
-# Returns the hidden webhook URL entry command for one installation method
-def _wizard_set_webhook_url_cmd(method: str, env_path=None, exact: bool = False) -> str:
-    command = f"{_wizard_cmd_prefix(method, exact=exact)} --set-webhook-url"
-    command += _wizard_secret_command_paths(method, None, env_path)
-    return command
-
-
 # Renders the --help examples: one heading per task, then a comment and the command it describes
 def _render_help_examples(groups, guide_url: str) -> str:
     blocks = []
@@ -8953,7 +8946,7 @@ def _build_help_epilog() -> str:
     groups = (
         ("Getting started", tuple(getting_started)),
         ("Notifications", (
-            ("Save a Discord or ntfy webhook URL through a hidden prompt", _wizard_set_webhook_url_cmd(method, container_env)),
+            ("Email when the user starts and stops listening", f"{prefix} <spotify_target> -a -i"),
             ("Send one test email", f"{prefix} --send-test-email"),
             ("Send one test webhook", f"{prefix} --send-test-webhook"),
         )),

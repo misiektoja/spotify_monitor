@@ -178,8 +178,6 @@ def test_dotenv_writing_commands_drop_the_env_sentinel_and_keep_the_config_one(m
         # The config sentinel is carried, and never resolved into a file called "none" in the working directory
         assert command.endswith("--config-file none")
 
-    assert monitor._wizard_set_webhook_url_cmd("manual", "none").endswith("--set-webhook-url")
-
 
 # Verifies Chromium-family browser choices are removed on Windows and inside containers
 def test_browser_choices_respect_platform_and_container(monkeypatch):
@@ -252,8 +250,8 @@ Getting started:
   python3 spotify_monitor.py <spotify_target> --token-source client --login-request-body-file <protobuf_file>
 
 Notifications:
-  # Save a Discord or ntfy webhook URL through a hidden prompt
-  python3 spotify_monitor.py --set-webhook-url
+  # Email when the user starts and stops listening
+  python3 spotify_monitor.py <spotify_target> -a -i
 
   # Send one test email
   python3 spotify_monitor.py --send-test-email
