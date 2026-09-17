@@ -1223,7 +1223,7 @@ import platform
 import re
 import ipaddress
 import webbrowser
-from html import escape
+from html import escape, unescape
 import base64
 import hashlib
 import random
@@ -4784,6 +4784,18 @@ def truncate_utf8_bytes(text: str, max_bytes: int, suffix: str = "") -> str:
     return encoded[:max_bytes - len(encoded_suffix)].decode("utf-8", errors="ignore") + suffix
 
 
+# Converts one HTML email body to the Discord markdown subset, so a Discord alert reads like the email
+def html_body_to_discord_markdown(body_html: str) -> str:
+    text = re.sub(r"(?is)</?(?:html|head|body)\s*>", "", str(body_html or ""))
+    text = re.sub(r"(?is)<a\s[^>]*?href=[\"']([^\"']*)[\"'][^>]*>(.*?)</a>", lambda m: f"[{m.group(2)}]({m.group(1)})", text)
+    text = re.sub(r"(?is)<b\s*>(.*?)</b\s*>", lambda m: f"**{m.group(1)}**" if m.group(1).strip() else m.group(1), text)
+    text = re.sub(r"(?is)<i\s*>(.*?)</i\s*>", lambda m: f"*{m.group(1)}*" if m.group(1).strip() else m.group(1), text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    # Anything still tag-shaped is layout the markdown body has no use for, such as a stray paragraph or list wrapper
+    text = re.sub(r"(?s)<[^>]+>", "", text)
+    return unescape(text).strip()
+
+
 # Builds one bounded ntfy title and message pair
 def build_ntfy_webhook_message(title: str, description: str) -> tuple[str, str]:
     safe_title = sanitize_error_text(title)[:WEBHOOK_EMBED_TITLE_LIMIT] or "Spotify Monitor"
@@ -4978,7 +4990,7 @@ def _retain_webhook_secrets(deliver):
 
 @_retain_webhook_secrets
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", report_delivery: bool = True) -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", report_delivery: bool = True, discord_description: str = "") -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     destination = str(WEBHOOK_URL or "").strip()
@@ -5001,10 +5013,12 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
     if header_error is not None:
         print_recovery_error(context="webhook_config", detail=header_error)
         return 1
+    # Discord renders markdown, so it gets the email's formatting while ntfy keeps the plain body it can display
+    effective_description = discord_description if provider == "discord" and discord_description else description
     try:
-        webhook_values = build_webhook_values(title, description, notification_type, image_url)
+        webhook_values = build_webhook_values(title, effective_description, notification_type, image_url)
         request_headers = build_webhook_headers(provider, webhook_values)
-        discord_payload = build_webhook_payload(title, description, notification_type, image_url, webhook_values) if provider == "discord" else None
+        discord_payload = build_webhook_payload(title, effective_description, notification_type, image_url, webhook_values) if provider == "discord" else None
     except ValueError as exc:
         print_recovery_error(context="webhook_config", detail=str(exc))
         return 1
@@ -5082,7 +5096,7 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         use_short_content = NTFY_SHORT is True and normalized_webhook_provider() == "ntfy"
         webhook_subject = (subject_short or subject) if use_short_content else subject
         webhook_body = (body_short or body) if use_short_content else body
-        webhook_succeeded = send_webhook(webhook_subject, webhook_body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags) == 0
+        webhook_succeeded = send_webhook(webhook_subject, webhook_body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(body_html)) == 0
     if retain_failures and notification_type in ("active", "inactive") and ((email_selected and not email_succeeded) or (webhook_selected and not webhook_succeeded)):
         pending = {"notification_type": notification_type, "subject": subject, "body": body, "body_html": body_html, "email_enabled": email_selected and not email_succeeded, "webhook_enabled": webhook_selected and not webhook_succeeded, "image_url": image_url, "subject_short": subject_short, "body_short": body_short, "ntfy_priority": ntfy_priority, "ntfy_tags": ntfy_tags}
         if not any(item["notification_type"] == notification_type and item["subject"] == subject for item in PENDING_ACTIVITY_NOTIFICATIONS):

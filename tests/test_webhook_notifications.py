@@ -576,6 +576,43 @@ def test_webhook_http_retry_boundaries(monkeypatch, statuses, expected_calls, ex
     assert sleeps == expected_sleeps
 
 
+HTML_BODY = "<html><head></head><body>Now playing: <b><a href=\"https://open.spotify.com/t\">A &amp; B - Title</a></b><br>Duration: 3:45<br><br>Last activity: <b>Tue 15 Sep 2026, 20:17:27</b><br>Timestamp: Tue 15 Sep 2026, 20:19:02</body></html>"
+
+
+# Verifies the email body's formatting survives as the Discord markdown subset rather than reaching Discord as tags
+def test_an_html_body_becomes_discord_markdown():
+    assert monitor.html_body_to_discord_markdown(HTML_BODY) == (
+        "Now playing: **[A & B - Title](https://open.spotify.com/t)**\n"
+        "Duration: 3:45\n\n"
+        "Last activity: **Tue 15 Sep 2026, 20:17:27**\n"
+        "Timestamp: Tue 15 Sep 2026, 20:19:02"
+    )
+
+
+# Verifies a body with nothing to convert stays usable rather than producing stray markers
+@pytest.mark.parametrize("body, expected", [("", ""), ("<body>Plain line</body>", "Plain line"), ("<body>Count: <b></b></body>", "Count:")])
+def test_a_body_without_formatting_converts_cleanly(body, expected):
+    assert monitor.html_body_to_discord_markdown(body) == expected
+
+
+# Verifies the formatted body reaches Discord while ntfy keeps the plain one, since ntfy shows the markers literally
+@pytest.mark.parametrize("provider, destination, expected", [("discord", "https://discord.com/api/webhooks/123/private-token", "Last: **now**"), ("ntfy", "https://ntfy.sh/a-private-topic", "Last: now")])
+def test_only_discord_receives_the_formatted_body(monkeypatch, provider, destination, expected):
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", destination)
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {})
+    monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [])
+    seen = []
+    real_values = monitor.build_webhook_values
+    monkeypatch.setattr(monitor, "build_webhook_values", lambda title, description, notification_type, image_url="": seen.append(description) or real_values(title, description, notification_type, image_url))
+    monkeypatch.setattr(monitor, "post_webhook_request", lambda *args, **kwargs: Mock(status_code=204, headers={}, text=""))
+
+    monitor.send_webhook("Title", "Last: now", "song", force=True, discord_description="Last: **now**")
+
+    assert seen == [expected]
+
+
 # Verifies email and webhook attempts remain independent in both directions
 def test_notification_channels_are_independent(monkeypatch):
     email = Mock(return_value=0)
@@ -588,7 +625,7 @@ def test_notification_channels_are_independent(monkeypatch):
     email.reset_mock()
     assert monitor.send_notification_channels("song", "Title", "Body", email_enabled=False, webhook_enabled=True) == (False, True)
     email.assert_not_called()
-    webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="")
+    webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="")
 
 
 # Verifies channel results report delivery success instead of attempted sends
@@ -624,7 +661,7 @@ def test_short_notification_content_is_ntfy_only_with_fallbacks(monkeypatch, pro
     webhook = Mock(return_value=0)
     monkeypatch.setattr(monitor, "send_webhook", webhook)
     assert monitor.send_notification_channels(notification_type, "Normal title", "Normal body", webhook_enabled=True, subject_short=subject_short, body_short=body_short) == (False, True)
-    webhook.assert_called_once_with(expected_subject, expected_body, notification_type, force=True, image_url="", ntfy_priority=0, ntfy_tags="")
+    webhook.assert_called_once_with(expected_subject, expected_body, notification_type, force=True, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="")
 
 
 # Verifies the recommended wizard preset stores the URL privately without contacting it

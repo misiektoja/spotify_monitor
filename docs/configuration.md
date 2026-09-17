@@ -549,6 +549,8 @@ WEBHOOK_USERNAME = "Spotify Monitor"
 WEBHOOK_AVATAR_URL = "https://example.com/path/avatar.png"
 ```
 
+Discord alerts carry the same emphasis as the HTML email, since Discord renders markdown in an embed. Bold values stay bold and links stay clickable. Only Discord gets that wording: ntfy receives the plain body, because it would show the markers literally.
+
 `WEBHOOK_TEMPLATE` controls the Discord-format request body. The generated configuration contains the safe default template. It supports these placeholders:
 
 - `{title}`
