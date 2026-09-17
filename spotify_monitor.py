@@ -257,8 +257,14 @@ WEBHOOK_TRANSFORMS = []
 # Monitoring Settings
 # ----------------------------
 
-# Timers below apply to the live backend (FRIEND_ACTIVITY_BACKEND = "listening_activity")
+# Each Friend Activity backend has its own group of timers below
+# Only the group matching FRIEND_ACTIVITY_BACKEND is used, the other group is ignored
 # The -c, -k and -o flags set the timers of the selected backend
+
+# ============================
+# Live backend timers
+# ============================
+# Used when FRIEND_ACTIVITY_BACKEND = "listening_activity" (the default)
 
 # How often to check for user activity while the user is not playing; in seconds
 # Can also be set using the -c flag
@@ -275,23 +281,30 @@ SPOTIFY_LIVE_ERROR_INTERVAL = 60  # 1 minute
 # Can also be set using the -o flag
 SPOTIFY_LIVE_INACTIVITY_CHECK = 180  # 3 minutes
 
-# Timers below apply to the legacy backend (FRIEND_ACTIVITY_BACKEND = "buddylist")
+# ============================
+# Legacy backend timers
+# ============================
+# Used when FRIEND_ACTIVITY_BACKEND = "buddylist"
 
-# How often to check for user activity in seconds
+# How often to check for user activity; in seconds
 # Can also be set using the -c flag
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
 
-# Time to wait before retrying after an error in seconds
+# Time to wait before retrying after an error; in seconds
 SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 
-# Time after which a user is considered inactive based on last activity in seconds
+# Time after which a user is considered inactive based on last activity; in seconds
 # Can also be set using the -o flag
 # Songs longer than this value can cause the user to appear inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
 
+# ============================
+# Settings for both backends
+# ============================
+
 # How many recently listened songs to display in the inactive notification email
 # Set to 0 to disable the recently listened songs list
-INACTIVE_EMAIL_RECENT_SONGS_COUNT = 5
+INACTIVE_EMAIL_RECENT_SONGS_COUNT = 10
 
 # Tolerance in seconds for "Played for" display when comparing actual playback time to track duration
 # If the difference is within +-PLAYED_FOR_DURATION_TOLERANCE seconds, "Played for" is suppressed
