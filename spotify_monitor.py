@@ -7624,8 +7624,6 @@ def spotify_list_friends(friend_activity, access_token):
         print(f"User URL:\t\t\t{spotify_convert_uri_to_url('spotify:user:' + sp_uri)}")
         activity_label = "Now playing" if friend.get("isPlaying") else "Last played"
         print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}\n")
-        if "isPlaying" in friend:
-            print(f"Playback:\t\t\t{'Playing' if friend['isPlaying'] else 'Not playing'}")
         if 'spotify:playlist:' in sp_playlist_uri:
             print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
         print(f"Album:\t\t\t\t{sp_album}")
@@ -11765,8 +11763,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             print(f"Username:\t\t\t{sp_username}")
             print(f"User URI ID:\t\t\t{sp_data['sp_uri']}")
             print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}")
-            if live_activity:
-                print(f"Playback:\t\t\t{'Playing' if sp_data['sp_is_playing'] else 'Not playing'}")
             print(f"Duration:\t\t\t{display_time(sp_track_duration)}\n")
             if is_playlist:
                 print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")

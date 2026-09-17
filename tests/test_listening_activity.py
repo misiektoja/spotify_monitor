@@ -351,7 +351,8 @@ def test_live_paused_startup_has_no_activity_side_effects(loop_environment, monk
     destination = tmp_path / "observed.csv"
     run_live_snapshots(monkeypatch, loop_environment, [feed_entity(timestamp, playing=False), feed_entity(timestamp, playing=False)], str(destination))
     output = capsys.readouterr().out
-    assert "Playback:\t\t\tNot playing" in output
+    assert "Last played:\t\t\t" in output
+    assert "Playback:" not in output
     assert "currently ACTIVE" not in output
     assert "Friend got ACTIVE" not in output
     assert "Songs played:" not in output
