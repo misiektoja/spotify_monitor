@@ -1220,7 +1220,7 @@ def test_invalid_boolean_settings_are_reported_in_one_row(monkeypatch):
     assert [item.status for item in rows] == ["FAIL"]
     assert "ERROR_NOTIFICATION must be True or False, not 'false'" in rows[0].detail
     assert "SMTP_SSL must be True or False, not 1" in rows[0].detail
-    assert rows[0].advice.code == "config.invalid"
+    assert require_advice(rows[0]).code == "config.invalid"
 
 
 # The shipped defaults are all real booleans, so a run with nothing overridden never sees the on/off row

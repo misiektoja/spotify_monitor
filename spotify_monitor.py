@@ -8714,11 +8714,15 @@ def _wizard_render_command(arguments: Sequence[str]) -> str:
     return " ".join(_wizard_quote_argument(argument) for argument in arguments)
 
 
+# The documentation placeholders a printed command carries unquoted, because the reader replaces them before running it
+COMMAND_PLACEHOLDERS = frozenset(("<spotify_target>",))
+
+
 # Quotes one command argument for the active host shell
 def _wizard_quote_argument(value: Any) -> str:
     text = str(value)
-    # A <placeholder> is documentation for the reader to replace, so quoting it would only be noise
-    if text.startswith("<") and text.endswith(">"):
+    # Matched exactly rather than by shape, since any other angle-bracket value is user-derived and would otherwise reach the shell unquoted
+    if text in COMMAND_PLACEHOLDERS:
         return text
     return subprocess.list2cmdline([text]) if platform.system() == "Windows" else shlex.quote(text)
 

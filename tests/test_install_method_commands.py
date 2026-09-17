@@ -1,3 +1,4 @@
+import shlex
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -86,6 +87,23 @@ def test_windows_manual_commands_are_friendly_and_space_safe(tmp_path, monkeypat
     assert f'"{config_path}"' in command
     assert f'"{env_path}"' in command
     assert monitor._wizard_cmd_prefix("pip", exact=True) == '"C:\\Python Tools\\python.exe" -m spotify_monitor'
+
+
+# Verifies a target shaped like a placeholder is quoted, so pasting the printed command cannot run a substitution
+def test_a_bracketed_target_is_quoted_rather_than_pasted_into_the_shell(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
+    target = monitor.normalize_spotify_user_id("<$(echo>marker)>")
+    command = monitor._wizard_action_command("manual", "--doctor", None, None, target)
+
+    assert command.endswith(shlex.quote(target))
+    assert shlex.split(command)[-1] == target
+
+
+# Verifies the documentation placeholder itself stays readable, since the reader replaces it before running the command
+def test_the_target_placeholder_is_left_unquoted(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
+
+    assert monitor._wizard_action_command("manual", "--doctor", None, None, "<spotify_target>").endswith("--doctor <spotify_target>")
 
 
 # Verifies container doctor and monitoring commands use /data paths and preserve a non-persisted target
