@@ -4696,12 +4696,11 @@ def build_webhook_payload(title: str, description: str, notification_type: str, 
         raise ValueError("WEBHOOK_TEMPLATE could not be formatted with the supported placeholders") from exc
     if not isinstance(payload, dict):
         raise ValueError("WEBHOOK_TEMPLATE must be a JSON object or a dictionary")
-    if isinstance(payload, dict):
-        if payload.get("username") == "":
-            payload.pop("username")
-        if payload.get("avatar_url") == "":
-            payload.pop("avatar_url")
-        payload["allowed_mentions"] = {"parse": []}
+    if payload.get("username") == "":
+        payload.pop("username")
+    if payload.get("avatar_url") == "":
+        payload.pop("avatar_url")
+    payload["allowed_mentions"] = {"parse": []}
     return payload
 
 
