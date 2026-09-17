@@ -256,8 +256,19 @@ def test_long_notification_summary_rows_wrap_without_starred_continuations():
 def test_concise_summary_hides_disabled_advanced_defaults(monkeypatch):
     configure_summary(monkeypatch)
     output = emit_to_string(summary_rows())
-    for hidden in ("Token source", "Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
+    for hidden in ("Token source", "Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Crossfade detection", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
         assert hidden not in output
+
+
+# Verifies the complete summary states the crossfade window or that detection is off
+@pytest.mark.parametrize("enabled,expected", [(True, "* Crossfade detection:          96% to 99% played"), (False, "* Crossfade detection:          Disabled")])
+def test_full_summary_shows_crossfade_detection(monkeypatch, enabled, expected):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", enabled)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MIN", 0.96)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MAX", 0.99)
+    output = emit_to_string(summary_rows(), show_full=True)
+    assert expected in output
 
 
 # Verifies enabled optional settings appear in the concise view
