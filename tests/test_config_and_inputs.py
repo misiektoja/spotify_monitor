@@ -625,6 +625,7 @@ def test_ntfy_images_ships_disabled_and_documents_optional_dependency():
     assert 'pip install "spotify_monitor[notification-images]"' in monitor.CONFIG_BLOCK
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a read-only directory mode is POSIX-only")
 # Confirms a generated config that cannot be written reports the destination problem with a fix
 def test_a_generated_config_that_cannot_be_written_is_reported_with_a_fix():
     with make_temp_directory() as directory_name:
@@ -673,6 +674,7 @@ def test_the_writer_refuses_a_value_that_is_not_text(tmp_path):
         monitor.update_dotenv_file(tmp_path / ".env", {"SMTP_PASSWORD": 1234})
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the backup file mode is POSIX-only")
 # Verifies the backup name every tool in this family writes, so one documented shape covers them all
 def test_the_backup_carries_the_family_name_and_mode(tmp_path):
     destination = tmp_path / "monitor.conf"

@@ -157,7 +157,7 @@ def test_provider_response_does_not_leak_secret_prefix(monitor, monkeypatch, cap
     if monitor.__name__ == "lol_monitor":
         monkeypatch.setattr(monitor, "WEBHOOK_SESSION", requests.Session())
     if monitor.__name__ == "xbox_monitor":
-        import httpx
+        import httpx  # pyright: ignore[reportMissingImports]
 
         # Supplies the same provider failure through Xbox Monitor's real HTTPX transport
         def httpx_send(transport, request):

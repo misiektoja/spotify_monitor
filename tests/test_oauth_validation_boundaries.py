@@ -7,9 +7,11 @@ import time
 import pytest
 import requests
 from requests.adapters import HTTPAdapter
-from spotipy.cache_handler import CacheFileHandler
 
 import spotify_monitor as monitor
+
+# Spotipy ships in the legacy-oauth extra, so the base test install has to skip this module
+CacheFileHandler = pytest.importorskip("spotipy.cache_handler").CacheFileHandler
 
 
 @pytest.mark.parametrize("accepted", [False, True])

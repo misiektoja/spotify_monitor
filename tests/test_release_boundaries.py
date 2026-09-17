@@ -49,7 +49,7 @@ def delivery(monkeypatch):
 
     monkeypatch.setattr(HTTPAdapter, "send", respond)
     if monitor.__name__ == "xbox_monitor":
-        import httpx
+        import httpx  # pyright: ignore[reportMissingImports]
 
         # Returns a response through the real HTTPX client and transport
         def httpx_respond(transport, request):
