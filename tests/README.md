@@ -32,6 +32,8 @@ same absent-dependency behavior a user would see.
 
 | File | Area under test |
 | --- | --- |
+| `test_oauth_validation_boundaries.py` | Fresh OAuth validation and immediate resource failure with real HTTP clients |
+| `test_configuration_notification_boundaries.py` | Invalid output settings, CLI precedence and strict webhook fields with legacy JSON support |
 | `test_boundary_regressions.py` | Real notification transports, literal secret resolution and malformed startup paths |
 | `test_resource_boundaries.py` | Optional network work stops after real transport resource exhaustion |
 | `test_release_boundaries.py` | Real HTTP retries, Discord mention safety, unrenderable templates, SMTP password round trips, split terminal writes and the width cap without wcwidth |
