@@ -1254,7 +1254,7 @@ def notification_images_install_command(method: Optional[str] = None) -> str:
     selected_method = _wizard_install_method() if method is None else method
     if selected_method in ("docker", "compose"):
         return ""
-    executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
+    executable = ("python" if platform.system() == "Windows" else "python3")
     requirement = "spotify_monitor[notification-images]" if selected_method == "pip" else notification_images_requirement()
     return _wizard_render_command([executable, "-m", "pip", "install", requirement])
 
@@ -5221,7 +5221,7 @@ def reload_secrets_signal_handler(sig, frame):
                 print(f"* No {default_dotenv_filename if not DOTENV_FILE else 'dotenv'} file found, skipping env-var reload{suffix}")
         except ImportError:
             env_path = None
-            print_recovery_advice(missing_dependency_advice("python-dotenv", "The env-var reload was skipped", _wizard_render_command([sys.executable or "python3", "-m", "pip", "install", "python-dotenv"])), label="Warning")
+            print_recovery_advice(missing_dependency_advice("python-dotenv", "The env-var reload was skipped", _wizard_render_command([("python" if platform.system() == "Windows" else "python3"), "-m", "pip", "install", "python-dotenv"])), label="Warning")
             print(suffix, end="")
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             print_recovery_error(exc, "config_invalid", detail=f"Dotenv file '{env_path}' could not be reloaded: {exc}")
@@ -8917,7 +8917,7 @@ def install_method_display_name(method: Optional[str] = None) -> str:
 
 
 # Returns local command arguments using friendly names or exact runtime paths
-def _wizard_local_command_args(method: str, exact: bool = True) -> List[str]:
+def _wizard_local_command_args(method: str, exact: bool = False) -> List[str]:
     if exact:
         executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
         if method == "pip":
@@ -8948,7 +8948,7 @@ def _wizard_quote_argument(value: Any) -> str:
 
 
 # Returns the portable command prefix for one installation method and optional host environment
-def _wizard_cmd_prefix(method: str, exact: bool = True, host_os: Optional[str] = None) -> str:
+def _wizard_cmd_prefix(method: str, host_os: Optional[str] = None) -> str:
     if method == "compose":
         return "docker compose run --rm spotify_monitor"
     if method == "docker":
@@ -8956,7 +8956,7 @@ def _wizard_cmd_prefix(method: str, exact: bool = True, host_os: Optional[str] =
         user_flag = ' --user "$(id -u):$(id -g)"' if linux_user_mapping else ""
         current_directory = "%cd%" if host_os == "windows-cmd" else "${PWD}"
         return f'docker run --rm -it --init{user_flag} -v "{current_directory}:/data:z" misiektoja/spotify-monitor'
-    return _wizard_render_command(_wizard_local_command_args(method, exact=exact))
+    return _wizard_render_command(_wizard_local_command_args(method, exact=False))
 
 
 # Rejects container setup destinations that would disappear with the temporary container
@@ -9113,9 +9113,9 @@ def _wizard_secret_command_paths(method: str, config_path, env_path) -> str:
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
-def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = True, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
+def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
     selected_host = host_os or "linux"
-    prefix = _wizard_cmd_prefix(method, exact=exact, host_os=selected_host if method in ("docker", "compose") else host_os)
+    prefix = _wizard_cmd_prefix(method, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
         profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
         prefix = prefix.replace("misiektoja/spotify-monitor", f"-v {profile_mount} misiektoja/spotify-monitor")
@@ -9130,8 +9130,8 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = True, h
 
 
 # Returns the hidden manual sp_dc entry command with optional setup context
-def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = True, host_os: Optional[str] = None, config_path=None) -> str:
-    command = f"{_wizard_cmd_prefix(method, exact=exact, host_os=host_os)} --set-sp-dc"
+def _wizard_set_sp_dc_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None) -> str:
+    command = f"{_wizard_cmd_prefix(method, host_os=host_os)} --set-sp-dc"
     command += _wizard_secret_command_paths(method, config_path, env_path)
     return command
 
@@ -9220,7 +9220,8 @@ def _wizard_install_chromium_dependency(method: str) -> bool:
     requirement = "spotify_monitor[browser]" if method == "pip" else "pycookiecheat>=0.8"
     executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
     command = [executable, "-m", "pip", "install", requirement]
-    print(f"Installing Chromium browser support with:\n    {_wizard_render_command(command)}\n")
+    display_command = ["python" if platform.system() == "Windows" else "python3", *command[1:]]
+    print(f"Installing Chromium browser support with:\n    {_wizard_render_command(display_command)}\n")
     try:
         result = subprocess.run(command, check=False)
     except OSError as exc:
@@ -9247,7 +9248,8 @@ def _wizard_install_notification_images_dependency(method: str) -> bool:
     requirement = "spotify_monitor[notification-images]" if method == "pip" else notification_images_requirement()
     executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
     command = [executable, "-m", "pip", "install", requirement]
-    print(f"Installing ntfy artwork support with:\n    {_wizard_render_command(command)}\n")
+    display_command = ["python" if platform.system() == "Windows" else "python3", *command[1:]]
+    print(f"Installing ntfy artwork support with:\n    {_wizard_render_command(display_command)}\n")
     try:
         result = subprocess.run(command, check=False)
     except OSError as exc:

@@ -73,7 +73,7 @@ def test_install_method_command_prefixes(monkeypatch):
     assert monitor._wizard_cmd_prefix("compose") == "docker compose run --rm spotify_monitor"
 
 
-# Verifies Windows help uses python while exact commands safely quote every spaced path
+# Verifies Windows commands use short names and safely quote selected file paths
 def test_windows_manual_commands_are_friendly_and_space_safe(tmp_path, monkeypatch):
     script_path = tmp_path / "Project Space" / "spotify_monitor.py"
     config_path = tmp_path / "Config Space" / "spotify_monitor.conf"
@@ -87,7 +87,7 @@ def test_windows_manual_commands_are_friendly_and_space_safe(tmp_path, monkeypat
     assert command.startswith(runtime_command("python spotify_monitor.py --doctor"))
     assert f'"{config_path}"' in command
     assert f'"{env_path}"' in command
-    assert monitor._wizard_cmd_prefix("pip", exact=True) == '"C:\\Python Tools\\python.exe" -m spotify_monitor'
+    assert monitor._wizard_cmd_prefix("pip") == "spotify_monitor"
 
 
 # Verifies a target shaped like a placeholder is quoted, so pasting the printed command cannot run a substitution
