@@ -10603,7 +10603,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     email_sent = False
     webhook_sent = False
-    # The error alert is tracked apart from the event alerts, once per channel and per failure category
+    # The error alert is tracked apart from the event alerts, once per channel and per outage
     error_alert = ErrorAlertState()
 
     mark_monitoring_started()
