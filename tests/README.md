@@ -71,6 +71,7 @@ same absent-dependency behavior a user would see.
 | `test_documentation.py` | Semantic documentation contracts, community health files, issue templates and security workflows plus repository metadata: citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_container_assets.py` | Dockerfile, Compose and publishing workflow contracts |
 | `test_packaging.py` | Wheel contents, installed console commands, action pinning and version consistency |
+| `test_moved_private_settings.py` | Kept credentials across dotenv destination changes and startup error handling |
 
 ## Conventions
 
