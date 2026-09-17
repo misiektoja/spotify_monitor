@@ -2667,7 +2667,7 @@ def validate_imported_sp_dc(sp_dc):
 # Runs extraction, validation, overwrite handling and atomic dotenv persistence
 def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None, config_path=None, target=None, saved_target=None):
     destination = resolve_import_env_path(env_file)
-    print(f"* Browser prerequisite: open {SPOTIFY_WEB_LOGIN_URL} in {browser_label(browser)} and sign in to the Spotify account used for monitoring")
+    print(colorize_links(f"* Browser prerequisite: open {SPOTIFY_WEB_LOGIN_URL} in {browser_label(browser)} and sign in to the Spotify account used for monitoring"))
     print(f"* Dotenv destination: {destination}")
 
     selected_system = platform.system()
@@ -2743,7 +2743,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
         if not confirmed:
             raise RecoveryError(secret_replacement_declined_advice("Spotify cookie", "--set-sp-dc", MANUAL_COOKIE_GUIDE_URL))
 
-    print(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}")
+    print(colorize_links(f"* Need help finding sp_dc? {MANUAL_COOKIE_GUIDE_URL}"))
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
     try:
         sp_dc = read_secret_privately(hidden_prompt, "Enter sp_dc privately: ")
@@ -2800,7 +2800,7 @@ def run_set_lastfm_credentials(env_file=None, interactive=None, input_func=None,
         if not confirmed:
             raise RecoveryError(secret_replacement_declined_advice("Last.fm API key", "--set-lastfm-credentials", SECRETS_GUIDE_URL))
     hidden_prompt = getpass.getpass if getpass_func is None else getpass_func
-    print(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
+    print(colorize_links(f"* Create or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}"))
     try:
         api_key = read_secret_privately(hidden_prompt, "Enter the Last.fm API key privately: ").strip()
     except (EOFError, KeyboardInterrupt):
@@ -2829,14 +2829,14 @@ def print_spotify_scrobble_app_guidance(redirect_uri: str) -> None:
     print("\nSpotify recent-play app\n")
     print("Scrobble health needs a Spotify app owned by you so its API quota is not shared with every Spotify Monitor user.")
     print("The Spotify account that owns a Development Mode app must have Premium.")
-    print(f"\n1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}")
+    print(colorize_links(f"\n1. Open the Spotify Developer Dashboard: {SPOTIFY_DEVELOPER_DASHBOARD_URL}"))
     print("2. Create an app or open an existing app.")
     print(f"3. Add this exact Redirect URI in the app settings: {redirect_uri}")
     print("4. Select Web API in API/SDKs section, click Save.")
     print("5. Copy the Client ID. A Client Secret is not needed and should not be entered here.")
     print("6. If authorizing a different Spotify account, add that account under the app's User Management.")
-    print(f"\nSpotify app guide: {SPOTIFY_APPS_GUIDE_URL}")
-    print(f"PKCE guide: {SPOTIFY_PKCE_GUIDE_URL}\n")
+    print(colorize_links(f"\nSpotify app guide: {SPOTIFY_APPS_GUIDE_URL}"))
+    print(colorize_links(f"PKCE guide: {SPOTIFY_PKCE_GUIDE_URL}\n"))
 
 
 # Authorizes recent-play access and atomically saves the private refresh token
@@ -3632,6 +3632,11 @@ def apply_color_to_text(text):
         else:
             parts.append(_colorize_line(chunk))
     return "".join(parts)
+
+
+# Colours every link in a line, for the screens printed before the output stream colouriser is installed
+def colorize_links(text):
+    return _sub_outside_color(_URL_RE, lambda mo: colorize("link", mo.group(0)), text)
 
 
 # Returns the underlying terminal behind any number of sanitizing stream wrappers
@@ -9257,7 +9262,7 @@ def _wizard_target(initial_target: Optional[str] = None) -> str:
         try:
             return normalize_spotify_user_id(raw_target)
         except ValueError:
-            print("  Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID.")
+            print(colorize_links("  Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID."))
             if not _wizard_offer_retry("Spotify profile"):
                 return ""
             default = ""
@@ -9607,7 +9612,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
             result.update({"browser": selected_browser, "source": f"browser import ({browser_label(selected_browser)})", "host_os": selected_host})
             browser_location = f"{browser_label(selected_browser)} on the host" if method in ("docker", "compose") else browser_label(selected_browser)
             print()
-            print(f"  Before import, open {SPOTIFY_WEB_LOGIN_URL} in {browser_location} and sign in to the Spotify account used for monitoring.")
+            print(colorize_links(f"  Before import, open {SPOTIFY_WEB_LOGIN_URL} in {browser_location} and sign in to the Spotify account used for monitoring."))
             if method in ("docker", "compose"):
                 host_label = CONTAINER_FIREFOX_HOSTS[cast(str, selected_host)][0]
                 result.update({"source": f"Firefox import after setup from {host_label}", "mount_required": True})
@@ -9625,7 +9630,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 return result
             continue
         if action == "manual":
-            print(f"\nFind the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}")
+            print(colorize_links(f"\nFind the sp_dc cookie first: {MANUAL_COOKIE_GUIDE_URL}"))
             print()
             cookie = _wizard_ask_secret("Existing sp_dc value")
             if not cookie:
@@ -9650,7 +9655,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
 # Collects advanced client-mode Protobuf values through read-only parsers
 def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_updates: dict) -> dict:
     print("Client mode is advanced.")
-    print(f"Guide: {CLIENT_GUIDE_URL}\n")
+    print(colorize_links(f"Guide: {CLIENT_GUIDE_URL}\n"))
     result = {"complete": False, "validated": False, "browser": None, "source": "advanced client mode without credentials"}
     if not _wizard_ask_yes_no("Use an exported login request Protobuf file?", default=True):
         return result
@@ -10043,7 +10048,7 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
         state.secret_updates.pop(key, None)
     existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path)
     if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
-        print(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}")
+        print(colorize_links(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}"))
         api_key = _wizard_ask_secret("Last.fm API key")
         while not api_key and _wizard_offer_retry("Last.fm API key", "Scrobble health checks stay off until one is set"):
             api_key = _wizard_ask_secret("Last.fm API key")
@@ -10243,7 +10248,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if not sys.stdin.isatty():
         print("The setup wizard needs an interactive terminal (TTY).")
         print("Run --setup from an interactive shell or use --generate-config and edit the files manually.")
-        print(f"Guide: {QUICK_START_GUIDE_URL}")
+        print(colorize_links(f"Guide: {QUICK_START_GUIDE_URL}"))
         raise SystemExit(1)
     method = _wizard_install_method()
     try:
@@ -10258,7 +10263,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     print("Cookie mode is recommended. Client mode is advanced.\n")
     print("The monitoring account must follow the target. Setup checks this after authentication is saved.")
     print("If needed, the tool offers to follow the target. The target must also share listening activity.")
-    print(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n")
+    print(colorize_links(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n"))
     _wizard_print_setup_destinations(method, config_path, env_path)
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
@@ -10349,7 +10354,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         print("Setup was saved. Authentication still needs to be completed.\n")
         if config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose") and auth.get("browser") and host_os:
             host_label = CONTAINER_FIREFOX_HOSTS[host_os][0]
-            print(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n")
+            print(colorize_links(f"Before import, open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in to the Spotify account used for monitoring.\n"))
             _wizard_print_command(f"Import Spotify login from Firefox on {host_label}:", _wizard_firefox_import_cmd(method, env_path, host_os=host_os, config_path=config_path, target=doctor_target))
             _wizard_print_command("If Firefox import is unavailable, enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, host_os=host_os, config_path=config_path))
         elif config_values["TOKEN_SOURCE"] == "cookie" and method in ("docker", "compose"):
@@ -10360,7 +10365,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, config_path=config_path))
         else:
             print("Complete advanced client authentication before running Doctor.")
-            print(f"Client guide: {CLIENT_GUIDE_URL}\n")
+            print(colorize_links(f"Client guide: {CLIENT_GUIDE_URL}\n"))
         if config_values["TOKEN_SOURCE"] == "cookie":
             cookie_guide_url = CONTAINER_FIREFOX_GUIDE_URL if method in ("docker", "compose") else COOKIE_GUIDE_URL
             print(f"Cookie guide: {cookie_guide_url}\n")
@@ -10404,7 +10409,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     if not sys.stdin.isatty():
         print("The scrobble health setup wizard needs an interactive terminal (TTY).")
         print("Run --setup-scrobble-health from an interactive shell or use --generate-config and edit the files manually.")
-        print(f"Guide: {QUICK_START_GUIDE_URL}")
+        print(colorize_links(f"Guide: {QUICK_START_GUIDE_URL}"))
         raise SystemExit(1)
     method = _wizard_install_method()
     try:
@@ -10492,7 +10497,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     if not auth["complete"]:
         print("Setup was saved. Spotify recent-play authorization still needs to be completed.\n")
         _wizard_print_command("Authorize the user-owned Spotify app:", authorize_command)
-        print(f"Authorization guide: {SCROBBLE_AUTH_GUIDE_URL}\n")
+        print(colorize_links(f"Authorization guide: {SCROBBLE_AUTH_GUIDE_URL}\n"))
         _wizard_print_command("After authentication succeeds, verify scrobble health setup:", doctor_command)
     else:
         _wizard_print_command("Check scrobble health setup again:", doctor_command)

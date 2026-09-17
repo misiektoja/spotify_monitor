@@ -1,5 +1,6 @@
 """Terminal colour contract tests for the coloured output layer."""
 
+import ast
 import re
 from io import StringIO
 from pathlib import Path
@@ -705,3 +706,36 @@ def test_a_closed_or_uncut_colour_gains_no_extra_reset():
     assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m456789ABCDEF", 10) == "\x1b[31m0123\x1b[0m456789"
     assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m", 10) == "\x1b[31m0123\x1b[0m"
     assert monitor.truncate_string_per_line("0123456789ABCDEF", 10) == "0123456789"
+
+
+# Verifies the setup screens colour their links, since they print before the output stream colouriser is installed
+def test_setup_screen_links_are_coloured(monkeypatch):
+    link = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["link"])
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {"link": link})
+
+    assert monitor.colorize_links("Guide: https://example.test/page") == f"Guide: {link}https://example.test/page{monitor.ANSI_RESET}"
+
+
+# Verifies no setup screen prints a link without colouring it, which is how a plain link gets in
+def test_no_setup_screen_prints_a_plain_link():
+    setup = re.compile(r"^(?:run_setup_wizard|run_scrobble_health_setup_wizard|_wizard_|run_set_|run_browser_cookie_import|print_welcome_screen|print_doctor_next_steps|print_spotify_scrobble_app_guidance)")
+    tree = ast.parse(Path(monitor.__file__).read_text(encoding="utf-8"))
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    plain = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "print"):
+            continue
+        nested = list(ast.walk(node))
+        prints_link = any(isinstance(item, ast.Constant) and isinstance(item.value, str) and "http" in item.value for item in nested) or any(isinstance(item, ast.Name) and "URL" in item.id for item in nested)
+        coloured = any(isinstance(item, ast.Name) and item.id in ("colorize", "colorize_links") for item in nested)
+        owner, current = "", parents.get(node)
+        while current is not None:
+            if isinstance(current, ast.FunctionDef):
+                owner = current.name
+                break
+            current = parents.get(current)
+        if prints_link and not coloured and setup.match(owner):
+            plain.append(f"{owner}:{node.lineno}")
+
+    assert plain == []
