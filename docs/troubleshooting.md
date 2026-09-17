@@ -28,6 +28,8 @@ Doctor uses your normal settings to check authentication, connectivity, the targ
 
 Doctor checks email login and webhook settings without sending messages. It does not create monitoring output files. Friend Activity checks leave configuration and credentials unchanged. Scrobble health checks may save a replacement refresh token if Spotify rotates it.
 
+If Spotify Desktop and `--list-friends` show different users, check the **Friend Activity backend** row in Doctor. The default `listening_activity` feed and the legacy `buddylist` endpoint can return different users even with the same valid cookie. Compare them by changing `FRIEND_ACTIVITY_BACKEND` in the configuration and rerunning `--list-friends` or `--doctor TARGET`. The live feed requests up to 100 entries. Check the target's activity-sharing permissions too. The number of people allowed to view your activity describes who can see you, not whose activity you can see. See [Friend Activity Backend](configuration.md#friend-activity-backend).
+
 In an interactive terminal, Doctor offers a delivery test for each ready notification channel. Each test sends one real message only if you answer Yes. The default is No. Ctrl+C ends the run. Delivery tests are not offered in noninteractive runs.
 
 The **Next steps** block gives the monitoring command with your target and selected file paths. Resolve failing checks before starting.

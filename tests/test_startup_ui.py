@@ -187,7 +187,7 @@ def test_generate_config_output_is_machine_friendly():
     result = run_cli("--generate-config")
     assert result.returncode == 0
     assert result.stdout.startswith("# Select one of two independent monitoring modes:")
-    assert "#   friend_activity - monitors a followed Spotify user's completed tracks, presence and sessions" in result.stdout
+    assert "#   friend_activity - monitors a followed Spotify user's shared tracks, presence and sessions" in result.stdout
     assert "#                     Run --setup to configure the target, Spotify authentication and notifications" in result.stdout
     assert "#                     Run --setup-scrobble-health to configure Spotify, Last.fm and alerts" in result.stdout
     assert "# Use --monitor-mode to override this value for one run" in result.stdout

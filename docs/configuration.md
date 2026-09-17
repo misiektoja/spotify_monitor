@@ -61,7 +61,7 @@ Spotify Monitor has two independent monitoring modes:
 
 | Mode | Saved `MONITOR_MODE` value | What it monitors | Easiest setup |
 | --- | --- | --- | --- |
-| Friend Activity | `"friend_activity"` | A followed Spotify user's completed tracks, presence and listening sessions | `spotify_monitor --setup` |
+| Friend Activity | `"friend_activity"` | A Spotify user's shared tracks, playback state and listening sessions | `spotify_monitor --setup` |
 | Scrobble health | `"scrobble_health"` | Whether this Spotify account's completed plays reach one Last.fm profile | `spotify_monitor --setup-scrobble-health` |
 
 Only one mode runs at a time. A command-line selection takes precedence over the mode saved as `MONITOR_MODE`. Friend Activity is used when neither source selects a mode. Use `--monitor-mode friend_activity` or `--monitor-mode scrobble_health` for one run. Selecting scrobble health on the command line also selects its mode-specific default config and dotenv filenames. Save the Last.fm username as `LASTFM_USERNAME` or pass `--lastfm-username` for one run.
@@ -71,6 +71,28 @@ For example, this runs Friend Activity even when the selected config saves scrob
 ```sh
 spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
+
+<a id="friend-activity-backend"></a>
+## Friend Activity Backend
+
+`FRIEND_ACTIVITY_BACKEND` selects the source used by monitoring, `--list-friends`, `--doctor` and cookie validation. Save it in the configuration file and restart to change sources:
+
+```python
+FRIEND_ACTIVITY_BACKEND = "listening_activity"
+```
+
+| Value | Behavior |
+| --- | --- |
+| `"listening_activity"` (default) | Uses Spotify's Listening Activity feed. Shows the current track when Spotify reports playback and the last shared track when playback stops. |
+| `"buddylist"` | Uses the legacy Friend Activity endpoint and its completed-track timing. Retains skip, crossfade and same-track repeat estimates. |
+
+Existing configuration files without this setting use `"listening_activity"`. To restore the old behavior, set `FRIEND_ACTIVITY_BACKEND = "buddylist"`. This choice is independent of `TOKEN_SOURCE` and does not affect scrobble health.
+
+The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
+
+Live tracking counts **observed track changes**, including the track seen at the start of an active session. Pause and resume updates for the same track do not add a song. A restart after the inactivity timer begins a new session. The feed does not provide playback position or reliable completion and replay events, so played-duration, skip, crossfade and same-track loop estimates are unavailable with this backend. Polling can miss short tracks or changes between checks.
+
+The monitor obtains missing user, track and playlist names from Spotify's metadata services. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
 
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health

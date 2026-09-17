@@ -230,7 +230,7 @@ def test_a_verbose_notice_closes_with_a_timestamp(loop_environment, monkeypatch,
     run_one_iteration(loop_environment)
 
     lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
-    notice = next(index for index, line in enumerate(lines) if "was absent from one buddy-list response" in line)
+    notice = next(index for index, line in enumerate(lines) if "was absent from one activity response" in line)
     assert lines[notice + 1].startswith("Timestamp:")
     assert set(lines[notice + 2]) == {"\u2500"}
 

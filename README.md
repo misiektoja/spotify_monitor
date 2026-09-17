@@ -10,7 +10,7 @@
 [![Last Commit](https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green)](https://github.com/misiektoja/spotify_monitor/commits/main)
 [![Maintenance](https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square)](https://github.com/misiektoja/spotify_monitor)
 
-Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local Spotify client, detect skipped tracks and receive instant notifications for every beat your friends play.
+Track Spotify friend listening activity, play reported tracks in your local Spotify client and receive activity notifications.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
@@ -27,7 +27,7 @@ New to Python or unsure what is installed? Follow the [Python install walkthroug
 pip install spotify_monitor
 ```
 
-Run setup for **friend activity mode** (Spotify friend's completed plays, activity status and listening session):
+Run setup for **friend activity mode** (Spotify friend's shared tracks, playback state and listening session):
 
 ```sh
 spotify_monitor --setup
@@ -89,19 +89,19 @@ For the manual single-file method, optional extras and upgrade commands for ever
 ## Features
 
 ### 🔍 Real-time Tracking
-- **Friend Activity**: Monitor songs listened to by Spotify users in real time.
+- **Friend Activity**: Monitor live shared tracks by default or select the legacy completed-track backend.
 - **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
-- **Session Stats**: Display **duration, track counts** and **songs on loop**.
+- **Session Stats**: Display session duration and observed track counts. The legacy backend also estimates songs on loop.
 
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
 - **Smart Pause**: **Pause** or **switch** tracks when the monitored user goes offline.
-- **Crossfade Support**: Detect and annotate **crossfaded songs** during transitions.
+- **Crossfade Support**: Estimate crossfaded transitions with the legacy backend.
 
 ### 📊 Rich Insights
 - **Track Context**: View **playlist, artist** and **album info** with clickable URLs.
-- **Skip Detection**: Identify exactly when and how long a song was played.
+- **Skip Detection**: Estimate skipped tracks and played duration with the legacy backend.
 - **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 - **Coloured Output**: Readable terminal colours with a **customizable theme**, while log files stay plain text.
 
