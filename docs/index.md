@@ -91,7 +91,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 - **Friend Activity**: Monitor live shared tracks by default or select the legacy completed-track backend.
 - **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
-- **Session Stats**: Display session duration, played track counts and pauses. The legacy backend also estimates songs on loop.
+- **Session Stats**: Display session duration, played track counts, pauses and songs on loop.
 
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
