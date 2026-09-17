@@ -609,6 +609,13 @@ def test_a_target_the_config_does_not_hold_is_printed_in_both_commands(tmp_path,
     assert "<spotify_target>" not in output
 
 
+# Verifies the caller can leave the next-steps commands out and the output then ends with the completion line
+def test_the_next_steps_can_be_left_out(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, print_next_steps=False)
+    assert output.endswith("* Browser cookie import completed successfully\n")
+    assert "Check setup again:" not in output
+
+
 # Verifies a target already saved in the config is left out of both next-steps commands
 def test_a_target_saved_in_the_config_is_left_out_of_both_commands(tmp_path, monkeypatch, capsys):
     output = import_and_capture(tmp_path, monkeypatch, capsys, target="friend.user", saved_target="friend.user")

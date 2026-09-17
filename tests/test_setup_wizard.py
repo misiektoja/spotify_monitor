@@ -502,6 +502,29 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert "browser-private-value" not in output
 
 
+# Verifies a completed import leaves its standalone next steps out and one blank line separates it from the file summary
+def test_a_completed_browser_import_is_followed_directly_by_the_file_summary(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        env_path = directory / ".env"
+        cookie_file = directory / "cookies.sqlite"
+        cookie_file.touch()
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "n", "n"])
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+        monkeypatch.setattr(monitor, "select_browser_profile", lambda *args, **kwargs: {"name": "default", "dir": str(directory), "cookie_file": str(cookie_file)})
+        monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="browser-private-value"))
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
+        assert error.value.code == 0
+        output = capsys.readouterr().out
+        assert f"* Browser cookie import completed successfully\n\nSaved files\n\n  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n  Secrets:       {env_path.resolve()}\n" in output
+        assert output.count("Check setup again:") == 1
+        assert output.index("Check setup again:") > output.index("\nNext steps\n")
+        assert "browser-private-value" not in output
+
+
 # Verifies the wizard tells the import runner whether the config will supply the target, so its printed
 # commands carry the target exactly when the config does not hold it
 @pytest.mark.parametrize("persist_answer, expected_saved", [("y", "target.user"), ("n", "")])
