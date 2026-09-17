@@ -563,9 +563,9 @@ def test_the_scrobble_health_summary_reports_the_matching_settings(monkeypatch):
     concise = emit_to_string(rows)
     full = emit_to_string(rows, show_full=True)
     assert "* Liveness output:              1 day" in concise
-    for advanced in ("Comparison period", "Timestamp tolerance", "Outage reminders", "Error retry timer", "Terminal truncation"):
+    for advanced in ("Comparison period", "Timestamp tolerance", "Scrobble alert reminders", "Error retry timer", "Terminal truncation"):
         assert advanced not in concise
-    for visible in ("* Comparison period:            6 hours", "* Timestamp tolerance:          5 minutes", "* Outage reminders:             1 day", "* Error retry timer:            3 minutes", "* Terminal truncation:          Disabled"):
+    for visible in ("* Comparison period:            6 hours", "* Timestamp tolerance:          5 minutes", "* Scrobble alert reminders:     1 day", "* Error retry timer:            3 minutes", "* Terminal truncation:          Disabled"):
         assert visible in full
 
 
@@ -578,7 +578,7 @@ def test_the_scrobble_health_summary_flags_disabled_reminders(monkeypatch):
     rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
 
     concise = emit_to_string(rows)
-    assert "* Outage reminders:             Disabled" in concise
+    assert "* Scrobble alert reminders:     Disabled" in concise
     assert "Liveness output" not in concise
     assert "* Liveness output:              Disabled" in emit_to_string(rows, show_full=True)
 

@@ -132,7 +132,7 @@ SONG_ON_LOOP_NOTIFICATION = False
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
-# Whether to send email alerts when Spotify plays stop reaching Last.fm and when scrobbling recovers
+# Whether to send email alerts when Spotify scrobbles are missing or start appearing again
 SCROBBLE_HEALTH_NOTIFICATION = True
 
 # ----------------------------
@@ -188,7 +188,7 @@ WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 # Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
-# Whether to send webhook alerts when Spotify plays stop reaching Last.fm and when scrobbling recovers
+# Whether to send webhook alerts when Spotify scrobbles are missing or start appearing again
 WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = True
 
 # Optional request headers for advanced webhook integrations
@@ -336,11 +336,11 @@ SPOTIFY_SCROBBLE_REFRESH_TOKEN = ""
 # Can also be set using --scrobble-check-interval
 SCROBBLE_HEALTH_CHECK_INTERVAL = 180
 
-# Minimum age of the oldest unmatched play before an outage alert in seconds
+# Minimum age of the oldest unmatched play before a missing-scrobble alert in seconds
 # Can also be set using --scrobble-dead-period
 SCROBBLE_HEALTH_DEAD_PERIOD = 1200
 
-# Minimum number of consecutive unmatched completed Spotify plays required for an outage alert
+# Minimum number of consecutive unmatched completed Spotify plays required for a missing-scrobble alert
 # Can also be set using --scrobble-min-unmatched
 SCROBBLE_HEALTH_MIN_UNMATCHED = 5
 
@@ -352,7 +352,7 @@ SCROBBLE_HEALTH_MATCH_WINDOW = 300
 # Can also be set using --scrobble-lookback
 SCROBBLE_HEALTH_LOOKBACK = 21600
 
-# How often to repeat an unresolved outage alert in seconds
+# Minimum interval between reminders while recent missing plays meet the alert threshold
 # Set to 0 to disable reminders
 # Can also be set using --scrobble-repeat-interval
 SCROBBLE_HEALTH_REPEAT_INTERVAL = 86400
@@ -6307,8 +6307,14 @@ def render_scrobble_history_comparison(spotify_plays: Sequence[SpotifyPlay], las
     return sanitize_error_text("\n".join(lines))
 
 
-# Loads a persisted scrobble health state while ignoring malformed or unsupported data
+# Returns the display label for a scrobble comparison result
+def scrobble_health_status_label(status: str) -> str:
+    return {"idle": "Idle", "healthy": "Scrobbles matched", "suspect": "Waiting", "broken": "Missing scrobbles"}.get(status, "Unknown")
+
+
+# Loads persisted scrobble alert history while ignoring malformed or unsupported data
 def load_scrobble_health_state(path: Union[str, Path]) -> dict:
+    # Legacy identifiers preserve reminder history and pending deliveries across upgrades
     default_state = {"status": "unknown", "last_notification_at": 0.0, "last_notification_attempt_at": 0.0, "pending_notification": "", "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     state_path = Path(path)
     if not state_path.is_file():
@@ -6331,8 +6337,7 @@ def load_scrobble_health_state(path: Union[str, Path]) -> dict:
         if isinstance(pending_email, bool) and isinstance(pending_webhook, bool):
             state["pending_email"] = pending_email
             state["pending_webhook"] = pending_webhook
-    # An infinity reaches here from JSON as a plain number, and keeping one as the latest broken play would leave the
-    # state permanently broken, since no real play can ever be newer and recovery is only recognised when one is
+    # Non-finite evidence timestamps would prevent any newer match from clearing the previous alert
     for key in ("last_notification_at", "last_notification_attempt_at", "broken_since", "broken_latest_spotify_at"):
         value = payload.get(key)
         if isinstance(value, (int, float)) and finite_number(value) and value >= 0:
@@ -6361,7 +6366,7 @@ def save_scrobble_health_state(path: Union[str, Path], state: dict) -> None:
             Path(temp_name).unlink()
 
 
-# Advances persisted outage state and identifies whether an outage or recovery notice is due
+# Advances alert history and identifies whether missing-scrobble or resumed-scrobbling notifications are due
 def transition_scrobble_health_state(state: dict, evaluation: ScrobbleHealthEvaluation, now: Optional[float] = None, repeat_interval: Optional[int] = None) -> tuple[dict, str]:
     current_time = time.time() if now is None else now
     selected_repeat = SCROBBLE_HEALTH_REPEAT_INTERVAL if repeat_interval is None else repeat_interval
@@ -6429,14 +6434,14 @@ def record_scrobble_health_notification(state: dict, action: str, selected_chann
     return next_state
 
 
-# Sends one scrobble outage or recovery message and reports each selected channel's result
+# Sends one missing-scrobble or resumed-scrobbling notification and reports each selected channel's result
 def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthEvaluation, action: str, selected_channels: Optional[tuple[bool, bool]] = None) -> tuple[bool, bool]:
     profile_url = f"https://www.last.fm/user/{quote(username, safe='')}"
     settings_url = "https://www.last.fm/settings/applications"
     notification_timestamp = get_cur_ts()
     if action == "recovery":
-        subject = f"spotify_monitor: Last.fm scrobbling recovered for {username}"
-        message = f"Spotify scrobbling is working again. A recent Spotify play was found on the Last.fm profile.\n\nProfile: {profile_url}"
+        subject = f"spotify_monitor: Spotify scrobbles are appearing on Last.fm again for {username}"
+        message = f"Spotify scrobbles are appearing on Last.fm again. A newer Spotify play was found on the Last.fm profile.\n\nProfile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
         count = len(evaluation.unmatched)
@@ -6444,9 +6449,10 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
         recent_missing = evaluation.unmatched[-5:]
         examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in recent_missing)
         examples_heading = f"{len(recent_missing)} most recent missing plays:" if count > len(recent_missing) else "Missing plays:"
-        reminder = " This is a repeat reminder because the outage is still unresolved." if action == "outage_reminder" else ""
-        subject = f"spotify_monitor: Spotify scrobbling may be disconnected for {username}"
-        message = f"{count} consecutive completed Spotify plays were not found on Last.fm. The first missing Spotify play was at {oldest}.{reminder}\n\n{examples_heading}\n{examples}\n\nReauthorize Spotify Scrobbling: {settings_url}\nLast.fm profile: {profile_url}"
+        reminder = " Reminder: recent Spotify plays are still missing from Last.fm." if action == "outage_reminder" else ""
+        subject = f"spotify_monitor: Spotify plays missing from Last.fm for {username}"
+        play_description = "completed Spotify play was" if count == 1 else "consecutive completed Spotify plays were"
+        message = f"{count} {play_description} not found on Last.fm. Earliest missing play in this comparison: {oldest}.{reminder}\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
     body = f"{message}\n\nTimestamp: {notification_timestamp}"
     print(f"* {subject}\n{message}")
@@ -6491,32 +6497,33 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             unmatched_count = len(evaluation.unmatched)
             play_word = "play" if unmatched_count == 1 else "plays"
             missing_verb = "has" if unmatched_count == 1 else "have"
-            state_verb = "is" if unmatched_count == 1 else "are"
+            match_verb = "was" if unmatched_count == 1 else "were"
             threshold_verb = "meets" if unmatched_count == 1 else "meet"
+            result_label = scrobble_health_status_label(evaluation.status)
             if evaluation.status == "idle":
-                result = f"Idle. Spotify reported no completed plays from the last {display_time(SCROBBLE_HEALTH_LOOKBACK)}, so there is nothing to compare with Last.fm yet."
+                result = f"No completed Spotify plays in the last {display_time(SCROBBLE_HEALTH_LOOKBACK)}. Nothing to compare with Last.fm."
             elif evaluation.status == "healthy":
-                result = "Healthy. Recent completed Spotify plays were found on Last.fm."
+                result = "Recent Spotify plays were found on Last.fm."
             elif evaluation.status == "suspect":
-                result = f"Waiting. {unmatched_count} recent Spotify {play_word} {missing_verb} not appeared on Last.fm yet, but the alert threshold has not been reached."
+                result = f"{unmatched_count} recent Spotify {play_word} {missing_verb} not appeared on Last.fm yet, but the alert threshold has not been reached."
             else:
-                result = f"Possible outage. {unmatched_count} consecutive Spotify {play_word} {state_verb} missing from Last.fm and {threshold_verb} the alert threshold."
-            result_message = f"Scrobble health result: {result} Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}."
-            debug_print("Completed scrobble health check", user=username, status=evaluation.status, unmatched=unmatched_count, next=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
+                result = f"{unmatched_count} consecutive Spotify {play_word} {match_verb} not found on Last.fm and {threshold_verb} the alert threshold."
+            result_message = f"Scrobble health result: {result_label}. {result} Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}."
+            debug_print("Completed scrobble health check", user=username, status=result_label, unmatched=unmatched_count, next=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
             if first_successful_check:
                 print(f"* {result_message}")
                 print_cur_ts("\nTimestamp:\t\t\t")
             elif evaluation.status != previous_status and evaluation.status != "suspect":
-                # Only a change of health is news, so an unchanged result is left to debug and the liveness banner
+                # Unchanged comparison results are left to debug and the liveness banner
                 verbose_print(result_message)
                 if VERBOSE_MODE:
                     print_cur_ts("\nTimestamp:\t\t\t")
             else:
                 alive_counter += 1
                 if liveness_after and alive_counter >= liveness_after:
-                    print_liveness_banner(f"Scrobble health monitoring healthy for {username}. The result is unchanged since the last check")
+                    print_liveness_banner(f"Scrobble health monitor running for {username}. Current result: {result_label}.")
                     alive_counter = 0
-            # Waiting is one play Last.fm has not caught up with yet, so it neither reports nor replaces the last reported status
+            # Waiting stays quiet so a delayed scrobble does not announce the same result twice
             if evaluation.status != "suspect":
                 previous_status = evaluation.status
             first_successful_check = False
@@ -6526,16 +6533,16 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
             operational_error_failures += 1
-            recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed without changing outage state: {sanitize_error_text(exc)}")
+            recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed: {sanitize_error_text(exc)}")
             print(render_recovery_error(RecoveryError(recovery_advice, exc)))
             failure_word = "failure" if operational_error_failures == 1 else "failures"
-            print(f"* Scrobble health has {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
+            print(f"* Scrobble health result: Check failed. {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
             notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
             if operational_error_failures < SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
                 print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
             if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
                 subject = "spotify_monitor: scrobble health check error"
-                body = f"The Spotify-to-Last.fm comparison failed {operational_error_failures} consecutive times. Existing outage state was preserved.\n\n{recovery_advice.summary}\nTo fix: {recovery_advice.fix}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                body = f"The Spotify-to-Last.fm check failed {operational_error_failures} consecutive times.\n\n{recovery_advice.summary}\nTo fix: {recovery_advice.fix}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                 email_pending = ERROR_NOTIFICATION and not operational_error_email_notified
                 webhook_pending = webhook_event_enabled("error") and not operational_error_webhook_notified
                 if email_pending or webhook_pending:
@@ -7375,10 +7382,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
             StartupSummaryRow("Target", str(target), concise=True),
             StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
-            StartupSummaryRow("Outage evidence", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
+            StartupSummaryRow("Alert threshold", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
             StartupSummaryRow("Comparison period", display_time(SCROBBLE_HEALTH_LOOKBACK), concise=False),
             StartupSummaryRow("Timestamp tolerance", display_time(SCROBBLE_HEALTH_MATCH_WINDOW), concise=False),
-            StartupSummaryRow("Outage reminders", display_time(SCROBBLE_HEALTH_REPEAT_INTERVAL) if SCROBBLE_HEALTH_REPEAT_INTERVAL else "Disabled", concise=not SCROBBLE_HEALTH_REPEAT_INTERVAL),
+            StartupSummaryRow("Scrobble alert reminders", display_time(SCROBBLE_HEALTH_REPEAT_INTERVAL) if SCROBBLE_HEALTH_REPEAT_INTERVAL else "Disabled", concise=not SCROBBLE_HEALTH_REPEAT_INTERVAL),
             StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
             StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
             *_startup_email_detail_rows(),
@@ -9096,7 +9103,7 @@ def run_scrobble_health_doctor(username: str, config_path=None, env_path=None, s
                 report.checks.append(make_doctor_check("Scrobble health", "PASS", "Last.fm recent-track access succeeded", f"{len(lastfm_scrobbles)} completed scrobble(s) returned for {username}"))
                 if spotify_recent_access_ok:
                     evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
-                    report.checks.append(make_doctor_check("Scrobble health", "PASS", f"Current comparison status is {evaluation.status}", f"{len(evaluation.unmatched)} trailing unmatched completed play(s)"))
+                    report.checks.append(make_doctor_check("Scrobble health", "PASS", f"Current comparison result: {scrobble_health_status_label(evaluation.status)}", f"{len(evaluation.unmatched)} trailing unmatched completed play(s)"))
             except Exception as exc:
                 advice = classify_recovery_error(exc, "network")
                 report.checks.append(make_doctor_check("Scrobble health", "FAIL", "Last.fm recent-track access failed", advice.detail, advice))
@@ -9913,12 +9920,12 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
     config_values.update(smtp_values)
     if scrobble_health:
         selected = {
-            "SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Email when scrobbling appears disconnected or recovers?", default=True),
+            "SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Email when scrobbles are missing or start appearing again?", default=True),
             "ERROR_NOTIFICATION": _wizard_ask_yes_no("Email when a scrobble health check cannot run?", default=True),
         }
         config_values.update({name: False for name in notification_names})
         config_values.update(selected)
-        labels = {"SCROBBLE_HEALTH_NOTIFICATION": "scrobble outage and recovery", "ERROR_NOTIFICATION": "operational errors"}
+        labels = {"SCROBBLE_HEALTH_NOTIFICATION": "missing scrobbles and resumed scrobbling", "ERROR_NOTIFICATION": "operational errors"}
         return [labels[name] for name in ("SCROBBLE_HEALTH_NOTIFICATION", "ERROR_NOTIFICATION") if selected[name]]
     preset = _wizard_ask_choice("Which email notifications should be enabled?", [("Status and errors, recommended", "Active, inactive and error notifications."), ("Every supported event", "Enables all email notification types."), ("Custom", "Choose each notification type separately.")])
     if preset == 0:
@@ -10041,12 +10048,12 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
     config_values["WEBHOOK_USERNAME"] = "Spotify Monitor"
     if scrobble_health:
         selected = {
-            "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Send a webhook when scrobbling appears disconnected or recovers?", default=True),
+            "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": _wizard_ask_yes_no("Send a webhook when scrobbles are missing or start appearing again?", default=True),
             "WEBHOOK_ERROR_NOTIFICATION": _wizard_ask_yes_no("Send a webhook when a scrobble health check cannot run?", default=True),
         }
         config_values.update({name: False for name in notification_names})
         config_values.update(selected)
-        labels = {"WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": "scrobble outage and recovery", "WEBHOOK_ERROR_NOTIFICATION": "operational errors"}
+        labels = {"WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": "missing scrobbles and resumed scrobbling", "WEBHOOK_ERROR_NOTIFICATION": "operational errors"}
         return [labels[name] for name in ("WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION", "WEBHOOK_ERROR_NOTIFICATION") if selected[name]]
     preset = _wizard_ask_choice("Which webhook alerts should be sent?", [("Status and errors, recommended", "Alerts when the user becomes active, becomes inactive or monitoring has a problem."), ("Every supported alert", "Also sends tracked-song, every-song and loop alerts."), ("Custom", "Choose each webhook alert separately.")])
     if preset == 0:
@@ -10681,11 +10688,11 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
     print(f"  Spotify recent-play app: {state.auth['source']}")
     print(f"  Authentication status: {'complete' if state.auth['complete'] else 'incomplete'}")
     print(f"  Spotify redirect URI: {state.config_values['SPOTIFY_SCROBBLE_REDIRECT_URI']}")
-    print(f"  Email outage and recovery alerts: {'enabled' if state.config_values.get('SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
+    print(f"  Email scrobble alerts: {'enabled' if state.config_values.get('SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
     print(f"  Email operational error alerts: {'enabled' if state.config_values.get('ERROR_NOTIFICATION') else 'disabled'}")
-    print(f"  Webhook outage and recovery alerts: {'enabled' if state.config_values.get('WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
+    print(f"  Webhook scrobble alerts: {'enabled' if state.config_values.get('WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION') else 'disabled'}")
     print(f"  Webhook operational error alerts: {'enabled' if state.config_values.get('WEBHOOK_ERROR_NOTIFICATION') else 'disabled'}")
-    print("  Console outage alerts: enabled")
+    print("  Console scrobble alerts: enabled")
     print(f"  Config destination: {state.config_path}")
     print(f"  Dotenv destination: {state.env_path}")
     print(f"  Install method: {method}")
@@ -10693,7 +10700,7 @@ def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState,
 
 # Opens one selected scrobble health section then returns to the summary
 def _wizard_edit_scrobble_health_setup_section(state: ScrobbleHealthSetupState, method: str) -> None:
-    section = _wizard_ask_choice("Which setup section should be changed?", [("Last.fm profile", "Change the profile whose scrobbles are checked."), ("Alert thresholds", "Change comparison timing and missing-play evidence."), ("Authentication", "Change the Last.fm API key or Spotify recent-play authorization."), ("Email notifications", "Change SMTP details and outage email alerts."), ("Webhook alerts", "Change Discord or ntfy outage alerts."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
+    section = _wizard_ask_choice("Which setup section should be changed?", [("Last.fm profile", "Change the profile whose scrobbles are checked."), ("Alert thresholds", "Change comparison timing and missing-play evidence."), ("Authentication", "Change the Last.fm API key or Spotify recent-play authorization."), ("Email notifications", "Change SMTP details and scrobble email alerts."), ("Webhook alerts", "Change Discord or ntfy scrobble alerts."), ("File destinations", "Change the configuration or dotenv output path."), ("Return to summary", "Keep every current answer.")])
     if section == 0:
         print()
         _wizard_collect_scrobble_health_profile_section(state)
@@ -12484,14 +12491,14 @@ def main():
         dest="scrobble_dead_period",
         metavar="SECONDS",
         type=int,
-        help="Age required for the oldest missing play before an outage alert",
+        help="Age required for the oldest missing play before a missing-scrobble alert",
     )
     times.add_argument(
         "--scrobble-min-unmatched",
         dest="scrobble_min_unmatched",
         metavar="PLAYS",
         type=int,
-        help="Consecutive missing completed plays required for an outage alert",
+        help="Consecutive missing completed plays required for a missing-scrobble alert",
     )
     times.add_argument(
         "--scrobble-match-window",
@@ -12512,7 +12519,7 @@ def main():
         dest="scrobble_repeat_interval",
         metavar="SECONDS",
         type=int,
-        help="Unresolved outage reminder interval, use 0 to disable reminders",
+        help="Minimum reminder interval while recent missing plays meet the alert threshold, use 0 to disable",
     )
 
     # Listing

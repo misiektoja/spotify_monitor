@@ -451,7 +451,7 @@ def test_scrobble_health_setup_collects_focused_email_flags(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: (updates.update({key: value}) or True))
     enabled = monitor._wizard_collect_email(config_values, secret_updates, PROJECT_ROOT / "local" / "unused.env", scrobble_health=True)
-    assert enabled == ["scrobble outage and recovery"]
+    assert enabled == ["missing scrobbles and resumed scrobbling"]
     assert config_values["SCROBBLE_HEALTH_NOTIFICATION"] is True
     assert config_values["ERROR_NOTIFICATION"] is False
     assert config_values["ACTIVE_NOTIFICATION"] is False
@@ -514,25 +514,25 @@ def test_scrobble_health_setup_collects_focused_webhook_flags(monkeypatch):
     monkeypatch.setattr(monitor, "validate_webhook_url", lambda value: True)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: (updates.update({key: value}) or True))
     enabled = monitor._wizard_collect_webhook(config_values, secret_updates, PROJECT_ROOT / "local" / "unused.env", scrobble_health=True)
-    assert enabled == ["scrobble outage and recovery"]
+    assert enabled == ["missing scrobbles and resumed scrobbling"]
     assert config_values["WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION"] is True
     assert config_values["WEBHOOK_ERROR_NOTIFICATION"] is False
     assert config_values["WEBHOOK_ACTIVE_NOTIFICATION"] is False
     assert secret_updates["WEBHOOK_URL"] == "https://discord.example.test/private"
 
 
-# Confirms the focused summary reports outage and operational flags independently
+# Confirms the focused summary reports scrobble and operational alerts independently
 def test_scrobble_health_setup_summary_distinguishes_notification_flags(capsys):
     config_values = {"SCROBBLE_HEALTH_MIN_UNMATCHED": 5, "SCROBBLE_HEALTH_DEAD_PERIOD": 1200, "SCROBBLE_HEALTH_CHECK_INTERVAL": 300, "SCROBBLE_HEALTH_NOTIFICATION": False, "ERROR_NOTIFICATION": True, "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True, "WEBHOOK_ERROR_NOTIFICATION": False, "SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:8888/callback"}
     auth = {"complete": True, "source": "user-owned Spotify app with PKCE", "mount_required": False, "host_os": None}
-    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, config_values, {}, "lastfm-user", auth, ["operational errors"], ["scrobble outage and recovery"])
+    state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, config_values, {}, "lastfm-user", auth, ["operational errors"], ["missing scrobbles and resumed scrobbling"])
     monitor._wizard_print_scrobble_health_setup_summary(state, "manual")
     output = capsys.readouterr().out
     assert "Dead period: 1200s - 20m" in output
     assert "Comparison interval: 300s - 5m" in output
-    assert "Email outage and recovery alerts: disabled" in output
+    assert "Email scrobble alerts: disabled" in output
     assert "Email operational error alerts: enabled" in output
-    assert "Webhook outage and recovery alerts: enabled" in output
+    assert "Webhook scrobble alerts: enabled" in output
     assert "Webhook operational error alerts: disabled" in output
     assert "Config destination: config.conf" in output
     assert "Dotenv destination: .env" in output
@@ -715,7 +715,7 @@ def test_scrobble_health_monitor_prints_first_check_and_hides_normal_repeats(mon
     output = capsys.readouterr().out
     assert "Scrobble health monitoring started for Last.fm profile lastfm-user" in output
     assert output.count("Running scrobble health check") == 1
-    assert output.count("Scrobble health result: Healthy") == 1
+    assert output.count("Scrobble health result: Scrobbles matched") == 1
     assert "Next check in 2 minutes" in output
     assert output.count("Timestamp:") == 2
     assert "Press Ctrl+C to stop.\n\nTimestamp:" in output
@@ -768,13 +768,14 @@ def test_scrobble_health_monitor_reports_a_changed_result(monkeypatch, capsys):
 
     output = capsys.readouterr().out
     assert output.count("Scrobble health result: Idle") == 1
-    assert output.count("Scrobble health result: Healthy") == 1
+    assert output.count("Scrobble health result: Scrobbles matched") == 1
 
 
-# Confirms an unchanged result still reports the loop is alive once the liveness interval has passed, in any mode
-def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys):
-    state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
-    evaluation = monitor.ScrobbleHealthEvaluation("idle")
+# Confirms liveness reports the current comparison even when a previous missing-scrobble alert remains saved
+@pytest.mark.parametrize(("status", "label"), [("idle", "Idle"), ("healthy", "Scrobbles matched"), ("suspect", "Waiting"), ("broken", "Missing scrobbles")])
+def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys, status, label):
+    state = {"status": "broken", "last_notification_at": 1000.0, "broken_since": 900.0, "broken_latest_spotify_at": 850.0}
+    evaluation = monitor.ScrobbleHealthEvaluation(status)
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
@@ -791,12 +792,14 @@ def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys)
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
     output = capsys.readouterr().out
-    assert "* Scrobble health monitoring healthy for lastfm-user. The result is unchanged since the last check" in output
+    assert f"* Scrobble health monitor running for lastfm-user. Current result: {label}." in output
+    assert "monitoring healthy" not in output
     assert output.count("Liveness check, timestamp:") == 1
 
 
-# Confirms scrobble alerts format play dates and deliver notifications before the console timestamp
-def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, capsys):
+# Confirms alerts and reminders describe comparison evidence and deliver before the console timestamp
+@pytest.mark.parametrize("action", ["outage", "outage_reminder"])
+def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, capsys, action):
     timestamp_mock = Mock(side_effect=lambda prefix: print(f"{prefix}CONSOLE-TIMESTAMP"))
     delivery_mock = Mock(side_effect=lambda *args, **kwargs: (print("Sending webhook notification") or False, True))
     monkeypatch.setattr(monitor, "get_cur_ts", lambda prefix="": f"{prefix}ALERT-TIMESTAMP")
@@ -804,10 +807,14 @@ def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, 
     monkeypatch.setattr(monitor, "print_cur_ts", timestamp_mock)
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
     evaluation = monitor.ScrobbleHealthEvaluation("broken", tuple(spotify_play(timestamp, track) for timestamp, track in ((1000, "First"), (1100, "Second"), (1200, "Third"), (1300, "Fourth"), (1400, "Fifth"), (1500, "Sixth"))))
-    monitor.send_scrobble_health_notification("lastfm-user", evaluation, "outage")
+    monitor.send_scrobble_health_notification("lastfm-user", evaluation, action)
     outage_output = capsys.readouterr().out
     outage_body = delivery_mock.call_args.args[2]
-    assert "The first missing Spotify play was at PLAYED-1000." in outage_body
+    assert delivery_mock.call_args.args[1] == "spotify_monitor: Spotify plays missing from Last.fm for lastfm-user"
+    assert "Earliest missing play in this comparison: PLAYED-1000." in outage_body
+    assert "Check whether Spotify Scrobbling is connected in your Last.fm settings:" in outage_body
+    assert ("Reminder: recent Spotify plays are still missing from Last.fm." in outage_body) is (action == "outage_reminder")
+    assert "outage" not in outage_body.lower()
     assert "5 most recent missing plays:" in outage_body
     assert "\n- PLAYED-1000 | Artist - First" not in outage_body
     assert "- PLAYED-1100 | Artist - Second" in outage_body
@@ -822,7 +829,8 @@ def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, 
     monitor.send_scrobble_health_notification("lastfm-user", monitor.ScrobbleHealthEvaluation("healthy"), "recovery")
     recovery_output = capsys.readouterr().out
     recovery_body = delivery_mock.call_args.args[2]
-    assert "Spotify scrobbling is working again. A recent Spotify play was found on the Last.fm profile." in recovery_body
+    assert "Spotify scrobbles are appearing on Last.fm again. A newer Spotify play was found on the Last.fm profile." in recovery_body
+    assert "recovered" not in delivery_mock.call_args.args[1]
     assert recovery_body.endswith("Timestamp: ALERT-TIMESTAMP")
     assert "Profile: https://www.last.fm/user/lastfm-user\n\nTimestamp:" in recovery_output
     assert "\n\n\nTimestamp:" not in recovery_output
@@ -845,7 +853,9 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
     assert delivery_mock.call_args.args[2].endswith("\n\nTimestamp: ALERT-TIMESTAMP")
-    assert "comparison failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert "check failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
+    assert "outage" not in delivery_mock.call_args.args[2].lower()
     assert output.count("Operational alert deferred until 3 consecutive check failures.") == 2
     assert delivery_mock.call_count == 1
     assert output.rindex("Sending webhook notification") < output.rindex("CONSOLE-TIMESTAMP")
@@ -890,10 +900,10 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
-    assert output.count("Scrobble health has 1 consecutive check failure.") == 2
-    assert "Scrobble health has 3 consecutive check failures." in output
+    assert output.count("Scrobble health result: Check failed. 1 consecutive check failure.") == 2
+    assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
     assert delivery_mock.call_count == 1
-    assert "comparison failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert "check failed 3 consecutive times" in delivery_mock.call_args.args[2]
 
 
 # Confirms scrobble health uses a smaller capped retry budget than Friend Activity
@@ -977,6 +987,7 @@ def test_scrobble_health_doctor_verbose_lists_recent_history(monkeypatch, capsys
     assert monitor.run_scrobble_health_doctor("lastfm-user") == 0
     concise_output = capsys.readouterr().out
     assert "Diagnostic Track" not in concise_output
+    assert "Current comparison result: Scrobbles matched" in concise_output
     monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
     assert monitor.run_scrobble_health_doctor("lastfm-user") == 0
     verbose_output = capsys.readouterr().out
@@ -1077,7 +1088,48 @@ def test_transition_scrobble_health_state_requires_newer_confirmed_match():
     assert recovery_action == "recovery"
 
 
-# Confirms failed outage delivery remains pending until a later attempt succeeds
+# Confirms idle periods suppress reminders until recent missing plays meet the threshold again
+@pytest.mark.parametrize(("repeat_interval", "expected_action"), [(86400, "outage_reminder"), (0, "")])
+def test_scrobble_alert_reminders_require_recent_evidence_after_idle(monkeypatch, repeat_interval, expected_action):
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_DEAD_PERIOD", 1200)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_MIN_UNMATCHED", 5)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    original_plays = [spotify_play(1000 + index * 240, f"Original {index}") for index in range(5)]
+    first = monitor.evaluate_scrobble_health(original_plays, [], now=2400)
+    state, action = monitor.transition_scrobble_health_state({}, first, now=2400, repeat_interval=repeat_interval)
+    assert action == "outage"
+    state = monitor.record_scrobble_health_notification(state, action, (True, False), (True, False), now=2400)
+    _, early_action = monitor.transition_scrobble_health_state(state, first, now=3000, repeat_interval=repeat_interval)
+    assert early_action == ""
+
+    idle = monitor.evaluate_scrobble_health(original_plays, [], now=90000)
+    idle_state, idle_action = monitor.transition_scrobble_health_state(state, idle, now=90000, repeat_interval=repeat_interval)
+    assert idle.status == "idle"
+    assert monitor.scrobble_health_status_label(idle.status) == "Idle"
+    assert idle_action == ""
+    assert idle_state == state
+
+    new_plays = [spotify_play(89000 + index * 240, f"New {index}") for index in range(5)]
+    waiting = monitor.evaluate_scrobble_health(new_plays[:4], [], now=90500)
+    waiting_state, waiting_action = monitor.transition_scrobble_health_state(idle_state, waiting, now=90500, repeat_interval=repeat_interval)
+    assert waiting.status == "suspect"
+    assert waiting_action == ""
+    assert waiting_state == state
+    missing = monitor.evaluate_scrobble_health(new_plays, [], now=90500)
+    missing_state, reminder_action = monitor.transition_scrobble_health_state(waiting_state, missing, now=90500, repeat_interval=repeat_interval)
+    assert missing.status == "broken"
+    assert reminder_action == expected_action
+    assert missing.unmatched[0].played_at == 89000
+
+    new_match = spotify_play(90800, "Matched again")
+    matched = monitor.evaluate_scrobble_health([*new_plays, new_match], [lastfm_scrobble(90800, "Matched again")], now=92000)
+    matched_state, resumed_action = monitor.transition_scrobble_health_state(missing_state, matched, now=92000, repeat_interval=repeat_interval)
+    assert matched.status == "healthy"
+    assert matched_state["status"] == "healthy"
+    assert resumed_action == "recovery"
+
+
+# Confirms failed missing-scrobble delivery remains pending until a later attempt succeeds
 def test_scrobble_health_notification_state_waits_for_delivery_success():
     state = {"status": "healthy", "last_notification_at": 0.0, "last_notification_attempt_at": 0.0, "pending_notification": "", "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("broken", (spotify_play(900),), latest_spotify_at=900)
@@ -1237,7 +1289,7 @@ def test_scrobble_health_monitor_does_not_report_a_late_scrobble_as_a_change(mon
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
     output = capsys.readouterr().out
-    assert output.count("Scrobble health result: Healthy") == 1
+    assert output.count("Scrobble health result: Scrobbles matched") == 1
     assert "Waiting." not in output
 
 
@@ -1265,4 +1317,4 @@ def test_scrobble_health_monitor_does_not_repeat_an_outage_after_a_waiting_check
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
     output = capsys.readouterr().out
-    assert output.count("Scrobble health result: Possible outage") == 1
+    assert output.count("Scrobble health result: Missing scrobbles") == 1
