@@ -1069,6 +1069,7 @@ class ErrorAlertState:
         setattr(self, f"{channel}_retry_at", now + delay)
         print(f"* The {channel} alert is on hold for {display_time(delay)} after {failures} {'attempt' if failures == 1 else 'attempts'}, then tried again")
 
+
 stdout_bck = None
 csvfieldnames = ['Date', 'Artist', 'Track', 'Playlist', 'Album', 'Last activity']
 
@@ -3702,7 +3703,6 @@ class TerminalStream(object):
     # Forwards remaining stream attributes to the wrapped terminal
     def __getattr__(self, name):
         return getattr(self.terminal, name)
-
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -6960,7 +6960,6 @@ def _startup_webhook_notification_categories() -> List[str]:
         (MONITOR_MODE == "scrobble_health" and WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, "scrobble health"),
     )
     return [label for enabled, label in settings if WEBHOOK_ENABLED and enabled]
-
 
 
 # Hides the middle of an address's local part, so a log can be shared while the reader can still spot a typo
@@ -11422,7 +11421,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                 debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
                 time.sleep(SPOTIFY_CHECK_INTERVAL)
-
 
         # User is not found in the Spotify's friend list just after starting the tool
         else:
