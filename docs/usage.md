@@ -18,6 +18,8 @@ For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm 
 
 The first `docker run` command works in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
+The manual-script prefix names the file rather than its path, so run it from the directory holding `spotify_monitor.py`. From another directory, use the full path instead, for example `python3 /opt/spotify-monitor/spotify_monitor.py --doctor TARGET`. The commands the tool prints after setup and Doctor use the same short form.
+
 See [Installation](installation.md) for setup, optional dependencies, image details and upgrade commands.
 
 <a id="monitoring-mode"></a>

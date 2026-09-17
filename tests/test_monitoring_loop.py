@@ -364,12 +364,29 @@ def test_the_guide_link_keeps_its_own_line_in_the_html_body(loop_environment, mo
     assert "\n" not in parts[fix_index]
 
 
-# A failure that changes category is a different failure, so it earns each channel a new alert
-def test_a_changed_failure_category_earns_a_new_alert(loop_environment, monkeypatch):
+# One outage earns one alert per channel, however the failure changes, until a check succeeds again
+def test_a_changed_failure_category_does_not_earn_a_second_alert(loop_environment, monkeypatch):
     responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [http_error(401)] * 3
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
-    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)", "spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)"]
+
+
+# Alternating categories used to forget the delivered alert on every transition, so one outage sent one per check
+def test_alternating_failure_categories_deliver_one_alert(loop_environment, monkeypatch):
+    responses = [http_error(401), http_error(403), http_error(401), http_error(403)]
+    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 4)
+
+    assert len(errors) == 1
+
+
+# A watchdog timeout is a failed check, so it reaches the alert channels instead of only printing a retry line.
+# It retries on the shorter watchdog wait, so it needs more checks than the error interval to last five minutes
+def test_a_stalled_request_earns_the_same_single_alert(loop_environment, monkeypatch):
+    checks = 2 * (monitor.ERROR_ALERT_AFTER_SECONDS // monitor.ALARM_RETRY)
+    errors = error_alerts_for(loop_environment, monkeypatch, [monitor.TimeoutException("stalled")] * checks, [(True, True)], checks)
+
+    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)"]
 
 
 # Each channel is tracked on its own, so the one that failed is retried while the one that landed is left alone

@@ -141,7 +141,7 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 <a id="run-individual-commands"></a>
 ## Run Individual Commands
 
-The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows. Docker users should copy the matching prefix under [Command Format by Installation Method](usage.md#command-format).
+The examples below use PyPI. For a manual script, replace `spotify_monitor` with `python3 spotify_monitor.py` on macOS or Linux. Use `python spotify_monitor.py` on Windows, and run it from the directory holding the script or give its full path. Docker users should copy the matching prefix under [Command Format by Installation Method](usage.md#command-format).
 
 To configure authentication without the wizard, first open [Spotify Web Player](https://open.spotify.com/) in Firefox and sign in to the monitoring account. Then import that browser login:
 

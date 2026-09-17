@@ -631,3 +631,30 @@ def test_the_loop_tracks_the_error_alert_through_the_state():
     assert source.count('error_alert.pending("email"') == source.count('error_alert.record("email"') >= 1
     assert source.count('error_alert.pending("webhook"') == source.count('error_alert.record("webhook"') >= 1
     assert not re.search(r"^\s*error_(email|webhook)_sent = ", source, re.MULTILINE)
+
+
+# Verifies every context the source passes to the classifier is one it can resolve, since an unknown file
+# context used to make the generic file fallback call itself with the same arguments until the stack ran out
+def test_every_context_the_source_passes_is_classified_without_recursing():
+    source = inspect.getsource(monitor)
+    contexts = sorted(set(re.findall(r'context=\s*"([a-z_.]+)"', source)))
+    assert "file_write" in contexts
+
+    for context in contexts:
+        for error in (None, PermissionError(13, "Permission denied"), FileExistsError(17, "File exists"), OSError(28, "No space left on device")):
+            advice = monitor.classify_recovery_error(error, context=context, detail="probe")
+            assert advice.code in monitor.RECOVERY_CODES
+
+
+# Verifies a save that cannot reach its destination names the write failure rather than an unrelated recovery
+def test_a_blocked_secret_destination_is_reported_as_a_write_failure(tmp_path, monkeypatch):
+    for name, value in (("SMTP_HOST", "mail.example.test"), ("SMTP_USER", "user@example.test"), ("SENDER_EMAIL", "user@example.test"), ("RECEIVER_EMAIL", "user@example.test")):
+        monkeypatch.setattr(monitor, name, value)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory\n", encoding="utf-8")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=blocker / ".env", interactive=True, input_func=lambda prompt: "y", getpass_func=lambda prompt: "entered-password", sign_in=lambda password, timeout=5: "user@example.test")
+
+    assert raised.value.advice.code == "file.unwritable"
+    assert blocker.read_text(encoding="utf-8") == "not a directory\n"

@@ -1747,7 +1747,9 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if isinstance(error, FileNotFoundError):
         return classify_recovery_error(error, "file_read", safe_detail)
     if isinstance(error, (PermissionError, OSError)) and context.startswith("file"):
-        return classify_recovery_error(error, context, safe_detail)
+        # Reported as a write failure rather than classified again under a file context none of the branches
+        # above names, which would call this function with the same arguments until the stack runs out
+        return classify_recovery_error(error, "file_write", safe_detail)
     return make_recovery_advice("unknown", "An unexpected error occurred", recovery_fix_with_guide(unknown_failure_fix(), DOCTOR_GUIDE_URL), True, safe_detail)
 
 
@@ -3005,7 +3007,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     try:
         update_dotenv_file(destination, {"SMTP_PASSWORD": smtp_password})
     except Exception as exc:
-        raise RecoveryError(classify_recovery_error(exc, context="file.unwritable", detail=f"Cannot save SMTP_PASSWORD to '{destination}'"), exc) from None
+        raise RecoveryError(classify_recovery_error(exc, context="file_write", detail=f"Cannot save SMTP_PASSWORD to '{destination}'"), exc) from None
     selected_config = config_path or find_config_file()
     method = _wizard_install_method()
     print(f"* The mail server accepted the password for {signed_in_user}")
@@ -10603,7 +10605,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     webhook_sent = False
     # The error alert is tracked apart from the event alerts, once per channel and per failure category
     error_alert = ErrorAlertState()
-    error_delivery_code = None
 
     mark_monitoring_started()
     out = f"Monitoring user {user_uri_id}"
@@ -10638,33 +10639,27 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             email_sent = False
             webhook_sent = False
             error_alert.reset()
-            error_delivery_code = None
             _restore_timeout_alarm(alarm_state)
-        except TimeoutException:
-            _restore_timeout_alarm(alarm_state)
-            print_recovery_error(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", retry_note=f"retrying in {display_time(ALARM_RETRY)}", tracker=recovery_hint_tracker)
-            print_cur_ts("Timestamp:\t\t\t")
-            debug_print("Retry wait", due_in=display_time(ALARM_RETRY), reason="a Spotify request timed out")
-            time.sleep(ALARM_RETRY)
-            continue
         except Exception as e:
             _restore_timeout_alarm(alarm_state)
 
+            # A watchdog timeout is a failed check like any other, so it shares the outage report and the alert state
+            # instead of printing its own block on every retry while never earning an alert
+            timed_out = isinstance(e, TimeoutException)
+            if timed_out:
+                e = TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}")
+            retry_seconds = ALARM_RETRY if timed_out else SPOTIFY_ERROR_INTERVAL
+
             debug_print("Main monitor loop", outcome="failed", error=f"{type(e).__name__}: {e}")
 
-            auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
-            advice = classify_recovery_error(e, auth_context)
-            # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
-            # internet outage that flaps between a timeout and an unreachable host stays one failure
-            if outage_family(advice.code) != outage_family(error_delivery_code):
-                error_alert.reset()
-                error_delivery_code = advice.code
+            failure_context = "runtime" if timed_out else ("client_auth" if TOKEN_SOURCE == "client" else "cookie_auth")
+            advice = classify_recovery_error(e, failure_context)
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice)
             delivery_reported = False
             if outage_outcome == "full":
-                print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
+                print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
             elif outage_outcome == "changed":
                 print_outage_change(user_uri_id, advice)
             elif outage_outcome == "reminder":
@@ -10679,8 +10674,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
             else:
                 m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
-            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-            m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+            m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
             # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
             # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
             alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
@@ -10697,8 +10692,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # with nothing under it reads as a run that stopped there
             if outage_outcome in ("full", "changed") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
-            debug_print("Retry wait", due_in=display_time(SPOTIFY_ERROR_INTERVAL), reason="waiting the error interval after a failed check")
-            time.sleep(SPOTIFY_ERROR_INTERVAL)
+            debug_print("Retry wait", due_in=display_time(retry_seconds), reason="a Spotify request timed out" if timed_out else "waiting the error interval after a failed check")
+            time.sleep(retry_seconds)
             continue
 
         playlist_m_body = ""
@@ -10914,24 +10909,20 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         email_sent = False
                         webhook_sent = False
                         error_alert.reset()
-                        error_delivery_code = None
                         _restore_timeout_alarm(alarm_state)
                         break
-                    except TimeoutException:
-                        _restore_timeout_alarm(alarm_state)
-                        print_recovery_error(TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}"), "runtime", retry_note=f"retrying in {display_time(ALARM_RETRY)}", tracker=recovery_hint_tracker)
-                        print_cur_ts("Timestamp:\t\t\t")
-                        time.sleep(ALARM_RETRY)
                     except Exception as e:
                         _restore_timeout_alarm(alarm_state)
 
-                        auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
-                        advice = classify_recovery_error(e, auth_context)
-                        # A failure that changes family is a different failure, so each channel earns a new alert for it, while an
-                        # internet outage that flaps between a timeout and an unreachable host stays one failure
-                        if outage_family(advice.code) != outage_family(error_delivery_code):
-                            error_alert.reset()
-                            error_delivery_code = advice.code
+                        # A watchdog timeout is a failed check like any other, so it shares the outage report and the
+                        # alert state instead of printing its own block on every retry while never earning an alert
+                        timed_out = isinstance(e, TimeoutException)
+                        if timed_out:
+                            e = TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}")
+                        retry_seconds = ALARM_RETRY if timed_out else SPOTIFY_ERROR_INTERVAL
+
+                        failure_context = "runtime" if timed_out else ("client_auth" if TOKEN_SOURCE == "client" else "cookie_auth")
+                        advice = classify_recovery_error(e, failure_context)
 
                         if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                             SP_CACHED_ACCESS_TOKEN = None
@@ -10939,7 +10930,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # A failure is reported once, then left to the hourly reminder rather than repeated on every check
                         outage_outcome = outage.failed(advice)
                         if outage_outcome == "full":
-                            print_recovery_error(e, auth_context, retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
+                            print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
                         elif outage_outcome == "changed":
                             print_outage_change(user_uri_id, advice)
                         elif outage_outcome == "reminder":
@@ -10952,8 +10943,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
                         else:
                             m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
-                        m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(SPOTIFY_ERROR_INTERVAL)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(SPOTIFY_ERROR_INTERVAL))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                        m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                         # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
                         # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
                         alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
@@ -10970,7 +10961,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         # with nothing under it reads as a run that stopped there
                         if outage_outcome in ("full", "changed") or delivery_reported:
                             print_cur_ts("Timestamp:\t\t\t")
-                        time.sleep(SPOTIFY_ERROR_INTERVAL)
+                        time.sleep(retry_seconds)
 
                 if sp_found is False:
                     # User has disappeared from the Spotify's friend list or account has been removed
