@@ -2047,6 +2047,22 @@ def validate_config_content(content: str, filename: str = "<generated-config>") 
     parse_config_content(content, filename)
 
 
+# Returns the inline comment to write beside a rendered value, restating a changed duration instead of keeping the template's
+def _config_value_comment(comment, template_expression, value):
+    if not comment:
+        return ""
+    try:
+        unchanged = ast.literal_eval(template_expression) == value
+    except (ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+        return comment
+    # Every numeric template comment restates its default as a duration, so a changed one is restated the same way.
+    # A comment on any other kind of setting is guidance about the setting itself and still applies
+    if unchanged or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return comment
+    restated = display_time(value)
+    return f"# {restated}" if restated else ""
+
+
 # Renders CONFIG_BLOCK with current non-secret runtime values and preserved template secrets
 def generate_config_with_current_values(values=None) -> str:
     current_values = globals() if values is None else values
@@ -2081,8 +2097,9 @@ def generate_config_with_current_values(values=None) -> str:
 
         rendered_value = _format_config_value(current_values[variable], prefer_double_quotes=expression_stripped.startswith('"'))
         rendered_line = f"{variable} = {rendered_value}"
-        if comment:
-            rendered_line = f"{rendered_line}  {comment}"
+        rendered_comment = _config_value_comment(comment, expression_stripped, current_values[variable])
+        if rendered_comment:
+            rendered_line = f"{rendered_line}  {rendered_comment}"
         output_lines.append(rendered_line)
 
     rendered = "\n".join(output_lines) + "\n"
@@ -2680,6 +2697,15 @@ def validate_imported_sp_dc(sp_dc):
     return True
 
 
+# Returns the config a printed command should name, so a run started with discovery off cannot point the reader
+# at a file it deliberately ignored
+def resolved_command_config(config_path=None):
+    # A path the caller was given is what the command names, so a stale discovery flag cannot override it
+    if config_path is not None:
+        return "none" if str(config_path).casefold() == "none" else config_path
+    return "none" if CONFIG_DISCOVERY_DISABLED else find_config_file()
+
+
 # Runs extraction, validation, overwrite handling and atomic dotenv persistence
 def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_file=None, env_file=None, force=False, interactive=None, input_func=None, config_path=None, target=None, saved_target=None):
     destination = resolve_import_env_path(env_file)
@@ -2732,7 +2758,7 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     if TOKEN_SOURCE == "client":
         print("* Note: TOKEN_SOURCE is set to client. Set it to cookie before the imported value will be used.")
     print()
-    selected_config = config_path or find_config_file()
+    selected_config = resolved_command_config(config_path)
     method = _wizard_install_method()
     doctor_target, monitor_target = _wizard_command_targets(target, _config_file_target(selected_config) if saved_target is None else saved_target)
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, doctor_target)
@@ -2797,7 +2823,7 @@ def run_set_sp_dc(env_file=None, interactive=None, input_func=None, getpass_func
     except Exception:
         raise BrowserCookieImportError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions.") from None
 
-    selected_config = config_path or find_config_file()
+    selected_config = resolved_command_config(config_path)
     method = _wizard_install_method()
     doctor_target, monitor_target = _wizard_command_targets(None, _config_file_target(selected_config))
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination, doctor_target)
@@ -2945,7 +2971,7 @@ def run_set_webhook_url(env_file=None, interactive=None, input_func=None, getpas
         update_dotenv_file(destination, {"WEBHOOK_URL": webhook_url})
     except Exception:
         raise WebhookConfigurationError(f"Could not save the webhook URL in '{destination}'. Check file permissions or choose another path with --env-file.") from None
-    selected_config = config_path or find_config_file()
+    selected_config = resolved_command_config(config_path)
     method = _wizard_install_method()
     test_command = _wizard_action_command(method, "--send-test-webhook", selected_config, destination)
     doctor_command = _wizard_action_command(method, "--doctor", selected_config, destination)
@@ -3038,7 +3064,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
         update_dotenv_file(destination, {"SMTP_PASSWORD": smtp_password})
     except Exception as exc:
         raise RecoveryError(classify_recovery_error(exc, context="file_write", detail=f"Cannot save SMTP_PASSWORD to '{destination}'"), exc) from None
-    selected_config = config_path or find_config_file()
+    selected_config = resolved_command_config(config_path)
     method = _wizard_install_method()
     print(f"* The mail server accepted the password for {signed_in_user}")
     print(f"* Updated private settings file: {destination}")
