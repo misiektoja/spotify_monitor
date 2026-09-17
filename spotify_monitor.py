@@ -3008,6 +3008,11 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     method = _wizard_install_method()
     print(f"* The mail server accepted the password for {signed_in_user}")
     print(f"* Updated private settings file: {destination}")
+    # Startup loads the dotenv file without overriding the environment, so a saved replacement that an export
+    # shadows would never be read, and the run would keep failing with the password that was just proven good
+    if os.environ.get("SMTP_PASSWORD"):
+        print("* SMTP_PASSWORD is exported in this environment and an export wins at startup, so the next run uses that value rather than the one just saved")
+        print(colorize("info", "To fix: Unset the exported SMTP_PASSWORD to use the saved one"))
     print()
     _wizard_print_command("Send a test email:", _wizard_action_command(method, "--send-test-email", selected_config, destination))
     _wizard_print_command("Check setup again:", _wizard_action_command(method, "--doctor", selected_config, destination))
@@ -9284,8 +9289,8 @@ def _wizard_verify_smtp(values: dict, password: str) -> Optional[RecoveryAdvice]
     smtp_object = None
     try:
         globals().update(values)
-        # A blank answer keeps the password already stored, which is the one the sign-in must then prove
-        globals()["SMTP_PASSWORD"] = password or previous["SMTP_PASSWORD"]
+        # Exactly what the caller resolved, since that is the value the next run will use
+        globals()["SMTP_PASSWORD"] = password
         settings_problem = validate_smtp_configuration()
         if settings_problem is not None:
             return settings_problem if isinstance(settings_problem, RecoveryAdvice) else classify_recovery_error(context="smtp_config", detail=settings_problem)
@@ -9361,6 +9366,34 @@ def _wizard_email_enabled(config_values: dict, notification_names: Sequence[str]
     return shipped_on and doctor_secret_is_set(config_values.get("SMTP_HOST"))
 
 
+# Returns the secret stored in the dotenv file, or None when the file has no assignment for it
+def _wizard_saved_secret_value(key: str, env_path: Path) -> Optional[str]:
+    value = None
+    path = Path(env_path)
+    if path.is_file():
+        try:
+            from dotenv import dotenv_values
+            value = dotenv_values(str(path), interpolate=False).get(key)
+        except Exception:
+            value = None
+    return value if isinstance(value, str) else None
+
+
+# Returns the secret the next run would resolve and whether an exported variable is what supplies it. Startup loads
+# the dotenv file without overriding the environment, so an export wins over a saved value and over a new one
+def effective_secret_after_setup(key: str, env_path: Path, secret_updates: dict) -> Tuple[str, bool]:
+    exported = os.environ.get(key)
+    if exported:
+        return exported, True
+    if key in secret_updates:
+        return str(secret_updates[key] or ""), False
+    saved = _wizard_saved_secret_value(key, env_path)
+    if saved:
+        return saved, False
+    # Nothing private holds it, so the configuration file is what a restart would read
+    return str(globals().get(key) or ""), False
+
+
 # Collects SMTP settings and mode-appropriate notification flags without opening a connection
 def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: Path, scrobble_health: bool = False) -> List[str]:
     notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
@@ -9386,13 +9419,19 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
         smtp_values = {"SMTP_HOST": host, "SMTP_PORT": port, "SMTP_SSL": use_ssl, "SMTP_USER": user, "SENDER_EMAIL": sender, "RECEIVER_EMAIL": receiver}
         pending.update(smtp_values)
         smtp_password = _wizard_ask_secret("SMTP password")
-        outcome = _wizard_smtp_sign_in_accepted(smtp_values, smtp_password)
+        # Queued before the check rather than after it, so the sign-in proves the value the next run resolves. A
+        # declined replacement and an exported variable both leave setup reporting success for an unused password
+        _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
+        effective_password, supplied_by_export = effective_secret_after_setup("SMTP_PASSWORD", env_path, secret_updates)
+        if supplied_by_export and smtp_password:
+            print("  SMTP_PASSWORD is exported in this environment and an export wins at startup, so the next run uses that value rather than the one just entered.")
+            print("  The check below signs in with the exported value. Unset it to use the one saved here.")
+        outcome = _wizard_smtp_sign_in_accepted(smtp_values, effective_password)
         if outcome is None:
             _wizard_disable_email(config_values, notification_names, scrobble_health, secret_updates)
             return []
         if outcome:
             break
-    _wizard_queue_secret(secret_updates, env_path, "SMTP_PASSWORD", smtp_password)
     config_values.update(smtp_values)
     if scrobble_health:
         selected = {

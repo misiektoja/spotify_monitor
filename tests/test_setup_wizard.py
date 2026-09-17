@@ -602,6 +602,63 @@ def test_a_blank_smtp_password_queues_nothing_and_asks_no_replace_question(monke
     assert env_path.read_text(encoding="utf-8") == 'SMTP_PASSWORD="stored-private-value"\n'
 
 
+# Setup reports the sign-in succeeded and then writes the files a restart reads, so the value it proves has to be
+# the value the next run resolves. Startup prefers an export over the dotenv file, and setup has to agree
+def test_the_effective_secret_follows_the_startup_precedence(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "from-config-file", raising=False)
+
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {}) == ("saved-in-file", False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("accepted", False)
+    monkeypatch.setenv("SMTP_PASSWORD", "exported")
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("exported", True)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", tmp_path / "absent.env", {}) == ("from-config-file", False)
+
+
+# Verifies keeping the saved password checks that one rather than the one just typed and thrown away
+def test_a_declined_replacement_checks_the_password_that_is_kept(monkeypatch, tmp_path):
+    checked = []
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    yes_no = iter([True, True, False])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: next(yes_no))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "typed-new")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: checked.append(password))
+    secrets = {}
+
+    assert monitor._wizard_collect_email({}, secrets, env_path) == ["active", "inactive", "errors"]
+    assert checked == ["saved-in-file"]
+    assert "SMTP_PASSWORD" not in secrets
+
+
+# Verifies an exported password is the one signed in with and that setup says so, since an export wins at startup
+def test_an_exported_password_is_checked_and_reported(monkeypatch, tmp_path, capsys):
+    checked = []
+    monkeypatch.setenv("SMTP_PASSWORD", "exported-elsewhere")
+    yes_no = iter([True, True])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: next(yes_no))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "typed-new")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: checked.append(password))
+    secrets = {}
+
+    assert monitor._wizard_collect_email({}, secrets, tmp_path / ".env") == ["active", "inactive", "errors"]
+    assert checked == ["exported-elsewhere"]
+    assert secrets["SMTP_PASSWORD"] == "typed-new"
+    assert "SMTP_PASSWORD is exported in this environment" in capsys.readouterr().out
+
+
 # Verifies all-events and custom presets set each notification flag as selected
 @pytest.mark.parametrize("preset,custom_answers,expected", [(1, [], [True, True, True, True, True, True]), (2, [True, False, True, False, True, False], [True, False, True, False, True, False])])
 def test_email_all_and_custom_presets(monkeypatch, tmp_path, preset, custom_answers, expected):
