@@ -7963,8 +7963,6 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
     rows = [
         StartupSummaryRow("Target", str(target), concise=True),
         StartupSummaryRow("Authentication", authentication, concise=True),
-        StartupSummaryRow("Token source", TOKEN_SOURCE, concise=False),
-        StartupSummaryRow("Activity backend", FRIEND_ACTIVITY_BACKEND, concise=True),
         StartupSummaryRow("Polling interval", f"[offline: {display_time(SPOTIFY_LIVE_CHECK_INTERVAL)}] [active: {display_time(SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)}]" if live_activity_backend() else display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
         StartupSummaryRow("Inactivity timer", display_time(activity_inactivity_check()), concise=False),
         StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
@@ -7977,6 +7975,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Output logging", str(output_path) if output_path else "Disabled", concise=False),
         StartupSummaryRow("Config", str(config_path) if config_path else ("Discovery disabled" if CONFIG_DISCOVERY_DISABLED else "None"), concise=True),
         StartupSummaryRow("Dotenv", str(env_path) if env_path else "None", concise=True),
+        StartupSummaryRow("Activity backend", FRIEND_ACTIVITY_BACKEND, concise=True),
         StartupSummaryRow("Metadata backend", spotify_get_metadata_backend_description(), concise=True),
         StartupSummaryRow("Spotify playback control", str(TRACK_SONGS), concise=bool(TRACK_SONGS)),
         StartupSummaryRow("Crossfade detection", f"{int(CROSSFADE_DETECTION_MIN * 100)}% to {int(CROSSFADE_DETECTION_MAX * 100)}% played" if DETECT_CROSSFADED_SONGS else "Disabled", concise=False),
