@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 3.4 (TBD)
+# Changes in 3.4 (18 Sep 2026)
 
 Version **3.4** switches Friend Activity to **live listening activity**, with a **legacy backend option** for completed-track reporting. It also adds **private SMTP password entry**, improves the **`--setup` wizard** and Doctor reports and makes **Last.fm scrobble alerts** clearer. Diagnostics are quieter and configuration, credentials and notification delivery are better protected.
 
@@ -14,7 +14,6 @@ Version **3.4** switches Friend Activity to **live listening activity**, with a 
 - **NEW:** **Private SMTP password setup** - `--set-smtp-password` takes a hidden password and checks it with the mail server before saving. Guided setup also checks email credentials without sending a message
 - **NEW:** **Output choices in setup** - Choose whether to write a log and where to save CSV output, then review or edit those choices before saving
 - **IMPROVE:** **Setup preserves your progress** - The `--setup` wizard lets you skip unavailable answers and reuses saved settings. Changing destinations preserves retained credentials and keeps them out of configuration backups. Monitoring is offered after Doctor passes
-- **IMPROVE:** **Longer recent-track list** - Inactivity reports list the last 10 tracks of the session by default. Adjust it with `INACTIVE_EMAIL_RECENT_SONGS_COUNT`
 - **IMPROVE:** **Discord alerts match the email** - Discord now receives the same emphasis as the HTML email, with bold values and clickable links instead of plain text. ntfy keeps the plain body, since it would show the markers literally
 - **IMPROVE:** **More useful Doctor reports** - Reports validate settings, credentials, output destinations and alert choices. They warn about polling below 30 seconds and include approved delivery tests in the verdict. Invalid settings are reported without stopping the remaining checks
 - **IMPROVE:** **Quieter diagnostics and notifications** - `--verbose` reports operational changes and `--debug` adds technical traces with secrets redacted. Subjects omit program-name prefixes. Set `DELIVERY_CONFIRMATIONS = False` to hide delivery confirmations while keeping verbose diagnostics
