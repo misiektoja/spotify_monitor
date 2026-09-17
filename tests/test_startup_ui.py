@@ -256,8 +256,17 @@ def test_long_notification_summary_rows_wrap_without_starred_continuations():
 def test_concise_summary_hides_disabled_advanced_defaults(monkeypatch):
     configure_summary(monkeypatch)
     output = emit_to_string(summary_rows())
-    for hidden in ("Token source", "Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Crossfade detection", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
+    for hidden in ("Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Crossfade detection", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
         assert hidden not in output
+
+
+# Verifies the activity backend row sits next to the metadata backend row and nothing repeats the authentication mode
+def test_summary_lists_the_activity_backend_before_the_metadata_backend(monkeypatch):
+    configure_summary(monkeypatch)
+    output = emit_to_string(summary_rows(), show_full=True)
+    assert "Token source" not in output
+    assert output.index("* Authentication:") < output.index("* Activity backend:") < output.index("* Metadata backend:")
+    assert output.index("* Dotenv:") < output.index("* Activity backend:")
 
 
 # Verifies the complete summary states the crossfade window or that detection is off
