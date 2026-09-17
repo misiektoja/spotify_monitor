@@ -328,10 +328,11 @@ def test_live_pause_resume_and_timestamps_do_not_duplicate_tracks(loop_environme
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
     assert "Now playing:" in output
-    assert output.count("Tracks observed:") == 1
-    assert "User PAUSED playing" in output
-    assert "User RESUMED playing" in output
-    assert "Tracks observed:\t\t\t1 (0 seconds)" in output
+    assert output.count("Songs played:") == 1
+    assert f"User PAUSED playing after 30 seconds\nLast activity:\t\t\t{monitor.get_date_from_ts(now + 30)}\n\nTimestamp:" in output
+    assert "User RESUMED playing after 30 seconds\n\nTimestamp:" in output
+    assert "(estimated)" not in output
+    assert "Songs played:\t\t\t1 (0 seconds)" in output
     assert "INACTIVE" not in output
     assert "Played for:" not in output
 
@@ -353,7 +354,7 @@ def test_live_paused_startup_has_no_activity_side_effects(loop_environment, monk
     assert "Playback:\t\t\tNot playing" in output
     assert "currently ACTIVE" not in output
     assert "Friend got ACTIVE" not in output
-    assert "Tracks observed:" not in output
+    assert "Songs played:" not in output
     delivery.assert_not_called()
     playback.assert_not_called()
     assert len(destination.read_text().splitlines()) == 1
@@ -372,24 +373,26 @@ def test_live_first_playback_after_paused_startup_opens_session(loop_environment
     assert "currently ACTIVE" not in output
     assert output.count("Friend got ACTIVE") == 1
     assert "Now playing:" in output
-    assert "Tracks observed:\t\t\t1" in output
+    # The stale paused timestamp is not evidence of when playback resumed, so the session starts at the sample
+    assert "Songs played:\t\t\t1 (0 seconds)" in output
     delivery.assert_called_once()
     assert delivery.call_args.args[0] == "active"
     assert "Now playing:" in delivery.call_args.args[2]
     assert len(destination.read_text().splitlines()) == 2
 
 
-# Live track changes estimate partial startup playback without classifying it as a skip
-def test_live_track_change_counts_observations_without_skip_estimates(loop_environment, monkeypatch, capsys):
+# A track first seen at startup reports its played time without a skip label
+def test_live_track_change_reports_partial_startup_track_without_skip(loop_environment, monkeypatch, capsys):
     now = loop_environment.now
-    snapshots = [feed_entity(now), feed_entity(now + 1, track=OTHER_TRACK_URI)]
+    snapshots = [feed_entity(now), feed_entity(now), feed_entity(now + 1, track=OTHER_TRACK_URI)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
     assert "Artist - Second" in output
-    assert "Tracks observed:\t\t\t2" in output
+    assert "Songs played:\t\t\t2 (1 second)" in output
     assert "SKIPPED" not in output
     assert "Played for:" not in output
-    assert "Previous track played for (estimated): Artist - First: 0 seconds (partial observation)" in output
+    assert "User played the previous track for: 1 second (out of 3 minutes, 20 seconds) (0%)\n─" in output
+    assert output.index("User played the previous track for:") < output.index("Spotify user:")
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
@@ -400,8 +403,10 @@ def test_live_inactivity_and_same_track_restart(loop_environment, monkeypatch, c
     output = capsys.readouterr().out
     assert output.count("Friend got INACTIVE") == 1
     assert output.count("Friend got ACTIVE") == 1
-    assert "Tracks observed: 1" in output
-    assert "Tracks observed:\t\t\t2" not in output
+    assert "User played the last track for: 0 seconds (out of 3 minutes, 20 seconds) (0%)\n─" in output
+    assert "*** User played 1 songs" in output
+    assert "User paused music" not in output
+    assert "Songs played:\t\t\t2" not in output
 
 
 # Fresh paused timestamps and track changes cannot open a session without observed playback
@@ -413,35 +418,109 @@ def test_recent_stopped_activity_does_not_start_a_session(loop_environment, monk
     assert "Friend got ACTIVE" not in output
     assert "Last played:" in output
     assert "Now playing:" not in output
-    assert "Tracks observed:" not in output
+    assert "Songs played:" not in output
 
 
-# Live timing excludes pauses and keeps short resume cycles in the same track
-def test_live_timing_subtracts_pauses():
+# Feed timestamps time the pause, resume and next-track boundaries while pauses are excluded from played time
+def test_live_timing_uses_feed_timestamps_and_subtracts_pauses():
     timing = monitor.LivePlaybackTiming()
-    timing.start_track(1000, True, new_session=True)
-    timing.observe(1030, True, 60)
-    assert timing.observe(1060, False, 60) == ("paused", 30)
-    timing.observe(1090, False, 60)
-    assert timing.observe(1120, True, 60) == ("resumed", 90)
-    timing.observe(1150, True, 60)
-    assert timing.track_seconds == timing.session_seconds == 60
-    assert timing.estimate(200, allow_skip=True) == ("1 minute - SKIPPED (estimated, 30%)", True)
+    timing.observe(1000, True, 60, 990)
+    timing.start_track(1000, False, new_session=True, source_ts=990, duration=200, max_gap=60)
+    assert timing.track_started_at == timing.session_started_at == 990
+    timing.observe(1030, True, 60, 990)
+    assert timing.observe(1060, False, 60, 1050) == ("paused", 60)
+    timing.observe(1090, False, 60, 1050)
+    assert timing.observe(1120, True, 60, 1110) == ("resumed", 60)
+    timing.observe(1150, True, 60, 1110)
+    assert timing.played_seconds(1150) == 100
+    assert (timing.pauses, timing.paused_seconds) == (1, 60)
+    timing.observe(1180, True, 60, 1170, track_changed=True)
+    assert timing.track_seconds == 120
+    assert timing.played_for(200, 1, allow_skip=True) == ("2 minutes (out of 3 minutes, 20 seconds) (60%)", False, True)
+    timing.start_track(1180, True, source_ts=1170, duration=200, max_gap=60)
+    assert timing.precise and timing.track_started_at == 1170
+    timing.observe(1210, True, 60, 1170)
+    timing.observe(1240, True, 60, 1230, track_changed=True)
+    assert timing.track_seconds == 60
+    assert timing.played_for(200, 1, allow_skip=True) == ("1 minute (out of 3 minutes, 20 seconds) - SKIPPED (30%)", True, True)
+    timing.start_track(1240, True, source_ts=1230, duration=200, max_gap=60)
+    for sample in range(1270, 1441, 30):
+        timing.observe(sample, True, 60, 1230)
+    assert timing.played_seconds(1440) == 210
+    timing.observe(1470, True, 60, 1431, track_changed=True)
+    assert timing.played_for(200, 1) == ("3 minutes, 21 seconds", False, False)
+
+
+# Unchanged or future feed timestamps fall back to local sample times and mark the track imprecise
+def test_live_timing_ignores_untrusted_feed_timestamps():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(1000, True, 60, 1000)
+    timing.start_track(1000, False, new_session=True, source_ts=1000, duration=200, max_gap=60)
+    assert timing.observe(1030, False, 60, 1000) == ("paused", 0)
+    assert timing.observe(1060, True, 60, 1000) == ("resumed", 60)
+    timing.observe(1090, True, 60, 1160, track_changed=True)
+    assert timing.track_seconds == 30
+    assert not timing.precise
 
 
 # Missing observations and backward clock changes invalidate skip classification without inventing playback time
-@pytest.mark.parametrize("next_sample", [1300, 1010])
+@pytest.mark.parametrize("next_sample", [1300, 1040])
 def test_live_timing_gaps_disable_skip_estimates(next_sample):
     timing = monitor.LivePlaybackTiming()
-    timing.start_track(1000, True, new_session=True)
-    timing.observe(1030, True, 60)
-    timing.observe(next_sample, True, 60)
-    assert timing.track_seconds == timing.session_seconds == 30
-    assert timing.estimate(200, allow_skip=True) == ("30 seconds (partial observation)", False)
+    timing.observe(1000, True, 60, 990)
+    timing.start_track(1000, False, new_session=True, source_ts=990, duration=200, max_gap=60)
+    timing.observe(1030, True, 60, 1020, track_changed=True)
+    timing.start_track(1030, True, source_ts=1020, duration=200, max_gap=60)
+    assert timing.start_observed and timing.precise
+    timing.observe(1060, True, 60, 1020)
+    timing.observe(next_sample, True, 60, 1020)
+    assert timing.played_seconds(next_sample) == 40
+    assert not timing.start_observed and not timing.precise
+    timing.observe(next_sample + 30, True, 60, next_sample + 20, track_changed=True)
+    assert timing.track_seconds == 60
+    assert timing.played_for(200, 31, allow_skip=True) == ("1 minute (out of 3 minutes, 20 seconds) (30%)", False, True)
 
 
-# Estimated skips belong to the previous track and session summaries exclude paused time
-def test_live_skip_estimates_follow_previous_track_and_exclude_pauses(loop_environment, monkeypatch, tmp_path, capsys):
+# Supplies track durations matching a real three-track listening session
+def session_track_info(token, uri):
+    info = live_track_info(token, uri)
+    info["sp_track_duration"] = {TRACK_URI: 202, OTHER_TRACK_URI: 239, THIRD_TRACK_URI: 268}[uri]
+    return info
+
+
+# Played time follows the feed's track-start timestamps rather than polling moments, so fully played tracks are not reported as cut short
+def test_live_full_tracks_follow_feed_timestamps(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "spotify_get_track_info", session_track_info)
+    now = loop_environment.now
+    starts = [(now - 5, TRACK_URI), (now + 198, OTHER_TRACK_URI), (now + 438, THIRD_TRACK_URI)]
+    snapshots = []
+    # The loop processes the first two snapshots at the same moment, then one per polling interval
+    for sample in range(17):
+        sampled_at = now if sample == 0 else now + 30 * (sample - 1)
+        started, track = [entry for entry in starts if entry[0] <= sampled_at][-1]
+        snapshots.append(feed_entity(started, track=track))
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "User played the previous track for" not in output
+    assert "Songs played:\t\t\t2 (3 minutes, 23 seconds)" in output
+    assert "Songs played:\t\t\t3 (7 minutes, 23 seconds)" in output
+
+
+# Cut-short tracks are measured between feed timestamps and only observed starts can be skipped
+def test_live_cut_short_tracks_use_feed_timestamps(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    # Track changes are noticed 20 and 5 seconds after the feed timestamps, so local sample times alone would report 60 and 90 seconds
+    snapshots = [feed_entity(now - 5), feed_entity(now - 5), feed_entity(now - 5), feed_entity(now + 40, track=OTHER_TRACK_URI), feed_entity(now + 40, track=OTHER_TRACK_URI), feed_entity(now + 40, track=OTHER_TRACK_URI), feed_entity(now + 145, track=THIRD_TRACK_URI)]
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "User played the previous track for: 45 seconds (out of 3 minutes, 20 seconds) (22%)" in output
+    assert "User played the previous track for: 1 minute, 45 seconds (out of 3 minutes, 20 seconds) - SKIPPED (52%)" in output
+    assert "Songs played:\t\t\t2 (45 seconds)" in output
+    assert "Songs played:\t\t\t3 (2 minutes, 30 seconds)" in output
+
+
+# Skips belong to the previous track and inactive reports summarize the last track, pauses and skips
+def test_live_skips_follow_previous_track_and_inactive_report_summarizes_session(loop_environment, monkeypatch, tmp_path, capsys):
     for setting in ("ACTIVE_NOTIFICATION", "SONG_NOTIFICATION", "INACTIVE_NOTIFICATION"):
         monkeypatch.setattr(monitor, setting, True)
     delivery = Mock(return_value=(True, False))
@@ -462,17 +541,24 @@ def test_live_skip_estimates_follow_previous_track_and_exclude_pauses(loop_envir
     destination = tmp_path / "observed.csv"
     run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
     output = capsys.readouterr().out
-    assert "Previous track played for (estimated): Artist - Second: 1 minute - SKIPPED (estimated, 30%)" in output
-    assert "User PAUSED playing after 1 minute (estimated)" in output
-    assert "User RESUMED playing after 1 minute" in output
-    assert "Observed playing time (estimated): 1 minute, 30 seconds" in output
+    assert "User played the previous track for: 30 seconds (out of 3 minutes, 20 seconds) (15%)\n─" in output
+    assert "User played the previous track for: 1 minute (out of 3 minutes, 20 seconds) - SKIPPED (30%)\n─" in output
+    assert output.count("SKIPPED") == 1
+    assert "User PAUSED playing after 1 minute\nLast activity:\t\t\t" in output
+    assert "User RESUMED playing after 1 minute\n\nTimestamp:" in output
+    assert "User played the last track for: 0 seconds (out of 16 minutes, 40 seconds) (0%)\n─" in output
+    assert "*** User paused music 1 times for 1 minute (40%)" in output
+    assert "*** User played 3 songs, skipped 1 songs (33%)" in output
+    assert "estimated" not in output
     assert output.count("Friend got INACTIVE") == 1
     assert len(destination.read_text().splitlines()) == 4
     assert [call.args[0] for call in delivery.call_args_list] == ["active", "song", "song", "inactive"]
+    assert "User played the previous track (Artist - First) for: 30 seconds (out of 3 minutes, 20 seconds) (15%)" in delivery.call_args_list[1].args[2]
     body = delivery.call_args.args[2]
-    assert "estimated skips: 1" in body
-    assert "Second" in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED (estimated)", 1)[0]
-    assert "Third" not in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED (estimated)", 1)[0]
+    assert "User paused music 1 times for 1 minute (40%)" in body
+    assert "User played 3 songs, skipped 1 songs (33%)" in body
+    assert "Second" in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED", 1)[0]
+    assert "Third" not in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED", 1)[0]
 
 
 # Local playback mirrors pause and resume without restarting the current track
@@ -491,6 +577,24 @@ def test_live_pause_resume_controls_local_playback(loop_environment, monkeypatch
     assert [call.args[0] for call in control.call_args_list] == ["pause", "play"]
 
 
+# Resuming with a different track reports the resume before settling the previous track and starting the new one
+def test_live_resume_with_a_different_track_reports_resume_first(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+    start = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_song", start)
+    control = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_pause", control)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now, playing=False), feed_entity(now + 25, track=OTHER_TRACK_URI)])
+    output = capsys.readouterr().out
+    assert "User RESUMED playing after 25 seconds\n\nTimestamp:" in output
+    assert output.index("User RESUMED playing") < output.index("User played the previous track for: 0 seconds (out of 3 minutes, 20 seconds) (0%)") < output.index("Spotify user:")
+    assert "Songs played:\t\t\t2 (25 seconds)" in output
+    assert start.call_count == 2
+    assert [call.args[0] for call in control.call_args_list] == ["pause", "play"]
+
+
 # Pause updates leave CSV and notification counts unchanged while one new track adds one event
 def test_live_csv_and_notifications_count_track_changes(loop_environment, monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
@@ -504,5 +608,6 @@ def test_live_csv_and_notifications_count_track_changes(loop_environment, monkey
     assert len(destination.read_text().splitlines()) == 3
     assert delivery.call_count == 2
     assert "Now playing:" in delivery.call_args.args[2]
-    assert "Tracks observed: 2" in delivery.call_args.args[2]
+    assert "Songs played: 2 (1 minute)" in delivery.call_args.args[2]
+    assert "User played the previous track (Artist - First) for: 30 seconds (out of 3 minutes, 20 seconds) (15%)" in delivery.call_args.args[2]
     assert "SKIPPED" not in delivery.call_args.args[2]

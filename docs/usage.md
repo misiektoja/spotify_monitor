@@ -360,7 +360,7 @@ To send an email when a user becomes inactive:
 spotify_monitor <spotify_target> -i
 ```
 
-Inactivity emails include recent tracks observed in the session and estimated skipped track status. The live backend also reports estimated playing time excluding pauses. Tracks first seen already playing or after missing observations are excluded from live skip classification. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
+Inactivity emails include recent tracks from the session and their skipped status. The live backend also reports how long the last track played and how long the user paused during the session. Tracks first seen already playing or after missing observations are never marked as skipped. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To send an email when a listed track, playlist or album plays:
 
@@ -548,7 +548,7 @@ spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 
 Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
-With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer uses the most recent playing observation. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
+With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer starts at the pause moment. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
 ```sh
 spotify_monitor <spotify_target> -o 900
