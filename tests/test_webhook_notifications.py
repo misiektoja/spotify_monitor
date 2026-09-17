@@ -804,7 +804,7 @@ def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
     assert monitor.WEBHOOK_URL == url
     assert monitor.WEBHOOK_ENABLED is True
     assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
-    delivery.assert_called_once_with("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True)
+    delivery.assert_called_once_with("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True, report_delivery=False)
 
 
 # Verifies a known ntfy URL corrects a stale configured provider before Doctor or test delivery
@@ -825,7 +825,7 @@ def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
     assert error.value.code == 0
     assert monitor.WEBHOOK_PROVIDER == "ntfy"
     assert "Using ntfy" in capsys.readouterr().out
-    delivery.assert_called_once_with("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True)
+    delivery.assert_called_once_with("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True, report_delivery=False)
 
 
 # Verifies the direct webhook URL CLI override retains strict HTTPS validation
@@ -1016,8 +1016,8 @@ def test_the_test_messages_use_the_shared_wording(monkeypatch):
             monitor.main()
         assert error.value.code == 0
 
-    assert email.call_args.args[:2] == ("spotify_monitor: test email", "This test email was sent by --send-test-email. Your SMTP settings work.")
-    assert delivery.call_args.args[:2] == ("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.")
+    assert email.call_args.args[:2] == ("Spotify Monitor test email", "This test email was sent by --send-test-email. Your SMTP settings work.")
+    assert delivery.call_args.args[:2] == ("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.")
 
 
 # Verifies the webhook question defaults to the saved switch, so a rerun over a configured webhook proposes keeping it

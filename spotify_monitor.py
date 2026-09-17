@@ -4446,15 +4446,26 @@ def smtp_connect_and_login(use_ssl, smtp_timeout=15):
         smtp_login(smtp_object, SMTP_USER, SMTP_PASSWORD)
         return smtp_object
     except Exception:
-        try:
-            smtp_object.quit()
-        except Exception:
-            pass
+        smtp_quit_quietly(smtp_object)
         raise
 
 
+# Closes an SMTP session without changing the result of an accepted or failed message
+def smtp_quit_quietly(smtp_object):
+    if smtp_object is None:
+        return
+    try:
+        smtp_object.quit()
+    except Exception as quit_error:
+        debug_print("SMTP quit", outcome="failed", error=f"{type(quit_error).__name__}: {quit_error}")
+        try:
+            smtp_object.close()
+        except Exception as close_error:
+            debug_print("SMTP close", outcome="failed", error=f"{type(close_error).__name__}: {close_error}")
+
+
 # Sends email notification through the shared SMTP validation and login path
-def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
+def send_email(subject, body, body_html, use_ssl, smtp_timeout=15, report_delivery=True):
     validation_error = validate_smtp_configuration()
     if validation_error is not None:
         print(render_recovery_error(RecoveryError(validation_error)))
@@ -4487,11 +4498,13 @@ def send_email(subject, body, body_html, use_ssl, smtp_timeout=15):
             email_msg.attach(part2)
 
         smtp_object.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, email_msg.as_string())
-        smtp_object.quit()
     except Exception as e:
         print_recovery_error(e, "smtp")
         return 1
-    verbose_delivery_print(f"Email delivered to {RECEIVER_EMAIL}: '{subject}'")
+    finally:
+        smtp_quit_quietly(smtp_object)
+    if report_delivery:
+        verbose_delivery_print(f"Email sent to {RECEIVER_EMAIL}")
     return 0
 
 
@@ -4915,7 +4928,7 @@ def _retain_webhook_secrets(deliver):
 
 @_retain_webhook_secrets
 # Sends one webhook through an isolated bounded retry path that never uses Spotify retries
-def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "") -> int:
+def send_webhook(title: str, description: str, notification_type: str = "song", force: bool = False, sleeper: Optional[Callable[[float], None]] = None, image_url: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", report_delivery: bool = True) -> int:
     if not force and not webhook_event_enabled(notification_type):
         return 1
     destination = str(WEBHOOK_URL or "").strip()
@@ -4970,7 +4983,8 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
             else:
                 response = post_webhook_request(destination=destination, json=discord_payload, headers=request_headers)
             if 200 <= response.status_code <= 299:
-                verbose_delivery_print(f"Webhook delivered through {webhook_provider_display_name(provider)}: '{webhook_values['title']}'")
+                if report_delivery:
+                    verbose_delivery_print(f"Webhook sent through {webhook_provider_display_name(provider)}")
                 return 0
             last_error = response
             retryable = response.status_code == 429 or 500 <= response.status_code <= 599
@@ -6435,12 +6449,12 @@ def record_scrobble_health_notification(state: dict, action: str, selected_chann
 
 
 # Sends one missing-scrobble or resumed-scrobbling notification and reports each selected channel's result
-def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthEvaluation, action: str, selected_channels: Optional[tuple[bool, bool]] = None) -> tuple[bool, bool]:
+def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthEvaluation, action: str, selected_channels: Optional[tuple[bool, bool]] = None, report_event: bool = True) -> tuple[bool, bool]:
     profile_url = f"https://www.last.fm/user/{quote(username, safe='')}"
     settings_url = "https://www.last.fm/settings/applications"
     notification_timestamp = get_cur_ts()
     if action == "recovery":
-        subject = f"spotify_monitor: Spotify scrobbles are appearing on Last.fm again for {username}"
+        subject = f"Spotify scrobbles are appearing on Last.fm again for {username}"
         message = f"Spotify scrobbles are appearing on Last.fm again for {username}.\n\nProfile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
@@ -6450,15 +6464,21 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
         examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in recent_missing)
         examples_heading = f"{len(recent_missing)} most recent missing plays:" if count > len(recent_missing) else "Missing plays:"
         reminder = "Reminder: " if action == "outage_reminder" else ""
-        subject = f"spotify_monitor: Spotify plays missing from Last.fm for {username}"
+        subject = f"Spotify plays missing from Last.fm for {username}"
         play_description = "completed Spotify play was" if count == 1 else "consecutive completed Spotify plays were"
         message = f"{reminder}{count} {play_description} not found on Last.fm for {username}. Earliest missing play in this comparison: {oldest}.\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
     body = f"{message}\n\nTimestamp: {notification_timestamp}"
-    print(f"* {message}")
     email_selected, webhook_selected = selected_channels if selected_channels is not None else (bool(SCROBBLE_HEALTH_NOTIFICATION), webhook_event_enabled("scrobble_health"))
+    if report_event:
+        print(f"* {message}")
+    elif email_selected or webhook_selected:
+        channels = [name for selected, name in ((email_selected, "email"), (webhook_selected, webhook_provider_display_name())) if selected]
+        print(f"* Retrying the pending scrobble alert via {' and '.join(channels)}.")
     successful_channels = send_notification_channels("scrobble_health", subject, body, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
-    print_cur_ts("\nTimestamp:\t\t\t")
+    if report_event or email_selected or webhook_selected:
+        print(f"Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}.")
+        print_cur_ts("\nTimestamp:\t\t\t")
     return successful_channels
 
 
@@ -6487,9 +6507,12 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
             next_state, action = transition_scrobble_health_state(state, evaluation)
+            event_reported = False
             if action:
                 selected_channels = pending_scrobble_health_notification_channels(next_state)
-                successful_channels = send_scrobble_health_notification(username, evaluation, action, selected_channels)
+                delivery_retry = action == state.get("pending_notification") and ("pending_email" in state or "pending_webhook" in state or bool(state.get("last_notification_attempt_at")))
+                event_reported = not delivery_retry
+                successful_channels = send_scrobble_health_notification(username, evaluation, action, selected_channels, report_event=event_reported)
                 next_state = record_scrobble_health_notification(next_state, action, selected_channels, successful_channels)
             if next_state != state:
                 save_scrobble_health_state(state_path, next_state)
@@ -6510,7 +6533,9 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 result = f"{unmatched_count} consecutive Spotify {play_word} {match_verb} not found on Last.fm and {threshold_verb} the alert threshold."
             result_message = f"Scrobble health result: {result_label}. {result} Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}."
             debug_print("Completed scrobble health check", user=username, status=result_label, unmatched=unmatched_count, next=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
-            if first_successful_check:
+            if event_reported:
+                alive_counter = 0
+            elif first_successful_check:
                 print(f"* {result_message}")
                 print_cur_ts("\nTimestamp:\t\t\t")
             elif evaluation.status != previous_status and evaluation.status != "suspect":
@@ -6541,7 +6566,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if operational_error_failures < SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
                 print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
             if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                subject = "spotify_monitor: scrobble health check error"
+                subject = "Spotify-to-Last.fm scrobble health check error"
                 body = f"The Spotify-to-Last.fm check failed {operational_error_failures} consecutive times.\n\n{recovery_advice.summary}\nTo fix: {recovery_advice.fix}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                 email_pending = ERROR_NOTIFICATION and not operational_error_email_notified
                 webhook_pending = webhook_event_enabled("error") and not operational_error_webhook_notified
@@ -8890,7 +8915,7 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     results: List[DoctorCheck] = []
     if email_ready:
         if _doctor_ask_yes_no("Send one test email now? This will deliver a real message"):
-            result = send_email("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5)
+            result = send_email("Spotify Monitor doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", SMTP_SSL, smtp_timeout=5, report_delivery=False)
             if result == 0:
                 check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", "Doctor test email delivered", "One real test email was sent after confirmation")
             else:
@@ -8905,7 +8930,7 @@ def _doctor_offer_notification_tests(report: DoctorReport) -> List[DoctorCheck]:
     if webhook_ready:
         provider = webhook_provider_display_name()
         if _doctor_ask_yes_no(f"Send one test webhook through {provider} now? This will publish a real notification"):
-            result = send_webhook("spotify_monitor: doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
+            result = send_webhook("Spotify Monitor doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True, report_delivery=False)
             if result == 0:
                 check = make_doctor_check(DOCTOR_DELIVERY_SECTION, "PASS", f"Doctor test webhook through {provider} delivered", "One real test webhook was sent after confirmation")
             else:
@@ -11176,11 +11201,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 SP_CACHED_ACCESS_TOKEN = None
 
             if advice.code == "auth.client_invalid":
-                m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                m_subject = f"Spotify client or refresh token may be invalid or expired! (uri: {user_uri_id})"
             elif advice.code == "auth.cookie_invalid":
-                m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
+                m_subject = f"Spotify sp_dc may be invalid or expired! (uri: {user_uri_id})"
             else:
-                m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
+                m_subject = f"Spotify monitoring error (uri: {user_uri_id})"
             m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
             m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
             # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
@@ -11445,11 +11470,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         delivery_reported = False
                         if advice.code == "auth.client_invalid":
-                            m_subject = f"spotify_monitor: client or refresh token may be invalid or expired! (uri: {user_uri_id})"
+                            m_subject = f"Spotify client or refresh token may be invalid or expired! (uri: {user_uri_id})"
                         elif advice.code == "auth.cookie_invalid":
-                            m_subject = f"spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: {user_uri_id})"
+                            m_subject = f"Spotify sp_dc may be invalid or expired! (uri: {user_uri_id})"
                         else:
-                            m_subject = f"spotify_monitor: monitoring error (uri: {user_uri_id})"
+                            m_subject = f"Spotify monitoring error (uri: {user_uri_id})"
                         m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
                         m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                         # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
@@ -13220,7 +13245,7 @@ def main():
             print_recovery_error(context="webhook_config", detail="WEBHOOK_URL must contain a complete HTTPS link")
             sys.exit(1)
         print("* Sending a test webhook ...\n")
-        if send_webhook("spotify_monitor: test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True) == 0:
+        if send_webhook("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True, report_delivery=False) == 0:
             print("* Test webhook sent successfully !")
         else:
             sys.exit(1)
@@ -13253,7 +13278,7 @@ def main():
             print(render_recovery_error(RecoveryError(validation_error)))
             sys.exit(1)
         print("* Sending test email notification ...\n")
-        if send_email("spotify_monitor: test email", "This test email was sent by --send-test-email. Your SMTP settings work.", "", SMTP_SSL, smtp_timeout=5) == 0:
+        if send_email("Spotify Monitor test email", "This test email was sent by --send-test-email. Your SMTP settings work.", "", SMTP_SSL, smtp_timeout=5, report_delivery=False) == 0:
             print("* Email sent successfully !")
         else:
             sys.exit(1)

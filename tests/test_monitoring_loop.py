@@ -348,7 +348,7 @@ def test_any_failure_alerts_both_channels_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "spotify_monitor: monitoring error (uri: watched-user)"
+    assert errors[0]["subject"] == "Spotify monitoring error (uri: watched-user)"
     assert "Spotify is temporarily unavailable" in errors[0]["body"]
     assert "To fix:" in errors[0]["body"]
     assert f"retry in {monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}" in errors[0]["body"]
@@ -369,7 +369,7 @@ def test_a_changed_failure_category_does_not_earn_a_second_alert(loop_environmen
     responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [http_error(401)] * 3
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
-    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify monitoring error (uri: watched-user)"]
 
 
 # Alternating categories used to forget the delivered alert on every transition, so one outage sent one per check
@@ -386,7 +386,7 @@ def test_a_stalled_request_earns_the_same_single_alert(loop_environment, monkeyp
     checks = 2 * (monitor.ERROR_ALERT_AFTER_SECONDS // monitor.ALARM_RETRY)
     errors = error_alerts_for(loop_environment, monkeypatch, [monitor.TimeoutException("stalled")] * checks, [(True, True)], checks)
 
-    assert [call["subject"] for call in errors] == ["spotify_monitor: monitoring error (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify monitoring error (uri: watched-user)"]
 
 
 # Each channel is tracked on its own, so the one that failed is retried while the one that landed is left alone
@@ -418,7 +418,7 @@ def test_a_retryable_failure_is_alerted_once_the_outage_has_lasted(loop_environm
 def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [http_error(401)], [(True, True)], 1)
 
-    assert [call["subject"] for call in errors] == ["spotify_monitor: sp_dc may be invalid/expired or Spotify has broken sth again! (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify sp_dc may be invalid or expired! (uri: watched-user)"]
 
 
 # The loop that follows an active listener reports its failures through the same alert as the outer one
@@ -427,7 +427,7 @@ def test_a_failure_while_active_alerts_both_channels_too(loop_environment, monke
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "spotify_monitor: monitoring error (uri: watched-user)"
+    assert errors[0]["subject"] == "Spotify monitoring error (uri: watched-user)"
 
 
 # Verifies a retry that reaches the screen on a quiet check still ends with a timestamp

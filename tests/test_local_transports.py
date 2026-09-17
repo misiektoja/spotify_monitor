@@ -177,7 +177,7 @@ def test_email_delivery_over_loopback(monkeypatch: pytest.MonkeyPatch, smtp_serv
     assert any(command.startswith("AUTH PLAIN ") for command in handler.commands)
 
 
-# Verifies a delivered webhook names the provider and the alert in verbose, the way the sibling monitors report it
+# Verifies a webhook receipt names its provider
 @pytest.mark.integration
 def test_a_delivered_webhook_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatch, webhook_server: tuple[str, type[WebhookRequestHandler]], capsys: pytest.CaptureFixture[str]):
     url, _ = webhook_server
@@ -187,10 +187,10 @@ def test_a_delivered_webhook_is_reported_in_verbose(monkeypatch: pytest.MonkeyPa
 
     assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
 
-    assert "* Webhook delivered through Discord: 'Now playing'" in capsys.readouterr().out
+    assert "* Webhook sent through Discord" in capsys.readouterr().out
 
 
-# Verifies a delivered email names where it went and what it was, so verbose answers whether the alert arrived
+# Verifies an email receipt names its recipient
 @pytest.mark.integration
 def test_a_delivered_email_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatch, smtp_server: tuple[int, type[SMTPRequestHandler]], capsys: pytest.CaptureFixture[str]):
     port, _ = smtp_server
@@ -205,7 +205,7 @@ def test_a_delivered_email_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatc
 
     assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
 
-    assert "* Email delivered to receiver@example.test: 'Now playing'" in capsys.readouterr().out
+    assert "* Email sent to receiver@example.test" in capsys.readouterr().out
 
 
 # Verifies DELIVERY_CONFIRMATIONS drops both delivery lines without turning the rest of verbose mode off
@@ -228,5 +228,5 @@ def test_delivery_confirmations_can_be_turned_off(monkeypatch: pytest.MonkeyPatc
     assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
 
     output = capsys.readouterr().out
-    assert "Webhook delivered" not in output
-    assert "Email delivered" not in output
+    assert "Webhook sent through" not in output
+    assert "Email sent to" not in output

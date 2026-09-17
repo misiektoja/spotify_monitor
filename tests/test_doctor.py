@@ -264,8 +264,8 @@ def test_doctor_delivery_tests_send_approved_messages(monkeypatch):
     monkeypatch.setattr(monitor, "send_webhook", webhook)
     results = monitor._doctor_offer_notification_tests(report)
     assert [check.status for check in results] == ["PASS", "PASS"]
-    email.assert_called_once_with("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5)
-    webhook.assert_called_once_with("spotify_monitor: doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
+    email.assert_called_once_with("Spotify Monitor doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5, report_delivery=False)
+    webhook.assert_called_once_with("Spotify Monitor doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True, report_delivery=False)
     output = stream.getvalue()
     assert "[PASS] Doctor test webhook through ntfy delivered" in output
     assert "  One real test webhook was sent after confirmation" in output
