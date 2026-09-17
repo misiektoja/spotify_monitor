@@ -642,12 +642,12 @@ def test_scrobble_health_setup_offers_local_start_after_doctor(monkeypatch):
         with pytest.raises(SystemExit) as error:
             monitor.run_scrobble_health_setup_wizard()
         assert error.value.code == 0
-        doctor_mock.assert_called_once_with("lastfm-user", str(config_path), str(env_path))
+        doctor_mock.assert_called_once_with("lastfm-user", str(config_path), str(env_path.resolve()))
         launch_mock.assert_called_once()
         arguments = launch_mock.call_args.args[0]
         mode_index = arguments.index("--monitor-mode")
         assert arguments[mode_index:mode_index + 2] == ["--monitor-mode", "scrobble_health"]
-        assert arguments[-4:] == ["--config-file", str(config_path), "--env-file", str(env_path)]
+        assert arguments[-4:] == ["--config-file", str(config_path), "--env-file", str(env_path.resolve())]
     finally:
         for path in (config_path, env_path):
             if path.exists():

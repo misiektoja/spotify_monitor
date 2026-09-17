@@ -1,3 +1,4 @@
+from command_expectations import runtime_command
 import ast
 import inspect
 import io
@@ -74,8 +75,8 @@ def test_cookie_recovery_recommends_firefox_import(monkeypatch):
 def test_cookie_recovery_matches_manual_script_install(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
     advice = monitor.classify_recovery_error(RuntimeError("unsuccessful token request"), "cookie_auth")
-    assert "python3 spotify_monitor.py --import-browser-cookie --browser firefox" in advice.fix
-    assert "spotify_monitor --import-browser-cookie" not in advice.fix
+    assert runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox") in advice.fix
+    assert runtime_command("spotify_monitor --import-browser-cookie") not in advice.fix
 
 
 # Verifies container cookie recovery points to host-specific guidance and private entry
@@ -380,7 +381,6 @@ CLASSIFIER_EXEMPTIONS = {
     "Setup was saved": "a wizard result followed by the step that finishes the setup",
     "consecutive missing plays": "a line of setup guidance describing the shipped default",
     "Monitoring failure changed for": "a one-line note on a classified outage that already had its full report",
-    "the questions start from the built-in defaults": "a wizard result printed under the classified config failure above it",
 }
 
 # Words that mark a printed line as a report of something going wrong
