@@ -240,10 +240,10 @@ def test_runtime_guide_urls_match_documentation_anchors():
 
     for name in guide_names:
         guide_url = getattr(monitor, name)
-        if not guide_url.startswith(monitor.DOCUMENTATION_URL + "/"):
+        if not guide_url.startswith(monitor.DOCS_BASE_URL + "/"):
             assert guide_url.startswith(EXTERNAL_GUIDE_PREFIXES), f"{name} points outside both this site and the allowed external guides: {guide_url}"
             continue
-        suffix = guide_url.removeprefix(monitor.DOCUMENTATION_URL).lstrip("/")
+        suffix = guide_url.removeprefix(monitor.DOCS_BASE_URL).lstrip("/")
         relative_path, _separator, fragment = suffix.partition("#")
         document_path = "docs/index.md" if not relative_path else f"docs/{relative_path.rstrip('/')}" + ".md"
         assert (PROJECT_ROOT / document_path).is_file(), f"{name} references missing page {document_path}"

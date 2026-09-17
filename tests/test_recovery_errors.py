@@ -154,7 +154,7 @@ def test_webhook_recovery_categories():
 
 # Verifies webhook recovery uses the published configuration guide
 def test_webhook_recovery_guide_uses_generic_anchor():
-    assert monitor.WEBHOOK_GUIDE_URL == monitor.DOCUMENTATION_URL + "/configuration/#webhook-settings"
+    assert monitor.WEBHOOK_GUIDE_URL == monitor.DOCS_BASE_URL + "/configuration/#webhook-settings"
     assert monitor.WEBHOOK_GUIDE_URL in monitor.classify_recovery_error(context="webhook_config").fix
 
 
@@ -188,7 +188,7 @@ def test_recovery_guides_target_relevant_documentation():
 # Verifies manual cookie entry failures link directly to extraction steps
 def test_manual_cookie_recovery_uses_extraction_guide():
     advice = monitor.classify_recovery_error(RuntimeError("invalid or expired"), "set_sp_dc")
-    assert monitor.MANUAL_COOKIE_GUIDE_URL == monitor.DOCUMENTATION_URL + "/configuration/#manual-cookie-extraction"
+    assert monitor.MANUAL_COOKIE_GUIDE_URL == monitor.DOCS_BASE_URL + "/configuration/#manual-cookie-extraction"
     assert monitor.MANUAL_COOKIE_GUIDE_URL in advice.fix
     assert monitor.COOKIE_GUIDE_URL not in advice.fix
 
