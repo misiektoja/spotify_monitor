@@ -4494,6 +4494,8 @@ def validate_webhook_url(url: Any = None) -> bool:
         return False
     try:
         parsed = urlsplit(selected_url.strip())
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            return False
     except ValueError:
         return False
     return parsed.scheme.casefold() == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password and bool(parsed.path.strip("/"))
@@ -4881,7 +4883,12 @@ def _retain_webhook_secrets(deliver):
         values = [settings.get(name) for name in SECRET_KEYS]
         headers = settings.get("WEBHOOK_HEADERS")
         if isinstance(headers, dict):
-            values.extend(value for name, value in headers.items() if isinstance(name, str) and name.casefold() == "authorization")
+            for name, value in headers.items():
+                if isinstance(name, str) and name.casefold() == "authorization" and isinstance(value, str):
+                    values.append(value)
+                    parts = value.split(None, 1)
+                    if len(parts) == 2 and parts[0].casefold() in ("bearer", "basic"):
+                        values.append(parts[1])
         secrets = tuple(value for value in values if isinstance(value, str) and value and not value.startswith("your_"))
         token = _DELIVERY_SECRET_VALUES.set(_DELIVERY_SECRET_VALUES.get() + secrets)
         try:
@@ -7824,6 +7831,9 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
             debug_print("Playlist image", url=playlist_image_url)
             return owner, playlist_image_url
         except Exception as error:
+            if is_too_many_open_files(error):
+                print_recovery_advice(classify_recovery_error(error))
+                raise SystemExit(1)
             api_error = error
             api_status = spotify_get_error_status_code(error)
             if api_status != 404:
@@ -7857,6 +7867,9 @@ def spotify_get_playlist_owner_and_image(access_token, playlist_uri, oauth_app=F
         debug_print("Playlist image", url=playlist_image_url)
         return playlist_owner, playlist_image_url
     except Exception as web_error:
+        if is_too_many_open_files(web_error):
+            print_recovery_advice(classify_recovery_error(web_error))
+            raise SystemExit(1)
         debug_print("spotify_get_playlist_owner_and_image(): web-player backend", uri=playlist_uri, outcome="failed", error=f"{type(web_error).__name__}: {web_error}")
         if api_error is not None:
             raise RuntimeError(f"Both Spotify playlist metadata backends failed for {playlist_uri}: Web API: {api_error}. Web player: {web_error}")
@@ -7915,6 +7928,9 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
             SP_WEB_TRACK_API_FAILURES = 0
             return info
         except Exception as error:
+            if is_too_many_open_files(error):
+                print_recovery_advice(classify_recovery_error(error))
+                raise SystemExit(1)
             api_error = error
             SP_WEB_TRACK_API_FAILURES += 1
             if spotify_should_latch_web_backend(error, SP_WEB_TRACK_API_FAILURES):
@@ -7927,6 +7943,9 @@ def spotify_get_track_info(access_token, track_uri, oauth_app=False):
     try:
         return spotify_get_track_info_web(track_uri)
     except Exception as web_error:
+        if is_too_many_open_files(web_error):
+            print_recovery_advice(classify_recovery_error(web_error))
+            raise SystemExit(1)
         debug_print("spotify_get_track_info(): web-player backend", uri=track_uri, outcome="failed", error=f"{type(web_error).__name__}: {web_error}")
         if api_error is not None:
             raise RuntimeError(f"Both Spotify track metadata backends failed for {track_uri}: Web API: {api_error}. Web player: {web_error}")
@@ -8410,13 +8429,28 @@ def doctor_secret_checks(env_path=None) -> List[DoctorCheck]:
     return checks
 
 
+# Validates effective path settings before startup expands or opens them
+def prepare_configured_paths(args):
+    overrides = {'DOTENV_FILE': 'env_file', 'CSV_FILE': 'csv_file', 'MONITOR_LIST_FILE': 'monitor_list'}
+    settings = globals().copy()
+    for name, argument in overrides.items():
+        value = getattr(args, argument, None)
+        if value:
+            settings[name] = value
+    errors = configuration_shape_errors(settings)
+    if errors:
+        print_recovery_advice(make_recovery_advice("config.invalid", "Invalid settings: " + ". ".join(errors), recovery_fix_with_guide("Correct the named settings in the configuration file or command line", CONFIG_GUIDE_URL), False))
+        raise SystemExit(1)
+
+
 # Names malformed path and color settings before diagnostics consume their values
-def configuration_shape_errors():
+def configuration_shape_errors(settings=None):
+    settings = globals() if settings is None else settings
     errors = []
     for name in ('SP_LOGFILE', 'CSV_FILE', 'MONITOR_LIST_FILE', 'DOTENV_FILE'):
-        if name in globals() and not isinstance(globals()[name], (str, os.PathLike)):
+        if name in settings and not isinstance(settings[name], (str, os.PathLike)):
             errors.append(f"{name} must be a path string")
-    theme = globals().get("COLOR_THEME", {})
+    theme = settings.get("COLOR_THEME", {})
     if not isinstance(theme, dict):
         errors.append("COLOR_THEME must be a dictionary of style strings")
     else:
@@ -12862,6 +12896,8 @@ def main():
             except ValueError as exc:
                 print_recovery_error(exc, "target_invalid")
                 sys.exit(1)
+
+    prepare_configured_paths(args)
 
     if args.env_file:
         DOTENV_FILE = os.path.expanduser(args.env_file)
