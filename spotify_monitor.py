@@ -44,7 +44,7 @@ TOKEN_SOURCE = "cookie"
 # Friend Activity source: "listening_activity" for live activity or "buddylist" for legacy completed plays
 # Applies to monitoring, --list-friends, Doctor and cookie validation
 # Override for one run with --friend-activity-backend
-# Live activity monitors track plays, pauses, skips and repeating the same track using feed timestamps without detecting crossfades
+# Live activity reports track plays, pauses, skips, crossfades and songs on loop from feed timestamps
 FRIEND_ACTIVITY_BACKEND = "listening_activity"
 
 # Spotify user to monitor by raw ID, Spotify user URI or Spotify profile URL
@@ -7686,14 +7686,20 @@ class LivePlaybackTiming:
         open_segment = max(0, now - self.segment_started_at) if self.playing and self.segment_started_at is not None else 0
         return self.track_seconds + open_segment
 
-    # Formats the played time and reports whether the track counts as skipped and whether the time deserves a report
-    def played_for(self, duration: float, tolerance: float, allow_skip: bool = False) -> Tuple[str, bool, bool]:
+    # Formats the played time of a track and reports whether it counts as skipped and whether the time deserves a report, marking skips and crossfades only when another track followed
+    def played_for(self, duration: float, tolerance: float, followed: bool = False) -> Tuple[str, bool, bool]:
         played = int(self.track_seconds)
         if duration > 0 and played < duration - tolerance:
             percentage = played / max(1, duration - 1)
+            shown = int(percentage * 100)
             text = f"{display_time(played)} (out of {display_time(int(duration))})"
-            skipped = allow_skip and self.start_observed and percentage <= SKIPPED_SONG_THRESHOLD
-            text += f" - SKIPPED ({int(percentage * 100)}%)" if skipped else f" ({int(percentage * 100)}%)"
+            skipped = followed and self.start_observed and percentage <= SKIPPED_SONG_THRESHOLD
+            if skipped:
+                text += f" - SKIPPED ({shown}%)"
+            else:
+                # A track that ended a few seconds before its length was most likely faded into the next one, judged from the shown percentage as with the legacy backend
+                crossfade = followed and DETECT_CROSSFADED_SONGS and CROSSFADE_DETECTION_MIN <= shown / 100.0 <= CROSSFADE_DETECTION_MAX
+                text += f" ({shown}% - crossfade enabled)" if crossfade else f" ({shown}%)"
             return text, skipped, True
         if duration > 0 and played > duration + tolerance + LIVE_POSITION_JITTER:
             # Longer than the track means parts were replayed, or plays were missed between samples
@@ -12293,7 +12299,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         played_for_m_body_html = ""
                         if not resumed_live_session:
                             played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else activity_check_interval(True) + 1
-                            played_for, song_skipped, played_for_reported = live_timing.played_for(previous_track_duration, played_for_tolerance, allow_skip=True)
+                            played_for, song_skipped, played_for_reported = live_timing.played_for(previous_track_duration, played_for_tolerance, followed=True)
                             if played_for_reported:
                                 print(f"User played the previous track for: {played_for}")
                                 print("─" * HORIZONTAL_LINE)

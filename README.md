@@ -97,7 +97,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
 - **Smart Pause**: **Pause** or **switch** tracks when the monitored user goes offline.
-- **Crossfade Support**: Estimate crossfaded transitions with the legacy backend.
+- **Crossfade Support**: Detect and annotate **crossfaded songs** during transitions.
 
 ### 📊 Rich Insights
 - **Track Context**: View **playlist, artist** and **album info** with clickable URLs.

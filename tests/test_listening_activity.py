@@ -468,13 +468,13 @@ def test_live_timing_uses_feed_timestamps_and_subtracts_pauses():
     assert (timing.pauses, timing.paused_seconds) == (1, 60)
     timing.observe(1180, True, 60, 1170, track_changed=True)
     assert timing.track_seconds == 120
-    assert timing.played_for(200, 1, allow_skip=True) == ("2 minutes (out of 3 minutes, 20 seconds) (60%)", False, True)
+    assert timing.played_for(200, 1, followed=True) == ("2 minutes (out of 3 minutes, 20 seconds) (60%)", False, True)
     timing.start_track(1180, True, source_ts=1170, duration=200, max_gap=60)
     assert timing.precise and timing.track_started_at == 1170
     timing.observe(1210, True, 60, 1170)
     timing.observe(1240, True, 60, 1230, track_changed=True)
     assert timing.track_seconds == 60
-    assert timing.played_for(200, 1, allow_skip=True) == ("1 minute (out of 3 minutes, 20 seconds) - SKIPPED (30%)", True, True)
+    assert timing.played_for(200, 1, followed=True) == ("1 minute (out of 3 minutes, 20 seconds) - SKIPPED (30%)", True, True)
     timing.start_track(1240, True, source_ts=1230, duration=200, max_gap=60)
     for sample in range(1270, 1441, 30):
         timing.observe(sample, True, 60, 1230)
@@ -510,7 +510,7 @@ def test_live_timing_gaps_disable_skip_estimates(next_sample):
     assert not timing.start_observed and not timing.precise
     timing.observe(next_sample + 30, True, 60, next_sample + 20, track_changed=True)
     assert timing.track_seconds == 60
-    assert timing.played_for(200, 31, allow_skip=True) == ("1 minute (out of 3 minutes, 20 seconds) (30%)", False, True)
+    assert timing.played_for(200, 31, followed=True) == ("1 minute (out of 3 minutes, 20 seconds) (30%)", False, True)
 
 
 # Supplies track durations matching a real three-track listening session
@@ -826,6 +826,37 @@ def test_live_restart_after_a_resume_counts_as_a_play(loop_environment, monkeypa
     assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
     assert "Songs played:\t\t\t3 (4 minutes, 45 seconds)" in output
     assert "*** User played 3 songs" in output
+
+
+# A track that ended a few seconds before its length and was followed by another one is labelled as crossfaded, as with the legacy backend
+@pytest.mark.parametrize("played,followed,expected", [(194, True, "3 minutes, 14 seconds (out of 3 minutes, 20 seconds) (97% - crossfade enabled)"), (194, False, "3 minutes, 14 seconds (out of 3 minutes, 20 seconds) (97%)"), (188, True, "3 minutes, 8 seconds (out of 3 minutes, 20 seconds) (94%)")])
+def test_live_timing_labels_crossfaded_tracks(monkeypatch, played, followed, expected):
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", True)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MIN", 0.96)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MAX", 0.99)
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(1000, True, 60, 1000)
+    timing.start_track(1000, True, new_session=True, source_ts=1000, duration=200, max_gap=60)
+    for sampled_at in (1050, 1100, 1150):
+        timing.observe(sampled_at, True, 60, 1000)
+    timing.observe(1000 + played + 2, True, 60, 1000 + played, track_changed=True)
+    assert timing.played_for(200, 1, followed=followed) == (expected, False, True)
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", False)
+    assert "crossfade" not in timing.played_for(200, 1, followed=followed)[0]
+
+
+# A track that the next one cut short by a few seconds is reported as crossfaded before the next track block
+def test_live_crossfaded_track_is_labelled_before_the_next_track(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", True)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MIN", 0.96)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MAX", 0.99)
+    now = loop_environment.now
+    snapshots = [feed_entity(now, track=OTHER_TRACK_URI)] * 2 + [feed_entity(now + 30)] * 7 + [feed_entity(now + 224, track=OTHER_TRACK_URI)] + [feed_entity(now + 260, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "User played the previous track for: 3 minutes, 14 seconds (out of 3 minutes, 20 seconds) (97% - crossfade enabled)\n─" in output
+    assert "User played the last track for: 36 seconds (out of 3 minutes, 20 seconds) (18%)\n─" in output
+    assert output.count("crossfade enabled") == 1
 
 
 # Spotify announces a finishing track a moment before its end, so a finish followed by another track is one complete play and no repeat
