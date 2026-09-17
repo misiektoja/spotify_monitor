@@ -32,6 +32,7 @@ same absent-dependency behavior a user would see.
 
 | File | Area under test |
 | --- | --- |
+| `test_smtp_error_privacy.py` | Short and escaped passwords in rejected SMTP sign-ins through commands, setup, Doctor and delivery |
 | `test_setup_resolution_regressions.py` | Saved dotenv destinations, empty secrets, export precedence and recovery paths |
 | `test_spotipy_request_policy.py` | TLS policy at the Spotipy request boundary for token exchanges and refreshes |
 | `test_dotenv_quoted_keys.py` | Quoted dotenv keys, export prefixes, multiline values and duplicate removal |

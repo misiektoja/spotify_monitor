@@ -223,3 +223,14 @@ def test_the_minimum_python_version_is_declared_once():
     assert f"Programming Language :: Python :: {monitor.MINIMUM_PYTHON_VERSION_TEXT}" in pyproject
     classifiers = re.findall(r"Programming Language :: Python :: (\d+\.\d+)", pyproject)
     assert min(tuple(int(part) for part in version.split(".")) for version in classifiers) == monitor.MINIMUM_PYTHON_VERSION
+
+
+# Verifies published rebuilds refresh package updates even when the source is unchanged
+def test_published_images_do_not_reuse_package_update_layers():
+    publishers = []
+    for workflow in (PROJECT_ROOT / ".github" / "workflows").glob("*.yml"):
+        text = workflow.read_text(encoding="utf-8")
+        for match in re.finditer(r"uses: docker/build-push-action@[^\n]+\n(.*?)(?=\n      -|\Z)", text, re.S):
+            publishers.append(workflow.name)
+            assert re.search(r"^          no-cache: true$", match.group(1), re.M), workflow.name
+    assert len(publishers) == 2

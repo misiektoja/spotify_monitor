@@ -342,7 +342,7 @@ The `--pull=always` flag pulls the current image first, so no separate `docker c
 From a cloned repository:
 
 ```sh
-docker build --pull --tag spotify-monitor:local .
+docker build --pull --no-cache --tag spotify-monitor:local .
 docker run --rm spotify-monitor:local --version
 ```
 
@@ -419,7 +419,7 @@ docker pull misiektoja/spotify-monitor:3.0
 Rebuild from the updated repository and refresh the base image:
 
 ```sh
-docker build --pull --tag spotify-monitor:local .
+docker build --pull --no-cache --tag spotify-monitor:local .
 docker run --rm spotify-monitor:local --version
 ```
 
