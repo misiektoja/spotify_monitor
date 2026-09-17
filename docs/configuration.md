@@ -119,7 +119,7 @@ During a session, **PAUSED** shows how long playback ran since the session start
 
 Polling can miss short tracks, seeks and changes between checks. When a feed timestamp is unchanged or not plausible, the check time is used instead and a played duration within one polling interval of the track length is not reported. Played durations do not prove completion. The live feed does not provide playback position or reliable replay evidence, so crossfade and same-track loop detection remain available only with the legacy backend.
 
-The monitor obtains missing user, track and playlist names from Spotify's metadata services. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
+The monitor obtains missing user, track and playlist names from Spotify's metadata services. Playlist names come from Spotify's playlist service, which also resolves personalized playlists such as Liked Songs, with the web-player metadata query as the fallback. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
 
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health

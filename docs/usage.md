@@ -78,7 +78,7 @@ By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.l
 
 Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lines on Windows, `"On"` to use them on every operating system or `"Off"` to preserve Unicode separators in logs everywhere. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
 
-The default Listening Activity backend shows **Now playing** when Spotify reports playback. **Last played** means the feed reports playback stopped, which does not prove that the track finished. Track changes are detected at the polling interval. Counts describe observed tracks rather than completed plays. The legacy backend reports completed tracks. See [Friend Activity Backend](configuration.md#friend-activity-backend) to select a source and compare their limits.
+The default Listening Activity backend shows **Track** when Spotify reports playback. **Last played** means the feed reports playback stopped, which does not prove that the track finished. Track changes are detected at the polling interval. Counts describe observed tracks rather than completed plays. The legacy backend reports completed tracks. See [Friend Activity Backend](configuration.md#friend-activity-backend) to select a source and compare their limits.
 
 Use `spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID` for legacy reporting or `--friend-activity-backend listening_activity` for live activity. The flag overrides the saved setting for the current run and also works with `--list-friends`, `--doctor` and `--import-browser-cookie`.
 

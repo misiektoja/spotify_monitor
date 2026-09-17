@@ -1018,6 +1018,7 @@ SP_CACHED_CLIENT_ID = ""
 # Fixed Spotify activity endpoints keep backend selection separate from credentials
 SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
+SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
 
 # Short-lived profile and context metadata avoids extra requests on every track change
@@ -3313,6 +3314,7 @@ SESSION.mount("https://api-partner.spotify.com", web_player_adapter)
 
 # Reading the activity feed is an idempotent POST with the same retry policy as metadata reads
 SESSION.mount(SPOTIFY_LISTENING_ACTIVITY_URL, web_player_adapter)
+SESSION.mount(SPOTIFY_PLAYLIST_METADATA_URL, web_player_adapter)
 
 # Scrobble health GET requests retry transient failures once while returning quota responses to its monitoring loop
 scrobble_health_retry = CappedRetry(
@@ -4842,6 +4844,13 @@ def build_short_ntfy_session_subject(username: str, duration: str, listened_song
     if inactive:
         return f"{username} is inactive (after {session_summary})"
     return f"{username} ({session_summary})"
+
+
+# Formats the songs-played count with the session length, omitted while the session is still on its first track
+def songs_played_text(listened_songs: int, track_started_at: float, session_started_at: float) -> str:
+    if session_started_at > 0 and int(track_started_at) != int(session_started_at):
+        return f"{listened_songs} ({calculate_timespan(int(track_started_at), int(session_started_at))})"
+    return str(listened_songs)
 
 
 # Returns a validation error for unsupported ntfy priority or tag values
@@ -7409,8 +7418,8 @@ def spotify_activity_metadata(kind, uri, access_token):
             info = response.json()
             name = info.get("name") if isinstance(info, dict) else None
         else:
-            info = spotify_get_playlist_info_web(uri)
-            name = info.get("sp_playlist_name")
+            # The playlist service resolves personalized playlists such as Liked Songs that the web-player query reports as not found
+            name = spotify_get_playlist_name_spclient(uri, access_token) or spotify_get_playlist_info_web(uri).get("sp_playlist_name")
         if not isinstance(name, str) or not name:
             raise ValueError("Spotify activity metadata has no name")
     except Exception as exc:
@@ -7425,6 +7434,29 @@ def spotify_activity_metadata(kind, uri, access_token):
         SP_ACTIVITY_METADATA_CACHE.pop(next(iter(SP_ACTIVITY_METADATA_CACHE)))
     SP_ACTIVITY_METADATA_CACHE[key] = (time.monotonic() + 300, name)
     return name
+
+
+# Returns a playlist name through Spotify's playlist service, or an empty string when the service does not answer with one
+def spotify_get_playlist_name_spclient(playlist_uri, access_token):
+    playlist_id = playlist_uri.split(":", 2)[2]
+    url = f"{SPOTIFY_PLAYLIST_METADATA_URL}/{quote(playlist_id, safe='')}/metadata"
+    headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT, "Accept": "application/json"}
+    if TOKEN_SOURCE == "cookie" and SP_CACHED_CLIENT_ID:
+        headers["Client-Id"] = SP_CACHED_CLIENT_ID
+    debug_print("HTTP GET", url=url, context="playlist metadata", headers=sanitize_debug_headers(headers))
+    try:
+        response = SESSION.get(url, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL, allow_redirects=False)
+        debug_print("HTTP GET", url=url, context="playlist metadata", status=response.status_code)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        if is_too_many_open_files(exc) or isinstance(exc, TimeoutException):
+            raise
+        debug_print("Playlist metadata", outcome="unavailable", error_type=type(exc).__name__)
+        return ""
+    attributes = payload.get("attributes") if isinstance(payload, dict) else None
+    name = attributes.get("name") if isinstance(attributes, dict) else None
+    return name if isinstance(name, str) else ""
 
 
 # Completes live activity names from existing metadata backends only when a track is displayed
@@ -7622,7 +7654,7 @@ def spotify_list_friends(friend_activity, access_token):
         print(f"Username:\t\t\t{sp_username}")
         print(f"User URI ID:\t\t\t{sp_uri}")
         print(f"User URL:\t\t\t{spotify_convert_uri_to_url('spotify:user:' + sp_uri)}")
-        activity_label = "Now playing" if friend.get("isPlaying") else "Last played"
+        activity_label = "Track" if friend.get("isPlaying") else "Last played"
         print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}\n")
         if 'spotify:playlist:' in sp_playlist_uri:
             print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
@@ -11744,7 +11776,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             sp_ts = sp_data["sp_ts"]
             cur_ts = int(time.time())
             live_activity = "sp_is_playing" in sp_data
-            activity_label = "Now playing" if sp_data.get("sp_is_playing") else "Last played"
+            activity_label = "Track" if sp_data.get("sp_is_playing") else "Last played"
             live_activity_seen_at = cur_ts if sp_data.get("sp_is_playing") else 0
             if live_activity:
                 live_timing.observe(cur_ts, sp_data["sp_is_playing"], check_interval * 2, sp_ts)
@@ -11859,8 +11891,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             lyrics_section_html = ""
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_subject_short = f"{sp_username} is now active"
-                    m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                    m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
                     m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                     send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
 
@@ -11878,7 +11910,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 print(f"\n*** Friend is OFFLINE for: {calculate_timespan(int(cur_ts), int(sp_ts))}")
 
             if listened_songs:
-                print(f"\nSongs played:\t\t\t{listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})")
+                print(f"\nSongs played:\t\t\t{songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}")
 
             print(f"\nTracks/playlists/albums to monitor: {tracks}")
             print_cur_ts("\nTimestamp:\t\t\t")
@@ -12028,7 +12060,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_ts = sp_data["sp_ts"]
                 cur_ts = int(time.time())
                 live_activity = "sp_is_playing" in sp_data
-                activity_label = "Now playing" if sp_data.get("sp_is_playing") else "Last played"
+                activity_label = "Track" if sp_data.get("sp_is_playing") else "Last played"
                 resumed_live_session = live_activity and sp_active_ts_start == 0 and bool(sp_data["sp_is_playing"])
                 if live_activity and sp_data["sp_is_playing"]:
                     live_activity_seen_at = cur_ts
@@ -12303,8 +12335,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 music_section_html = "<br><br>"
                                 lyrics_section_text = ""
                                 lyrics_section_html = ""
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
 
                         if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
@@ -12341,8 +12373,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_subject_short = f"{sp_username} looped a song {song_on_loop} times"
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                         email_succeeded, webhook_succeeded = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                         email_sent = email_sent or email_succeeded
@@ -12373,8 +12405,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 lyrics_section_html = ""
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
                         m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(activity_ts), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs)
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                         notification_type = "track" if on_the_list and ((TRACK_NOTIFICATION and email_song_enabled) or webhook_event_enabled("track")) else "song"
                         email_succeeded, webhook_succeeded = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
@@ -12388,7 +12420,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_recovery_error(e, "file_write", detail=f"CSV destination '{csv_file_name}' could not be written: {e}")
 
                     if listened_songs:
-                        print(f"\nSongs played:\t\t\t{listened_songs} ({calculate_timespan(int(activity_ts), int(sp_active_ts_start))})")
+                        print(f"\nSongs played:\t\t\t{songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}")
 
                     print_cur_ts("\nTimestamp:\t\t\t")
                     sp_ts_old = sp_ts

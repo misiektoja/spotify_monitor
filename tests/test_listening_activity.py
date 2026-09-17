@@ -243,6 +243,7 @@ def test_metadata_enrichment_uses_profile_and_playlist_cache(monkeypatch):
     profile = Mock(return_value=response_for({"name": "Visible Friend"}))
     playlist = Mock(return_value={"sp_playlist_name": "Visible Playlist"})
     monkeypatch.setattr(monitor.SESSION, "get", profile)
+    monkeypatch.setattr(monitor, "spotify_get_playlist_name_spclient", lambda uri, token: "")
     monkeypatch.setattr(monitor, "spotify_get_playlist_info_web", playlist)
     entity = feed_entity()
     entity["followEntity"]["activity"]["contextUri"] = "spotify:playlist:1234567890abcdefghijkl"
@@ -256,6 +257,30 @@ def test_metadata_enrichment_uses_profile_and_playlist_cache(monkeypatch):
     assert info["sp_track"] == "Track"
     assert profile.call_count == playlist.call_count == 1
     assert profile.call_args.kwargs["allow_redirects"] is False
+
+
+# Personalized playlists such as Liked Songs resolve through the playlist service before the web-player query
+def test_playlist_name_prefers_the_playlist_service(monkeypatch):
+    service = Mock(return_value=response_for({"attributes": {"name": "Liked Songs"}}))
+    monkeypatch.setattr(monitor.SESSION, "get", service)
+    web_lookup = Mock(side_effect=RuntimeError("not found"))
+    monkeypatch.setattr(monitor, "spotify_get_playlist_info_web", web_lookup)
+    assert monitor.spotify_activity_metadata("playlist", "spotify:playlist:37i9dQZF1F5p3rmiWPIYgZ", "token") == "Liked Songs"
+    assert service.call_args.args[0] == "https://spclient.wg.spotify.com/playlist/v2/playlist/37i9dQZF1F5p3rmiWPIYgZ/metadata"
+    assert service.call_args.kwargs["headers"]["Accept"] == "application/json"
+    assert service.call_args.kwargs["allow_redirects"] is False
+    web_lookup.assert_not_called()
+
+
+# A playlist service failure or an answer without a name falls back to the web-player query, then to the URI
+@pytest.mark.parametrize("service_response", [response_for({"error": "denied"}, status=403), response_for({"attributes": {}}), response_for("not json")])
+def test_playlist_name_falls_back_to_the_web_query(monkeypatch, service_response):
+    monkeypatch.setattr(monitor.SESSION, "get", Mock(return_value=service_response))
+    monkeypatch.setattr(monitor, "spotify_get_playlist_info_web", Mock(return_value={"sp_playlist_name": "Visible Playlist"}))
+    assert monitor.spotify_activity_metadata("playlist", "spotify:playlist:1234567890abcdefghijkl", "token") == "Visible Playlist"
+    monitor.SP_ACTIVITY_METADATA_CACHE.clear()
+    monkeypatch.setattr(monitor, "spotify_get_playlist_info_web", Mock(side_effect=RuntimeError("not found")))
+    assert monitor.spotify_activity_metadata("playlist", "spotify:playlist:1234567890abcdefghijkl", "token") == ""
 
 
 # A missing profile name keeps the known Spotify user ID usable
@@ -281,7 +306,7 @@ def test_list_live_friends_resolves_names_and_now_playing(monkeypatch, capsys):
     monitor.spotify_list_friends(feed, "token")
     output = capsys.readouterr().out
     assert "Visible Friend" in output
-    assert "Now playing:" in output
+    assert "\nTrack:" in output
     assert "Artist - First" in output
     assert "Album" in output
 
@@ -327,12 +352,12 @@ def test_live_pause_resume_and_timestamps_do_not_duplicate_tracks(loop_environme
     snapshots = [feed_entity(now - 600), feed_entity(now), feed_entity(now + 30, playing=False), feed_entity(now + 60)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
-    assert "Now playing:" in output
+    assert "\nTrack:" in output
     assert output.count("Songs played:") == 1
     assert f"User PAUSED playing after 30 seconds\nLast activity:\t\t\t{monitor.get_date_from_ts(now + 30)}\n\nTimestamp:" in output
     assert "User RESUMED playing after 30 seconds\n\nTimestamp:" in output
     assert "(estimated)" not in output
-    assert "Songs played:\t\t\t1 (0 seconds)" in output
+    assert "Songs played:\t\t\t1\n" in output
     assert "INACTIVE" not in output
     assert "Played for:" not in output
 
@@ -373,13 +398,19 @@ def test_live_first_playback_after_paused_startup_opens_session(loop_environment
     output = capsys.readouterr().out
     assert "currently ACTIVE" not in output
     assert output.count("Friend got ACTIVE") == 1
-    assert "Now playing:" in output
+    assert "\nTrack:" in output
     # The stale paused timestamp is not evidence of when playback resumed, so the session starts at the sample
-    assert "Songs played:\t\t\t1 (0 seconds)" in output
+    assert "Songs played:\t\t\t1\n" in output
     delivery.assert_called_once()
     assert delivery.call_args.args[0] == "active"
-    assert "Now playing:" in delivery.call_args.args[2]
+    assert delivery.call_args.args[2].startswith("Track: ")
     assert len(destination.read_text().splitlines()) == 2
+
+
+# The session length follows the count only once a later track starts
+@pytest.mark.parametrize("track_started_at,session_started_at,expected", [(1000, 1000, "1"), (1000, 0, "1"), (1000.6, 1000.2, "1"), (1245, 1000, "1 (4 minutes, 5 seconds)")])
+def test_songs_played_text_omits_the_span_on_the_first_track(track_started_at, session_started_at, expected):
+    assert monitor.songs_played_text(1, track_started_at, session_started_at) == expected
 
 
 # A track first seen at startup reports its played time without a skip label
@@ -418,7 +449,7 @@ def test_recent_stopped_activity_does_not_start_a_session(loop_environment, monk
     output = capsys.readouterr().out
     assert "Friend got ACTIVE" not in output
     assert "Last played:" in output
-    assert "Now playing:" not in output
+    assert "\nTrack:" not in output
     assert "Songs played:" not in output
 
 
@@ -617,7 +648,7 @@ def test_live_csv_and_notifications_count_track_changes(loop_environment, monkey
     run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
     assert len(destination.read_text().splitlines()) == 3
     assert delivery.call_count == 2
-    assert "Now playing:" in delivery.call_args.args[2]
+    assert delivery.call_args.args[2].startswith("Track: ")
     assert "Songs played: 2 (1 minute)" in delivery.call_args.args[2]
     assert "User played the previous track (Artist - First) for: 30 seconds (out of 3 minutes, 20 seconds) (15%)" in delivery.call_args.args[2]
     assert "SKIPPED" not in delivery.call_args.args[2]

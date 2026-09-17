@@ -16,7 +16,7 @@ ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop",
 
 # Helpers that emit their own markup or render only dates, durations and numbers. None of them can carry
 # Spotify-supplied text, so escaping their output would only mangle the timestamps users read
-SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get_short_date_from_ts", "calculate_timespan", "get_range_of_dates_from_tss"})
+SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get_short_date_from_ts", "calculate_timespan", "get_range_of_dates_from_tss", "songs_played_text"})
 
 
 # Collects every HTML notification body the module builds, as (function, source line, expression) triples
