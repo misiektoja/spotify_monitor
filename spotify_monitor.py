@@ -4853,6 +4853,13 @@ def songs_played_text(listened_songs: int, track_started_at: float, session_star
     return str(listened_songs)
 
 
+# Formats a played-for text for HTML bodies with the time and any SKIPPED mark in bold
+def format_played_for_html(played_for: str) -> str:
+    time_text, separator, rest = played_for.partition(" (out of ")
+    html = f"<b>{time_text}</b>{separator}{rest}" if separator else f"<b>{played_for}</b>"
+    return html.replace(" - SKIPPED", " - <b>SKIPPED</b>")
+
+
 # Returns a validation error for unsupported ntfy priority or tag values
 def validate_ntfy_metadata(priority: Any, tags: Any) -> Optional[str]:
     if not isinstance(priority, int) or isinstance(priority, bool) or not 0 <= priority <= 5:
@@ -12455,13 +12462,19 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         paused_text = ""
                         paused_m_body = ""
                         paused_m_body_html = ""
+                        last_track_m_body = ""
+                        last_track_m_body_html = ""
                         if live_activity:
                             played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else activity_check_interval(True) + 1
                             played_for, _, _ = live_timing.played_for(sp_track_duration, played_for_tolerance)
                             print(f"User played the last track for: {played_for}")
                             print("─" * HORIZONTAL_LINE)
-                            played_for_m_body = f"\n\nUser played the last track for: {played_for}"
-                            played_for_m_body_html = f"<br><br>User played the last track for: {played_for}"
+                            # The line joins the session summary so the track block keeps its own fields
+                            played_for_m_body = ""
+                            played_for_m_body_html = ""
+                            played_for_html = format_played_for_html(played_for)
+                            last_track_m_body = f"\n\nUser played the last track for: {played_for}"
+                            last_track_m_body_html = f"<br><br>User played the last track for: {played_for_html}"
                             # The final pause became the inactivity itself, so only completed pauses are summarized
                             completed_pauses = max(0, live_timing.pauses - 1)
                             if completed_pauses > 0 and live_timing.paused_seconds > 0 and sp_active_ts_stop > sp_active_ts_start:
@@ -12566,8 +12579,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     lyrics_section_html = ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs, inactive=True)
-                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{last_track_m_body}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{last_track_m_body_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                             email_succeeded, webhook_succeeded = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
