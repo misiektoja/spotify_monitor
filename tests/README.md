@@ -32,6 +32,7 @@ same absent-dependency behavior a user would see.
 
 | File | Area under test |
 | --- | --- |
+| `test_release_boundaries.py` | Real HTTP retries, Discord mention safety, SMTP password round trips and split terminal writes |
 | `test_compact_commands.py` | Literal short command prefixes, real help output and dependency hints |
 | `test_release_safety.py` | Credential preservation, private errors, timing checks and scrobble-health state recovery |
 | `test_recovery_safety.py` | Real dotenv reloads, setup backups, oversized counts and provider-error privacy |

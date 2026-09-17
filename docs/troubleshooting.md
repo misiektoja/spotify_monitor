@@ -102,3 +102,5 @@ Start with `--doctor`. If the suggested fix does not resolve the issue, retry wi
 Timing values must be finite and within the documented range. Normal startup checks effective timing settings before monitoring. A configuration syntax error reports its file, line number and parser message without echoing source text that may contain credentials.
 
 Unusable scrobble-health timestamps reset to zero with a warning naming each field. Other valid fields remain available.
+
+Malformed path settings and color-theme values are reported by Doctor with the setting name. Invalid color values are ignored while rendering help so you can still find the configuration commands.

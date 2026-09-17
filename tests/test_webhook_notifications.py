@@ -257,15 +257,14 @@ def test_advanced_webhook_customization_matches_instagram_features(monkeypatch):
     assert request.kwargs["headers"]["X-Webhook-Version"] == monitor.VERSION
 
 
-# Verifies a string webhook template is delivered as a raw request body
-def test_string_webhook_template_uses_raw_body(monkeypatch):
+# Rejects a non-JSON Discord payload before attempting delivery
+def test_non_json_webhook_template_is_refused(monkeypatch):
     configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", "{title}: {description}")
     webhook_post = Mock(return_value=FakeResponse())
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
-    assert monitor.send_webhook("Title", "Body", "song") == 0
-    assert webhook_post.call_args.kwargs["data"] == "Title: Body"
-    assert "json" not in webhook_post.call_args.kwargs
+    assert monitor.send_webhook("Title", "Body", "song") == 1
+    webhook_post.assert_not_called()
 
 
 # Verifies formatted headers are validated again before network delivery

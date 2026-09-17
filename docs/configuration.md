@@ -383,6 +383,8 @@ The startup summary shows `TLS verification` and [`--doctor`](troubleshooting.md
 <a id="smtp-settings"></a>
 ## SMTP Settings
 
+Private password entry preserves leading and trailing spaces. The exact value checked with the mail server is saved.
+
 Email notifications need SMTP server details for the email account that sends the messages. Add them to `spotify_monitor.conf` or use the setup wizard.
 
 Send one test message to verify the settings:
@@ -393,6 +395,8 @@ spotify_monitor --send-test-email
 
 <a id="webhook-settings"></a>
 ## Webhook Settings
+
+A delivery keeps its original destination and credentials for every retry. Reloaded settings apply to the next delivery. Discord templates must produce a JSON object. Dictionary templates and JSON strings are supported, including strings with escaped format braces. Mentions remain disabled in every template.
 
 Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). Webhook alerts work with or without email. Run `spotify_monitor --setup`, choose webhook alerts and select Discord or ntfy.
 
@@ -504,7 +508,7 @@ WEBHOOK_AVATAR_URL = "https://example.com/path/avatar.png"
 - `{username}`
 - `{avatar_url}`
 
-A dictionary or list is sent as JSON. A string template is sent as the raw request body for compatible advanced integrations. When the rendered payload is a dictionary, Spotify Monitor always replaces `allowed_mentions` with `{"parse": []}` so notification text cannot trigger Discord mentions.
+Use a dictionary or a JSON string encoding an object. Lists and non-JSON strings are rejected before delivery. Spotify Monitor always replaces `allowed_mentions` with `{"parse": []}` so notification text cannot trigger Discord mentions.
 
 `WEBHOOK_TRANSFORMS` applies string methods to shared placeholder values before the template and headers are rendered:
 
