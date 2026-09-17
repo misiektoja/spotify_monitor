@@ -557,7 +557,7 @@ def test_retired_allowance_does_not_accept_other_unknown_names():
 
 
 # Verifies invalid Friend Activity timing flags fail during argument validation
-@pytest.mark.parametrize("option", ["--check-interval", "--offline-timer", "--disappeared-timer"])
+@pytest.mark.parametrize("option", ["--check-interval", "--active-check-interval", "--offline-timer", "--disappeared-timer"])
 def test_nonpositive_friend_activity_timing_flags_are_rejected(option):
     result = run_cli([option, "0", "--doctor", "--env-file", "none"])
     assert result.returncode == 2

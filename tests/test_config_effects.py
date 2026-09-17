@@ -1,5 +1,6 @@
 import inspect
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,7 +21,7 @@ ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Sessi
 PROBE_SETUP = (
     "runtime['req'].get = lambda url, **kwargs: print(f'CONNECTIVITY_URL={url}') or print(f'CONNECTIVITY_TIMEOUT={kwargs[\"timeout\"]}') or print(f'CONNECTIVITY_VERIFY={kwargs[\"verify\"]}') or type('Response', (), {'status_code': 200})(); "
     "runtime['urllib3'].disable_warnings = lambda *args, **kwargs: print('INSECURE_WARNINGS_DISABLED'); "
-    "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'CHECK_INTERVAL={runtime[\"SPOTIFY_CHECK_INTERVAL\"]}') or print(f'LIVENESS_SECONDS={runtime[\"LIVENESS_REMINDER_SECONDS\"]}'); "
+    "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'CHECK_INTERVAL={runtime[\"activity_check_interval\"]()}') or print(f'LIVENESS_SECONDS={runtime[\"LIVENESS_REMINDER_SECONDS\"]}'); "
 )
 DIAGNOSTIC_CONFIG_PROBE_SETUP = "original_load_config = runtime['load_config_file']; runtime['load_config_file'] = lambda *args, **kwargs: print(f'DEBUG_DURING_CONFIG={runtime[\"DEBUG_MODE\"]}') or print(f'VERBOSE_DURING_CONFIG={runtime[\"VERBOSE_MODE\"]}') or original_load_config(*args, **kwargs); " + PROBE_SETUP
 WEBHOOK_PROBE_SETUP = PROBE_SETUP + "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: print(f'WEBHOOK_ENABLED={runtime[\"WEBHOOK_ENABLED\"]}'); "
@@ -49,6 +50,13 @@ def write_config(directory_name, settings):
     return config_path
 
 
+# Reads a setting's shipped default from the module source, unaffected by values other tests leave behind
+def source_default(name):
+    match = re.search(rf"^{name} = (\d+)", inspect.getsource(monitor), re.MULTILINE)
+    assert match, f"{name} has no numeric default"
+    return match.group(1)
+
+
 # Reads one KEY=value line out of a captured CLI run
 def probe_value(output, key):
     for line in output.splitlines():
@@ -60,7 +68,7 @@ def probe_value(output, key):
 # Confirms a config-file liveness interval reaches the loop rather than leaving the built-in default
 def test_config_file_liveness_interval_reaches_the_loop():
     with make_temp_directory() as directory_name:
-        config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
+        config_path = write_config(directory_name, "SPOTIFY_LIVE_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
         result = run_cli(["--config-file", str(config_path)], PROBE_SETUP)
 
     assert result.returncode == 0, result.stderr
@@ -71,22 +79,38 @@ def test_config_file_liveness_interval_reaches_the_loop():
 # Confirms a check interval longer than the liveness interval leaves the configured reminder alone
 def test_a_long_check_interval_keeps_the_configured_liveness_interval():
     with make_temp_directory() as directory_name:
-        config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 86400\nLIVENESS_CHECK_INTERVAL = 43200\n")
+        config_path = write_config(directory_name, "SPOTIFY_LIVE_CHECK_INTERVAL = 86400\nLIVENESS_CHECK_INTERVAL = 43200\n")
         result = run_cli(["--config-file", str(config_path)], PROBE_SETUP)
 
     assert result.returncode == 0, result.stderr
     assert float(probe_value(result.stdout, "LIVENESS_SECONDS")) == 43200.0
 
 
-# Confirms a command-line interval still wins over the config file and leaves the liveness reminder alone
-def test_command_line_interval_overrides_the_config_file():
+# Confirms a command-line interval still wins over the config file for the selected backend and leaves the liveness reminder alone
+@pytest.mark.parametrize("backend_config", ["", 'FRIEND_ACTIVITY_BACKEND = "buddylist"\nSPOTIFY_CHECK_INTERVAL = 300\n'])
+def test_command_line_interval_overrides_the_config_file(backend_config):
     with make_temp_directory() as directory_name:
-        config_path = write_config(directory_name, "SPOTIFY_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
+        config_path = write_config(directory_name, backend_config + "SPOTIFY_LIVE_CHECK_INTERVAL = 300\nLIVENESS_CHECK_INTERVAL = 43200\n")
         result = run_cli(["--config-file", str(config_path), "--check-interval", "600"], PROBE_SETUP)
 
     assert result.returncode == 0, result.stderr
     assert probe_value(result.stdout, "CHECK_INTERVAL") == "600"
     assert float(probe_value(result.stdout, "LIVENESS_SECONDS")) == 43200.0
+
+
+# Confirms the timing flags only touch the timers of the selected backend
+@pytest.mark.parametrize("backend,changed,untouched", [("listening_activity", ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK"), ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK")), ("buddylist", ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK"), ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK"))])
+def test_timing_flags_follow_the_selected_backend(backend, changed, untouched):
+    names = changed + untouched + ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL",)
+    probe = PROBE_SETUP + "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: [print(f'{name}={runtime[name]}') for name in " + repr(names) + "]; "
+    with make_temp_directory() as directory_name:
+        config_path = write_config(directory_name, f'FRIEND_ACTIVITY_BACKEND = "{backend}"\n')
+        result = run_cli(["--config-file", str(config_path), "--check-interval", "77", "--offline-timer", "555", "--active-check-interval", "7"], probe)
+
+    assert result.returncode == 0, result.stderr
+    assert [probe_value(result.stdout, name) for name in changed] == ["77", "555"]
+    assert [probe_value(result.stdout, name) for name in untouched] == [source_default(name) for name in untouched]
+    assert probe_value(result.stdout, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL") == "7"
 
 
 # Confirms the startup connectivity check honors a config-file URL and timeout rather than the built-in defaults

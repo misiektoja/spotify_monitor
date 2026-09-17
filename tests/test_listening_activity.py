@@ -310,7 +310,7 @@ def live_track_info(token, uri):
 # Runs selected live snapshots through the real monitoring loop
 def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name=""):
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
-    monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 45)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 45)
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", Mock(return_value="token"))
     monkeypatch.setattr(monitor, "spotify_get_track_info", live_track_info)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
@@ -593,6 +593,15 @@ def test_live_resume_with_a_different_track_reports_resume_first(loop_environmen
     assert "Songs played:\t\t\t2 (25 seconds)" in output
     assert start.call_count == 2
     assert [call.args[0] for call in control.call_args_list] == ["pause", "play"]
+
+
+# The live backend polls at the active interval while a session is open and at the offline interval otherwise
+def test_live_polling_follows_the_session_state(loop_environment, monkeypatch):
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 10)
+    now = loop_environment.now
+    snapshots = [feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now + 30), feed_entity(now + 30)] + [feed_entity(now + 30, playing=False)] * 5
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    assert loop_environment.sleeps == [30, 10, 10, 10, 10, 10, 10, 30]
 
 
 # Pause updates leave CSV and notification counts unchanged while one new track adds one event

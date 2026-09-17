@@ -305,7 +305,7 @@ spotify_monitor <spotify_target> --verbose
 
 The complete summary also names the detected install method and which secrets came from the dotenv file, the environment or the configuration file, by name only.
 
-Spotify Monitor normally checks every 30 seconds and stays quiet when nothing changes. Periodic liveness banners confirm it is running. Use `--verbose` for occasional operational events or `--debug` for detailed diagnostics.
+Spotify Monitor normally checks every 30 seconds, or every 10 seconds during a live listening session, and stays quiet when nothing changes. Periodic liveness banners confirm it is running. Use `--verbose` for occasional operational events or `--debug` for detailed diagnostics.
 
 Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `999` to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with `-d`.
 
@@ -530,15 +530,23 @@ For Last.fm-based track progress monitoring, see [lastfm_monitor](https://github
 <a id="check-intervals"></a>
 ## Check Intervals
 
-The polling interval is the number of seconds between Friend Activity checks. Set it through `SPOTIFY_CHECK_INTERVAL` or `-c`:
+The live Listening Activity backend and the legacy buddylist backend keep separate timers. `-c`, `-k` and `-o` set the timers of the backend selected by `FRIEND_ACTIVITY_BACKEND` or `--friend-activity-backend`.
+
+With the live backend, `SPOTIFY_LIVE_CHECK_INTERVAL` or `-c` sets the seconds between checks while the user is not playing and `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` or `-k` sets the seconds between checks while a listening session is open. The defaults are 30 and 10 seconds. The shorter active interval catches pauses, resumes and track changes sooner. A failed check is retried after `SPOTIFY_LIVE_ERROR_INTERVAL`, one minute by default:
 
 ```sh
-spotify_monitor <spotify_target> -c 30
+spotify_monitor <spotify_target> -c 30 -k 10
 ```
 
-In the setup wizard, you can also enter durations such as `30s`, `1.5h` or `1h 30m`. Supported units are `s`, `m`, `h` and `d`.
+With the legacy backend, `SPOTIFY_CHECK_INTERVAL` or `-c` sets the seconds between checks, 30 by default, and `SPOTIFY_ERROR_INTERVAL` the retry delay, three minutes by default:
 
-An interval below 30 seconds invites the Spotify rate limiter, which stops the tool seeing anything. `--doctor` warns when the configured interval is that short.
+```sh
+spotify_monitor --friend-activity-backend buddylist <spotify_target> -c 30
+```
+
+In the setup wizard, you can also enter durations such as `30s`, `1.5h` or `1h 30m`. Supported units are `s`, `m`, `h` and `d`. With the live backend the wizard asks for both live intervals.
+
+A legacy interval below 30 seconds invites the Spotify rate limiter, which stops the tool seeing anything. `--doctor` warns when a legacy interval is below 30 seconds or a live interval is below 5 seconds.
 
 For scrobble health, set the time between successful comparisons through `SCROBBLE_HEALTH_CHECK_INTERVAL` or `--scrobble-check-interval`:
 
@@ -548,7 +556,7 @@ spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 
 Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
-With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer starts at the pause moment. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
+With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer starts at the pause moment. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` for the live backend, three minutes by default, or `SPOTIFY_INACTIVITY_CHECK` for the legacy backend, 11 minutes by default. `-o` sets the timer of the selected backend:
 
 ```sh
 spotify_monitor <spotify_target> -o 900

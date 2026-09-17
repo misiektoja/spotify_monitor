@@ -59,6 +59,10 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 660)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 30)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 10)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 60)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
     monkeypatch.setattr(monitor, "SMTP_PORT", 587)
     monkeypatch.setattr(monitor, "MONITOR_LIST_FILE", "")
@@ -1147,20 +1151,40 @@ def test_a_delivery_prompt_interrupt_ends_the_run(monkeypatch):
 # An interval below the safe floor gets the account rate limited, which looks like the tool being broken
 def test_a_rate_limiting_interval_is_warned_about(monkeypatch):
     configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 5)
 
     rows = [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
 
     assert [item.status for item in rows] == ["WARN"]
+    assert "SPOTIFY_CHECK_INTERVAL" in rows[0].detail
     assert str(monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL) in require_advice(rows[0]).fix
 
 
 # The default interval is safe, so the row must stay away rather than warning about every run
 def test_a_safe_interval_is_not_warned_about(monkeypatch):
     configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL)
 
     assert not [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+
+# The live backend judges its own timers against the lower live floor, so the legacy value and the live defaults stay quiet
+def test_live_intervals_are_judged_against_the_live_floor(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 5)
+
+    assert not [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", monitor.DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL - 1)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 2)
+    rows = [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    assert [item.status for item in rows] == ["WARN"]
+    assert "SPOTIFY_LIVE_CHECK_INTERVAL" in rows[0].detail and "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL" in rows[0].detail
+    assert f"at least {monitor.DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL} seconds" in require_advice(rows[0]).fix
 
 
 # A run with no target warns with the sentence every monitor in this family uses, so the report reads the same

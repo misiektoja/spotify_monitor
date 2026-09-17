@@ -61,6 +61,10 @@ def loop_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor.time, "time", lambda: harness.now)
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
+    # Both backends share one cadence here so the loop tests read the same timings whichever backend is selected
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 30)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 30)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 180)
     monkeypatch.setattr(monitor, "ALARM_RETRY", 15)
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 0)
     monkeypatch.setattr(monitor, "FLAG_FILE", "")

@@ -257,6 +257,26 @@ WEBHOOK_TRANSFORMS = []
 # Monitoring Settings
 # ----------------------------
 
+# Timers below apply to the live backend (FRIEND_ACTIVITY_BACKEND = "listening_activity")
+# The -c, -k and -o flags set the timers of the selected backend
+
+# How often to check for user activity while the user is not playing; in seconds
+# Can also be set using the -c flag
+SPOTIFY_LIVE_CHECK_INTERVAL = 30  # 30 seconds
+
+# How often to check for user activity while a listening session is open; in seconds
+# Can also be set using the -k flag
+SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = 10  # 10 seconds
+
+# Time to wait before retrying after an error; in seconds
+SPOTIFY_LIVE_ERROR_INTERVAL = 60  # 1 minute
+
+# Time without observed playback after which the user is considered inactive; in seconds
+# Can also be set using the -o flag
+SPOTIFY_LIVE_INACTIVITY_CHECK = 180  # 3 minutes
+
+# Timers below apply to the legacy backend (FRIEND_ACTIVITY_BACKEND = "buddylist")
+
 # How often to check for user activity in seconds
 # Can also be set using the -c flag
 SPOTIFY_CHECK_INTERVAL = 30  # 30 seconds
@@ -840,6 +860,10 @@ NTFY_IMAGES = False
 NTFY_SHORT = False
 WEBHOOK_TEMPLATE = {}
 WEBHOOK_TRANSFORMS = []
+SPOTIFY_LIVE_CHECK_INTERVAL = 0
+SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = 0
+SPOTIFY_LIVE_ERROR_INTERVAL = 0
+SPOTIFY_LIVE_INACTIVITY_CHECK = 0
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
@@ -1361,6 +1385,8 @@ DOCTOR_STATUSES = ("PASS", "WARN", "FAIL", "SKIP")
 
 # A check interval below this invites the Spotify rate limiter, which stops the tool seeing anything
 DOCTOR_MIN_SAFE_CHECK_INTERVAL = 30
+# The live feed tolerates faster polling, so its warning floor is the Last.fm style active interval
+DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL = 5
 
 # The fixed section order the report renders in, chosen so each section depends only on the ones above it
 DOCTOR_SECTIONS = ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Scrobble health", "Notifications")
@@ -5308,24 +5334,54 @@ def toggle_songs_on_loop_notifications_signal_handler(sig, frame):
     print_cur_ts("Timestamp:\t\t\t")
 
 
+# Reports whether the live Friend Activity backend is selected
+def live_activity_backend() -> bool:
+    return FRIEND_ACTIVITY_BACKEND == "listening_activity"
+
+
+# Returns the polling interval of the selected backend, using the faster live interval while a session is open
+def activity_check_interval(session_open: bool = False) -> int:
+    if live_activity_backend():
+        return SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL if session_open else SPOTIFY_LIVE_CHECK_INTERVAL
+    return SPOTIFY_CHECK_INTERVAL
+
+
+# Returns the error retry interval of the selected backend
+def activity_error_interval() -> int:
+    return SPOTIFY_LIVE_ERROR_INTERVAL if live_activity_backend() else SPOTIFY_ERROR_INTERVAL
+
+
+# Returns the inactivity timer of the selected backend
+def activity_inactivity_check() -> int:
+    return SPOTIFY_LIVE_INACTIVITY_CHECK if live_activity_backend() else SPOTIFY_INACTIVITY_CHECK
+
+
+# Changes the inactivity timer of the selected backend by the given number of seconds when the result stays positive
+def adjust_inactivity_check(delta: int) -> None:
+    global SPOTIFY_INACTIVITY_CHECK, SPOTIFY_LIVE_INACTIVITY_CHECK
+    if activity_inactivity_check() + delta <= 0:
+        return
+    if live_activity_backend():
+        SPOTIFY_LIVE_INACTIVITY_CHECK += delta
+    else:
+        SPOTIFY_INACTIVITY_CHECK += delta
+
+
 # Signal handler for SIGTRAP allowing to increase inactivity check timer by SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE seconds
 def increase_inactivity_check_signal_handler(sig, frame):
-    global SPOTIFY_INACTIVITY_CHECK
-    SPOTIFY_INACTIVITY_CHECK = SPOTIFY_INACTIVITY_CHECK + SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE
+    adjust_inactivity_check(SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE)
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Spotify timers: [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]")
+    print(f"* Spotify timers: [inactivity: {display_time(activity_inactivity_check())}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
 # Signal handler for SIGABRT allowing to decrease inactivity check timer by SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE seconds
 def decrease_inactivity_check_signal_handler(sig, frame):
-    global SPOTIFY_INACTIVITY_CHECK
-    if SPOTIFY_INACTIVITY_CHECK - SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE > 0:
-        SPOTIFY_INACTIVITY_CHECK = SPOTIFY_INACTIVITY_CHECK - SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE
+    adjust_inactivity_check(-SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE)
     sig_name = signal.Signals(sig).name
     print(f"* Signal {sig_name} received")
-    print(f"* Spotify timers: [inactivity: {display_time(SPOTIFY_INACTIVITY_CHECK)}]")
+    print(f"* Spotify timers: [inactivity: {display_time(activity_inactivity_check())}]")
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -7728,10 +7784,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Authentication", authentication, concise=True),
         StartupSummaryRow("Token source", TOKEN_SOURCE, concise=False),
         StartupSummaryRow("Activity backend", FRIEND_ACTIVITY_BACKEND, concise=True),
-        StartupSummaryRow("Polling interval", display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
-        StartupSummaryRow("Inactivity timer", display_time(SPOTIFY_INACTIVITY_CHECK), concise=False),
+        StartupSummaryRow("Polling interval", f"[offline: {display_time(SPOTIFY_LIVE_CHECK_INTERVAL)}] [active: {display_time(SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)}]" if live_activity_backend() else display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
+        StartupSummaryRow("Inactivity timer", display_time(activity_inactivity_check()), concise=False),
         StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
-        StartupSummaryRow("Error retry timer", display_time(SPOTIFY_ERROR_INTERVAL), concise=False),
+        StartupSummaryRow("Error retry timer", display_time(activity_error_interval()), concise=False),
         StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
         *_startup_email_detail_rows(),
         StartupSummaryRow("Notifications (webhook)", notification_state_webhook, concise=True),
@@ -8692,7 +8748,7 @@ def runtime_boolean_errors() -> List[str]:
 # Returns all type and range errors in settings that control runtime timing or counts
 def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
-    positive_numbers = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
+    positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
     positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
     for name, value in positive_numbers:
@@ -8873,9 +8929,16 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
             checks.append(make_doctor_check("Configuration", "PASS", "No dotenv file selected", "Using environment variables and other configured sources"))
     checks.extend(doctor_secret_checks(env_path))
 
-    if isinstance(SPOTIFY_CHECK_INTERVAL, (int, float)) and not isinstance(SPOTIFY_CHECK_INTERVAL, bool) and 0 < SPOTIFY_CHECK_INTERVAL < DOCTOR_MIN_SAFE_CHECK_INTERVAL:
-        intervals = f"{display_time(SPOTIFY_CHECK_INTERVAL)} between checks"
-        advice = make_recovery_advice("spotify.rate_limited", "Check intervals are short enough to be rate limited", recovery_fix_with_guide(f"Raise SPOTIFY_CHECK_INTERVAL to at least {DOCTOR_MIN_SAFE_CHECK_INTERVAL} seconds", INTERVALS_GUIDE_URL), True)
+    if live_activity_backend():
+        interval_floor = DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL
+        interval_settings = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL))
+    else:
+        interval_floor = DOCTOR_MIN_SAFE_CHECK_INTERVAL
+        interval_settings = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL),)
+    short_intervals = [(name, value) for name, value in interval_settings if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < interval_floor]
+    if short_intervals:
+        intervals = ", ".join(f"{display_time(value)} between checks ({name})" for name, value in short_intervals)
+        advice = make_recovery_advice("spotify.rate_limited", "Check intervals are short enough to be rate limited", recovery_fix_with_guide(f"Raise {' and '.join(name for name, _ in short_intervals)} to at least {interval_floor} seconds", INTERVALS_GUIDE_URL), True)
         checks.append(make_doctor_check("Configuration", "WARN", "Check intervals are short", intervals, advice))
 
     if MONITOR_MODE != "scrobble_health" and TOKEN_SOURCE not in ("cookie", "client"):
@@ -10745,10 +10808,25 @@ def _wizard_collect_auth_section(state: WizardSetupState, method: str) -> None:
         state.auth = _wizard_collect_client_auth(state.config_values, state.env_path, state.secret_updates)
 
 
-# Collects the polling interval using the current answer as its default
+# Collects the polling intervals of the selected activity backend using the current answers as defaults
 def _wizard_collect_polling_section(state: WizardSetupState) -> None:
+    if state.config_values.get("FRIEND_ACTIVITY_BACKEND", FRIEND_ACTIVITY_BACKEND) == "listening_activity":
+        current_interval = int(state.config_values.get("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL))
+        state.config_values["SPOTIFY_LIVE_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval while the user is not playing (seconds or use s/m/h/d)", current_interval)
+        current_active_interval = int(state.config_values.get("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL))
+        state.config_values["SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval while the user is playing (seconds or use s/m/h/d)", current_active_interval)
+        return
     current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
     state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
+
+
+# Describes the polling intervals of the selected activity backend for the setup review
+def _wizard_polling_summary(state: WizardSetupState) -> str:
+    if state.config_values.get("FRIEND_ACTIVITY_BACKEND", FRIEND_ACTIVITY_BACKEND) == "listening_activity":
+        offline = _wizard_format_duration(int(state.config_values.get("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL)))
+        active = _wizard_format_duration(int(state.config_values.get("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)))
+        return f"{offline} when not playing, {active} when playing"
+    return _wizard_format_duration(int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL)))
 
 
 # Collects email settings after clearing pending answers from that section
@@ -10852,7 +10930,7 @@ def _wizard_print_setup_summary(state: WizardSetupState, method: str) -> None:
     rows = [
         ("Target", state.target),
         ("Persist target", "yes" if state.persist_target else "no"),
-        ("Polling interval", _wizard_format_duration(int(state.config_values["SPOTIFY_CHECK_INTERVAL"]))),
+        ("Polling interval", _wizard_polling_summary(state)),
         ("Token source", state.auth["source"]),
         ("Authentication status", "complete" if state.auth["complete"] else "incomplete"),
     ]
@@ -11472,6 +11550,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     sp_accessToken = ""
     live_activity_seen_at = 0
     live_timing = LivePlaybackTiming()
+    check_interval = activity_check_interval()
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
 
@@ -11497,7 +11576,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     # Start loop
     while True:
         retry_pending_activity_notifications()
-        debug_print("Loop tick", token_source=TOKEN_SOURCE, check_interval=SPOTIFY_CHECK_INTERVAL, error_interval=SPOTIFY_ERROR_INTERVAL)
+        debug_print("Loop tick", token_source=TOKEN_SOURCE, check_interval=activity_check_interval(), error_interval=activity_error_interval())
 
         # Sometimes Spotify network functions halt even though we specified the timeout
         # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
@@ -11527,7 +11606,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             timed_out = isinstance(e, TimeoutException)
             if timed_out:
                 e = TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}")
-            retry_seconds = ALARM_RETRY if timed_out else SPOTIFY_ERROR_INTERVAL
+            retry_seconds = ALARM_RETRY if timed_out else activity_error_interval()
 
             debug_print("Main monitor loop", outcome="failed", error=f"{type(e).__name__}: {e}")
 
@@ -11604,9 +11683,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     playlist_suffix = SPOTIFY_SUFFIX if sp_playlist_owner == "Spotify" else ""
 
             except Exception as e:
-                print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
+                print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(activity_error_interval())}", tracker=recovery_hint_tracker)
                 print_cur_ts("Timestamp:\t\t\t")
-                time.sleep(SPOTIFY_ERROR_INTERVAL)
+                time.sleep(activity_error_interval())
                 continue
 
             sp_username = sp_data["sp_username"]
@@ -11631,7 +11710,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             activity_label = "Now playing" if sp_data.get("sp_is_playing") else "Last played"
             live_activity_seen_at = cur_ts if sp_data.get("sp_is_playing") else 0
             if live_activity:
-                live_timing.observe(cur_ts, sp_data["sp_is_playing"], SPOTIFY_CHECK_INTERVAL * 2, sp_ts)
+                live_timing.observe(cur_ts, sp_data["sp_is_playing"], check_interval * 2, sp_ts)
 
             sp_track_duration = sp_track_data["sp_track_duration"]
             sp_track_url = sp_track_data["sp_track_url"]
@@ -11694,12 +11773,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             print(f"\nLast activity:\t\t\t{get_date_from_ts(sp_ts)} ({calculate_timespan(int(time.time()), sp_ts)} ago)")
 
             # A live session requires observed playback while the legacy feed supplies completed tracks
-            initially_active = bool(sp_data["sp_is_playing"]) if live_activity else cur_ts - sp_ts <= SPOTIFY_INACTIVITY_CHECK
+            initially_active = bool(sp_data["sp_is_playing"]) if live_activity else cur_ts - sp_ts <= activity_inactivity_check()
             # Moment the current track is known to have started, used for session spans and the recent-track list
             activity_ts = sp_ts
             if initially_active:
                 if live_activity:
-                    live_timing.start_track(cur_ts, False, new_session=True, source_ts=sp_ts, duration=sp_track_duration, max_gap=SPOTIFY_CHECK_INTERVAL * 2)
+                    live_timing.start_track(cur_ts, False, new_session=True, source_ts=sp_ts, duration=sp_track_duration, max_gap=check_interval * 2)
                     sp_active_ts_start = int(live_timing.session_started_at)
                     activity_ts = int(live_timing.track_started_at)
                 else:
@@ -11815,7 +11894,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         timed_out = isinstance(e, TimeoutException)
                         if timed_out:
                             e = TimeoutException(f"Spotify request timed out after {display_time(ALARM_TIMEOUT)}")
-                        retry_seconds = ALARM_RETRY if timed_out else SPOTIFY_ERROR_INTERVAL
+                        retry_seconds = ALARM_RETRY if timed_out else activity_error_interval()
 
                         failure_context = "runtime" if timed_out else ("client_auth" if TOKEN_SOURCE == "client" else "cookie_auth")
                         advice = classify_recovery_error(e, failure_context)
@@ -11865,8 +11944,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if disappeared_counter == 1:
                         verbose_notice(f"Target {user_uri_id} was absent from one activity response. Waiting for confirmation before reporting disappearance")
                     if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
-                        debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
-                        time.sleep(SPOTIFY_CHECK_INTERVAL)
+                        debug_monitor_check_timing(check_count, user_uri_id, check_started_at, check_interval)
+                        time.sleep(check_interval)
                         continue
                     if user_not_found is False:
                         if is_user_removed(sp_accessToken, user_uri_id):
@@ -11925,7 +12004,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_track_old = sp_track
                     previous_track_duration = sp_track_duration
                     # A start is observed when the previous sample was close and the track differs from the last one seen
-                    live_start_observed = live_activity and live_timing.continuous(cur_ts, SPOTIFY_CHECK_INTERVAL * 2) and (not resumed_live_session or sp_data["sp_track_uri"] != sp_track_uri_old)
+                    live_start_observed = live_activity and live_timing.continuous(cur_ts, check_interval * 2) and (not resumed_live_session or sp_data["sp_track_uri"] != sp_track_uri_old)
                     alive_since = int(time.time())
                     sp_playlist = sp_data["sp_playlist"]
                     sp_track_uri = sp_data["sp_track_uri"]
@@ -11947,9 +12026,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if live_activity:
                             # The unreported sample becomes a gap so the retry cannot classify the change as observed
                             live_timing.sampled_at = None
-                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}", tracker=recovery_hint_tracker)
+                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(activity_error_interval())}", tracker=recovery_hint_tracker)
                         print_cur_ts("Timestamp:\t\t\t")
-                        time.sleep(SPOTIFY_ERROR_INTERVAL)
+                        time.sleep(activity_error_interval())
                         continue
 
                     sp_username = sp_data["sp_username"]
@@ -11998,12 +12077,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                     # Duration estimates require completed-play timestamps from one uninterrupted session
                     cur_ts = int(time.time())
-                    resumed_after_offline = (sp_active_ts_stop > 0) and ((cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK)
+                    resumed_after_offline = (sp_active_ts_stop > 0) and ((cur_ts - sp_ts_old) > activity_inactivity_check())
                     estimate_play_duration = not live_activity and not resumed_after_offline
                     song_skipped = False
                     if live_activity:
                         # The previous track is settled before its successor is reported
-                        playback_event, playback_duration = live_timing.observe(cur_ts, True, SPOTIFY_CHECK_INTERVAL * 2, sp_ts, track_changed=True)
+                        playback_event, playback_duration = live_timing.observe(cur_ts, True, check_interval * 2, sp_ts, track_changed=True)
                         if playback_event == "resumed" and sp_active_ts_start > 0:
                             print(f"User RESUMED playing after {display_time(int(playback_duration))}")
                             print_cur_ts("\nTimestamp:\t\t\t")
@@ -12015,7 +12094,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         played_for_m_body = ""
                         played_for_m_body_html = ""
                         if not resumed_live_session:
-                            played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else SPOTIFY_CHECK_INTERVAL + 1
+                            played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else activity_check_interval(True) + 1
                             played_for, song_skipped, ended_early = live_timing.played_for(previous_track_duration, played_for_tolerance, allow_skip=True)
                             if ended_early:
                                 print(f"User played the previous track for: {played_for}")
@@ -12027,7 +12106,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 skipped_songs += 1
                                 if recent_songs_session:
                                     recent_songs_session[-1]['skipped'] = True
-                        live_timing.start_track(cur_ts, live_start_observed, new_session=resumed_live_session, source_ts=sp_ts, duration=sp_track_duration, max_gap=SPOTIFY_CHECK_INTERVAL * 2)
+                        live_timing.start_track(cur_ts, live_start_observed, new_session=resumed_live_session, source_ts=sp_ts, duration=sp_track_duration, max_gap=check_interval * 2)
                         activity_ts = int(live_timing.track_started_at)
                     else:
                         activity_ts = sp_ts
@@ -12140,7 +12219,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print("─" * HORIZONTAL_LINE)
 
                     # Friend got active after being offline
-                    if resumed_live_session or (not live_activity and (cur_ts - sp_ts_old) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_stop > 0):
+                    if resumed_live_session or (not live_activity and (cur_ts - sp_ts_old) > activity_inactivity_check() and sp_active_ts_stop > 0):
 
                         sp_active_ts_start = int(live_timing.session_started_at) if live_activity else sp_ts - sp_track_duration
 
@@ -12162,9 +12241,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             listened_songs = listened_songs_old
                             skipped_songs = skipped_songs_old
                             looped_songs = looped_songs_old
-                            print(f"*** Inactivity timer ({display_time(SPOTIFY_INACTIVITY_CHECK)}) value might be too low, readjusting session start back to {get_short_date_from_ts(sp_active_ts_start_old)}")
-                            friend_active_m_body += f"\nInactivity timer ({display_time(SPOTIFY_INACTIVITY_CHECK)}) value might be too low, readjusting session start back to {get_short_date_from_ts(sp_active_ts_start_old)}"
-                            friend_active_m_body_html += f"<br>Inactivity timer (<b>{display_time(SPOTIFY_INACTIVITY_CHECK)}</b>) value might be <b>too low</b>, readjusting session start back to <b>{get_short_date_from_ts(sp_active_ts_start_old)}</b>"
+                            print(f"*** Inactivity timer ({display_time(activity_inactivity_check())}) value might be too low, readjusting session start back to {get_short_date_from_ts(sp_active_ts_start_old)}")
+                            friend_active_m_body += f"\nInactivity timer ({display_time(activity_inactivity_check())}) value might be too low, readjusting session start back to {get_short_date_from_ts(sp_active_ts_start_old)}"
+                            friend_active_m_body_html += f"<br>Inactivity timer (<b>{display_time(activity_inactivity_check())}</b>) value might be <b>too low</b>, readjusting session start back to <b>{get_short_date_from_ts(sp_active_ts_start_old)}</b>"
                             if sp_active_ts_start_old > 0:
                                 sp_active_ts_start = sp_active_ts_start_old
                         sp_active_ts_stop = 0
@@ -12282,7 +12361,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 # Track has not changed
                 else:
                     if live_activity:
-                        playback_event, playback_duration = live_timing.observe(cur_ts, sp_data["sp_is_playing"], SPOTIFY_CHECK_INTERVAL * 2, sp_ts)
+                        playback_event, playback_duration = live_timing.observe(cur_ts, sp_data["sp_is_playing"], check_interval * 2, sp_ts)
                         if playback_event == "paused" and live_timing.paused_at is not None:
                             # The pause moment is the last confirmed playback, so the inactivity timer starts there
                             live_activity_seen_at = int(live_timing.paused_at)
@@ -12301,13 +12380,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_linux_play_pause(action)
                     # Friend got inactive
                     last_activity_at = live_activity_seen_at if live_activity else sp_ts
-                    if (cur_ts - last_activity_at) > SPOTIFY_INACTIVITY_CHECK and sp_active_ts_start > 0:
+                    if (cur_ts - last_activity_at) > activity_inactivity_check() and sp_active_ts_start > 0:
                         sp_active_ts_stop = last_activity_at
                         paused_text = ""
                         paused_m_body = ""
                         paused_m_body_html = ""
                         if live_activity:
-                            played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else SPOTIFY_CHECK_INTERVAL + 1
+                            played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else activity_check_interval(True) + 1
                             played_for, _, _ = live_timing.played_for(sp_track_duration, played_for_tolerance)
                             print(f"User played the last track for: {played_for}")
                             print("─" * HORIZONTAL_LINE)
@@ -12351,7 +12430,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         print(listened_songs_text)
 
-                        print(f"*** Last activity:\t\t{get_date_from_ts(sp_active_ts_stop)} (inactive timer: {display_time(SPOTIFY_INACTIVITY_CHECK)})")
+                        print(f"*** Last activity:\t\t{get_date_from_ts(sp_active_ts_stop)} (inactive timer: {display_time(activity_inactivity_check())})")
                         # If tracking functionality is enabled then either pause the current song via Spotify client or play the indicated SP_USER_GOT_OFFLINE_TRACK_ID "finishing" song
                         if TRACK_SONGS:
                             if SP_USER_GOT_OFFLINE_TRACK_ID:
@@ -12417,8 +12496,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     lyrics_section_html = ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs, inactive=True)
-                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(SPOTIFY_INACTIVITY_CHECK)}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                             email_succeeded, webhook_succeeded = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
@@ -12442,8 +12521,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_liveness_banner(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
                         alive_since = int(time.time())
 
-                debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_CHECK_INTERVAL)
-                time.sleep(SPOTIFY_CHECK_INTERVAL)
+                # An open session polls at the live active interval, so pauses and resumes are timed closely
+                check_interval = activity_check_interval(sp_active_ts_start > 0)
+                debug_monitor_check_timing(check_count, user_uri_id, check_started_at, check_interval)
+                time.sleep(check_interval)
 
         # User is not found in the Spotify's friend list just after starting the tool
         else:
@@ -12530,7 +12611,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -12946,6 +13027,13 @@ def main():
         help="Time between monitoring checks, in seconds"
     )
     times.add_argument(
+        "-k", "--active-check-interval",
+        dest="active_check_interval",
+        metavar="SECONDS",
+        type=int,
+        help="Time between checks while a live listening session is open, in seconds (live backend only)"
+    )
+    times.add_argument(
         "-o", "--offline-timer",
         dest="offline_timer",
         metavar="SECONDS",
@@ -13198,6 +13286,7 @@ def main():
             (args.webhook_url, "--webhook-url"),
             (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
+            (args.active_check_interval, "--active-check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
@@ -13263,6 +13352,7 @@ def main():
             (args.webhook_url, "--webhook-url"),
             (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
+            (args.active_check_interval, "--active-check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
@@ -13325,6 +13415,7 @@ def main():
             (args.webhook_url, "--webhook-url"),
             (args.webhook_provider, "--webhook-provider"),
             (args.check_interval, "--check-interval"),
+            (args.active_check_interval, "--active-check-interval"),
             (args.offline_timer, "--offline-timer"),
             (args.disappeared_timer, "--disappeared-timer"),
             (args.monitor_mode, "--monitor-mode"),
@@ -13601,13 +13692,22 @@ def main():
             print_recovery_error(exc, "config_invalid", detail="--oauth-app-creds must use SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET format")
             sys.exit(1)
 
+    # The timing flags apply to the backend selected by the configuration or --friend-activity-backend
     if args.check_interval is not None:
-        SPOTIFY_CHECK_INTERVAL = args.check_interval
+        if live_activity_backend():
+            SPOTIFY_LIVE_CHECK_INTERVAL = args.check_interval
+        else:
+            SPOTIFY_CHECK_INTERVAL = args.check_interval
+    if args.active_check_interval is not None:
+        SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = args.active_check_interval
     if args.offline_timer is not None:
-        SPOTIFY_INACTIVITY_CHECK = args.offline_timer
+        if live_activity_backend():
+            SPOTIFY_LIVE_INACTIVITY_CHECK = args.offline_timer
+        else:
+            SPOTIFY_INACTIVITY_CHECK = args.offline_timer
     if args.disappeared_timer is not None:
         SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
-    for value, option in ((args.check_interval, "--check-interval"), (args.offline_timer, "--offline-timer"), (args.disappeared_timer, "--disappeared-timer"), (args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched"), (args.scrobble_match_window, "--scrobble-match-window"), (args.scrobble_lookback, "--scrobble-lookback")):
+    for value, option in ((args.check_interval, "--check-interval"), (args.active_check_interval, "--active-check-interval"), (args.offline_timer, "--offline-timer"), (args.disappeared_timer, "--disappeared-timer"), (args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched"), (args.scrobble_match_window, "--scrobble-match-window"), (args.scrobble_lookback, "--scrobble-lookback")):
         if value is not None and value <= 0:
             parser.error(f"{option} must be greater than zero")
     if args.scrobble_repeat_interval is not None and args.scrobble_repeat_interval < 0:

@@ -95,6 +95,20 @@ spotify_monitor --friend-activity-backend listening_activity --list-friends
 
 Existing configuration files without this setting use `"listening_activity"`. To restore the old behavior, set `FRIEND_ACTIVITY_BACKEND = "buddylist"`. This choice is independent of `TOKEN_SOURCE` and does not affect scrobble health.
 
+Each backend has its own timers. The live feed reports playback changes as they happen, so the live backend polls faster during a listening session and ends a session sooner after playback stops. The legacy endpoint reports only completed tracks, so its inactivity timer must outlast a long track. `-c`, `-k` and `-o` set the timers of the selected backend and `--doctor` warns when a legacy interval is below 30 seconds or a live interval is below 5 seconds.
+
+| Setting | One-run option | Default | Backend | Purpose |
+| --- | --- | ---: | --- | --- |
+| `SPOTIFY_LIVE_CHECK_INTERVAL` | `-c` | 30 seconds | live | Time between checks while the user is not playing |
+| `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` | `-k` | 10 seconds | live | Time between checks while a listening session is open |
+| `SPOTIFY_LIVE_ERROR_INTERVAL` | | 60 seconds | live | Retry delay after a failed check |
+| `SPOTIFY_LIVE_INACTIVITY_CHECK` | `-o` | 180 seconds | live | Time without playback after which the session ends |
+| `SPOTIFY_CHECK_INTERVAL` | `-c` | 30 seconds | legacy | Time between checks |
+| `SPOTIFY_ERROR_INTERVAL` | | 180 seconds | legacy | Retry delay after a failed check |
+| `SPOTIFY_INACTIVITY_CHECK` | `-o` | 660 seconds | legacy | Time after the last completed track after which the user is inactive |
+
+The TRAP and ABRT signals adjust the inactivity timer of the selected backend. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
+
 The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
 
 Live tracking starts a session only when playback is observed. Starting the tool while playback is stopped shows the last shared track without counting it or sending an ACTIVE notification. The first observed playback produces the full track report and counts one track, even if it resumes that same track.

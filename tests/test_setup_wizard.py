@@ -139,15 +139,31 @@ def test_duration_helper_accepts_default(monkeypatch):
     input_mock.assert_called_once_with("Dead period before an alert [1200s - 20m]: ")
 
 
-# Verifies regular setup accepts unit-based polling intervals and stores seconds
+# Verifies regular setup accepts unit-based polling intervals and stores seconds for the legacy backend
 def test_polling_section_uses_duration_input(monkeypatch, tmp_path):
     baseline = dict(vars(monitor))
+    baseline["FRIEND_ACTIVITY_BACKEND"] = "buddylist"
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
     duration_mock = Mock(return_value=3600)
     monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
     monitor._wizard_collect_polling_section(state)
     assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == 3600
     duration_mock.assert_called_once_with("Spotify polling interval (seconds or use s/m/h/d)", monitor.SPOTIFY_CHECK_INTERVAL)
+    assert monitor._wizard_polling_summary(state) == monitor._wizard_format_duration(3600)
+
+
+# Verifies the live backend asks for both live polling intervals and leaves the legacy interval alone
+def test_polling_section_asks_live_intervals(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    baseline["FRIEND_ACTIVITY_BACKEND"] = "listening_activity"
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    duration_mock = Mock(side_effect=[45, 5])
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
+    monitor._wizard_collect_polling_section(state)
+    assert (state.config_values["SPOTIFY_LIVE_CHECK_INTERVAL"], state.config_values["SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL"]) == (45, 5)
+    assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == monitor.SPOTIFY_CHECK_INTERVAL
+    assert [call.args for call in duration_mock.call_args_list] == [("Spotify polling interval while the user is not playing (seconds or use s/m/h/d)", monitor.SPOTIFY_LIVE_CHECK_INTERVAL), ("Spotify polling interval while the user is playing (seconds or use s/m/h/d)", monitor.SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)]
+    assert monitor._wizard_polling_summary(state) == "45s when not playing, 5s when playing"
 
 
 # Verifies a CSV answer without an extension is saved as a .csv file while an explicit extension is left alone
@@ -348,7 +364,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "y", "", "", "n"])
+        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "", "1", "4", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
         monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
@@ -383,12 +399,12 @@ def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
-        config_path.write_text('TARGET_USER_URI_ID = "saved.review.user"\nSPOTIFY_CHECK_INTERVAL = 1234\nCSV_FILE = "saved-records.csv"\n', encoding="utf-8")
+        config_path.write_text('TARGET_USER_URI_ID = "saved.review.user"\nSPOTIFY_LIVE_CHECK_INTERVAL = 1234\nCSV_FILE = "saved-records.csv"\n', encoding="utf-8")
         env_path = directory / ".env"
         prompts = []
-        iterator = iter(["y", "", "y", "", "1", "4", "n", "y", "", "", "", "n"])
+        iterator = iter(["y", "", "y", "", "", "1", "4", "n", "y", "", "", "", "n"])
         # The finished wizard loads what it saved, so the settings it reads back are restored when the test ends
-        for name in ("TARGET_USER_URI_ID", "SPOTIFY_CHECK_INTERVAL", "CSV_FILE"):
+        for name in ("TARGET_USER_URI_ID", "SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", "CSV_FILE"):
             monkeypatch.setattr(monitor, name, getattr(monitor, name))
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
         monkeypatch.setattr(builtins, "input", lambda prompt="": prompts.append(prompt) or next(iterator))
@@ -404,7 +420,7 @@ def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
         assert any("1234s" in prompt for prompt in prompts)
         config = config_path.read_text(encoding="utf-8")
         assert 'TARGET_USER_URI_ID = "saved.review.user"' in config
-        assert "SPOTIFY_CHECK_INTERVAL = 1234" in config
+        assert "SPOTIFY_LIVE_CHECK_INTERVAL = 1234" in config
         assert 'CSV_FILE = "saved-records.csv"' in config
 
 
@@ -414,7 +430,7 @@ def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "y", "", "3", "y"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "1", "5", "n", "y", "", "3", "y"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -428,12 +444,12 @@ def test_setup_review_edits_polling_before_save(monkeypatch):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "y", "", "2", "2", "45", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "1", "5", "n", "y", "", "2", "2", "45", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
         assert error.value.code == 0
-        assert "SPOTIFY_CHECK_INTERVAL = 45" in config_path.read_text(encoding="utf-8")
+        assert "SPOTIFY_LIVE_CHECK_INTERVAL = 45" in config_path.read_text(encoding="utf-8")
 
 
 # Verifies a non-persisted target remains absent from config and appears in exact next commands
@@ -441,7 +457,7 @@ def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         monkeypatch.chdir(directory)
-        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "1", "3", "n", "y", "", "", "n"])
+        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "", "1", "3", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
         monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
@@ -460,7 +476,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "y", "", "", "n", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "n", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
 
@@ -492,7 +508,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
 def test_browser_import_receives_the_persisted_target_decision(monkeypatch, persist_answer, expected_saved):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["target.user", persist_answer, "1", "1", "", "n", "y", "", "", "n", "n"])
+        install_inputs(monkeypatch, ["target.user", persist_answer, "1", "", "1", "", "n", "y", "", "", "n", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         import_mock = Mock(side_effect=lambda **kwargs: monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"}))
@@ -509,7 +525,7 @@ def test_browser_import_receives_the_persisted_target_decision(monkeypatch, pers
 def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "y", "", "", "3", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "3", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(monitor, "run_browser_cookie_import", Mock(side_effect=monitor.BrowserCookieImportError("safe import failure")))
@@ -561,7 +577,7 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
         directory = Path(directory_name)
         login_path = directory / "login.protobuf"
         login_path.write_bytes(b"fixture")
-        install_inputs(monkeypatch, ["target.user", "y", "", "2", "y", str(login_path), "n", "n", "y", "", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "2", "y", str(login_path), "n", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "parse_login_request_body_file", lambda path: ("device-id", "system-id", "account-id", "refresh-private-value"))
         with pytest.raises(SystemExit) as error:
@@ -1664,7 +1680,7 @@ def test_a_declined_secret_replacement_reports_the_kept_value(tmp_path, monkeypa
 def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        answers = iter(["target.user", "y", ""])
+        answers = iter(["target.user", "y", "", ""])
 
         # Echoes each prompt with its answer, so the captured text is the transcript a user reads
         def answer(prompt=""):
@@ -1680,7 +1696,7 @@ def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
         with pytest.raises(SystemExit):
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
 
-        assert "\n\nSpotify polling interval (seconds or use s/m/h/d)" in capsys.readouterr().out
+        assert "\n\nSpotify polling interval while the user is not playing (seconds or use s/m/h/d)" in capsys.readouterr().out
 
 
 # Verifies the guide link opens the setup page the sibling monitors link, with no section fragment
