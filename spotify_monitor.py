@@ -8454,8 +8454,9 @@ DISCARDED_SETTING_ERRORS = []
 
 # True when the selected command exists to correct the configuration, so a malformed setting is reported
 # there instead of stopping the one run that could repair it
-def command_reports_configuration(arguments=()):
-    return any(str(argument) in ("--doctor", "--setup") or str(argument).startswith("--set-") for argument in arguments)
+def command_reports_configuration(args=None):
+    # Read from the parsed namespace rather than the raw words, since argparse also accepts abbreviations
+    return any(getattr(args, name, False) for name in ("doctor", "setup", "set_lastfm_credentials", "set_smtp_password", "set_sp_dc", "set_webhook_url"))
 
 
 # Validates effective path settings before startup expands or opens them
@@ -8474,7 +8475,7 @@ def prepare_configured_paths(args):
     advice = make_recovery_advice("config.invalid", "Invalid settings: " + ". ".join(errors), recovery_fix_with_guide("Correct the named settings in the configuration file or command line", CONFIG_GUIDE_URL), False)
     # A monitoring run cannot continue on a value this broken, but doctor, the setup wizard and the secret
     # commands are how it gets corrected, so they fall back to the built-in values and report the setting
-    if not command_reports_configuration(sys.argv[1:]):
+    if not command_reports_configuration(args):
         print_recovery_advice(advice)
         raise SystemExit(1)
     DISCARDED_SETTING_ERRORS[:] = errors
@@ -8482,7 +8483,8 @@ def prepare_configured_paths(args):
     for name, built_in in BUILT_IN_SHAPE_SETTINGS.items():
         if name in settings and configuration_shape_errors({name: settings[name]}):
             globals()[name] = built_in
-    if "--doctor" not in sys.argv:
+    # Doctor lists the same settings as report rows, so a warning above it would only say them twice
+    if not getattr(args, "doctor", False):
         print_recovery_advice(advice, label="Warning")
         print()
 
