@@ -2672,11 +2672,10 @@ def _dotenv_contains_key(destination, key):
     if not destination_path.exists():
         return False
     try:
-        lines = destination_path.read_text(encoding="utf-8").splitlines()
+        content = destination_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         raise BrowserCookieImportError(f"Could not read dotenv destination '{destination_path}'. Check that it is a readable UTF-8 file.") from None
-    assignment_pattern = re.compile(rf"^\s*(?:export\s+)?{re.escape(key)}\s*=")
-    return any(assignment_pattern.match(line) for line in lines)
+    return any(binding.key == key for binding in _dotenv_bindings(content))
 
 
 # Identifies network-shaped authentication failures without returning raw exception text
@@ -6864,6 +6863,15 @@ def spotify_get_access_token_from_client_auto(device_id, system_id, user_uri_id,
 
 # --------------------------------------------------------
 
+
+# Applies the configured TLS policy to requests made by Spotipy
+class SpotifyAuthSession(req.Session):
+    # Overrides Spotipy's per-request verification argument before Requests merges settings
+    def request(self, method, url, *args, **kwargs):
+        kwargs["verify"] = VERIFY_SSL
+        return super().request(method, url, *args, **kwargs)
+
+
 # Fetches Spotify access token based on provided sp_client_id & sp_client_secret values (Client Credentials OAuth Flow)
 def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_file_cache=True):
     global SP_CACHED_OAUTH_APP_TOKEN, SPOTIPY_AVAILABLE, SPOTIPY_IMPORT_WARNING_SHOWN
@@ -6897,9 +6905,8 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_
     else:
         cache_handler = MemoryCacheHandler()
 
-    session = req.Session()
+    session = SpotifyAuthSession()
     session.headers.update({'User-Agent': USER_AGENT})
-    # Spotipy owns the requests this session makes, so the setting is applied here rather than per call like everywhere else
     session.verify = VERIFY_SSL
 
     auth_manager = SpotifyClientCredentials(client_id=sp_client_id, client_secret=sp_client_secret, cache_handler=cache_handler, requests_session=session)  # type: ignore[arg-type]
@@ -8809,7 +8816,7 @@ def install_method_display_name(method: Optional[str] = None) -> str:
 
 
 # Returns local command arguments using friendly names or exact runtime paths
-def _wizard_local_command_args(method: str, exact: bool = False) -> List[str]:
+def _wizard_local_command_args(method: str, exact: bool = True) -> List[str]:
     if exact:
         executable = sys.executable or ("python" if platform.system() == "Windows" else "python3")
         if method == "pip":
@@ -8840,7 +8847,7 @@ def _wizard_quote_argument(value: Any) -> str:
 
 
 # Returns the portable command prefix for one installation method and optional host environment
-def _wizard_cmd_prefix(method: str, exact: bool = False, host_os: Optional[str] = None) -> str:
+def _wizard_cmd_prefix(method: str, exact: bool = True, host_os: Optional[str] = None) -> str:
     if method == "compose":
         return "docker compose run --rm spotify_monitor"
     if method == "docker":
@@ -9005,7 +9012,7 @@ def _wizard_secret_command_paths(method: str, config_path, env_path) -> str:
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
-def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
+def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = True, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
     selected_host = host_os or "linux"
     prefix = _wizard_cmd_prefix(method, exact=exact, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
@@ -9022,7 +9029,7 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, exact: bool = False, 
 
 
 # Returns the hidden manual sp_dc entry command with optional setup context
-def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = False, host_os: Optional[str] = None, config_path=None) -> str:
+def _wizard_set_sp_dc_cmd(method: str, env_path=None, exact: bool = True, host_os: Optional[str] = None, config_path=None) -> str:
     command = f"{_wizard_cmd_prefix(method, exact=exact, host_os=host_os)} --set-sp-dc"
     command += _wizard_secret_command_paths(method, config_path, env_path)
     return command
@@ -9326,16 +9333,23 @@ def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] 
     return config_path, env_path
 
 
+# Preserves a saved dotenv destination unless setup received an explicit override
+def _wizard_saved_env_destination(values: dict, env_file, fallback: Path, method: str) -> Path:
+    selected = env_file if env_file is not None else values.get("DOTENV_FILE") or fallback
+    if str(selected).casefold() == "none":
+        raise ValueError("Setup needs a writable dotenv destination. Pass --env-file PATH to choose one.")
+    return _wizard_validate_destination(method, selected, "Dotenv destination")
+
+
 # Seeds the proposed answers from the configuration the wizard is about to rebuild, which is what the rebuild question offers
-def _wizard_seed_saved_settings(values: dict, config_path: Path) -> None:
+def _wizard_seed_saved_settings(values: dict, config_path: Path) -> dict:
     if not config_path.is_file():
-        return
+        return {}
     saved: dict = {}
     if not load_config_file(config_path, namespace=saved):
-        print("  Those settings could not be read, so the questions start from the built-in defaults.\n")
-        return
-    # Secrets are resolved from the dotenv file and the config keeps their placeholders, so only the settings this wizard writes are proposed
+        raise ValueError(f"Configuration file '{config_path}' could not be read. Correct it before retrying setup.")
     values.update({key: value for key, value in saved.items() if key not in SENSITIVE_CONFIG_KEYS})
+    return saved
 
 
 # Confirms replacement or selects another config destination before secrets are collected
@@ -9496,16 +9510,35 @@ def _wizard_email_enabled(config_values: dict, notification_names: Sequence[str]
     return shipped_on and doctor_secret_is_set(config_values.get("SMTP_HOST"))
 
 
+# Reads complete dotenv assignments without interpolation and reports invalid syntax
+def read_private_settings(env_path: Path) -> dict:
+    path = Path(env_path)
+    if not path.exists():
+        return {}
+    bindings = list(_dotenv_bindings(path.read_text(encoding="utf-8")))
+    invalid = next((binding for binding in bindings if binding.error), None)
+    if invalid is not None:
+        raise ValueError(f"Dotenv file '{path}' has invalid syntax near line {invalid.original.line}. Correct that assignment before retrying.")
+    return {binding.key: binding.value for binding in bindings if binding.key is not None}
+
+
+# Resolves allowlisted secrets and their origins using startup precedence
+def resolve_secret_settings(configured: dict, saved: dict, exported: dict) -> Tuple[dict, dict]:
+    values = {}
+    sources = {}
+    for key in SECRET_KEYS:
+        if exported.get(key):
+            values[key], sources[key] = exported[key], "environment"
+        elif saved.get(key) is not None:
+            values[key], sources[key] = saved[key], "dotenv file"
+        else:
+            values[key], sources[key] = configured.get(key), "configuration file or command line"
+    return values, sources
+
+
 # Returns the secret stored in the dotenv file or None when the file has no assignment for it
 def _wizard_saved_secret_value(key: str, env_path: Path) -> Optional[str]:
-    value = None
-    path = Path(env_path)
-    if path.is_file():
-        try:
-            from dotenv import dotenv_values
-            value = dotenv_values(str(path), interpolate=False).get(key)
-        except Exception:
-            value = None
+    value = read_private_settings(env_path).get(key)
     return value if isinstance(value, str) else None
 
 
@@ -9518,7 +9551,7 @@ def effective_secret_after_setup(key: str, env_path: Path, secret_updates: dict)
     if key in secret_updates:
         return str(secret_updates[key] or ""), False
     saved = _wizard_saved_secret_value(key, env_path)
-    if saved:
+    if saved is not None:
         return saved, False
     # Nothing private holds it, so the configuration file is what a restart would read
     return str(globals().get(key) or ""), False
@@ -9919,28 +9952,17 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
 # Loads the generated config and only allowlisted dotenv secrets for the doctor offer
 def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     global USER_AGENT
+    exported = {key: os.environ.get(key) for key in SECRET_KEYS if SECRET_SOURCES.get(key) not in ("dotenv file", "dotenv file reload")}
     if not load_config_file(config_path):
         return False
-    selected_secrets = {key: os.environ.get(key) for key in SECRET_KEYS}
-    # Each value carries the source doctor would name after a restart, rather than the fallback label
-    selected_sources = {key: "environment" for key, value in selected_secrets.items() if value is not None}
-    if env_path.is_file():
-        try:
-            from dotenv import dotenv_values
-            parsed = dotenv_values(env_path, interpolate=False)
-            # A secret exported before startup still wins at the next start, so the dotenv does not take it over
-            for key in set(SECRET_KEYS).difference(EXPORTED_ENVIRONMENT_KEYS):
-                if parsed.get(key) is not None:
-                    selected_secrets[key] = parsed[key]
-                    selected_sources[key] = "dotenv file"
-        except Exception:
-            print(render_recovery_error(context="config_invalid", detail=f"Dotenv file '{env_path}' could not be loaded"))
-            return False
-    for key, value in selected_secrets.items():
-        if value is not None:
+    try:
+        values, sources = resolve_secret_settings(globals(), read_private_settings(env_path), exported)
+        for key, value in values.items():
             globals()[key] = value
-    for key, source in selected_sources.items():
-        record_secret_source(key, source)
+            record_secret_source(key, sources[key])
+    except (OSError, UnicodeError, ValueError) as exc:
+        print(render_recovery_error(exc, "config_invalid", detail=f"Dotenv file '{env_path}' could not be loaded: {exc}"))
+        return False
     if not USER_AGENT:
         USER_AGENT = get_random_spotify_user_agent() if TOKEN_SOURCE == "client" else get_random_user_agent()
     return True
@@ -10440,7 +10462,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
         baseline_values = dict(globals())
-        _wizard_seed_saved_settings(baseline_values, config_path)
+        saved_settings = _wizard_seed_saved_settings(baseline_values, config_path)
+        env_path = _wizard_saved_env_destination(saved_settings, env_file, env_path, method)
+        if env_path == config_path.resolve():
+            raise ValueError("Configuration and dotenv destinations must be different files. Pass --env-file with another path.")
         initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
         config_values = dict(baseline_values)
         config_values["DOTENV_FILE"] = str(env_path)
@@ -10458,6 +10483,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         if not _wizard_review_setup(state, method):
             print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
             raise SystemExit(1)
+    except (OSError, UnicodeError, ValueError) as exc:
+        print_recovery_error(exc, "config_invalid")
+        print("Correct the selected file or pass --env-file with a writable destination.")
+        raise SystemExit(1) from None
     except (EOFError, KeyboardInterrupt):
         print(colorize("warning", "Setup cancelled. Destination files were not changed."))
         raise SystemExit(1) from None
@@ -10599,7 +10628,10 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
         baseline_values = dict(globals())
-        _wizard_seed_saved_settings(baseline_values, config_path)
+        saved_settings = _wizard_seed_saved_settings(baseline_values, config_path)
+        env_path = _wizard_saved_env_destination(saved_settings, env_file, env_path, method)
+        if env_path == config_path.resolve():
+            raise ValueError("Configuration and dotenv destinations must be different files. Pass --env-file with another path.")
         config_values = dict(baseline_values)
         config_values.update({
             "MONITOR_MODE": "scrobble_health",
@@ -10621,6 +10653,10 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
         if not _wizard_review_scrobble_health_setup(state, method):
             print("\n" + colorize("warning", "Setup cancelled. Destination files were not changed."))
             raise SystemExit(1)
+    except (OSError, UnicodeError, ValueError) as exc:
+        print_recovery_error(exc, "config_invalid")
+        print("Correct the selected file or pass --env-file with a writable destination.")
+        raise SystemExit(1) from None
     except (EOFError, KeyboardInterrupt):
         print(colorize("warning", "Setup cancelled. Destination files were not changed."))
         raise SystemExit(1) from None
