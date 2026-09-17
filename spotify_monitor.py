@@ -2410,22 +2410,28 @@ def read_dotenv_mapping(path: Union[str, Path]) -> dict[str, str]:
     return {binding.key: binding.value for binding in bindings if binding.key is not None and binding.value is not None}
 
 
+# Returns the secrets explicitly supplied on the command line
+def command_line_secret_keys():
+    return frozenset(globals().get("COMMAND_LINE_SECRET_KEYS", ())) | frozenset(key for key, source in globals().get("SECRET_SOURCES", {}).items() if source == "command line")
+
+
 # Applies supported dotenv settings while retaining values needed when keys are removed
 def apply_dotenv_mapping(values: dict[str, str], initialize_base: bool = False) -> tuple[str, ...]:
     global DOTENV_MANAGED_KEYS
     supported_keys = frozenset((*SECRET_KEYS, *ENVIRONMENT_SETTING_KEYS))
     if initialize_base:
         for key in supported_keys:
-            DOTENV_BASE_VALUES[key] = os.environ[key] if key in os.environ else globals().get(key)
+            DOTENV_BASE_VALUES[key] = os.environ[key] if os.environ.get(key) else globals().get(key)
     previous_values = {key: globals().get(key) for key in supported_keys}
     selected_keys = supported_keys.intersection(values)
-    applied_keys = selected_keys.difference(EXPORTED_ENVIRONMENT_KEYS) if initialize_base else selected_keys
+    protected_keys = EXPORTED_ENVIRONMENT_KEYS | command_line_secret_keys()
+    applied_keys = selected_keys.difference(protected_keys)
     for key in applied_keys:
         os.environ[key] = values[key]
         globals()[key] = values[key]
         if key in SECRET_KEYS:
             record_secret_source(key, "dotenv file", values[key])
-    for key in DOTENV_MANAGED_KEYS.difference(applied_keys):
+    for key in DOTENV_MANAGED_KEYS.difference(applied_keys, protected_keys):
         base_value = DOTENV_BASE_VALUES.get(key)
         if base_value is None:
             os.environ.pop(key, None)
@@ -9715,17 +9721,13 @@ def _wizard_choose_config_destination(config_path: Path, method: str) -> Path:
     return selected
 
 
-# Returns whether a non-placeholder secret exists in the selected dotenv file or environment
-def _wizard_existing_secret(key: str, env_path: Path, placeholders: Sequence[str] = ()) -> bool:
-    value = None
-    if env_path.is_file():
-        try:
-            from dotenv import dotenv_values
-            value = dotenv_values(env_path, interpolate=False).get(key)
-        except Exception:
-            value = None
+# Reports whether setup will retain a usable credential from the selected file or pending answers
+def _wizard_existing_secret(key: str, env_path: Path, placeholders=(), secret_updates=None) -> bool:
+    value = _wizard_exported_secrets().get(key)
     if value is None:
-        value = os.environ.get(key)
+        value = (secret_updates or {}).get(key)
+    if value is None:
+        value = read_private_settings(env_path).get(key)
     return not is_missing_or_placeholder(value, placeholders)
 
 
@@ -9889,10 +9891,11 @@ def _wizard_saved_secret_value(key: str, env_path: Path) -> Optional[str]:
     return value if isinstance(value, str) else None
 
 
-# Returns the secret the next run would resolve and whether an exported variable is what supplies it. Startup loads
-# the dotenv file without overriding the environment, so an export wins over a saved value and over a new one
+# Returns the effective credential and whether a startup export supplies it
 def effective_secret_after_setup(key: str, env_path: Path, secret_updates: dict) -> Tuple[str, bool]:
-    exported = os.environ.get(key)
+    if key in command_line_secret_keys():
+        return str(globals().get(key) or ""), False
+    exported = _wizard_exported_secrets().get(key)
     if exported:
         return exported, True
     if key in secret_updates:
@@ -9968,7 +9971,7 @@ def _wizard_collect_email(config_values: dict, secret_updates: dict, env_path: P
 
 # Collects an optional ntfy access token without displaying or contacting the service
 def _wizard_collect_ntfy_access_token(secret_updates: dict, env_path: Path) -> None:
-    existing_token = _wizard_existing_secret("NTFY_ACCESS_TOKEN", env_path)
+    existing_token = _wizard_existing_secret("NTFY_ACCESS_TOKEN", env_path, secret_updates=secret_updates)
     if existing_token:
         choice = _wizard_ask_choice("Which ntfy authentication should be used?", [("Keep the saved access token", "Keeps the private value without displaying or changing it."), ("Paste a new access token", "Uses a hidden prompt then saves the replacement in .env."), ("Do not use an access token", "Disables the saved token. Authentication in the topic URL still works.")])
         if choice == 0:
@@ -10038,7 +10041,7 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
         print("  In Discord: Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL.")
     else:
         print("  In ntfy: choose a hard-to-guess topic. Paste its complete topic URL, or just the topic name when it is hosted on ntfy.sh.")
-    existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_webhook_url", "your_discord_webhook_url"))
+    existing_webhook = _wizard_existing_secret("WEBHOOK_URL", env_path, ("your_webhook_url", "your_discord_webhook_url"), secret_updates=secret_updates)
     replace_webhook = True
     if existing_webhook:
         choice = _wizard_ask_choice("Which webhook URL should be used?", [("Keep the saved URL", "Keeps the private value without displaying or changing it."), ("Paste a new URL", "Uses a hidden prompt then saves the new private value in .env.")])
@@ -10118,7 +10121,7 @@ def _wizard_select_container_firefox_host() -> Optional[str]:
 def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dict) -> dict:
     result = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
     container_method = method in ("docker", "compose")
-    existing_cookie = _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",))
+    existing_cookie = _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",), secret_updates=secret_updates)
     import_browsers = _wizard_import_browsers(method)
     chromium_browsers = [browser for browser in import_browsers if browser in CHROMIUM_IMPORT_BROWSERS]
     while True:
@@ -10194,7 +10197,7 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                     continue
                 return result
             replaced = _wizard_queue_secret(secret_updates, env_path, "SP_DC_COOKIE", cookie)
-            result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",)), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
+            result.update({"complete": replaced or _wizard_existing_secret("SP_DC_COOKIE", env_path, ("your_sp_dc_cookie_value",), secret_updates=secret_updates), "source": "private manual entry" if replaced else "existing SP_DC_COOKIE"})
             return result
         return result
 
@@ -10382,6 +10385,7 @@ class WizardSetupState:
     auth: dict
     enabled_notifications: List[str]
     enabled_webhooks: List[str]
+    retained_secrets: dict = field(default_factory=dict)
 
 
 # Holds editable scrobble health answers until the user explicitly saves them
@@ -10396,6 +10400,7 @@ class ScrobbleHealthSetupState:
     auth: dict
     enabled_notifications: List[str]
     enabled_webhooks: List[str]
+    retained_secrets: dict = field(default_factory=dict)
 
 
 # Restores one editable section to its setup-start values and drops pending secrets
@@ -10407,6 +10412,8 @@ def _wizard_reset_section(state: Union[WizardSetupState, ScrobbleHealthSetupStat
             state.config_values.pop(key, None)
     for key in secret_keys:
         state.secret_updates.pop(key, None)
+        if key in state.retained_secrets:
+            state.secret_updates[key] = state.retained_secrets[key]
 
 
 # Collects the monitored target and whether it should be persisted
@@ -10473,8 +10480,33 @@ def _wizard_collect_output_section(state: WizardSetupState) -> None:
         state.config_values["CSV_FILE"] = ""
 
 
+# Returns genuine environment credentials without treating previously loaded file values as exports
+def _wizard_exported_secrets():
+    state = globals().get("DOTENV_RELOAD_STATE", {})
+    owned = set(globals().get("DOTENV_MANAGED_KEYS", ())) | set(globals().get("DOTENV_BASE_VALUES", ())) | set(state.get("base", ()))
+    exported = set(globals().get("EXPORTED_ENVIRONMENT_KEYS", ())) | set(globals().get("EXPORTED_SECRET_KEYS", ())) | set(state.get("exported", ()))
+    sources = globals().get("SECRET_SOURCES", {})
+    return {key: os.environ[key] for key in SECRET_KEYS if os.environ.get(key) and key not in command_line_secret_keys() and (key in exported or (key not in owned and sources.get(key) not in ("dotenv file", "dotenv file reload")))}
+
+
+# Rechecks retained answers against the new destination before collecting replacement choices
+def _wizard_move_private_settings(state, selected_env):
+    retained = read_private_settings(state.env_path)
+    retained.update(state.secret_updates)
+    selected = read_private_settings(selected_env)
+    carried = {key: value for key, value in retained.items() if key in SECRET_KEYS and isinstance(value, str) and selected.get(key) is None}
+    state.retained_secrets = dict(carried)
+    state.secret_updates = dict(carried)
+    state.env_path = selected_env
+    for key in SECRET_KEYS:
+        value = selected.get(key, carried.get(key))
+        if isinstance(value, str):
+            state.config_values[key] = value
+
+
 # Lets the user change file destinations and recollects sections tied to a changed dotenv file
 def _wizard_collect_destination_section(state: WizardSetupState, method: str) -> None:
+    new_config_path = state.config_path
     while True:
         config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
         try:
@@ -10483,7 +10515,7 @@ def _wizard_collect_destination_section(state: WizardSetupState, method: str) ->
         except ValueError as exc:
             print(f"  {exc}.")
     if selected_config != state.config_path:
-        state.config_path = _wizard_choose_config_destination(selected_config, method)
+        new_config_path = _wizard_choose_config_destination(selected_config, method)
     while True:
         env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True)
         if env_text.casefold() == "none":
@@ -10494,21 +10526,21 @@ def _wizard_collect_destination_section(state: WizardSetupState, method: str) ->
             break
         except ValueError as exc:
             print(f"  {exc}.")
-    state.config_values["DOTENV_FILE"] = str(selected_env)
-    if selected_env == state.env_path:
+    if selected_env == Path(state.env_path).expanduser().resolve():
+        state.config_path = new_config_path
+        state.config_values["DOTENV_FILE"] = str(selected_env)
         return
-    retained_private = read_private_settings(state.env_path)
-    destination_private = read_private_settings(selected_env)
-    state.env_path = selected_env
-    print("  The dotenv destination changed. Existing private settings will be kept in the new file when you save. Review authentication and notification settings.")
+    _wizard_move_private_settings(state, selected_env)
+    state.config_path = new_config_path
+    state.config_values["DOTENV_FILE"] = str(selected_env)
+    print("  The dotenv destination changed. Review authentication and notification settings. Values in the selected file are kept unless you replace them.")
     _wizard_collect_auth_section(state, method)
     print()
     _wizard_collect_email_section(state)
     print()
     _wizard_collect_webhook_section(state)
-    for key, value in retained_private.items():
-        if key in SECRET_KEYS and isinstance(value, str) and key not in state.secret_updates and destination_private.get(key) is None:
-            state.secret_updates[key] = value
+    for key, value in state.retained_secrets.items():
+        state.secret_updates.setdefault(key, value)
 
 
 # Prints the current editable setup answers without exposing secrets
@@ -10570,6 +10602,7 @@ def _wizard_edit_setup_section(state: WizardSetupState, method: str) -> None:
 # Reviews editable answers until the user saves or confirms a discard
 def _wizard_review_setup(state: WizardSetupState, method: str) -> bool:
     while True:
+        state.secret_updates = {**state.retained_secrets, **state.secret_updates}
         _wizard_print_setup_summary(state, method)
         action = _wizard_ask_choice("What would you like to do?", [("Save settings", "Write the displayed settings to the selected files."), ("Review or change settings", "Edit one section without losing the other answers."), ("Discard answers and exit", "Leave the destination files unchanged.")])
         if action == 0:
@@ -10602,7 +10635,9 @@ def _wizard_collect_scrobble_health_threshold_section(state: ScrobbleHealthSetup
 def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState, method: str) -> None:
     for key in ("LASTFM_API_KEY", "SPOTIFY_SCROBBLE_REFRESH_TOKEN"):
         state.secret_updates.pop(key, None)
-    existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path)
+        if key in state.retained_secrets:
+            state.secret_updates[key] = state.retained_secrets[key]
+    existing_api_key = _wizard_existing_secret("LASTFM_API_KEY", state.env_path, secret_updates=state.secret_updates)
     if not existing_api_key or _wizard_ask_yes_no("Replace the existing Last.fm API key?", default=False):
         print(colorize_links(f"\nCreate or view your Last.fm API account: {LASTFM_API_ACCOUNTS_URL}"))
         api_key = _wizard_ask_secret("Last.fm API key")
@@ -10631,7 +10666,7 @@ def _wizard_collect_scrobble_health_auth_section(state: ScrobbleHealthSetupState
                 break
     state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] = client_id
     state.config_values["SPOTIFY_SCROBBLE_REDIRECT_URI"] = redirect_uri
-    existing_refresh_token = _wizard_existing_secret("SPOTIFY_SCROBBLE_REFRESH_TOKEN", state.env_path)
+    existing_refresh_token = _wizard_existing_secret("SPOTIFY_SCROBBLE_REFRESH_TOKEN", state.env_path, secret_updates=state.secret_updates)
     baseline_client_id = str(state.baseline_values.get("SPOTIFY_SCROBBLE_CLIENT_ID") or "")
     baseline_redirect_uri = str(state.baseline_values.get("SPOTIFY_SCROBBLE_REDIRECT_URI") or "")
     existing_matches_app = bool(client_id) and existing_refresh_token and client_id == baseline_client_id and redirect_uri == baseline_redirect_uri
@@ -10672,6 +10707,7 @@ def _wizard_collect_scrobble_health_webhook_section(state: ScrobbleHealthSetupSt
 
 # Lets scrobble health setup change output files and recollect dotenv-backed answers
 def _wizard_collect_scrobble_health_destination_section(state: ScrobbleHealthSetupState, method: str) -> None:
+    new_config_path = state.config_path
     while True:
         config_text = _wizard_ask_text("Configuration file destination", default=str(state.config_path), required=True)
         try:
@@ -10680,7 +10716,7 @@ def _wizard_collect_scrobble_health_destination_section(state: ScrobbleHealthSet
         except ValueError as exc:
             print(f"  {exc}.")
     if selected_config != state.config_path:
-        state.config_path = _wizard_choose_config_destination(selected_config, method)
+        new_config_path = _wizard_choose_config_destination(selected_config, method)
     while True:
         env_text = _wizard_ask_text("Dotenv file destination", default=str(state.env_path), required=True)
         if env_text.casefold() == "none":
@@ -10691,16 +10727,21 @@ def _wizard_collect_scrobble_health_destination_section(state: ScrobbleHealthSet
             break
         except ValueError as exc:
             print(f"  {exc}.")
-    state.config_values["DOTENV_FILE"] = str(selected_env)
-    if selected_env == state.env_path:
+    if selected_env == Path(state.env_path).expanduser().resolve():
+        state.config_path = new_config_path
+        state.config_values["DOTENV_FILE"] = str(selected_env)
         return
-    state.env_path = selected_env
-    print("  The dotenv destination changed. Re-enter authentication and notification settings that may contain secrets.")
+    _wizard_move_private_settings(state, selected_env)
+    state.config_path = new_config_path
+    state.config_values["DOTENV_FILE"] = str(selected_env)
+    print("  The dotenv destination changed. Review authentication and notification settings. Values in the selected file are kept unless you replace them.")
     _wizard_collect_scrobble_health_auth_section(state, method)
     print()
     _wizard_collect_scrobble_health_email_section(state)
     print()
     _wizard_collect_scrobble_health_webhook_section(state)
+    for key, value in state.retained_secrets.items():
+        state.secret_updates.setdefault(key, value)
 
 
 # Prints the current editable scrobble health answers without exposing secrets
@@ -10749,6 +10790,7 @@ def _wizard_edit_scrobble_health_setup_section(state: ScrobbleHealthSetupState, 
 # Reviews editable scrobble health answers until the user saves or confirms a discard
 def _wizard_review_scrobble_health_setup(state: ScrobbleHealthSetupState, method: str) -> bool:
     while True:
+        state.secret_updates = {**state.retained_secrets, **state.secret_updates}
         _wizard_print_scrobble_health_setup_summary(state, method)
         action = _wizard_ask_choice("What would you like to do?", [("Save settings", "Write the displayed settings to the selected files."), ("Review or change settings", "Edit one section without losing the other answers."), ("Discard answers and exit", "Leave the destination files unchanged.")])
         if action == 0:

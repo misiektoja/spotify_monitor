@@ -472,7 +472,7 @@ def test_scrobble_health_setup_guides_lastfm_api_key_entry(monkeypatch, capsys):
 
     secret_prompt = Mock(side_effect=ask_secret)
     authorize = Mock(return_value={"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600})
-    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path, **kwargs: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", secret_prompt)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: (text_questions.append(question) or "a" * 32))
@@ -509,7 +509,7 @@ def test_scrobble_health_setup_collects_focused_webhook_flags(monkeypatch):
     answers = iter((True, True, False))
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False: next(answers))
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options: 0)
-    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path, placeholders=(): False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path, placeholders=(), **kwargs: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "https://discord.example.test/private")
     monkeypatch.setattr(monitor, "validate_webhook_url", lambda value: True)
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: (updates.update({key: value}) or True))
@@ -1240,7 +1240,7 @@ def test_scrobble_health_state_rejects_malformed_pending_channels(monkeypatch):
 def test_an_abandoned_lastfm_api_key_is_not_queued(monkeypatch):
     state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {"SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:9999/callback"}, {}, "lastfm-user", {}, [], [])
     labels = []
-    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path, **kwargs: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "")
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "a" * 32)
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: False)
@@ -1257,7 +1257,7 @@ def test_a_rejected_spotify_client_id_can_be_abandoned(monkeypatch):
     state = monitor.ScrobbleHealthSetupState(Path("config.conf"), Path(".env"), {}, {"SPOTIFY_SCROBBLE_REDIRECT_URI": "http://127.0.0.1:9999/callback"}, {}, "lastfm-user", {}, [], [])
     labels = []
     authorize = Mock()
-    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path, **kwargs: False)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-api-key")
     monkeypatch.setattr(monitor, "_wizard_queue_secret", lambda updates, path, key, value: updates.update({key: value}))
     monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "too-short")

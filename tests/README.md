@@ -41,6 +41,7 @@ same absent-dependency behavior a user would see.
 | `test_compact_commands.py` | Literal short command prefixes, real help output and dependency hints |
 | `test_release_safety.py` | Credential preservation, private errors, timing checks and scrobble-health state recovery |
 | `test_recovery_safety.py` | Real dotenv reloads, setup backups, oversized counts and provider-error privacy |
+| `test_secret_policy.py` | Shared credential priority, reload ownership and setup destination conflicts |
 | `test_smtp_error_privacy.py` | Short and escaped passwords in rejected SMTP sign-ins through commands, setup, Doctor and delivery |
 | `test_setup_resolution_regressions.py` | Saved dotenv destinations, empty secrets, export precedence and recovery paths |
 | `test_spotipy_request_policy.py` | TLS policy at the Spotipy request boundary for token exchanges and refreshes |

@@ -699,10 +699,10 @@ Credential commands preserve unrelated `.env` settings and comments. Clearing a 
 
 ### Reloading secrets and backup contents
 
-Setup keeps the saved `DOTENV_FILE` unless you pass `--env-file PATH`. Changing that destination saves retained file credentials there when you choose Save. Existing destination values, including empty values, take precedence unless you replace them. The old file remains intact.
+Setup keeps the saved `DOTENV_FILE` unless you pass `--env-file PATH`. If you change files, setup asks you to review credentials again. Existing values in the new file, including empty values, stay unless you replace them. Retained credentials fill missing entries when you save. The old file stays intact.
 
 Before replacing an older configuration, setup preserves retained inline credentials in the selected dotenv file without overwriting existing keys. If this preservation fails, the original configuration is kept.
 
-On macOS, Linux and Unix, `SIGHUP` applies changes from the selected dotenv file, including replacements for exported values used at startup. Removing a key restores its environment or configuration fallback or clears it if none exists. A read or parsing failure keeps the last usable credentials.
+On macOS, Linux and Unix, `SIGHUP` reloads file-supplied secrets. Command-line values take priority, followed by nonempty environment values exported before startup, dotenv entries and configuration fallbacks. Change an argument or export and restart to replace those values. Removing a file entry uses the next available source or clears the secret. An unreadable or invalid file leaves working credentials unchanged. Empty exports are ignored. An empty dotenv entry overrides the configuration.
 
 Setup backups omit inline credentials. `--generate-config` backups are exact copies and may contain credentials. Secret replacement does not back up the dotenv file.

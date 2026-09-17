@@ -575,6 +575,8 @@ Supported signals:
 | ABRT | Decrease the inactivity timer by 30 seconds (`-o`) |
 | HUP | Reload private values from `.env`, clear keys removed from that file and reload token credentials from Protobuf files |
 
+`SIGHUP` keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.
+
 Send a signal with `kill` or `pkill`. For example:
 
 ```sh
