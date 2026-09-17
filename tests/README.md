@@ -75,6 +75,7 @@ same absent-dependency behavior a user would see.
 | `test_container_assets.py` | Dockerfile, Compose and publishing workflow contracts |
 | `test_packaging.py` | Wheel contents, installed console commands, action pinning and version consistency |
 | `test_moved_private_settings.py` | Kept credentials across dotenv destination changes and startup error handling |
+| `conftest.py` | Shared fixture resetting the dotenv and secret state that the monitor mutates in place |
 
 ## Conventions
 
