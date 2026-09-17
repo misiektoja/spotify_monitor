@@ -3011,7 +3011,7 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     print(f"* The mail server accepted the password for {signed_in_user}")
     print(f"* Updated private settings file: {destination}")
     # Startup loads the dotenv file without overriding the environment, so a saved replacement that an export
-    # shadows would never be read, and the run would keep failing with the password that was just proven good
+    # shadows would never be read. The run would keep failing with the password that was just proven good
     if os.environ.get("SMTP_PASSWORD"):
         print("* SMTP_PASSWORD is exported in this environment and an export wins at startup, so the next run uses that value rather than the one just saved")
         print(colorize("info", "To fix: Unset the exported SMTP_PASSWORD to use the saved one"))
@@ -9368,7 +9368,7 @@ def _wizard_email_enabled(config_values: dict, notification_names: Sequence[str]
     return shipped_on and doctor_secret_is_set(config_values.get("SMTP_HOST"))
 
 
-# Returns the secret stored in the dotenv file, or None when the file has no assignment for it
+# Returns the secret stored in the dotenv file or None when the file has no assignment for it
 def _wizard_saved_secret_value(key: str, env_path: Path) -> Optional[str]:
     value = None
     path = Path(env_path)

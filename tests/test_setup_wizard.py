@@ -603,7 +603,7 @@ def test_a_blank_smtp_password_queues_nothing_and_asks_no_replace_question(monke
 
 
 # Setup reports the sign-in succeeded and then writes the files a restart reads, so the value it proves has to be
-# the value the next run resolves. Startup prefers an export over the dotenv file, and setup has to agree
+# the value the next run resolves. Startup prefers an export over the dotenv file and setup has to agree
 def test_the_effective_secret_follows_the_startup_precedence(monkeypatch, tmp_path):
     env_path = tmp_path / ".env"
     env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
@@ -1343,7 +1343,7 @@ def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatc
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
 
 
-# Several providers quote the credentials back in the rejection reply, and the sign-in has already restored the
+# Several providers quote the credentials back in the rejection reply. The sign-in has already restored the
 # previous password by then, so the value that was tried has to reach the redaction from the caller
 def test_a_reply_quoting_the_password_is_redacted(tmp_path, monkeypatch, capsys):
     destination = tmp_path / ".env"
