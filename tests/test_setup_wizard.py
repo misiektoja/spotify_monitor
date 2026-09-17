@@ -1343,6 +1343,25 @@ def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatc
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
 
 
+# Several providers quote the credentials back in the rejection reply, and the sign-in has already restored the
+# previous password by then, so the value that was tried has to reach the redaction from the caller
+def test_a_reply_quoting_the_password_is_redacted(tmp_path, monkeypatch, capsys):
+    destination = tmp_path / ".env"
+    configure_mail(monkeypatch)
+    echo = Mock(side_effect=monitor.smtplib.SMTPAuthenticationError(535, b"5.7.8 Not accepted. Sent: pass=app-password-value"))
+
+    with pytest.raises(monitor.RecoveryError) as error:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "app-password-value", sign_in=echo)
+
+    advice = error.value.advice
+    rendered = " ".join((advice.summary, advice.fix, advice.detail))
+    assert "app-password-value" not in rendered
+    assert "<redacted>" in advice.detail
+    assert advice.code == "smtp.authentication"
+    assert "app-password-value" not in capsys.readouterr().out
+    assert not destination.exists()
+
+
 # Verifies incomplete mail settings are reported before the password is asked for, not after the sign-in fails
 def test_incomplete_mail_settings_are_refused_before_the_prompt(tmp_path, monkeypatch):
     destination = tmp_path / ".env"

@@ -2999,7 +2999,9 @@ def run_set_smtp_password(env_file=None, interactive=None, input_func=None, getp
     except RecoveryError:
         raise
     except Exception as exc:
-        raise RecoveryError(classify_recovery_error(exc, context="smtp"), exc) from None
+        # The sign-in restores the previous password before the failure reaches here, so the value that was tried
+        # is passed to the redaction explicitly rather than left to the global it would otherwise read
+        raise RecoveryError(classify_recovery_error(exc, context="smtp", detail=sanitize_error_text(exc, (smtp_password,))), exc) from None
     try:
         update_dotenv_file(destination, {"SMTP_PASSWORD": smtp_password})
     except Exception as exc:
