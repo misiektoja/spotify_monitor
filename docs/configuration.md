@@ -97,7 +97,13 @@ Existing configuration files without this setting use `"listening_activity"`. To
 
 The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
 
-Live tracking counts **observed track changes**, including the track seen at the start of an active session. Pause and resume updates for the same track do not add a song. A restart after the inactivity timer begins a new session. The feed does not provide playback position or reliable completion and replay events, so played-duration, skip, crossfade and same-track loop estimates are unavailable with this backend. Polling can miss short tracks or changes between checks.
+Live tracking starts a session only when playback is observed. Starting the tool while playback is stopped shows the last shared track without counting it or sending an ACTIVE notification. The first observed playback produces the full track report and counts one track, even if it resumes that same track.
+
+During a session, **PAUSED** and **RESUMED** show playback and pause durations. A brief pause keeps the session open and does not add another track or send another ACTIVE notification. The inactivity timer ends the session after playback stops. Playback observed after the session ends starts a new session. Paused timestamps alone cannot start or extend a session.
+
+**Played-duration and skip estimates** use observed playing intervals and exclude pauses. Estimates describe the previous track when a new track starts. A track first seen already playing or after a gap in observations is marked as a partial observation and is excluded from skip classification. `SKIPPED_SONG_THRESHOLD` controls the estimated skip threshold. Inactivity reports include estimated playing time and identify estimated skips in the recent-track list.
+
+Polling can miss short tracks, seeks and changes between checks. Estimates are limited by the polling interval and do not prove completion. The live feed does not provide playback position or reliable replay evidence, so crossfade and same-track loop detection remain available only with the legacy backend.
 
 The monitor obtains missing user, track and playlist names from Spotify's metadata services. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
 

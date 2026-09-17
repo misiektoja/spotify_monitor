@@ -16,6 +16,7 @@ from test_doctor import run_cli
 
 TRACK_URI = "spotify:track:4cOdK2wGLETKBW3PvgPWqT"
 OTHER_TRACK_URI = "spotify:track:4N1MFKjziFHH4IS3RYYUrU"
+THIRD_TRACK_URI = "spotify:track:0123456789abcdefghijkl"
 USER_URI = "spotify:user:watched-user"
 
 
@@ -303,7 +304,7 @@ def test_doctor_reuses_live_feed_for_target_visibility(monkeypatch):
 
 # Supplies complete public track details without contacting Spotify
 def live_track_info(token, uri):
-    return {"sp_track_duration": 200, "sp_track_name": "First" if uri == TRACK_URI else "Second", "sp_track_uri": uri, "sp_track_url": "https://open.spotify.com/track/example", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:example", "sp_artist_url": "https://open.spotify.com/artist/example", "sp_album_name": "Album", "sp_album_uri": "spotify:album:example", "sp_album_url": "https://open.spotify.com/album/example", "sp_album_image_url": ""}
+    return {"sp_track_duration": 1000 if uri == THIRD_TRACK_URI else 200, "sp_track_name": {TRACK_URI: "First", OTHER_TRACK_URI: "Second", THIRD_TRACK_URI: "Third"}[uri], "sp_track_uri": uri, "sp_track_url": "https://open.spotify.com/track/example", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:example", "sp_artist_url": "https://open.spotify.com/artist/example", "sp_album_name": "Album", "sp_album_uri": "spotify:album:example", "sp_album_url": "https://open.spotify.com/album/example", "sp_album_image_url": ""}
 
 
 # Runs selected live snapshots through the real monitoring loop
@@ -328,12 +329,57 @@ def test_live_pause_resume_and_timestamps_do_not_duplicate_tracks(loop_environme
     output = capsys.readouterr().out
     assert "Now playing:" in output
     assert output.count("Tracks observed:") == 1
-    assert "Not playing" in output
+    assert "User PAUSED playing" in output
+    assert "User RESUMED playing" in output
+    assert "Tracks observed:\t\t\t1 (0 seconds)" in output
     assert "INACTIVE" not in output
     assert "Played for:" not in output
 
 
-# Live track changes produce one event without attributing the previous duration to the new track
+# A paused startup must not produce activity events or start local playback
+@pytest.mark.parametrize("age", [0, 30, 300])
+def test_live_paused_startup_has_no_activity_side_effects(loop_environment, monkeypatch, tmp_path, capsys, age):
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
+    delivery = Mock()
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery)
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    playback = Mock()
+    for name in ("spotify_macos_play_song", "spotify_win_play_song", "spotify_linux_play_song"):
+        monkeypatch.setattr(monitor, name, playback)
+    timestamp = loop_environment.now - age
+    destination = tmp_path / "observed.csv"
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(timestamp, playing=False), feed_entity(timestamp, playing=False)], str(destination))
+    output = capsys.readouterr().out
+    assert "Playback:\t\t\tNot playing" in output
+    assert "currently ACTIVE" not in output
+    assert "Friend got ACTIVE" not in output
+    assert "Tracks observed:" not in output
+    delivery.assert_not_called()
+    playback.assert_not_called()
+    assert len(destination.read_text().splitlines()) == 1
+
+
+# First observed playback of a paused startup track must open a session even with an unchanged timestamp
+def test_live_first_playback_after_paused_startup_opens_session(loop_environment, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
+    delivery = Mock(return_value=(True, False))
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery)
+    timestamp = loop_environment.now - 30
+    destination = tmp_path / "observed.csv"
+    snapshots = [feed_entity(timestamp, playing=False), feed_entity(timestamp, playing=False), feed_entity(timestamp)]
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
+    output = capsys.readouterr().out
+    assert "currently ACTIVE" not in output
+    assert output.count("Friend got ACTIVE") == 1
+    assert "Now playing:" in output
+    assert "Tracks observed:\t\t\t1" in output
+    delivery.assert_called_once()
+    assert delivery.call_args.args[0] == "active"
+    assert "Now playing:" in delivery.call_args.args[2]
+    assert len(destination.read_text().splitlines()) == 2
+
+
+# Live track changes estimate partial startup playback without classifying it as a skip
 def test_live_track_change_counts_observations_without_skip_estimates(loop_environment, monkeypatch, capsys):
     now = loop_environment.now
     snapshots = [feed_entity(now), feed_entity(now + 1, track=OTHER_TRACK_URI)]
@@ -343,6 +389,7 @@ def test_live_track_change_counts_observations_without_skip_estimates(loop_envir
     assert "Tracks observed:\t\t\t2" in output
     assert "SKIPPED" not in output
     assert "Played for:" not in output
+    assert "Previous track played for (estimated): Artist - First: 0 seconds (partial observation)" in output
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
@@ -357,16 +404,91 @@ def test_live_inactivity_and_same_track_restart(loop_environment, monkeypatch, c
     assert "Tracks observed:\t\t\t2" not in output
 
 
-# A recent stopped track can reopen an idle session without claiming it is currently playing
-def test_recent_stopped_activity_can_start_a_session(loop_environment, monkeypatch, capsys):
+# Fresh paused timestamps and track changes cannot open a session without observed playback
+def test_recent_stopped_activity_does_not_start_a_session(loop_environment, monkeypatch, capsys):
     now = loop_environment.now
     snapshots = [feed_entity(now - 300, playing=False), feed_entity(now, playing=False, track=OTHER_TRACK_URI)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
-    assert "Friend got ACTIVE" in output
+    assert "Friend got ACTIVE" not in output
     assert "Last played:" in output
     assert "Now playing:" not in output
-    assert "Tracks observed:\t\t\t1" in output
+    assert "Tracks observed:" not in output
+
+
+# Live timing excludes pauses and keeps short resume cycles in the same track
+def test_live_timing_subtracts_pauses():
+    timing = monitor.LivePlaybackTiming()
+    timing.start_track(1000, True, new_session=True)
+    timing.observe(1030, True, 60)
+    assert timing.observe(1060, False, 60) == ("paused", 30)
+    timing.observe(1090, False, 60)
+    assert timing.observe(1120, True, 60) == ("resumed", 90)
+    timing.observe(1150, True, 60)
+    assert timing.track_seconds == timing.session_seconds == 60
+    assert timing.estimate(200, allow_skip=True) == ("1 minute - SKIPPED (estimated, 30%)", True)
+
+
+# Missing observations and backward clock changes invalidate skip classification without inventing playback time
+@pytest.mark.parametrize("next_sample", [1300, 1010])
+def test_live_timing_gaps_disable_skip_estimates(next_sample):
+    timing = monitor.LivePlaybackTiming()
+    timing.start_track(1000, True, new_session=True)
+    timing.observe(1030, True, 60)
+    timing.observe(next_sample, True, 60)
+    assert timing.track_seconds == timing.session_seconds == 30
+    assert timing.estimate(200, allow_skip=True) == ("30 seconds (partial observation)", False)
+
+
+# Estimated skips belong to the previous track and session summaries exclude paused time
+def test_live_skip_estimates_follow_previous_track_and_exclude_pauses(loop_environment, monkeypatch, tmp_path, capsys):
+    for setting in ("ACTIVE_NOTIFICATION", "SONG_NOTIFICATION", "INACTIVE_NOTIFICATION"):
+        monkeypatch.setattr(monitor, setting, True)
+    delivery = Mock(return_value=(True, False))
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery)
+    now = loop_environment.now
+    snapshots = [
+        feed_entity(now),
+        feed_entity(now),
+        feed_entity(now, track=OTHER_TRACK_URI),
+        feed_entity(now, track=OTHER_TRACK_URI),
+        feed_entity(now, playing=False, track=OTHER_TRACK_URI),
+        feed_entity(now, track=OTHER_TRACK_URI),
+        feed_entity(now, track=THIRD_TRACK_URI),
+        feed_entity(now, playing=False, track=THIRD_TRACK_URI),
+        feed_entity(now, playing=False, track=THIRD_TRACK_URI),
+        feed_entity(now, playing=False, track=THIRD_TRACK_URI),
+    ]
+    destination = tmp_path / "observed.csv"
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
+    output = capsys.readouterr().out
+    assert "Previous track played for (estimated): Artist - Second: 1 minute - SKIPPED (estimated, 30%)" in output
+    assert "User PAUSED playing after 1 minute (estimated)" in output
+    assert "User RESUMED playing after 1 minute" in output
+    assert "Observed playing time (estimated): 1 minute, 30 seconds" in output
+    assert output.count("Friend got INACTIVE") == 1
+    assert len(destination.read_text().splitlines()) == 4
+    assert [call.args[0] for call in delivery.call_args_list] == ["active", "song", "song", "inactive"]
+    body = delivery.call_args.args[2]
+    assert "estimated skips: 1" in body
+    assert "Second" in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED (estimated)", 1)[0]
+    assert "Third" not in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED (estimated)", 1)[0]
+
+
+# Local playback mirrors pause and resume without restarting the current track
+@pytest.mark.parametrize("system,function", [("Darwin", "spotify_macos_play_pause"), ("Linux", "spotify_linux_play_pause")])
+def test_live_pause_resume_controls_local_playback(loop_environment, monkeypatch, system, function):
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: system)
+    start = Mock()
+    for name in ("spotify_macos_play_song", "spotify_linux_play_song"):
+        monkeypatch.setattr(monitor, name, start)
+    control = Mock()
+    monkeypatch.setattr(monitor, function, control)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now), feed_entity(now, playing=False), feed_entity(now)])
+    start.assert_called_once()
+    assert [call.args[0] for call in control.call_args_list] == ["pause", "play"]
 
 
 # Pause updates leave CSV and notification counts unchanged while one new track adds one event

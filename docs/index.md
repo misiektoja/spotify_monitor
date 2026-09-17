@@ -100,7 +100,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 
 ### 📊 Rich Insights
 - **Track Context**: View **playlist, artist** and **album info** with clickable URLs.
-- **Skip Detection**: Estimate skipped tracks and played duration with the legacy backend.
+- **Skip Detection**: Estimate skipped tracks and played duration. Live estimates exclude pauses and do not classify partially observed tracks as skipped.
 - **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 - **Coloured Output**: Readable terminal colours with a **customizable theme**, while log files stay plain text.
 
@@ -121,7 +121,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
 </p>
 
-For even better real-time tracking with pause/resume detection, track progress indicators, enhanced stats and offline mode support, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
+For track progress indicators and offline scrobble history, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
 For Spotify profile and playlist change tracking, see [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 

@@ -360,7 +360,7 @@ To send an email when a user becomes inactive:
 spotify_monitor <spotify_target> -i
 ```
 
-Inactivity emails include recent tracks observed in the session. The legacy backend also includes estimated skipped track status. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
+Inactivity emails include recent tracks observed in the session and estimated skipped track status. The live backend also reports estimated playing time excluding pauses. Tracks first seen already playing or after missing observations are excluded from live skip classification. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To send an email when a listed track, playlist or album plays:
 
@@ -523,7 +523,7 @@ For **Windows** set `SPOTIFY_WINDOWS_PLAYING_METHOD` to one of the following val
 
 Keep the default method unless playback does not work on your system.
 
-With the default Listening Activity backend, automatic playback starts a reported track when the monitor detects a track change. It does not seek to the friend's playback position or mirror brief pauses. The inactivity timer still controls automatic pause. With `FRIEND_ACTIVITY_BACKEND = "buddylist"`, completed-track reports make automatic playback one track behind. Differences in track length can make your local track repeat or change before it finishes.
+With the default Listening Activity backend, automatic playback starts a track when playback is first observed or the track changes. On Linux and macOS it follows observed pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. With `FRIEND_ACTIVITY_BACKEND = "buddylist"`, completed-track reports make automatic playback one track behind. Differences in track length can make your local track repeat or change before it finishes.
 
 For Last.fm-based track progress monitoring, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
@@ -548,7 +548,7 @@ spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 
 Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
-With the live backend, each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer uses the most recent playing observation or reported activity timestamp. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
+With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer uses the most recent playing observation. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
 ```sh
 spotify_monitor <spotify_target> -o 900
