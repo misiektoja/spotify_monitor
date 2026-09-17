@@ -286,6 +286,29 @@ def test_a_cleared_secret_is_removed_rather_than_emptied():
         assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
 
 
+# Verifies a saved value written across several lines is replaced whole, since replacing only its first
+# line left the rest of the old secret behind and the next run could not parse what it wrote
+def test_a_multiline_secret_is_replaced_whole():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('NTFY_ACCESS_TOKEN="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": "replacement"})
+
+        assert destination.read_text(encoding="utf-8") == 'NTFY_ACCESS_TOKEN="replacement"\nOTHER=keep\n'
+
+
+# Verifies clearing such a value removes all of it, for the same reason
+def test_a_cleared_multiline_secret_leaves_nothing_behind():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('NTFY_ACCESS_TOKEN="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        assert destination.read_text(encoding="utf-8") == "OTHER=keep\n"
+
+
 # Verifies clearing a secret the file never held does not add an empty line for it
 def test_clearing_an_absent_secret_writes_nothing():
     with make_temp_directory() as directory_name:

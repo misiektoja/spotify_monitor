@@ -472,10 +472,12 @@ def test_cookie_network_failure(monkeypatch):
     assert require_advice(monitor.doctor_check_authentication(report)[-1]).code == "network.unavailable"
 
 
-# Verifies invalid web-player TOTP parameters fail the configuration check in cookie mode
-def test_invalid_totp_config_fails(monkeypatch):
+@pytest.mark.parametrize("cipher_bytes", [(), 17])
+# Verifies invalid web-player TOTP parameters fail the configuration check in cookie mode, including a single
+# number written in place of the sequence, which is truthy and would otherwise be iterated
+def test_invalid_totp_config_fails(monkeypatch, cipher_bytes):
     configure_valid_doctor(monkeypatch)
-    monkeypatch.setattr(monitor, "TOTP_SECRET_CIPHER_BYTES", ())
+    monkeypatch.setattr(monitor, "TOTP_SECRET_CIPHER_BYTES", cipher_bytes)
     checks = monitor.doctor_check_configuration()
     totp_check = next(check for check in checks if "TOTP" in check.label)
     assert totp_check.status == "FAIL"
@@ -930,6 +932,21 @@ def test_an_empty_export_does_not_shadow_the_dotenv_value(monkeypatch, tmp_path)
 
     assert monitor.NTFY_ACCESS_TOKEN == "tk_from_file"
     assert monitor.SECRET_SOURCES["NTFY_ACCESS_TOKEN"] == "dotenv file"
+
+
+# The same leftover must not blank a value the config file supplied, where no dotenv assignment exists to restore it
+def test_an_empty_export_does_not_blank_a_config_supplied_secret(monkeypatch):
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "cookie-from-the-config", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {}, raising=False)
+    monkeypatch.setenv("SP_DC_COOKIE", "")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.SP_DC_COOKIE == "cookie-from-the-config"
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "configuration file or command line"
 
 
 # Each secret is attributed to the source it actually came from, so the report can name the dotenv path

@@ -1160,6 +1160,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from dateutil import relativedelta
 import calendar
+import math
 import requests as req
 import signal
 import smtplib
@@ -2738,6 +2739,22 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
     _wizard_print_command("Check setup again:", doctor_command)
     _wizard_print_command("After Doctor passes, start monitoring:", monitor_command)
     return str(destination)
+
+
+# Applies the selected configuration to a credential command that runs before the normal configuration load, so the
+# request it makes to validate the entered secret follows the configured TLS choice instead of the built-in default
+def _prepare_early_command_config(config_file=None) -> None:
+    global CLI_CONFIG_PATH, CONFIG_DISCOVERY_DISABLED
+    CONFIG_DISCOVERY_DISABLED = config_file is not None and str(config_file).casefold() == "none"
+    if CONFIG_DISCOVERY_DISABLED:
+        CLI_CONFIG_PATH = None
+    elif config_file:
+        CLI_CONFIG_PATH = os.path.expanduser(str(config_file))
+    # A path that names no existing file is left alone here, since the command only needs it to print the follow-up commands
+    cfg_path = None if CONFIG_DISCOVERY_DISABLED else find_config_file(CLI_CONFIG_PATH)
+    if cfg_path and not load_config_file(cfg_path):
+        sys.exit(1)
+    apply_tls_verification_setting()
 
 
 # Validates and atomically stores one privately entered sp_dc cookie
@@ -5389,12 +5406,20 @@ def fetch_server_time(session: req.Session, ua: str) -> int:
     return int(parsedate_to_datetime(date_hdr).timestamp())
 
 
+# Reports whether configured web-player cipher bytes are a non-empty sequence of plain integers, checked before
+# iterating because a single number written in place of the sequence is truthy and would raise instead of reporting
+def totp_cipher_bytes_are_valid(cipher_bytes: Any) -> bool:
+    if not isinstance(cipher_bytes, (list, tuple)) or not cipher_bytes:
+        return False
+    return all(isinstance(value, int) and not isinstance(value, bool) for value in cipher_bytes)
+
+
 # Builds a pyotp TOTP object from the configured web-player cipher bytes
 def generate_totp():
     import pyotp
 
     cipher_bytes = TOTP_SECRET_CIPHER_BYTES
-    if not cipher_bytes or not all(isinstance(value, int) and not isinstance(value, bool) for value in cipher_bytes):
+    if not totp_cipher_bytes_are_valid(cipher_bytes):
         raise ValueError("TOTP_SECRET_CIPHER_BYTES must be a non-empty sequence of integers; refresh it with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
     if not isinstance(TOTP_VERSION, int) or isinstance(TOTP_VERSION, bool) or TOTP_VERSION <= 0:
         raise ValueError("TOTP_VERSION must be a positive integer; refresh it with debug/spotify_monitor_secret_grabber.py if Spotify rotated the web-player secret")
@@ -6023,6 +6048,7 @@ def load_scrobble_health_state(path: Union[str, Path]) -> dict:
     if not isinstance(payload, dict):
         return default_state
     state = dict(default_state)
+    discarded: List[str] = []
     if payload.get("status") in ("unknown", "idle", "healthy", "suspect", "broken"):
         state["status"] = payload["status"]
     if payload.get("pending_notification") in ("", "outage", "outage_reminder", "recovery"):
@@ -6033,10 +6059,16 @@ def load_scrobble_health_state(path: Union[str, Path]) -> dict:
         if isinstance(pending_email, bool) and isinstance(pending_webhook, bool):
             state["pending_email"] = pending_email
             state["pending_webhook"] = pending_webhook
+    # An infinity reaches here from JSON as a plain number, and keeping one as the latest broken play would leave the
+    # state permanently broken, since no real play can ever be newer and recovery is only recognised when one is
     for key in ("last_notification_at", "last_notification_attempt_at", "broken_since", "broken_latest_spotify_at"):
         value = payload.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0 and math.isfinite(value):
             state[key] = float(value)
+        elif value is not None:
+            discarded.append(key)
+    if discarded:
+        print(f"* Warning: the scrobble health state file '{state_path}' holds unusable values for {', '.join(discarded)}, so those start again from zero\n")
     return state
 
 
@@ -8146,7 +8178,7 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
         checks.append(make_doctor_check("Configuration", "PASS", f"TOKEN_SOURCE is {TOKEN_SOURCE}"))
 
     if MONITOR_MODE != "scrobble_health" and TOKEN_SOURCE == "cookie":
-        totp_bytes_valid = bool(TOTP_SECRET_CIPHER_BYTES) and all(isinstance(value, int) and not isinstance(value, bool) for value in TOTP_SECRET_CIPHER_BYTES)
+        totp_bytes_valid = totp_cipher_bytes_are_valid(TOTP_SECRET_CIPHER_BYTES)
         totp_version_valid = isinstance(TOTP_VERSION, int) and not isinstance(TOTP_VERSION, bool) and TOTP_VERSION > 0
         if totp_bytes_valid and totp_version_valid:
             checks.append(make_doctor_check("Configuration", "PASS", f"Web-player TOTP parameters are valid (v{TOTP_VERSION})"))
@@ -12261,6 +12293,7 @@ def main():
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
         if args.env_file is not None and args.env_file.casefold() == "none":
             parser.error("--set-sp-dc requires a writable dotenv destination and cannot use --env-file none")
+        _prepare_early_command_config(args.config_file)
         try:
             run_set_sp_dc(env_file=args.env_file, config_path=args.config_file)
         except (BrowserCookieImportError, RecoveryError) as exc:

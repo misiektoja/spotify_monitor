@@ -43,6 +43,24 @@ def test_set_sp_dc_cli_accepts_config_context():
     assert "cannot be combined" not in result.stderr
 
 
+# Verifies the selected configuration reaches private cookie entry, which validates the cookie over the network
+# before the normal configuration load and would otherwise check certificates against the default setting
+def test_set_sp_dc_applies_the_selected_tls_setting(tmp_path, monkeypatch):
+    config = tmp_path / "spotify_monitor.conf"
+    config.write_text("VERIFY_SSL = False\n", encoding="utf-8")
+    observed = {}
+    for name in ("VERIFY_SSL", "CLI_CONFIG_PATH", "CONFIG_DISCOVERY_DISABLED"):
+        monkeypatch.setattr(monitor, name, getattr(monitor, name))
+    monkeypatch.setattr(monitor, "VERIFY_SSL", True)
+    monkeypatch.setattr(monitor, "run_set_sp_dc", lambda **kwargs: observed.setdefault("verify_ssl", monitor.VERIFY_SSL))
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--set-sp-dc", "--config-file", str(config), "--env-file", str(tmp_path / ".env")])
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert observed["verify_ssl"] is False
+
+
 # Verifies disabling dotenv persistence is rejected before any hidden prompt
 def test_set_sp_dc_rejects_env_file_none():
     with pytest.raises(monitor.BrowserCookieImportError, match="requires a dotenv destination"):

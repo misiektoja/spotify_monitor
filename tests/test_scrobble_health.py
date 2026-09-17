@@ -1139,6 +1139,26 @@ def test_scrobble_health_state_round_trip():
             state_path.unlink()
 
 
+# Confirms an infinite persisted timestamp is discarded, since keeping one would leave the state broken forever
+# because no real play can be newer than infinity and recovery is only recognised when one is
+def test_scrobble_health_state_rejects_an_infinite_timestamp(capsys):
+    state_path = Path(__file__).resolve().parents[1] / "local" / f"test-scrobble-health-infinite-state-{os.getpid()}.json"
+
+    try:
+        state_path.write_text('{"status":"broken","broken_latest_spotify_at":1e309,"broken_since":1000.0}', encoding="utf-8")
+        state = monitor.load_scrobble_health_state(state_path)
+        assert state["broken_latest_spotify_at"] == 0.0
+        assert "broken_latest_spotify_at" in capsys.readouterr().out
+
+        recovered = monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1500, latest_spotify_at=1500, latest_lastfm_at=1500)
+        next_state, action = monitor.transition_scrobble_health_state(state, recovered, now=2000)
+
+        assert (next_state["status"], action) == ("healthy", "recovery")
+    finally:
+        if state_path.exists():
+            state_path.unlink()
+
+
 # Confirms incomplete or malformed channel state falls back to the configured delivery channels
 def test_scrobble_health_state_rejects_malformed_pending_channels(monkeypatch):
     state_path = Path(__file__).resolve().parents[1] / "local" / f"test-scrobble-health-malformed-state-{os.getpid()}.json"
