@@ -2022,10 +2022,19 @@ def _config_template_defaults() -> dict:
     return defaults
 
 
+# Returns the parsed value with a legacy numeric on/off setting read as the boolean it stands for
+def _normalized_config_value(name: str, value: Any, defaults: dict[str, Any]) -> Any:
+    # 0 and 1 were accepted for these settings before the values were checked, so they still mean off and on
+    if isinstance(value, int) and not isinstance(value, bool) and value in (0, 1) and isinstance(defaults.get(name), bool):
+        return bool(value)
+    return value
+
+
 # Parses allowlisted literal config assignments without executing file content
 def parse_config_content(content: str, filename: str = "<config>", retired_out: Optional[List[str]] = None) -> dict[str, Any]:
     tree = ast.parse(content, filename, "exec")
     allowed_names = _config_allowed_names()
+    template_defaults = _config_template_defaults()
     parsed_values: dict[str, Any] = {}
     for statement in tree.body:
         if not isinstance(statement, ast.Assign) or len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
@@ -2038,7 +2047,7 @@ def parse_config_content(content: str, filename: str = "<config>", retired_out: 
         if name not in allowed_names:
             raise ValueError(f"Line {statement.lineno}: unsupported configuration setting {name!r}")
         try:
-            parsed_values[name] = ast.literal_eval(statement.value)
+            parsed_values[name] = _normalized_config_value(name, ast.literal_eval(statement.value), template_defaults)
         except (ValueError, TypeError) as exc:
             raise ValueError(f"Line {statement.lineno}: {name} must use a literal value") from exc
     return parsed_values

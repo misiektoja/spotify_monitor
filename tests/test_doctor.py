@@ -1249,6 +1249,14 @@ def test_invalid_boolean_settings_are_reported_in_one_row(monkeypatch):
     assert require_advice(rows[0]).code == "config.invalid"
 
 
+# An on/off setting written as 0 or 1 was accepted before the values were checked, so it still reads as off and on
+def test_a_numeric_on_off_setting_is_read_as_a_boolean():
+    parsed = monitor.parse_config_content("VERIFY_SSL = 0\nDISABLE_LOGGING = 1\n")
+
+    assert parsed == {"VERIFY_SSL": False, "DISABLE_LOGGING": True}
+    assert all(isinstance(value, bool) for value in parsed.values())
+
+
 # The shipped defaults are all real booleans, so a run with nothing overridden never sees the on/off row
 def test_the_shipped_defaults_pass_the_boolean_check():
     assert monitor.runtime_boolean_errors() == []
