@@ -378,6 +378,36 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert f"  Find the sp_dc cookie first: {monitor.MANUAL_COOKIE_GUIDE_URL}" not in output
 
 
+# Verifies a rerun over an existing configuration proposes its saved settings, which is what the rebuild question offers
+def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "saved.review.user"\nSPOTIFY_CHECK_INTERVAL = 1234\nCSV_FILE = "saved-records.csv"\n', encoding="utf-8")
+        env_path = directory / ".env"
+        prompts = []
+        iterator = iter(["y", "", "y", "", "1", "4", "n", "y", "", "", "n"])
+        # The finished wizard loads what it saved, so the settings it reads back are restored when the test ends
+        for name in ("TARGET_USER_URI_ID", "SPOTIFY_CHECK_INTERVAL", "CSV_FILE"):
+            monkeypatch.setattr(monitor, name, getattr(monitor, name))
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(builtins, "input", lambda prompt="": prompts.append(prompt) or next(iterator))
+        monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
+
+        assert error.value.code == 0
+        assert any("[saved.review.user]" in prompt for prompt in prompts)
+        assert any("1234s" in prompt for prompt in prompts)
+        config = config_path.read_text(encoding="utf-8")
+        assert 'TARGET_USER_URI_ID = "saved.review.user"' in config
+        assert "SPOTIFY_CHECK_INTERVAL = 1234" in config
+        assert 'CSV_FILE = "saved-records.csv"' in config
+
+
 # Verifies declining final confirmation leaves both setup destinations unchanged
 def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
     with make_test_directory() as directory_name:

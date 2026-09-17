@@ -9216,6 +9216,18 @@ def _wizard_destinations(config_file=None, env_file=None, method: Optional[str] 
     return config_path, env_path
 
 
+# Seeds the proposed answers from the configuration the wizard is about to rebuild, which is what the rebuild question offers
+def _wizard_seed_saved_settings(values: dict, config_path: Path) -> None:
+    if not config_path.is_file():
+        return
+    saved: dict = {}
+    if not load_config_file(config_path, namespace=saved):
+        print("  Those settings could not be read, so the questions start from the built-in defaults.\n")
+        return
+    # Secrets are resolved from the dotenv file and the config keeps their placeholders, so only the settings this wizard writes are proposed
+    values.update({key: value for key, value in saved.items() if key not in SENSITIVE_CONFIG_KEYS})
+
+
 # Confirms replacement or selects another config destination before secrets are collected
 def _wizard_choose_config_destination(config_path: Path, method: str) -> Path:
     selected = config_path
@@ -10313,10 +10325,11 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
         baseline_values = dict(globals())
+        _wizard_seed_saved_settings(baseline_values, config_path)
         initial_auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
         config_values = dict(baseline_values)
         config_values["DOTENV_FILE"] = str(env_path)
-        state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, "", True, initial_auth, [], [])
+        state = WizardSetupState(config_path, env_path, baseline_values, config_values, {}, str(baseline_values.get("TARGET_USER_URI_ID") or ""), True, initial_auth, [], [])
         _wizard_collect_target_section(state, initial_target)
         print()
         _wizard_collect_polling_section(state)
@@ -10471,7 +10484,8 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
         baseline_values = dict(globals())
-        config_values = dict(globals())
+        _wizard_seed_saved_settings(baseline_values, config_path)
+        config_values = dict(baseline_values)
         config_values.update({
             "MONITOR_MODE": "scrobble_health",
             "TOKEN_SOURCE": "cookie",
@@ -10481,7 +10495,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
             "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION": True,
         })
         initial_auth = {"complete": False, "validated": False, "source": "not configured"}
-        state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, LASTFM_USERNAME, initial_auth, [], [])
+        state = ScrobbleHealthSetupState(config_path, env_path, baseline_values, config_values, {}, str(baseline_values.get("LASTFM_USERNAME") or ""), initial_auth, [], [])
         _wizard_collect_scrobble_health_profile_section(state)
         _wizard_collect_scrobble_health_threshold_section(state)
         _wizard_collect_scrobble_health_auth_section(state, method)
@@ -11540,7 +11554,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()

@@ -380,6 +380,7 @@ CLASSIFIER_EXEMPTIONS = {
     "Setup was saved": "a wizard result followed by the step that finishes the setup",
     "consecutive missing plays": "a line of setup guidance describing the shipped default",
     "Monitoring failure changed for": "a one-line note on a classified outage that already had its full report",
+    "the questions start from the built-in defaults": "a wizard result printed under the classified config failure above it",
 }
 
 # Words that mark a printed line as a report of something going wrong

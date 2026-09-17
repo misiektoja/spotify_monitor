@@ -562,6 +562,26 @@ def test_scrobble_health_setup_reports_partial_persistence(monkeypatch, capsys):
             config_path.unlink()
 
 
+# Verifies a rerun over an existing scrobble health configuration proposes its saved settings rather than the shipped defaults
+def test_scrobble_health_rerun_proposes_the_saved_settings(monkeypatch):
+    config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-rerun-{os.getpid()}.conf"
+    env_path = PROJECT_ROOT / "local" / f"test-scrobble-health-rerun-{os.getpid()}.env"
+    config_path.write_text('SCROBBLE_HEALTH_CHECK_INTERVAL = 1234\nSCROBBLE_HEALTH_MIN_UNMATCHED = 9\n', encoding="utf-8")
+    auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False, "host_os": None}
+    install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, (False,))
+    try:
+        with pytest.raises(SystemExit) as error:
+            monitor.run_scrobble_health_setup_wizard()
+
+        assert error.value.code == 0
+        saved = config_path.read_text(encoding="utf-8")
+        assert "SCROBBLE_HEALTH_CHECK_INTERVAL = 1234" in saved
+        assert "SCROBBLE_HEALTH_MIN_UNMATCHED = 9" in saved
+    finally:
+        for path in config_path.parent.glob(f"{config_path.name}*"):
+            path.unlink()
+
+
 # Confirms incomplete focused setup prints authentication before Doctor and monitoring
 def test_scrobble_health_setup_orders_incomplete_authentication_steps(monkeypatch, capsys):
     config_path = PROJECT_ROOT / "local" / f"test-scrobble-health-incomplete-{os.getpid()}.conf"

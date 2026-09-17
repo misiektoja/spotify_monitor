@@ -829,6 +829,15 @@ def test_cli_doctor_failure_asks_for_the_failures_first():
     assert "After Doctor passes, start monitoring:" in result.stdout
 
 
+# Verifies a real run with discovery switched off carries the sentinel into the recovery command it prints,
+# since the command reads the config and pasting it without the flag would turn discovery back on
+def test_cli_discovery_switched_off_reaches_the_printed_recovery_command():
+    setup = "runtime['SP_DC_COOKIE'] = 'your_sp_dc_cookie_value'; runtime['TOKEN_SOURCE'] = 'cookie'; runtime['_wizard_install_method'] = lambda: 'manual'; runtime['check_internet'] = lambda *args, **kwargs: False;"
+    result = run_cli(["--doctor", "--config-file", "none", "--env-file", "none"], setup)
+
+    assert "--import-browser-cookie --browser firefox --config-file none" in result.stdout
+
+
 # Verifies contradictory doctor action flags are rejected
 @pytest.mark.parametrize("flag", ["--import-browser-cookie", "--send-test-email", "--list-friends"])
 def test_contradictory_action_flags_are_rejected(flag):

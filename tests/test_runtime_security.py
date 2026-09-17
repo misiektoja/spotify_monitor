@@ -234,3 +234,19 @@ def test_debug_logging_suppression_stays_attached_to_its_sanitizer():
     index = suppressions[0]
     assert "sanitize_error_text(message)" in lines[index + 1]
     assert any("sanitize_error_text" in line for line in lines[max(index - 4, 0):index] if line.strip().startswith("#"))
+
+
+# A setting assigned inside a function without a global declaration becomes a local, so the module value the
+# rest of the tool reads never changes. --config-file none was recorded that way and every printed recovery
+# command dropped the flag, which is invisible to ruff, to pyright and to any test that patches the module value
+def test_every_setting_a_function_assigns_is_declared_global():
+    tree = ast.parse((PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8"))
+    module_settings = {target.id for node in tree.body if isinstance(node, ast.Assign) for target in node.targets if isinstance(target, ast.Name) and target.id.isupper()}
+    shadowed = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        declared = {name for inner in ast.walk(node) if isinstance(inner, ast.Global) for name in inner.names}
+        shadowed.extend(f"{node.name} line {inner.lineno}: {target.id}" for inner in ast.walk(node) if isinstance(inner, ast.Assign) for target in inner.targets if isinstance(target, ast.Name) and target.id in module_settings and target.id not in declared)
+
+    assert sorted(set(shadowed)) == []
