@@ -37,7 +37,7 @@ If the same setting appears in more than one place, the item later in this list 
 4. Secret environment variables
 5. Command-line options
 
-By default the tool looks for a configuration file named `spotify_monitor.conf` in the current directory, the home directory (`~`) and the script directory. Use `--config-file` to name another location, or `--config-file none` to disable automatic config discovery for one run.
+By default the tool looks for a configuration file named `spotify_monitor.conf` in the current directory, the home directory (`~`) and the script directory. Use `--config-file` to name another location or `--config-file none` to disable automatic config discovery for one run.
 
 <a id="monitored-target"></a>
 ## Monitored Target
