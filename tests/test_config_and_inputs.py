@@ -704,3 +704,37 @@ def test_refusing_to_replace_a_config_without_a_terminal_raises_its_own_error(tm
         monitor.write_generated_config(destination, "SMTP_PORT = 465\n", interactive=False)
 
     assert destination.read_text(encoding="utf-8") == "SMTP_PORT = 587\n"
+
+
+# The part of the configuration template every sibling monitor shares, in the order they all use
+SHARED_SETTING_ORDER = ("WEBHOOK_HEADERS", "NTFY_ACCESS_TOKEN", "WEBHOOK_TEMPLATE", "WEBHOOK_TRANSFORMS", "DISABLE_LOGGING", "ASCII_LOG_SEPARATORS", "TRUNCATE_CHARS", "CLEAR_SCREEN", "COLORED_OUTPUT", "COLOR_THEME", "VERBOSE_MODE", "DEBUG_MODE", "DELIVERY_CONFIRMATIONS")
+
+
+# Returns every setting the built-in template declares, in template order, including the commented theme block
+def template_setting_order(module):
+    order = []
+    for line in module.CONFIG_BLOCK.split("\n"):
+        match = re.match(r"^([A-Z][A-Z0-9_]*)\s*[:=]", line) or re.match(r"^# ([A-Z][A-Z0-9_]*)\s*=", line)
+        if match and match.group(1) not in order:
+            order.append(match.group(1))
+    return order
+
+
+# Verifies the template keeps the order shared with the sibling monitors, so one tool's config reads like the next
+def test_the_template_keeps_the_shared_setting_order():
+    order = template_setting_order(monitor)
+
+    assert set(SHARED_SETTING_ORDER) <= set(order), f"the template no longer declares {sorted(set(SHARED_SETTING_ORDER) - set(order))}"
+    assert [name for name in order if name in SHARED_SETTING_ORDER] == list(SHARED_SETTING_ORDER)
+
+
+# Verifies the linter defaults below the template repeat it in the same order, so a setting cannot drift or be filed twice
+def test_the_linter_defaults_follow_the_template_order():
+    source = Path(monitor.__file__).read_text(encoding="utf-8").split("\n")
+    start = next(index for index, line in enumerate(source) if line.startswith("# Do not change values below")) + 1
+    end = next(index for index, line in enumerate(source) if line.startswith("exec(CONFIG_BLOCK"))
+    order = template_setting_order(monitor)
+    mirrored = [match.group(1) for match in (re.match(r"^([A-Z][A-Z0-9_]*)\s*[:=]", line) for line in source[start:end]) if match and match.group(1) in set(order)]
+
+    assert len(mirrored) == len(set(mirrored)), "a setting is repeated in the linter defaults"
+    assert mirrored == [name for name in order if name in set(mirrored)]

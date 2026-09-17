@@ -195,6 +195,20 @@ WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = True
 # Values support the same placeholders as WEBHOOK_TEMPLATE
 WEBHOOK_HEADERS = {}
 
+# Optional ntfy access token for Bearer authentication
+# Prefer an environment variable or dotenv file instead of storing this token here
+NTFY_ACCESS_TOKEN = ""
+
+# Whether to attach playlist or album artwork to supported ntfy alerts
+# Requires the optional Pillow package: pip install "spotify_monitor[notification-images]"
+# The published Docker images already include it
+# Image preparation or delivery failures fall back to text
+NTFY_IMAGES = False
+
+# Whether to use compact ntfy alert titles and bodies for smaller screens
+# Discord webhook and email content remain unchanged
+NTFY_SHORT = False
+
 # ----------------------------
 # Advanced Webhook Settings
 # ----------------------------
@@ -232,20 +246,6 @@ WEBHOOK_TEMPLATE = {
 #       ("description", "strip"),
 #   ]
 WEBHOOK_TRANSFORMS = []
-
-# Optional ntfy access token for Bearer authentication
-# Prefer an environment variable or dotenv file instead of storing this token here
-NTFY_ACCESS_TOKEN = ""
-
-# Whether to attach playlist or album artwork to supported ntfy alerts
-# Requires the optional Pillow package: pip install "spotify_monitor[notification-images]"
-# The published Docker images already include it
-# Image preparation or delivery failures fall back to text
-NTFY_IMAGES = False
-
-# Whether to use compact ntfy alert titles and bodies for smaller screens
-# Discord webhook and email content remain unchanged
-NTFY_SHORT = False
 
 # ----------------------------
 # Monitoring Settings
@@ -485,21 +485,12 @@ ASCII_LOG_SEPARATORS = "Auto"
 # Terminal Output
 # ----------------------------
 
-# Whether to enable verbose operational output
-# Shows rare state changes and recoveries without per-poll or debug HTTP noise
-# Independent of DEBUG_MODE, so enable both to see everything
-# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
-VERBOSE_MODE = False
-
-# Whether to enable debug output
-# Shows request flow, selected parameters and internal state changes with sensitive values redacted
-# Independent of VERBOSE_MODE, so enable both to see everything
-# Can also be enabled via the --debug flag, which turns it on regardless of this setting
-DEBUG_MODE = False
-
-# Whether verbose output confirms each delivered email and webhook alert
-# Applies only when VERBOSE_MODE is enabled
-DELIVERY_CONFIRMATIONS = True
+# Max characters per line when printing to screen to avoid line wrapping
+# Does not affect log file output
+# Set to 999 to auto-detect terminal width
+# Applies only when DISABLE_LOGGING is False
+# Can also be set via the --truncate flag
+TRUNCATE_CHARS = 0
 
 # Width of horizontal line
 HORIZONTAL_LINE = 113
@@ -570,17 +561,26 @@ COLORED_OUTPUT = True
 #     "help_default": "bright_black",
 # }
 
+# Whether to enable verbose operational output
+# Shows rare state changes and recoveries without per-poll or debug HTTP noise
+# Independent of DEBUG_MODE, so enable both to see everything
+# Can also be enabled via the --verbose flag, which turns it on regardless of this setting
+VERBOSE_MODE = False
+
+# Whether to enable debug output
+# Shows request flow, selected parameters and internal state changes with sensitive values redacted
+# Independent of VERBOSE_MODE, so enable both to see everything
+# Can also be enabled via the --debug flag, which turns it on regardless of this setting
+DEBUG_MODE = False
+
+# Whether verbose output confirms each delivered email and webhook alert
+# Applies only when VERBOSE_MODE is enabled
+DELIVERY_CONFIRMATIONS = True
+
 # Path to a file that is created when the user is active and deleted when inactive
 # Useful for external tools to detect streaming status
 # Can also be set via the --flag-file flag
 FLAG_FILE = ""
-
-# Max characters per line when printing to screen to avoid line wrapping
-# Does not affect log file output
-# Set to 999 to auto-detect terminal width
-# Applies only when DISABLE_LOGGING is False
-# Can also be set via the --truncate flag
-TRUNCATE_CHARS = 0
 
 # Amount added to or removed from SPOTIFY_INACTIVITY_CHECK by signal handlers in seconds
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 30  # 30 seconds
@@ -794,27 +794,13 @@ APP_VERSION = ""
 
 # Default dummy values so linters shut up
 # Do not change values below - modify them in the configuration section or config file instead
+MONITOR_MODE = ""
 TOKEN_SOURCE = ""
 TARGET_USER_URI_ID = ""
 SP_DC_COOKIE = ""
 SP_APP_CLIENT_ID = ""
 SP_APP_CLIENT_SECRET = ""
 SP_APP_TOKENS_FILE = ""
-LOGIN_REQUEST_BODY_FILE = ""
-CLIENTTOKEN_REQUEST_BODY_FILE = ""
-LOGIN_URL = ""
-DEVICE_ID = ""
-SYSTEM_ID = ""
-USER_URI_ID = ""
-REFRESH_TOKEN = ""
-CLIENTTOKEN_URL = ""
-APP_VERSION = ""
-CPU_ARCH = 0
-OS_BUILD = 0
-PLATFORM = 0
-OS_MAJOR = 0
-OS_MINOR = 0
-CLIENT_MODEL = 0
 SMTP_HOST = ""
 SMTP_PORT = 0
 SMTP_USER = ""
@@ -830,16 +816,10 @@ SONG_ON_LOOP_NOTIFICATION = False
 ERROR_NOTIFICATION = False
 SCROBBLE_HEALTH_NOTIFICATION = False
 WEBHOOK_ENABLED = False
-WEBHOOK_URL = ""
 WEBHOOK_PROVIDER = ""
+WEBHOOK_URL = ""
 WEBHOOK_USERNAME = ""
 WEBHOOK_AVATAR_URL = ""
-WEBHOOK_HEADERS = {}
-WEBHOOK_TEMPLATE = {}
-WEBHOOK_TRANSFORMS = []
-NTFY_ACCESS_TOKEN = ""
-NTFY_IMAGES = False
-NTFY_SHORT = False
 WEBHOOK_ACTIVE_NOTIFICATION = False
 WEBHOOK_INACTIVE_NOTIFICATION = False
 WEBHOOK_TRACK_NOTIFICATION = False
@@ -847,6 +827,12 @@ WEBHOOK_SONG_NOTIFICATION = False
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 WEBHOOK_ERROR_NOTIFICATION = False
 WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = False
+WEBHOOK_HEADERS = {}
+NTFY_ACCESS_TOKEN = ""
+NTFY_IMAGES = False
+NTFY_SHORT = False
+WEBHOOK_TEMPLATE = {}
+WEBHOOK_TRANSFORMS = []
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
@@ -856,7 +842,6 @@ DETECT_CROSSFADED_SONGS = False
 CROSSFADE_DETECTION_MIN = 0.0
 CROSSFADE_DETECTION_MAX = 0.0
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
-MONITOR_MODE = ""
 LASTFM_USERNAME = ""
 LASTFM_API_KEY = ""
 SPOTIFY_SCROBBLE_CLIENT_ID = ""
@@ -890,34 +875,49 @@ FILE_SUFFIX = ""
 SP_LOGFILE = ""
 DISABLE_LOGGING = False
 ASCII_LOG_SEPARATORS = "Auto"
-DEBUG_MODE = False
-DELIVERY_CONFIRMATIONS = True
-VERBOSE_MODE = False
-
-# True once monitoring has printed its header, so a verbose notice after that closes its own block
-MONITORING_ACTIVE = False
+TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = False
 COLOR_THEME: dict = {}
+VERBOSE_MODE = False
+DEBUG_MODE = False
+DELIVERY_CONFIRMATIONS = True
+FLAG_FILE = ""
 SPOTIFY_INACTIVITY_CHECK_SIGNAL_VALUE = 0
-ENABLE_GENIUS_LYRICS_URL = False
-ENABLE_AZLYRICS_URL = False
-ENABLE_TEKSTOWO_URL = False
-ENABLE_MUSIXMATCH_URL = False
-ENABLE_LYRICS_COM_URL = False
 ENABLE_APPLE_MUSIC_URL = False
 ENABLE_YOUTUBE_MUSIC_URL = False
 ENABLE_AMAZON_MUSIC_URL = False
 ENABLE_DEEZER_URL = False
 ENABLE_TIDAL_URL = False
+ENABLE_GENIUS_LYRICS_URL = False
+ENABLE_AZLYRICS_URL = False
+ENABLE_TEKSTOWO_URL = False
+
+# True once monitoring has printed its header, so a verbose notice after that closes its own block
+MONITORING_ACTIVE = False
+ENABLE_MUSIXMATCH_URL = False
+ENABLE_LYRICS_COM_URL = False
+SPOTIFY_SUFFIX = ""
 TOKEN_MAX_RETRIES = 0
 TOKEN_RETRY_TIMEOUT = 0.0
 TOTP_VERSION = 0
 TOTP_SECRET_CIPHER_BYTES: tuple[int, ...] = ()
-FLAG_FILE = ""
-TRUNCATE_CHARS = 0
-SPOTIFY_SUFFIX = ""
+LOGIN_REQUEST_BODY_FILE = ""
+DEVICE_ID = ""
+SYSTEM_ID = ""
+USER_URI_ID = ""
+REFRESH_TOKEN = ""
+LOGIN_URL = ""
+CLIENTTOKEN_URL = ""
+CLIENTTOKEN_REQUEST_BODY_FILE = ""
+CPU_ARCH = 0
+OS_BUILD = 0
+PLATFORM = 0
+OS_MAJOR = 0
+OS_MINOR = 0
+CLIENT_MODEL = 0
+APP_VERSION = ""
 
 exec(CONFIG_BLOCK, globals())
 
