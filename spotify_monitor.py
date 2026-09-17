@@ -7655,7 +7655,8 @@ def spotify_list_friends(friend_activity, access_token):
         print(f"User URI ID:\t\t\t{sp_uri}")
         print(f"User URL:\t\t\t{spotify_convert_uri_to_url('spotify:user:' + sp_uri)}")
         activity_label = "Track" if friend.get("isPlaying") else "Last played"
-        print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}\n")
+        activity_tabs = "\t\t\t\t" if activity_label == "Track" else "\t\t\t"
+        print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}\n")
         if 'spotify:playlist:' in sp_playlist_uri:
             print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
         print(f"Album:\t\t\t\t{sp_album}")
@@ -11777,6 +11778,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             cur_ts = int(time.time())
             live_activity = "sp_is_playing" in sp_data
             activity_label = "Track" if sp_data.get("sp_is_playing") else "Last played"
+            activity_tabs = "\t\t\t\t" if activity_label == "Track" else "\t\t\t"
             live_activity_seen_at = cur_ts if sp_data.get("sp_is_playing") else 0
             if live_activity:
                 live_timing.observe(cur_ts, sp_data["sp_is_playing"], check_interval * 2, sp_ts)
@@ -11794,7 +11796,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             print(f"Username:\t\t\t{sp_username}")
             print(f"User URI ID:\t\t\t{sp_data['sp_uri']}")
-            print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}")
+            print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}")
             print(f"Duration:\t\t\t{display_time(sp_track_duration)}\n")
             if is_playlist:
                 print(f"Playlist:\t\t\t{sp_playlist}{playlist_suffix}")
@@ -12061,6 +12063,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 cur_ts = int(time.time())
                 live_activity = "sp_is_playing" in sp_data
                 activity_label = "Track" if sp_data.get("sp_is_playing") else "Last played"
+                activity_tabs = "\t\t\t\t" if activity_label == "Track" else "\t\t\t"
                 resumed_live_session = live_activity and sp_active_ts_start == 0 and bool(sp_data["sp_is_playing"])
                 if live_activity and sp_data["sp_is_playing"]:
                     live_activity_seen_at = cur_ts
@@ -12179,7 +12182,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         activity_ts = sp_ts
 
                     print(f"Spotify user:\t\t\t{sp_username}")
-                    print(f"\n{activity_label}:\t\t\t{sp_artist} - {sp_track}")
+                    print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}")
                     print(f"Duration:\t\t\t{display_time(sp_track_duration)}")
 
                     listened_songs += 1

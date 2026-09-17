@@ -306,7 +306,7 @@ def test_list_live_friends_resolves_names_and_now_playing(monkeypatch, capsys):
     monitor.spotify_list_friends(feed, "token")
     output = capsys.readouterr().out
     assert "Visible Friend" in output
-    assert "\nTrack:" in output
+    assert "\nTrack:\t\t\t\t" in output
     assert "Artist - First" in output
     assert "Album" in output
 
@@ -352,7 +352,7 @@ def test_live_pause_resume_and_timestamps_do_not_duplicate_tracks(loop_environme
     snapshots = [feed_entity(now - 600), feed_entity(now), feed_entity(now + 30, playing=False), feed_entity(now + 60)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
-    assert "\nTrack:" in output
+    assert "\nTrack:\t\t\t\t" in output
     assert output.count("Songs played:") == 1
     assert f"User PAUSED playing after 30 seconds\nLast activity:\t\t\t{monitor.get_date_from_ts(now + 30)}\n\nTimestamp:" in output
     assert "User RESUMED playing after 30 seconds\n\nTimestamp:" in output
@@ -398,7 +398,7 @@ def test_live_first_playback_after_paused_startup_opens_session(loop_environment
     output = capsys.readouterr().out
     assert "currently ACTIVE" not in output
     assert output.count("Friend got ACTIVE") == 1
-    assert "\nTrack:" in output
+    assert "\nTrack:\t\t\t\t" in output
     # The stale paused timestamp is not evidence of when playback resumed, so the session starts at the sample
     assert "Songs played:\t\t\t1\n" in output
     delivery.assert_called_once()
@@ -449,7 +449,7 @@ def test_recent_stopped_activity_does_not_start_a_session(loop_environment, monk
     output = capsys.readouterr().out
     assert "Friend got ACTIVE" not in output
     assert "Last played:" in output
-    assert "\nTrack:" not in output
+    assert "\nTrack:\t\t\t\t" not in output
     assert "Songs played:" not in output
 
 
