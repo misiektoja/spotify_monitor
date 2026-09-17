@@ -877,6 +877,8 @@ DISABLE_LOGGING = False
 ASCII_LOG_SEPARATORS = "Auto"
 TRUNCATE_CHARS = 0
 HORIZONTAL_LINE = 0
+# Counts the reports printed so far, so a check can tell whether it said anything before the banner claims it was quiet
+REPORTS_PRINTED = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = False
 COLOR_THEME: dict = {}
@@ -2063,16 +2065,36 @@ def _config_value_comment(comment, template_expression, value):
     return f"# {restated}" if restated else ""
 
 
+# Renders an explicit assignment for a setting the template ships commented out, so overrides the user wrote
+# survive a rewrite instead of being replaced by the commented default
+def _rendered_commented_setting(variable, values):
+    value = values.get(variable)
+    if not isinstance(value, dict) or not value:
+        return []
+    lines = ["", f"{variable} = {{"]
+    lines.extend(f"    {_format_config_value(str(name), True)}: {_format_config_value(str(setting), True)}," for name, setting in value.items())
+    lines.append("}")
+    return lines
+
+
 # Renders CONFIG_BLOCK with current non-secret runtime values and preserved template secrets
 def generate_config_with_current_values(values=None) -> str:
     current_values = globals() if values is None else values
     assignment_pattern = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$")
+    commented_pattern = re.compile(r"^#\s*([A-Z][A-Z0-9_]*)\s*=\s*\{$")
+    commented_block = ""
     output_lines = []
 
     for line in CONFIG_BLOCK.strip("\n").splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             output_lines.append(line)
+            commented_match = commented_pattern.match(stripped)
+            if commented_match and commented_match.group(1) in COMMENTED_CONFIG_SETTINGS:
+                commented_block = commented_match.group(1)
+            elif commented_block and stripped == "# }":
+                output_lines.extend(_rendered_commented_setting(commented_block, current_values))
+                commented_block = ""
             continue
 
         match = assignment_pattern.match(line)
@@ -4834,6 +4856,8 @@ def get_cur_ts(ts_str=""):
 
 # Prints the current date/time in human readable format with separator; eg. Sun 21 Apr 2024, 15:08:45
 def print_cur_ts(ts_str=""):
+    global REPORTS_PRINTED
+    REPORTS_PRINTED += 1
     print(get_cur_ts(str(ts_str)))
     print("─" * HORIZONTAL_LINE)
 
@@ -6866,6 +6890,8 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_
 
     session = req.Session()
     session.headers.update({'User-Agent': USER_AGENT})
+    # Spotipy owns the requests this session makes, so the setting is applied here rather than per call like everywhere else
+    session.verify = VERIFY_SSL
 
     auth_manager = SpotifyClientCredentials(client_id=sp_client_id, client_secret=sp_client_secret, cache_handler=cache_handler, requests_session=session)  # type: ignore[arg-type]
 
@@ -7875,7 +7901,7 @@ def early_config_file_argument(arguments=None):
 # The startup banner and the screen clear both run before argparse, so colour has to be resolved here or a
 # configured COLORED_OUTPUT would only take effect after the first output was already written
 def apply_early_output_config() -> None:
-    global CLEAR_SCREEN, COLORED_OUTPUT
+    global CLEAR_SCREEN, COLORED_OUTPUT, COLOR_THEME
     try:
         cli_path = early_config_file_argument()
         if cli_path is not None and cli_path.casefold() == "none":
@@ -7895,6 +7921,10 @@ def apply_early_output_config() -> None:
         CLEAR_SCREEN = values["CLEAR_SCREEN"]
     if isinstance(values.get("COLORED_OUTPUT"), bool):
         COLORED_OUTPUT = values["COLORED_OUTPUT"]
+    # --help is printed and exited from inside argparse, long before the config load, so the help_* overrides
+    # have to be here or they could never colour the one screen they name. Unusable styles are dropped downstream
+    if isinstance(values.get("COLOR_THEME"), dict):
+        COLOR_THEME = values["COLOR_THEME"]
 
 
 # Loads one UTF-8 literal config atomically and optionally collects structured failures and ignored settings
@@ -10047,7 +10077,12 @@ def _wizard_normalize_csv_path(answer: str) -> str:
 def _wizard_collect_output_section(state: WizardSetupState) -> None:
     _wizard_reset_section(state, WIZARD_OUTPUT_CONFIG_KEYS, ())
     state.config_values["DISABLE_LOGGING"] = not _wizard_ask_yes_no("Write the normal per-target log file?", default=not bool(state.config_values.get("DISABLE_LOGGING")))
-    state.config_values["CSV_FILE"] = _wizard_normalize_csv_path(_wizard_ask_text("Optional CSV output path (blank disables it)", default=str(state.config_values.get("CSV_FILE") or "")))
+    saved_csv = str(state.config_values.get("CSV_FILE") or "")
+    # Asked as its own question, since Enter on the path prompt takes the shown default and so could never clear a saved one
+    if _wizard_ask_yes_no("Write a CSV file of the changes?", default=bool(saved_csv)):
+        state.config_values["CSV_FILE"] = _wizard_normalize_csv_path(_wizard_ask_text("CSV output path", default=saved_csv, required=True))
+    else:
+        state.config_values["CSV_FILE"] = ""
 
 
 # Lets the user change file destinations and recollects sections tied to a changed dotenv file
@@ -10719,7 +10754,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
                 print_outage_recovery(user_uri_id, outage_lasted)
-                alive_since = int(time.time())
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
@@ -10972,6 +11006,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # Primary loop
             while True:
                 check_count += 1
+                reports_before_check = REPORTS_PRINTED
                 check_started_at = debug_monitor_check_start(check_count, user_uri_id)
 
                 while True:
@@ -10989,7 +11024,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
                             print_outage_recovery(user_uri_id, outage_lasted)
-                            alive_since = int(time.time())
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
@@ -11539,7 +11573,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         recent_songs_session = []
                         print_cur_ts("\nTimestamp:\t\t\t")
 
-                    if LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
+                    # The banner speaks for a quiet check, so anything this one reported restarts the clock instead of being contradicted by it
+                    if REPORTS_PRINTED != reports_before_check:
+                        alive_since = int(time.time())
+                    elif LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
                         print_liveness_banner(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
                         alive_since = int(time.time())
 

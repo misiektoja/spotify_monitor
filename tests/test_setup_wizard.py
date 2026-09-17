@@ -386,7 +386,7 @@ def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
         config_path.write_text('TARGET_USER_URI_ID = "saved.review.user"\nSPOTIFY_CHECK_INTERVAL = 1234\nCSV_FILE = "saved-records.csv"\n', encoding="utf-8")
         env_path = directory / ".env"
         prompts = []
-        iterator = iter(["y", "", "y", "", "1", "4", "n", "y", "", "", "n"])
+        iterator = iter(["y", "", "y", "", "1", "4", "n", "y", "", "", "", "n"])
         # The finished wizard loads what it saved, so the settings it reads back are restored when the test ends
         for name in ("TARGET_USER_URI_ID", "SPOTIFY_CHECK_INTERVAL", "CSV_FILE"):
             monkeypatch.setattr(monitor, name, getattr(monitor, name))
@@ -1160,12 +1160,24 @@ def test_noninteractive_setup_is_rejected(monkeypatch, capsys):
 def test_the_output_section_records_the_log_and_csv_choices(monkeypatch, tmp_path):
     baseline = dict(vars(monitor))
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
-    install_inputs(monkeypatch, ["n", str(tmp_path / "plays.csv")])
+    install_inputs(monkeypatch, ["n", "y", str(tmp_path / "plays.csv")])
 
     monitor._wizard_collect_output_section(state)
 
     assert state.config_values["DISABLE_LOGGING"] is True
     assert state.config_values["CSV_FILE"] == str(tmp_path / "plays.csv")
+
+
+# Verifies declining CSV output clears a saved path, which the path prompt alone could never do
+def test_declining_csv_output_clears_a_saved_path(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    baseline["CSV_FILE"] = "saved.csv"
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["y", "n"])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["CSV_FILE"] == ""
 
 
 # Verifies a blank CSV answer disables CSV output rather than storing an empty path as a file name

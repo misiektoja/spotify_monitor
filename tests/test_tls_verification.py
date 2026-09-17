@@ -151,3 +151,25 @@ def test_the_static_analysis_fallback_matches_the_shipped_default():
 
     assert fallback is not None, "the static-analysis default block could not be located"
     assert "VERIFY_SSL = True" in fallback.group(0)
+
+
+# Verifies the session Spotipy owns follows the TLS setting, since Spotipy makes those requests itself
+def test_the_spotipy_session_follows_the_tls_setting(monkeypatch):
+    pytest.importorskip("spotipy")
+    captured = {}
+
+    class RecordingAuth:
+        def __init__(self, **keywords):
+            captured["session"] = keywords["requests_session"]
+
+        def get_access_token(self, as_dict=False):
+            return "token"
+
+    monkeypatch.setattr(monitor, "VERIFY_SSL", False)
+    monkeypatch.setattr(monitor, "SP_CACHED_OAUTH_APP_TOKEN", None)
+    monkeypatch.setattr(monitor, "SP_APP_TOKENS_FILE", "")
+    monkeypatch.setattr("spotipy.oauth2.SpotifyClientCredentials", RecordingAuth)
+
+    monitor.spotify_get_access_token_from_oauth_app("client-id", "client-secret", use_file_cache=False)
+
+    assert captured["session"].verify is False

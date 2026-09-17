@@ -751,3 +751,16 @@ def test_a_fix_block_guide_line_is_a_link(monkeypatch):
     assert monitor.colorize_fix_line("To fix: Set the key then re-run") == f"{info}To fix: Set the key then re-run{monitor.ANSI_RESET}"
     assert monitor.colorize_fix_line("Guide: https://example.test/page") == f"Guide: {link}https://example.test/page{monitor.ANSI_RESET}"
     assert 'colorize("info", f"Guide:' not in Path(monitor.__file__).read_text(encoding="utf-8")
+
+
+# Verifies the early peek carries the theme, since --help is printed and exited from inside argparse before the config load
+def test_the_early_output_config_carries_the_help_theme(monkeypatch, tmp_path):
+    (tmp_path / "spotify_monitor.conf").write_text('COLOR_THEME = {"help_heading": "bright_red"}\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {})
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--help"])
+
+    monitor.apply_early_output_config()
+
+    assert monitor.COLOR_THEME == {"help_heading": "bright_red"}

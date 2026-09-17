@@ -513,6 +513,27 @@ def test_a_labelled_failure_keeps_the_shared_shape(loop_environment, capsys):
     assert first_line == "* Error 50x (6x times in the last 30 minutes): Spotify is temporarily unavailable (retrying in 3 minutes)"
 
 
+# Verifies a check that reported the end of an outage restarts the quiet clock, since the banner speaks for a
+# check that said nothing and would otherwise contradict the recovery line above it
+def test_a_check_that_reported_a_recovery_does_not_claim_it_was_quiet(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 2 * monitor.SPOTIFY_CHECK_INTERVAL)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    # The outage lands after the run has reached the primary loop, which is the loop the banner belongs to
+    responses = [buddy_list(timestamp_ms=started_at * 1000), *[Exception("503 Server Error: Service Unavailable")] * 4, *[buddy_list(timestamp_ms=started_at * 1000)] * 3]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=responses))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 6
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    assert "* Monitoring recovered for watched-user after " in output, "the check under test reported no recovery"
+    assert "Monitoring healthy for" not in output
+
+
 # Verifies the banner follows the clock rather than the number of checks behind it
 def test_the_liveness_banner_follows_the_clock_not_the_check_count(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 3 * monitor.SPOTIFY_CHECK_INTERVAL)
