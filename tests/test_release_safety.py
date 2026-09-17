@@ -80,6 +80,7 @@ def test_normal_startup_validates_before_network(monkeypatch, tmp_path, capsys):
     setting = "SPOTIFY_CHECK_INTERVAL" if hasattr(monitor, "runtime_numeric_errors") else "CHECK_INTERNET_TIMEOUT"
     config.write_text(setting + " = 1e309\n", encoding="utf-8")
     calls = []
+
     # Records attempts at the actual socket boundary without replacing a provider client
     def offline(sock, address):
         calls.append(address)

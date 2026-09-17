@@ -24,6 +24,8 @@ def render_doctor_report(report):
 # Builds the minimal advice a WARN or FAIL row is required to carry
 def actionable_advice():
     return monitor.make_recovery_advice("unknown", "a summary", "do the thing", False)
+
+
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
 

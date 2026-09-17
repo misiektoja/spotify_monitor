@@ -174,8 +174,9 @@ def test_rotated_delivery_errors_keep_the_old_token_private(delivery, monkeypatc
     assert len(seen) == 2
     assert "initial-private-access-token" not in capsys.readouterr().out
 
-# Reports an unrenderable Discord template rather than raising out of validation and delivery
+
 @pytest.mark.parametrize("template", ["{0}", "{}{}", "{title!z}", "plain body"])
+# Reports an unrenderable Discord template rather than raising out of validation and delivery
 def test_an_unrenderable_discord_template_is_reported_not_raised(delivery, monkeypatch, capsys, template):
     monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://discord.com/api/webhooks/123456789012345678/private")
@@ -204,4 +205,3 @@ def test_screen_truncation_still_applies_without_wcwidth(monkeypatch):
     line = "x" * 40 + "\n"
     assert monitor.truncate_string_per_line(line, 10) == "x" * 10 + "\n"
     assert logger._truncate_terminal(line) == "x" * 10 + "\n"
-

@@ -38,6 +38,7 @@ def install_scrobble_setup_flow(monkeypatch, config_path, env_path, auth, yes_no
     monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda key, path: True)
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=lambda question, default=True: next(answers)))
     monkeypatch.setattr(monitor, "_wizard_ask_choice", Mock(side_effect=lambda question, options: next(choices)))
+
     # Supplies stable app settings without opening a real browser during broader setup tests
     def collect_auth(state, selected_method):
         state.config_values["SPOTIFY_SCROBBLE_CLIENT_ID"] = "a" * 32

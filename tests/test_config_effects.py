@@ -251,7 +251,6 @@ def test_the_config_settings_count_is_a_debug_only_trace(tmp_path, monkeypatch, 
     assert "Configuration applied" in capsys.readouterr().out
 
 
-
 # Confirms only debug keeps the screen, since a cleared terminal loses the run being compared against
 @pytest.mark.parametrize(("flag", "expected"), (("--debug", False), ("--verbose", True)))
 def test_only_debug_mode_keeps_the_screen(monkeypatch, flag, expected):

@@ -12,6 +12,7 @@ def test_spotipy_requests_follow_tls_policy(monkeypatch, verify, flow):
     cache = pytest.importorskip("spotipy.cache_handler")
     calls = []
     monkeypatch.setattr(monitor, "VERIFY_SSL", verify)
+
     # Returns a synthetic token without opening a network connection
     def send(self, request, **kwargs):
         calls.append(kwargs["verify"])
@@ -46,6 +47,7 @@ def test_app_token_factory_applies_tls_policy(monkeypatch, verify):
     monkeypatch.setattr(monitor, "SP_APP_TOKENS_FILE", "")
     monkeypatch.setattr(monitor, "SP_CACHED_OAUTH_APP_TOKEN", None)
     monkeypatch.setattr(monitor, "SPOTIPY_AVAILABLE", True)
+
     # Returns an uncached token without making a network request
     def send(self, request, **kwargs):
         calls.append(kwargs["verify"])

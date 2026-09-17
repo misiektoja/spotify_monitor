@@ -95,7 +95,6 @@ def test_docker_publish_workflow_contract():
     assert "DOCKERHUB_TOKEN:" not in workflow
 
 
-
 # Verifies the debug image publishes on its own cadence, stays test-gated and keeps both architectures
 def test_debug_docker_publish_workflow_contract():
     workflow = read_asset(".github/workflows/publish-debug-docker.yml")
@@ -123,6 +122,7 @@ def test_secret_grabber_declares_a_taggable_version():
 
     assert version is not None
     assert re.fullmatch(r"[A-Za-z0-9._-]+", version.group(1))
+
 
 # Verifies the reusable test workflow includes all required container smoke checks
 def test_reusable_test_workflow_has_container_gate():

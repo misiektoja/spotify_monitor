@@ -71,7 +71,12 @@ def web_track_fixture():
 
 # Returns representative current Pathfinder playlist metadata
 def web_playlist_fixture():
-    return {"uri": PLAYLIST_URI, "name": "Cordas", "revisionId": "revision-1", "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"}, "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}},
+    return {
+        "uri": PLAYLIST_URI,
+        "name": "Cordas",
+        "revisionId": "revision-1",
+        "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"},
+        "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}},
         "images": {
             "items": [
                 {
@@ -224,7 +229,6 @@ class SpotifyWebBackendTests(unittest.TestCase):
         memory_cache_factory.assert_called_once_with()
         self.assertIs(credentials_factory.call_args.kwargs["cache_handler"], memory_cache)
 
-
     # Verifies help exits successfully without network access or Spotipy
     def test_help_is_offline(self):
         result = run_cli("--help")
@@ -247,7 +251,9 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
         track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}, "images": [{"url": "https://i.scdn.co/image/track-small.jpg", "width": 64}, {"url": "https://i.scdn.co/image/track-large.jpg", "width": 640}]}})
-        playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"},
+        playlist_response = FakeResponse(json_data={
+            "name": "Cordas",
+            "owner": {"display_name": "Agnes Hali"},
             "images": [
                 {"url": "https://i.scdn.co/image/small.jpg", "width": 64, "height": 64},
                 {"url": "https://i.scdn.co/image/large.jpg", "width": 640, "height": 640},
