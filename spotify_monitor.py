@@ -2138,6 +2138,41 @@ def generate_config_with_current_values(values=None) -> str:
     return rendered
 
 
+# Accepts finite numeric values without overflowing on unusually large integers
+def finite_number(value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+# Preserves inline credentials privately before setup replaces their only saved source
+def preserve_inline_config_secrets(config_path, env_path):
+    from dotenv import dotenv_values
+    source = Path(config_path).expanduser()
+    if not source.is_file():
+        return None
+    original = {}
+    if not load_config_file(source, namespace=original, report_errors=False):
+        raise ValueError("Existing configuration could not be read before preserving its inline secrets")
+    defaults = _config_template_defaults()
+    destination = Path(env_path).expanduser()
+    saved = dotenv_values(str(destination), interpolate=False) if destination.exists() else {}
+    updates = {}
+    for key in SECRET_KEYS:
+        value = original.get(key)
+        if isinstance(value, str) and value and value != defaults.get(key) and saved.get(key) is None:
+            updates[key] = value
+    if not updates:
+        return None
+    try:
+        return update_dotenv_file(destination, updates)
+    except Exception as exc:
+        raise OSError(f"Could not preserve inline secrets in '{destination}'. The original configuration was not replaced") from exc
+
+
 # Removes inline secret assignments from a setup backup while preserving other configuration text
 def redact_config_backup(content):
     import ast
@@ -6190,7 +6225,7 @@ def load_scrobble_health_state(path: Union[str, Path]) -> dict:
     # state permanently broken, since no real play can ever be newer and recovery is only recognised when one is
     for key in ("last_notification_at", "last_notification_attempt_at", "broken_since", "broken_latest_spotify_at"):
         value = payload.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0 and math.isfinite(value):
+        if isinstance(value, (int, float)) and finite_number(value) and value >= 0:
             state[key] = float(value)
         elif value is not None:
             discarded.append(key)
@@ -8032,8 +8067,6 @@ def load_config_file(config_path, namespace=None, error_out=None, report_errors=
         details = [f"Config file '{config_path}' has invalid Python syntax"]
         if exc.lineno is not None:
             details.append(f"Line: {exc.lineno}")
-        if exc.text:
-            details.append(f"Source: {exc.text.rstrip()}")
         details.append(f"Parser: {exc.msg}")
         summary = f"{details[0]} ({', '.join(details[1:])})" if len(details) > 1 else details[0]
         advice = make_recovery_advice("config.invalid", summary, recovery_fix_with_guide("Correct the line and matching quotes. For Windows paths use forward slashes or doubled backslashes then retry", CONFIG_GUIDE_URL), False, " | ".join(details))
@@ -8209,10 +8242,10 @@ def runtime_configuration_errors() -> List[str]:
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
     positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
     for name, value in positive_numbers:
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+        if not finite_number(value) or value <= 0:
             errors.append(f"{name} must be a number greater than zero, not {value!r}")
     for name, value in nonnegative_numbers:
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        if not finite_number(value) or value < 0:
             errors.append(f"{name} must be a number zero or greater, not {value!r}")
     for name, value in positive_integers:
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -10567,14 +10600,17 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     auth = state.auth
     config_content = generate_config_with_current_values(config_values)
     try:
+        preserved_dotenv = preserve_inline_config_secrets(config_path, env_path)
         write_status = write_config_file(config_path, config_content, redact_secrets=True)
     except Exception:
-        print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
+        print(f"Setup could not write configuration file '{config_path}'. The original configuration was kept. Any preserved credentials remain in the selected dotenv file.")
         raise SystemExit(1) from None
     print(colorize('header', "\nSaved files\n"))
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
+    if preserved_dotenv and not secret_updates:
+        print(f"  {'Secrets:':<15}{preserved_dotenv['path']}")
     # A dotenv with nothing in it is noise beside the config, so an empty one is never created
     if secret_updates:
         try:
@@ -10736,14 +10772,17 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     auth = state.auth
     config_content = generate_config_with_current_values(config_values)
     try:
+        preserved_dotenv = preserve_inline_config_secrets(config_path, env_path)
         write_status = write_config_file(config_path, config_content, redact_secrets=True)
     except Exception:
-        print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
+        print(f"Setup could not write configuration file '{config_path}'. The original configuration was kept. Any preserved credentials remain in the selected dotenv file.")
         raise SystemExit(1) from None
     print(colorize('header', "\nSaved files\n"))
     print(f"  Configuration: {write_status['path']}")
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
+    if preserved_dotenv and not secret_updates:
+        print(f"  {'Secrets:':<15}{preserved_dotenv['path']}")
     # A dotenv with nothing in it is noise beside the config, so an empty one is never created
     if secret_updates:
         try:

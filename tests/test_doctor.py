@@ -414,7 +414,7 @@ def test_malformed_config_is_reported_inside_summary(tmp_path):
     result = run_cli(["--doctor", "--config-file", str(config_path), "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "Line: 2" in result.stdout
-    assert 'TARGET_USER_URI_ID = "broken' in result.stdout
+    assert 'TARGET_USER_URI_ID = "broken' not in result.stdout
     assert "Summary" in result.stdout
 
 
