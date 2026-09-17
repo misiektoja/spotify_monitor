@@ -394,7 +394,7 @@ To send an email for every reported song change:
 spotify_monitor <spotify_target> -j
 ```
 
-With the legacy `buddylist` backend, send an email when a user repeats the same song:
+To send an email when a user repeats the same song:
 
 - set `SONG_ON_LOOP_NOTIFICATION` to `True`
 - or use the `-x` flag
@@ -556,7 +556,7 @@ spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 
 Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
-With the live backend, each check that reports playback keeps the session active, including during long tracks. PAUSED and RESUMED report brief playback changes without opening another session. After playback stops, the inactivity timer starts at the pause moment. Paused activity timestamps do not extend it. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` for the live backend, three minutes by default, or `SPOTIFY_INACTIVITY_CHECK` for the legacy backend, 11 minutes by default. `-o` sets the timer of the selected backend:
+With the live backend, each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer starts at the pause moment. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` for the live backend, three minutes by default, or `SPOTIFY_INACTIVITY_CHECK` for the legacy backend, 11 minutes by default. `-o` sets the timer of the selected backend:
 
 ```sh
 spotify_monitor <spotify_target> -o 900
