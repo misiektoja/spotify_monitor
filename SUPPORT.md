@@ -1,16 +1,16 @@
 # Getting help
 
-Start with the documentation at [misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/). [Installation](https://misiektoja.github.io/spotify_monitor/installation/), [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) and [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) cover most first-run problems, and [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) covers the rest.
+Start with the documentation at [misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/). [Installation](https://misiektoja.github.io/spotify_monitor/installation/), [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) and [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) cover most first-run problems. [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) covers the rest.
 
 ## Check your setup first
 
-The tool diagnoses itself. Run it before asking anything, and include its output when you do:
+The tool diagnoses itself. Run it before asking anything and include its output when you do:
 
 ```sh
 spotify_monitor --doctor
 ```
 
-It checks the environment, configuration, credentials, notifications and connectivity, and names the reason for anything invalid.
+It checks the environment, configuration, credentials, notifications and connectivity, then names the reason for anything invalid.
 
 An expired `sp_dc` cookie is the most common cause of sudden authentication failures, empty friend activity or a tool that worked yesterday and stopped today. [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) explains how to refresh it.
 

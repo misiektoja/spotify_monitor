@@ -2,7 +2,7 @@
 
 Choose one installation method. You do not need both Python and Docker.
 
-PyPI is usually the easiest local option. If you are new to Python or unsure whether Python is ready, follow [New to Python: check and install](#new-to-python-install-everything).
+PyPI is usually the easiest local option. If you are new to Python or unsure whether Python is ready, follow [New to Python: check and install](#new-to-python-check-and-install).
 
 The direct Docker image is the fastest container option. Docker Compose takes one extra download but gives you shorter commands for later runs.
 
@@ -42,7 +42,7 @@ Tested on:
 
 It should work on other versions of macOS, Linux, Unix and Windows as well.
 
-<a id="new-to-python-install-everything"></a>
+<a id="new-to-python-check-and-install"></a>
 ## New to Python: check and install
 
 Use this section if you are new to Python or do not know what is already installed. The platform sections only prepare Python and `pip`. Everyone then uses the same Spotify Monitor installation and setup commands. Spotify Monitor requires Python 3.9 or newer and is currently tested through Python 3.14.
@@ -64,7 +64,7 @@ Check Python and `pip`:
     python --version
     pip --version
 
-If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor-after-python-check).
+If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor).
 
 If either command fails:
 
@@ -92,7 +92,7 @@ Check Python and `pip`:
     python3 --version
     pip --version
 
-If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor-after-python-check).
+If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor).
 
 If either command fails:
 
@@ -118,7 +118,7 @@ Open Terminal then check Python and `pip`:
     python3 --version
     pip --version
 
-If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor-after-python-check).
+If both commands work and Python reports version 3.9 or newer, skip to [Install Spotify Monitor](#install-spotify-monitor).
 
 If either command fails, install the missing packages:
 
@@ -134,7 +134,7 @@ Check both commands again:
 
 If Python reports a version older than 3.9, follow your distribution's instructions to install a supported Python version before continuing. For another Linux distribution, install Python 3.9 or newer plus `pip` through its package manager.
 
-<a id="install-spotify-monitor-after-python-check"></a>
+<a id="install-spotify-monitor"></a>
 ### Install Spotify Monitor
 
 Every operating system uses the same command:
@@ -162,7 +162,7 @@ Every operating system uses the same command:
 
 The setup wizard can import a signed-in Firefox session, save the target and configure notifications. Continue to [Setup & First Run](setup-and-first-run.md) for a walkthrough of its questions.
 
-<a id="installation"></a>
+<a id="choose-an-installation-method"></a>
 ## Choose an Installation Method
 
 | Method | Best for | Command used in later examples |
@@ -214,7 +214,7 @@ Extras can be installed together:
 pip install "spotify_monitor[browser,legacy-oauth,notification-images]"
 ```
 
-<a id="manual-installation"></a>
+<a id="install-the-manual-script"></a>
 ### Install the Manual Script
 
 Download the script and dependency list into the same directory:
@@ -276,7 +276,7 @@ python3 spotify_monitor.py --version
 
 Use `python spotify_monitor.py --version` on Windows.
 
-<a id="docker-image"></a>
+<a id="install-from-docker-hub"></a>
 ### Install from Docker Hub
 
 The published [`misiektoja/spotify-monitor`](https://hub.docker.com/r/misiektoja/spotify-monitor) image supports `linux/amd64` and `linux/arm64`.
@@ -287,7 +287,7 @@ No separate image download is required. Its first-run command uses `docker run -
 docker run --rm --pull=always -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest --setup
 ```
 
-On a native Linux container engine, add `--user "$(id -u):$(id -g)"` immediately after `--init`. [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard) shows the exact command for macOS shells, Windows PowerShell and native Linux engines then explains what the wizard asks.
+On a native Linux container engine, add `--user "$(id -u):$(id -g)"` immediately after `--init`. [Setup & First Run](setup-and-first-run.md#run-the-setup-wizard) shows the exact command for macOS shells, Windows PowerShell and native Linux engines then explains what the wizard asks.
 
 Normal monitoring commands reuse the installed image and do not check for a newer release. The [upgrade instructions](#upgrade-a-direct-docker-installation) pull explicitly when you choose to upgrade.
 
@@ -301,7 +301,7 @@ The `:z` suffix lets Docker relabel the mounted directory on hosts that use SELi
 
 The published image includes the core dependencies but not the optional `legacy-oauth` or Chromium browser extras. Anonymous web-player metadata works without Spotipy. Firefox works inside a container when its cookie database is mounted read-only for the import command. Chrome, Brave and Chromium need the host password service to decrypt cookies. A container cannot use that service. See [Container Operation](usage.md#import-firefox-into-container-authentication) for the complete Firefox commands. If manual extraction is needed, the hidden `--set-sp-dc` command is the recommended and most secure entry method.
 
-<a id="docker-compose"></a>
+<a id="install-with-docker-compose"></a>
 ### Install with Docker Compose
 
 Compose adds a reusable project file and shorter commands for later runs. Create or choose a directory for Spotify Monitor and download the Compose file there:
@@ -334,9 +334,9 @@ Compose makes the current host directory available as `/data` inside the contain
 docker compose run --rm --pull=always spotify_monitor --setup
 ```
 
-On native Linux, set the UID and GID above in the same terminal before setup. Continue with [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard).
+On native Linux, set the UID and GID above in the same terminal before setup. Continue with [Setup & First Run](setup-and-first-run.md#run-the-setup-wizard).
 
-<a id="build-docker-locally"></a>
+<a id="build-the-docker-image-locally"></a>
 ### Build the Docker Image Locally
 
 From a cloned repository:

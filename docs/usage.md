@@ -1,6 +1,6 @@
 # Usage
 
-<a id="command-format"></a>
+<a id="command-format-by-installation-method"></a>
 ## Command Format by Installation Method
 
 Most examples on this page use the PyPI command `spotify_monitor`. If you chose another installation, replace only that command with the prefix in this table. Keep the targets and options that follow it.
@@ -14,7 +14,7 @@ Most examples on this page use the PyPI command `spotify_monitor`. If you chose 
 | Direct `docker run` on macOS or Windows PowerShell | `docker run --rm -it --init -v "${PWD}:/data:z" misiektoja/spotify-monitor:latest` |
 | Direct `docker run` on native Linux | `docker run --rm -it --init --user "$(id -u):$(id -g)" -v "$PWD:/data:z" misiektoja/spotify-monitor:latest` |
 
-For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm spotify_monitor --doctor TARGET` with Compose. The current host directory appears as `/data` inside the container, so container paths to its files must start with `/data/`.
+For example, `spotify_monitor --doctor <spotify_target>` becomes `docker compose run --rm spotify_monitor --doctor <spotify_target>` with Compose. The current host directory appears as `/data` inside the container, so container paths to its files must start with `/data/`.
 
 The first `docker run` command works in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
@@ -78,9 +78,7 @@ By default, text output is saved to `spotify_monitor_<user_uri_id/file_suffix>.l
 
 Set `ASCII_LOG_SEPARATORS` to `"Auto"` (default) to use ASCII separator-only lines on Windows, `"On"` to use them on every operating system or `"Off"` to preserve Unicode separators in logs everywhere. Terminal separators stay Unicode. Log files and all other logged text remain UTF-8.
 
-The default Listening Activity backend shows **Track** when Spotify reports playback. **Last played** means the feed reports playback stopped, which does not prove that the track finished. Track changes are detected at the polling interval. Counts describe observed tracks rather than completed plays. The legacy backend reports completed tracks. See [Friend Activity Backend](configuration.md#friend-activity-backend) to select a source and compare their limits.
-
-Use `spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID` for legacy reporting or `--friend-activity-backend listening_activity` for live activity. The flag overrides the saved setting for the current run and also works with `--list-friends`, `--doctor` and `--import-browser-cookie`.
+**Track** shows what the user is playing right now. **Last played** shows the last shared track after playback stopped, which does not prove that the track finished. Track changes are detected at the polling interval, so counts describe observed tracks rather than completed plays. See [Friend Activity Backend](configuration.md#friend-activity-backend) for details and the legacy completed-track option.
 
 <a id="scrobble-health-mode"></a>
 ## Scrobble Health Mode
@@ -149,10 +147,10 @@ spotify_monitor --monitor-mode scrobble_health --doctor --verbose
 
 The verbose focused report lists recent Spotify plays with `MATCHED` or `NOT MATCHED` markers, matched Last.fm timestamps and the recent Last.fm scrobbles used for comparison. Spotify and Last.fm can timestamp different points in the same playback, so a matched pair does not always have identical times.
 
-<a id="main-application-docker-image"></a>
+<a id="container-operation"></a>
 ## Container Operation
 
-See [Docker installation](installation.md#docker-compose) for installation, Linux file ownership, local image builds and upgrades. This section covers everyday use after setup.
+See [Docker installation](installation.md#install-with-docker-compose) for installation, Linux file ownership, local image builds and upgrades. This section covers everyday use after setup.
 
 Compose makes the current host directory available as `/data` inside the container. The wizard creates `spotify_monitor.conf` and `.env` in that host directory. Logs and CSV output are also written there. The image does not contain your configuration or private values.
 
@@ -295,19 +293,19 @@ Host Spotify auto-play is unavailable by default inside a container because the 
 
 Use `--help` for examples grouped by task and matched to your installation.
 
-Normal monitoring shows the target, authentication method, polling interval, alert state, output destination, configuration path, `.env` path and metadata source. Optional features appear only when enabled. When file logging is enabled, the log receives a complete summary that excludes private values.
+Monitoring mode prints the settings that are actually in effect before the first check.
 
-Use `--verbose` to display the complete startup summary plus rare operational events without enabling per-poll or debug HTTP logging:
+Optional features appear once you switch them on.
 
-```sh
-spotify_monitor <spotify_target> --verbose
-```
-
-The complete summary also names the detected install method and which secrets came from the dotenv file, the environment or the configuration file, by name only.
-
-Spotify Monitor normally checks every 30 seconds, or every 10 seconds during a live listening session, and stays quiet when nothing changes. Periodic liveness banners confirm it is running. Use `--verbose` for occasional operational events or `--debug` for detailed diagnostics.
+Use `--verbose` or `--debug` for the full startup summary, including output paths, notification settings, secret sources and runtime information.
 
 Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `999` to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with `-d`.
+
+The tool clears the terminal when monitoring starts. Set `CLEAR_SCREEN` to `False` to keep whatever is already on the screen.
+
+The screen is never cleared when output is redirected to a file or a pipe, in debug mode, or for a command that prints a result and exits, such as `--doctor`, `--help` and the test senders.
+
+Two settings add detail to what a run prints. `VERBOSE_MODE` adds the decisions the run made and `DEBUG_MODE` adds timestamped technical traces. Both are off by default, both are independent of each other and both have a flag that wins over the file, `--verbose` and `--debug`. `DELIVERY_CONFIRMATIONS` is on by default and controls whether verbose mode confirms each delivered email and webhook alert. See [Verbose and Debug Output](troubleshooting.md#verbose-and-debug-output).
 
 <a id="coloured-terminal-output"></a>
 ### Coloured Terminal Output
@@ -360,7 +358,7 @@ To send an email when a user becomes inactive:
 spotify_monitor <spotify_target> -i
 ```
 
-Inactivity emails include recent tracks from the session and their skipped status. The live backend also reports how long the last track played and how long the user paused during the session. Tracks first seen already playing or after missing observations are never marked as skipped. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
+Inactivity emails list recent tracks from the session with their skipped status, how long the last track played and how long the user paused. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To send an email when a listed track, playlist or album plays:
 
@@ -473,7 +471,7 @@ The setup wizard adds `.csv` if the filename has no extension. Declining CSV out
 Set `FLAG_FILE` or use `--flag-file PATH` to expose the monitored user's current activity state to another local tool. Spotify Monitor creates the file while the user is active and deletes it after the user becomes inactive:
 
 ```sh
-spotify_monitor TARGET --flag-file /path/spotify_user_active
+spotify_monitor <spotify_target> --flag-file /path/spotify_user_active
 ```
 
 For a container, place the file under `/data` so it appears in the host directory. Each concurrently monitored user should have a different flag path.
@@ -523,30 +521,27 @@ For **Windows** set `SPOTIFY_WINDOWS_PLAYING_METHOD` to one of the following val
 
 Keep the default method unless playback does not work on your system.
 
-With the default Listening Activity backend, automatic playback starts a track when playback is first observed or the track changes. On Linux and macOS it follows observed pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. With `FRIEND_ACTIVITY_BACKEND = "buddylist"`, completed-track reports make automatic playback one track behind. Differences in track length can make your local track repeat or change before it finishes.
+Automatic playback starts a track when the friend starts playing or changes track. On Linux and macOS it follows pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. Differences in track length can make your local track repeat or change before it finishes.
 
 For Last.fm-based track progress monitoring, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
 <a id="check-intervals"></a>
 ## Check Intervals
 
-The live Listening Activity backend and the legacy buddylist backend keep separate timers. `-c`, `-k` and `-o` set the timers of the backend selected by `FRIEND_ACTIVITY_BACKEND` or `--friend-activity-backend`.
-
-With the live backend, `SPOTIFY_LIVE_CHECK_INTERVAL` or `-c` sets the seconds between checks while the user is not playing and `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` or `-k` sets the seconds between checks while a listening session is open. The defaults are 30 and 10 seconds. The shorter active interval catches pauses, resumes and track changes sooner. A failed check is retried after `SPOTIFY_LIVE_ERROR_INTERVAL`, one minute by default:
+If you want to customize the polling intervals, use the `-k` and `-c` flags (or the corresponding configuration options):
 
 ```sh
 spotify_monitor <spotify_target> -c 30 -k 10
 ```
 
-With the legacy backend, `SPOTIFY_CHECK_INTERVAL` or `-c` sets the seconds between checks, 30 by default, and `SPOTIFY_ERROR_INTERVAL` the retry delay, three minutes by default:
+* `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL`, `-k`: check interval during a listening session (seconds)
+* `SPOTIFY_LIVE_CHECK_INTERVAL`, `-c`: check interval when the user is not playing (seconds)
 
-```sh
-spotify_monitor --friend-activity-backend buddylist <spotify_target> -c 30
-```
+The defaults are 30 and 10 seconds. The shorter active interval catches pauses, resumes and track changes sooner. A failed check is retried after `SPOTIFY_LIVE_ERROR_INTERVAL`, one minute by default.
 
-In the setup wizard, you can also enter durations such as `30s`, `1.5h` or `1h 30m`. Supported units are `s`, `m`, `h` and `d`. With the live backend the wizard asks for both live intervals.
+In the setup wizard, you can also enter durations such as `30s`, `1.5h` or `1h 30m`. Supported units are `s`, `m`, `h` and `d`.
 
-A legacy interval below 30 seconds invites the Spotify rate limiter, which stops the tool seeing anything. `--doctor` warns when a legacy interval is below 30 seconds or a live interval is below 5 seconds.
+`--doctor` warns when an interval is below 5 seconds. The legacy backend keeps its own timers, see [Legacy Backend](configuration.md#legacy-backend).
 
 For scrobble health, set the time between successful comparisons through `SCROBBLE_HEALTH_CHECK_INTERVAL` or `--scrobble-check-interval`:
 
@@ -556,7 +551,7 @@ spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 
 Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
-With the live backend, each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer starts at the pause moment. With the legacy backend, it starts at the last reported completed track. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` for the live backend, three minutes by default, or `SPOTIFY_INACTIVITY_CHECK` for the legacy backend, 11 minutes by default. `-o` sets the timer of the selected backend:
+Each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer starts at the pause moment. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` or `-o`, three minutes by default:
 
 ```sh
 spotify_monitor <spotify_target> -o 900
@@ -565,15 +560,31 @@ spotify_monitor <spotify_target> -o 900
 If a user disappears from Friend Activity, use `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` to control the delay between visibility checks:
 
 ```sh
-spotify_monitor TARGET -m 180
+spotify_monitor <spotify_target> -m 180
 ```
+
+<a id="liveness-reminder"></a>
+### Liveness Reminder
+
+In Friend Activity mode, while nothing changes, the tool prints one reminder that it is still running:
+
+```
+* Monitoring healthy for <spotify_target>. The target is visible with no activity change since the last check
+Liveness check, timestamp:	Mon 08 Sep 2026, 09:15:05
+```
+
+Set `LIVENESS_CHECK_INTERVAL` to change it (default: 86400, i.e. 24 hours), or to 0 to switch it off.
+
+Anything the tool prints about the target restarts the countdown, so a busy run stays quiet.
+
+Scrobble health mode prints `Scrobble health monitor running for <lastfm_username>. Current result: <result>.` instead. See [Doctor Preflight](troubleshooting.md#doctor-preflight) for what each result means.
 
 <a id="signal-controls-macoslinuxunix"></a>
 ## Signal Controls (macOS/Linux/Unix)
 
-On macOS, Linux and Unix, operating system signals can change a running process without restarting it.
+The tool has several signal handlers implemented which allow to change behavior of the tool without a need to restart it with new configuration options / flags.
 
-Supported signals:
+List of supported signals:
 
 | Signal | Description |
 | ----------- | ----------- |
@@ -587,13 +598,13 @@ Supported signals:
 
 `SIGHUP` keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.
 
-Send a signal with `kill` or `pkill`. For example:
+Send signals with `kill` or `pkill`, e.g.:
 
 ```sh
 pkill -USR1 -f "spotify_monitor <spotify_target>"
 ```
 
-This feature is not available for a native Windows process because Windows supports only a limited signal set.
+As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.
 
 <a id="coloring-log-output-with-grc"></a>
 ## Coloring Log Output with GRC

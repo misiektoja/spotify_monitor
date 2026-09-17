@@ -119,7 +119,7 @@ A prebuilt multi-architecture image is available on Docker Hub: [`misiektoja/spo
 
 The examples use the `latest` tag. `--pull=always` in direct commands and `pull_policy: always` in Compose make Docker check for a newer image before each run. To stay on one release, add a version such as `:1.3` to the image name.
 
-Image tags follow the extractor's own version, so `:1.4` is the image built from `spotify_monitor_secret_grabber.py` v1.4. The image is published whenever the extractor or its container files change, and rebuilt weekly so a published tag keeps picking up Debian and Chromium security updates. `latest` always points at the newest build.
+Image tags follow the extractor's own version, so `:1.4` is the image built from `spotify_monitor_secret_grabber.py` v1.4. The image is published whenever the extractor or its container files change and is rebuilt weekly so a published tag keeps picking up Debian and Chromium security updates. `latest` always points at the newest build.
 
 The image runs as a non-root user with UID and GID 1000 by default. This prevents root-owned output on typical native Linux hosts.
 

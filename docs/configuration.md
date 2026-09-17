@@ -1,6 +1,6 @@
 # Configuration
 
-Examples on this page use the PyPI command `spotify_monitor`. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under [Command Format by Installation Method](usage.md#command-format). Container file paths must point into `/data`.
+Examples on this page use the PyPI command `spotify_monitor`. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under [Command Format by Installation Method](usage.md#command-format-by-installation-method). Container file paths must point into `/data`.
 
 <a id="configuration-file"></a>
 ## Configuration File
@@ -8,8 +8,6 @@ Examples on this page use the PyPI command `spotify_monitor`. Manual script, Doc
 You can pass most settings as command-line options or save them in a configuration file for later runs.
 
 The easiest way to create this file is `spotify_monitor --setup`. Friend Activity setup defaults to `spotify_monitor.conf` plus `.env`. Scrobble health setup uses `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health` so both modes can be configured independently.
-
-Rerunning setup uses saved settings as defaults and asks before replacing the configuration. Declining an optional section turns it off, so review those choices before saving. Setup keeps a timestamped backup. See [Reloading secrets and backup contents](#reloading-secrets-and-backup-contents) before restoring older credentials.
 
 To edit every available setting yourself, generate a default configuration file:
 
@@ -21,16 +19,13 @@ spotify_monitor --generate-config > spotify_monitor.conf
 spotify_monitor --generate-config spotify_monitor.conf
 ```
 
-> **Windows PowerShell:** Pass the filename directly to `--generate-config`. PowerShell redirection can write UTF-16, which Spotify Monitor rejects with a "null bytes" error.
+> **Windows PowerShell:** Pass the filename directly to `--generate-config`. PowerShell redirection can write UTF-16, which the tool rejects with a "null bytes" error.
 
-Passing a filename writes a UTF-8 configuration and asks before replacing an existing file. Replacement keeps a timestamped owner-only backup. To replace a file without an interactive terminal, pass `--force`.
+When the named file already exists, `--generate-config` asks before replacing it and keeps a timestamped `.bak` backup next to it. Add `--force` to replace it without the question.
 
-Open `spotify_monitor.conf` in a text editor and change the settings you need. The file contains a short explanation above each setting.
+The file contains a short explanation above each setting.
 
-<a id="what-a-configuration-file-may-contain"></a>
-### What a Configuration File May Contain
-
-A configuration file is read as data, not executed. Spotify Monitor accepts only `SETTING = value` lines where the name is one of the documented settings and the value is a plain literal such as a string, number, `True`, `False`, `None`, a list or a dictionary. Comments and blank lines are fine.
+A configuration file is read as data, not executed. The tool accepts only `SETTING = value` lines where the name is one of the documented settings and the value is a plain literal such as a string, number, `True`, `False`, `None`, a list or a dictionary. Comments and blank lines are fine.
 
 Imports, function calls, expressions and unknown settings are rejected with the setting and line number to correct.
 
@@ -42,17 +37,57 @@ If the same setting appears in more than one place, the item later in this list 
 4. Secret environment variables
 5. Command-line options
 
-The `.env` layer applies to supported private keys such as `SP_DC_COOKIE`, `LASTFM_API_KEY`, `SPOTIFY_SCROBBLE_REFRESH_TOKEN`, `SMTP_PASSWORD` and `WEBHOOK_URL`. It also accepts the non-secret `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` settings. A nonempty exported value wins over `.env`. An empty exported value is ignored, but an explicit empty value in `.env` overrides the configuration.
+By default the tool looks for a configuration file named `spotify_monitor.conf` in the current directory, the home directory (`~`) and the script directory. Use `--config-file` to name another location, or `--config-file none` to disable automatic config discovery for one run.
 
-A positional target overrides `TARGET_USER_URI_ID`. Use `--config-file PATH` and `--env-file PATH` to select files explicitly or `--config-file none` and `--env-file none` to disable automatic searches. See [Storing Secrets](#storing-secrets) for file search and reload behavior.
+<a id="monitored-target"></a>
+## Monitored Target
 
-Despite its legacy name, `TARGET_USER_URI_ID` accepts a complete Spotify profile URL, a `spotify:user:` URI or a user ID. A positional command-line target takes precedence. With a configured target you can start monitoring with:
+In Friend Activity mode the Spotify target is a positional argument. It is required to start monitoring:
 
 ```sh
-spotify_monitor --config-file spotify_monitor.conf
+spotify_monitor <spotify_target>
 ```
 
-A Spotify developer app is not required. Cookie or client mode authenticates Friend Activity. The anonymous web-player backend supplies track and public playlist details. Existing working OAuth app credentials remain available as an optional legacy metadata path.
+The target can be a complete profile URL, a `spotify:user:` URI or a user ID.
+
+To stop repeating it, save it in the configuration file:
+
+```ini
+TARGET_USER_URI_ID = "spotify_user_id"
+```
+
+`TARGET_USER_URI_ID` accepts the same forms as the command line. Then `spotify_monitor` alone starts monitoring that user. A positional argument still wins, so you can watch someone else for one run without editing the file:
+
+```sh
+spotify_monitor other_user_id
+```
+
+<a id="following-the-monitored-user"></a>
+## Following the Monitored User
+
+To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
+
+If the monitoring account does not follow the target, setup offers to follow them. It sends the request only after you confirm.
+
+This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, follow the target manually in Spotify.
+
+If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.
+
+Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
+
+## How to Find a Friend's Spotify Profile URL
+
+Use the Spotify desktop or mobile app:
+
+- go to your friend's profile
+- click the **three dots** (•••) or press the **Share** button
+- copy the link to the profile
+
+You'll get a URL like `https://open.spotify.com/user/USER_ID?si=tracking_id`.
+
+Pass that profile URL directly to the tool. You do not need to extract the ID. A Spotify user URI such as `spotify:user:USER_ID` or a standalone user ID is also accepted.
+
+Alternatively you can use [Listing mode](usage.md#listing-mode) to see the Spotify user IDs and profile URLs of accounts you follow. Either displayed form can be used as the monitoring target.
 
 <a id="monitoring-mode"></a>
 ## Monitoring Mode
@@ -75,58 +110,54 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-`FRIEND_ACTIVITY_BACKEND` selects the source used by monitoring, `--list-friends`, `--doctor` and cookie validation. Save it in the configuration file to set the default:
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users.
 
-```python
-FRIEND_ACTIVITY_BACKEND = "listening_activity"
+A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
+
+Songs on loop are counted when a song is played again from its start `SONG_ON_LOOP_VALUE` times.
+
+It is the default mode for activity feed. It can also be set explicitly via `FRIEND_ACTIVITY_BACKEND = "listening_activity"` in the configuration file or you can pass `--friend-activity-backend listening_activity` for one run:
+
+```sh
+spotify_monitor --friend-activity-backend listening_activity SPOTIFY_USER_ID
 ```
 
-Use `--friend-activity-backend` to override the saved setting for one run without changing the configuration file:
+Polling can miss short tracks and quick changes between checks.
+
+| Setting | One-run option | Default | Purpose |
+| --- | --- | ---: | --- |
+| `SPOTIFY_LIVE_CHECK_INTERVAL` | `-c` | 30 seconds | Time between checks while the user is not playing |
+| `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` | `-k` | 10 seconds | Time between checks while a listening session is open |
+| `SPOTIFY_LIVE_ERROR_INTERVAL` | | 60 seconds | Retry delay after a failed check |
+| `SPOTIFY_LIVE_INACTIVITY_CHECK` | `-o` | 180 seconds | Time without playback after which the session ends |
+
+`--doctor` warns when an interval is below 5 seconds. The TRAP and ABRT signals adjust the inactivity timer. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
+
+<a id="legacy-backend"></a>
+### Legacy Backend
+
+The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed.
+
+To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` in the configuration file or pass `--friend-activity-backend buddylist` for one run:
 
 ```sh
 spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID
-spotify_monitor --friend-activity-backend listening_activity --list-friends
 ```
 
-| Value | Behavior |
-| --- | --- |
-| `"listening_activity"` (default) | Uses Spotify's Listening Activity feed. Shows the current track when Spotify reports playback and the last shared track when playback stops. |
-| `"buddylist"` | Uses the legacy Friend Activity endpoint, which reports a track only after it finished. |
+The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c` and `-o` set them when it is selected.
 
-Existing configuration files without this setting use `"listening_activity"`. To restore the old behavior, set `FRIEND_ACTIVITY_BACKEND = "buddylist"`. This choice is independent of `TOKEN_SOURCE` and does not affect scrobble health.
-
-Each backend has its own timers. The live feed reports playback changes as they happen, so the live backend polls faster during a listening session and ends a session sooner after playback stops. The legacy endpoint reports only completed tracks, so its inactivity timer must outlast a long track. `-c`, `-k` and `-o` set the timers of the selected backend and `--doctor` warns when a legacy interval is below 30 seconds or a live interval is below 5 seconds.
-
-| Setting | One-run option | Default | Backend | Purpose |
-| --- | --- | ---: | --- | --- |
-| `SPOTIFY_LIVE_CHECK_INTERVAL` | `-c` | 30 seconds | live | Time between checks while the user is not playing |
-| `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` | `-k` | 10 seconds | live | Time between checks while a listening session is open |
-| `SPOTIFY_LIVE_ERROR_INTERVAL` | | 60 seconds | live | Retry delay after a failed check |
-| `SPOTIFY_LIVE_INACTIVITY_CHECK` | `-o` | 180 seconds | live | Time without playback after which the session ends |
-| `SPOTIFY_CHECK_INTERVAL` | `-c` | 30 seconds | legacy | Time between checks |
-| `SPOTIFY_ERROR_INTERVAL` | | 180 seconds | legacy | Retry delay after a failed check |
-| `SPOTIFY_INACTIVITY_CHECK` | `-o` | 660 seconds | legacy | Time after the last completed track after which the user is inactive |
-
-The TRAP and ABRT signals adjust the inactivity timer of the selected backend. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
-
-The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Spotify lets a user share listening activity with all followers or with selected people only. A user who picks selected people disappears from the legacy endpoint and does not come back after switching to all followers again. The live feed still shows that user to the accounts allowed by the setting. If a friend you follow is missing with the legacy backend, use the live backend. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
-
-Live tracking starts a session when playback is observed. Starting the tool while playback is stopped shows the last shared track without counting it or sending an ACTIVE notification.
-
-During a session, **PAUSED** and **RESUMED** report each pause and its length. A pause keeps the session open. The session ends when the inactivity timer runs out after playback stops.
-
-**Played duration and skips** are reported before the next track: `User played the previous track for: 1 minute, 45 seconds (out of 3 minutes, 20 seconds) - SKIPPED (52%)`. Pauses are excluded and tracks played to the end are not reported. A track first seen already playing or after a gap in checks is never marked as skipped. `SKIPPED_SONG_THRESHOLD` controls the skip threshold and `DETECT_CROSSFADED_SONGS` labels tracks that ended a few seconds early as crossfaded, as with the legacy backend. Inactivity reports list the last track's played time, the pauses and the skipped tracks of the session.
-
-**Songs on loop** work as with the legacy backend. A song played again from its start counts as another play, and `SONG_ON_LOOP_VALUE` plays in a row produce the `User plays song on LOOP` line and the loop alert. Spotify reports the end of a track a moment before it finishes, so the next play appears at the following check. A song restarted before its end also counts once it has played through, so its track block appears then. A track played longer than its length, for example after moving back within it, shows that time, such as `(165%)`.
-
-Polling can miss short tracks and quick changes between checks. Played durations do not prove completion.
-
-The monitor obtains missing user, track and playlist names from Spotify's metadata services. Playlist names come from Spotify's playlist service, which also resolves personalized playlists such as Liked Songs, with the web-player metadata query as the fallback. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
+| Setting | One-run option | Default | Purpose |
+| --- | --- | ---: | --- |
+| `SPOTIFY_CHECK_INTERVAL` | `-c` | 30 seconds | Time between checks |
+| `SPOTIFY_ERROR_INTERVAL` | | 180 seconds | Retry delay after a failed check |
+| `SPOTIFY_INACTIVITY_CHECK` | `-o` | 660 seconds | Time after the last completed track after which the user is inactive |
 
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health
 
-Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an email alert. People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
+Spotify's six-month re-authorization requirement can disconnect Spotify Scrobbling. Last.fm currently warns about that disconnection only through a banner on its website and does not send an explicit email alert.
+
+People who rarely visit the website can therefore continue listening without knowing that new scrobbles are not being saved. This mode provides independent console, email or webhook alerts once the configured evidence threshold confirms a likely gap.
 
 Scrobble health checks whether completed plays from one Spotify account appear on one Last.fm profile. It uses Spotify's official recently-played endpoint rather than Friend Activity or `SP_DC_COOKIE`. It does not need a second Spotify account. It needs:
 
@@ -145,34 +176,7 @@ Before hidden API-key entry, the wizard shows the [Last.fm API accounts page](ht
 
 For Friend Activity monitoring use the regular `spotify_monitor --setup` wizard instead.
 
-<a id="spotify-recent-play-authorization"></a>
-### Spotify Recent-play Authorization
-
-Scrobble health requires a Spotify app owned by you.
-
-The focused setup wizard guides these steps:
-
-1. Sign in to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with an account that has Spotify Premium.
-2. Create an app or open an existing app.
-3. Add the exact `http://127.0.0.1:8888/callback` redirect URI shown by setup. The wizard uses this recommended loopback value automatically instead of asking you to choose one. Spotify allows HTTP for an explicit loopback IP address but not `localhost`.
-4. Select Web API in the API/SDKs section then save the app.
-5. Copy the Client ID into setup. Do not enter the Client Secret because PKCE does not use it.
-6. If another Spotify account will be authorized, add it under the app's User Management.
-7. Approve the read-only `user-read-recently-played` scope. After Spotify redirects, copy the complete URL from the browser address bar and paste it into setup. The browser page itself does not need to load.
-
-Spotify documents the Dashboard flow in [Creating an App](https://developer.spotify.com/documentation/web-api/concepts/apps) and the authorization exchange in [Authorization Code with PKCE Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow).
-
-The Client ID and redirect URI are non-secret settings saved in `spotify_monitor_scrobble_health.conf`. Advanced setups can change `SPOTIFY_SCROBBLE_REDIRECT_URI` in that file then run authorization again. Use HTTPS for a non-loopback redirect. The refresh token is private and setup saves it as `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. A Client Secret is never requested or stored.
-
-To grant access again after the authorization expires or is revoked, run:
-
-```sh
-spotify_monitor --authorize-scrobble-health
-```
-
-The command reuses the saved app settings, opens or prints a new state-protected authorization URL then replaces only the saved refresh token. Spotify refresh tokens expire after six months. A running process can load a replaced token after `SIGHUP` or you can restart it. This authorization is separate from reconnecting Spotify Scrobbling at [Last.fm connected applications](https://www.last.fm/settings/applications).
-
-To enter or replace only the API key safely, run:
+To enter or replace only the Last.fm API key safely, run:
 
 ```sh
 spotify_monitor --set-lastfm-credentials
@@ -202,9 +206,34 @@ The default alert requires five consecutive unmatched completed plays with the o
 
 **Idle** means no completed Spotify plays were returned within the comparison period. **Waiting** means missing plays have not reached the alert threshold. **Scrobbles matched** means recent Spotify plays were found on Last.fm.
 
-Reminders require both the configured interval to have elapsed and recent missing plays to meet the alert threshold. A notification that scrobbles are appearing again requires a match newer than the evidence saved with the missing-scrobble alert. It does not mean older missing plays were backfilled. Alerts link to Last.fm's connected-applications page so you can check the connection.
-
 A failed Spotify or Last.fm request produces **Check failed**, not a missing-scrobble alert. The monitor keeps earlier alert history and sends an operational email or webhook after three consecutive failed comparisons. After a brief retry for temporary connection or server failures, it waits for `SPOTIFY_ERROR_INTERVAL`, which defaults to three minutes. For rate-limit or `QUOTA_EXCEEDED` errors, see [Troubleshooting](troubleshooting.md#doctor-preflight).
+
+<a id="spotify-recent-play-authorization"></a>
+### Spotify Recent-play Authorization
+
+Last.fm scrobble health requires a Spotify app owned by you.
+
+The focused setup wizard guides these steps:
+
+1. Sign in to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with an account that has Spotify Premium.
+2. Create an app or open an existing app.
+3. Add the exact `http://127.0.0.1:8888/callback` redirect URI shown by setup. The wizard uses this recommended loopback value automatically instead of asking you to choose one. Spotify allows HTTP for an explicit loopback IP address but not `localhost`.
+4. Select Web API in the API/SDKs section then save the app.
+5. Copy the Client ID into setup. Do not enter the Client Secret because PKCE does not use it.
+6. If another Spotify account will be authorized, add it under the app's User Management.
+7. Approve the read-only `user-read-recently-played` scope. After Spotify redirects, copy the complete URL from the browser address bar and paste it into setup. The browser page itself does not need to load.
+
+Spotify documents the Dashboard flow in [Creating an App](https://developer.spotify.com/documentation/web-api/concepts/apps) and the authorization exchange in [Authorization Code with PKCE Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow).
+
+The Client ID and redirect URI are non-secret settings saved in `spotify_monitor_scrobble_health.conf`. Advanced setups can change `SPOTIFY_SCROBBLE_REDIRECT_URI` in that file then run authorization again. Use HTTPS for a non-loopback redirect. The refresh token is private and setup saves it as `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in `.env.scrobble_health`. A Client Secret is never requested or stored.
+
+To grant access again after the authorization expires or is revoked, run:
+
+```sh
+spotify_monitor --authorize-scrobble-health
+```
+
+The command reuses the saved app settings, opens or prints a new state-protected authorization URL then replaces only the saved refresh token. Spotify refresh tokens expire after six months. A running process can load a replaced token after `SIGHUP` or you can restart it. This authorization is separate from reconnecting Spotify Scrobbling at [Last.fm connected applications](https://www.last.fm/settings/applications).
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source
@@ -399,46 +428,6 @@ When configured the tool automatically refreshes the OAuth app access token. Tok
 
 If `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` are in `.env`, a running process on macOS, Linux or Unix can reload them after a `SIGHUP` signal. See [Storing Secrets](#storing-secrets) and [Signal Controls](usage.md#signal-controls-macoslinuxunix).
 
-<a id="following-the-monitored-user"></a>
-## Following the Monitored User
-
-To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
-
-If the monitoring account does not follow the target, setup offers to follow them. It sends the request only after you confirm.
-
-This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, follow the target manually in Spotify.
-
-If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.
-
-Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
-
-## How to Find a Friend's Spotify Profile URL
-
-Use the Spotify desktop or mobile app:
-
-- go to your friend's profile
-- click the **three dots** (•••) or press the **Share** button
-- copy the link to the profile
-
-You'll get a URL like `https://open.spotify.com/user/USER_ID?si=tracking_id`.
-
-Pass that profile URL directly to the tool. You do not need to extract the ID. A Spotify user URI such as `spotify:user:USER_ID` or a standalone user ID is also accepted.
-
-Alternatively you can use [Listing mode](usage.md#listing-mode) to see the Spotify user IDs and profile URLs of accounts you follow. Either displayed form can be used as the monitoring target.
-
-<a id="tls-verification"></a>
-## TLS Verification
-
-Spotify Monitor verifies the TLS certificate of every server it contacts: Spotify, Last.fm, the connectivity check endpoint, downloaded artwork, the mail server that delivers email alerts and, when enabled, the webhook service.
-
-`VERIFY_SSL` covers every connection the tool makes, including the mail server and the OAuth token requests the Spotipy library sends. Set it to `False` only on a network that intercepts TLS with its own certificate authority, such as a corporate proxy. With verification off, an intercepted connection cannot be told apart from the real service.
-
-```ini
-VERIFY_SSL = True
-```
-
-The startup summary shows `TLS verification` and [`--doctor`](troubleshooting.md#doctor-preflight) reports a warning while it is off.
-
 <a id="smtp-settings"></a>
 ## SMTP Settings
 
@@ -456,30 +445,6 @@ spotify_monitor --send-test-email
 Spotify Monitor can send activity alerts through Discord or the native [ntfy publish API](https://docs.ntfy.sh/publish/). Webhook alerts work with or without email. Run `spotify_monitor --setup`, choose webhook alerts and select Discord or ntfy.
 
 `WEBHOOK_PROVIDER` defaults to `"discord"`. Standard Discord and public `ntfy.sh` URLs are recognized automatically. Set the provider explicitly for self-hosted ntfy or compatible endpoints. For one run, use `--webhook-provider discord` or `--webhook-provider ntfy`.
-
-<a id="discord"></a>
-### Discord
-
-If you are new to Discord, follow these steps to get your private webhook URL:
-
-1. Open your Discord server and choose the channel that should receive the alerts.
-2. Click **Edit Channel** then open **Integrations** > **Webhooks**.
-3. Click **New Webhook**, choose a name if you want then click **Copy Webhook URL**.
-4. Return to the terminal and run:
-
-```sh
-spotify_monitor --set-webhook-url
-```
-
-Paste the copied link at the hidden prompt. Spotify Monitor saves only `WEBHOOK_URL` in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
-
-For a one-run override, `--webhook-url URL` uses a complete HTTPS destination without changing `.env`. The URL may remain visible in shell history or process listings, so prefer `--set-webhook-url` for normal setup.
-
-Keep the default provider in `spotify_monitor.conf`:
-
-```ini
-WEBHOOK_PROVIDER = "discord"
-```
 
 <a id="ntfy"></a>
 ### ntfy
@@ -542,6 +507,31 @@ WEBHOOK_HEADERS = {
 
 Header values support the same placeholders as `WEBHOOK_TEMPLATE`. They must be strings without line breaks. Headers apply to both Discord and ntfy. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication. Basic authentication is available through a custom `Authorization` header. Long ntfy messages are truncated with a visible marker so they remain notifications rather than attachments.
 
+<a id="discord"></a>
+### Discord
+
+If you are new to Discord, follow these steps to get your private webhook URL:
+
+1. Open your Discord server and choose the channel that should receive the alerts.
+2. Click **Edit Channel** then open **Integrations** > **Webhooks**.
+3. Click **New Webhook**, choose a name if you want then click **Copy Webhook URL**.
+4. Return to the terminal and run:
+
+```sh
+spotify_monitor --set-webhook-url
+```
+
+Paste the copied link at the hidden prompt. Spotify Monitor saves only `WEBHOOK_URL` in `.env` so it does not appear in your command history. Treat this link like a password because anyone who has it can post through it.
+
+For a one-run override, `--webhook-url URL` uses a complete HTTPS destination without changing `.env`. The URL may remain visible in shell history or process listings, so prefer `--set-webhook-url` for normal setup.
+
+Keep the default provider in `spotify_monitor.conf`:
+
+```ini
+WEBHOOK_PROVIDER = "discord"
+```
+
+<a id="advanced-discord-format-customization"></a>
 ### Advanced Discord-format customization
 
 `WEBHOOK_USERNAME` and `WEBHOOK_AVATAR_URL` change the sender name and HTTPS avatar for Discord-format payloads:
@@ -591,7 +581,7 @@ WEBHOOK_INACTIVE_NOTIFICATION = True
 WEBHOOK_ERROR_NOTIFICATION = True
 ```
 
-A `WEBHOOK_URL` left unset, or left at its `your_webhook_url` placeholder, switches webhook alerts off at startup instead of failing at the first alert. `--verbose` reports why.
+A `WEBHOOK_URL` that is unset or still at its `your_webhook_url` placeholder switches webhook alerts off at startup instead of failing at the first alert. `--verbose` reports why.
 
 This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
 
@@ -635,7 +625,7 @@ Parts with the same name mean the same thing in [spotify_profile_monitor](https:
 | Theme key | Colours |
 | --- | --- |
 | `header` | The startup banner plus the Setup Wizard and Doctor headings |
-| `section` | Commands the wizard tells you to run, and the Doctor section names |
+| `section` | Commands the wizard tells you to run plus the Doctor section names |
 | `username` | Spotify display names |
 | `id` | Spotify user IDs and URIs. A configuration file that still sets `user_uri_id` keeps working |
 | `status_active` | `ACTIVE`, `PRIVATE MODE`, `RESUMED` and `LOOP` |
@@ -652,7 +642,7 @@ Parts with the same name mean the same thing in [spotify_profile_monitor](https:
 | `timestamp_value` | The timestamp value |
 | `info`, `warning`, `error`, `signal` | Informational, warning, error and received-signal lines |
 | `email`, `webhook` | Notification delivery lines |
-| `date`, `date_range` | Single dates and times, and date or hour ranges |
+| `date`, `date_range` | Single dates and times plus date or hour ranges |
 | `boolean_true`, `boolean_false` | `True` / `Enabled` and `False` / `Disabled` |
 | `count_up`, `count_down` | Reported changes only, such as `from 10 to 12` and the `(+2)` / `(-2)` differences. A static count is left plain |
 | `link` | URLs |
@@ -720,7 +710,7 @@ NTFY_ACCESS_TOKEN="tk_your_ntfy_access_token"
 
 By default, Friend Activity looks for `.env` while an explicit scrobble health run looks for `.env.scrobble_health`. The search starts in the current directory then continues in each parent directory.
 
-On macOS, Linux and Unix, send `SIGHUP` to reload saved credentials without restarting. See [Reloading secrets and backup contents](#reloading-secrets-and-backup-contents) for precedence and recovery behavior.
+On macOS, Linux and Unix, send `SIGHUP` to reload saved credentials without restarting.
 
 Browser import does not use the parent-directory search when choosing where to write. Without `--env-file`, it writes to `.env` in the current directory.
 
@@ -749,13 +739,15 @@ Placeholder values such as `your_...` count as unset.
 
 Credential commands preserve unrelated `.env` settings and comments. Clearing a secret removes its assignment, allowing an underlying environment or configuration value to apply.
 
+<a id="tls-verification"></a>
+## TLS Verification
 
-### Reloading secrets and backup contents
+Spotify Monitor verifies the TLS certificate of every server it contacts: Spotify, Last.fm, the connectivity check endpoint, downloaded artwork, the mail server that delivers email alerts and, when enabled, the webhook service.
 
-Setup keeps the saved `DOTENV_FILE` unless you pass `--env-file PATH`. If you change files, setup asks you to review credentials again. Existing values in the new file, including empty values, stay unless you replace them. Retained credentials fill missing entries when you save. The old file stays intact.
+`VERIFY_SSL` covers every connection the tool makes, including the mail server and the OAuth token requests the Spotipy library sends. Set it to `False` only on a network that intercepts TLS with its own certificate authority, such as a corporate proxy. With verification off, an intercepted connection cannot be told apart from the real service.
 
-Before replacing an older configuration, setup preserves retained inline credentials in the selected dotenv file without overwriting existing keys. If this preservation fails, the original configuration is kept.
+```ini
+VERIFY_SSL = True
+```
 
-On macOS, Linux and Unix, `SIGHUP` reloads file-supplied secrets. Command-line values take priority, followed by nonempty environment values exported before startup, dotenv entries and configuration fallbacks. Change an argument or export and restart to replace those values. Removing a file entry uses the next available source or clears the secret. An unreadable or invalid file leaves working credentials unchanged. Empty exports are ignored. An empty dotenv entry overrides the configuration.
-
-Setup backups omit inline credentials. `--generate-config` backups are exact copies and may contain credentials. Secret replacement does not back up the dotenv file.
+The startup summary shows `TLS verification` and [`--doctor`](troubleshooting.md#doctor-preflight) reports a warning while it is off.

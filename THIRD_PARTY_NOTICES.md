@@ -43,7 +43,7 @@ The debug secret grabber image is built on the official [`python:3.13-slim-trixi
 
 ## External data sources
 
-The debug utility `spotify_monitor_totp_test --download-secrets` can fetch current TOTP secret material from [xyloflake/spot-secrets-go](https://github.com/xyloflake/spot-secrets-go). Nothing from that project is vendored, redistributed or used by the main monitoring tool. The download happens only when you pass that flag explicitly, and the source URL is configurable through `SECRET_CIPHER_DICT_URL`.
+The debug utility `spotify_monitor_totp_test --download-secrets` can fetch current TOTP secret material from [xyloflake/spot-secrets-go](https://github.com/xyloflake/spot-secrets-go). Nothing from that project is vendored, redistributed or used by the main monitoring tool. The download happens only when you pass that flag explicitly and the source URL is configurable through `SECRET_CIPHER_DICT_URL`.
 
 ## Reporting a licensing problem
 
