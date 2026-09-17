@@ -32,6 +32,7 @@ same absent-dependency behavior a user would see.
 
 | File | Area under test |
 | --- | --- |
+| `test_dotenv_quoted_keys.py` | Quoted dotenv keys, export prefixes, multiline values and duplicate removal |
 | `test_config_and_inputs.py` | Target normalization, CLI and config precedence, duration parsing, URI to URL conversion |
 | `test_config_effects.py` | Config-file settings reaching their consumers, including check interval, connectivity and TLS verification |
 | `test_setup_wizard.py` | Prompt helpers, validation, reprompting and the generated configuration |
