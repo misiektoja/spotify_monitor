@@ -1144,6 +1144,17 @@ def test_a_missing_target_warns_with_the_shared_detail(monkeypatch):
     assert checks[0].detail == "Nothing will be monitored until one is given"
 
 
+# Verifies a quoted interval is reported as an unusable setting, since comparing it against the safe floor used to raise
+def test_an_interval_that_is_not_a_number_is_reported_rather_than_raised(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", "3600")
+
+    labels = [item.label for item in monitor.doctor_check_configuration()]
+
+    assert "One or more numeric settings are invalid" in labels
+    assert "Check intervals are short" not in labels
+
+
 # Verifies configured mail settings with no alert types selected warn, since nothing would ever be emailed
 def test_email_configured_but_nothing_selected_warns(monkeypatch):
     configure_valid_doctor(monkeypatch)
