@@ -1,6 +1,7 @@
 """Tests for VERIFY_SSL: which requests honor it, what is reported while it is off and its shipped default."""
 
 import re
+import ast
 import ssl
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +13,6 @@ import spotify_monitor as monitor
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8")
-OUTBOUND_CALLS = sorted(set(re.findall(r"(?:req|requests|SESSION|WEBHOOK_SESSION|session|temp_session|request_session)\.(?:get|post|head)\([^\n]*", SOURCE)))
 WEBHOOK_URL = "https://discord.com/api/webhooks/123456789/aVeryLongWebhookTokenValue"
 
 
@@ -37,17 +37,6 @@ class RecordingRequests:
 def tls_setting(monkeypatch):
     monkeypatch.setattr(monitor, "VERIFY_SSL", monitor.VERIFY_SSL)
     return monkeypatch
-
-
-# Verifies the sweep below is looking at real call sites rather than passing on an empty list
-def test_the_outbound_request_sweep_finds_the_call_sites():
-    assert len(OUTBOUND_CALLS) >= 15, OUTBOUND_CALLS
-
-
-@pytest.mark.parametrize("call", OUTBOUND_CALLS)
-# Verifies every outbound request carries the setting, so no call site can quietly skip the check
-def test_every_outbound_request_passes_the_setting(call):
-    assert "verify=VERIFY_SSL" in call or "verify=verify" in call, call
 
 
 @pytest.mark.parametrize("verify", [True, False])
@@ -173,3 +162,43 @@ def test_the_spotipy_session_follows_the_tls_setting(monkeypatch):
     monitor.spotify_get_access_token_from_oauth_app("client-id", "client-secret", use_file_cache=False)
 
     assert captured["session"].verify is False
+
+
+HTTP_METHODS = frozenset(("get", "post", "put", "patch", "delete", "head", "options", "request"))
+# The expressions that carry the TLS decision, so a call passing anything else is a second opinion
+VERIFY_ARGUMENTS = frozenset(("VERIFY_SSL", "verify",))
+# A guard against the sweep silently matching nothing after a rename: the tool has 18 call sites today
+MINIMUM_HTTP_CALL_SITES = 18
+
+
+# Returns every name the module binds to a requests session, so a session added later is swept without editing this
+def session_receivers():
+    return {node.targets[0].id for node in ast.walk(ast.parse(SOURCE)) if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Call) and ast.unparse(node.value.func).endswith("Session")}
+
+
+# Returns every outbound HTTP call in the module as a line number paired with its keyword arguments
+def http_call_sites():
+    receivers = {"req", "requests"} | session_receivers()
+    for node in ast.walk(ast.parse(SOURCE)):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        receiver = node.func.value
+        if node.func.attr in HTTP_METHODS and isinstance(receiver, ast.Name) and receiver.id in receivers:
+            yield node.lineno, {keyword.arg: keyword.value for keyword in node.keywords}
+
+
+# Verifies every outbound request passes the setting, so a call site added later cannot keep verifying while it is off
+def test_every_outbound_request_passes_the_setting():
+    calls = list(http_call_sites())
+
+    assert len(calls) >= MINIMUM_HTTP_CALL_SITES, f"the sweep found {len(calls)} HTTP calls, so it no longer matches how requests are made"
+    missing = [line for line, keywords in calls if "verify" not in keywords or ast.unparse(keywords["verify"]) not in VERIFY_ARGUMENTS]
+    assert not missing, f"spotify_monitor.py lines {missing} make an HTTP call that does not pass the TLS setting"
+
+
+# Verifies every outbound request carries a deadline, since a call without one hangs the monitoring loop indefinitely
+def test_every_outbound_request_carries_a_deadline():
+    # A call forwarding **kwargs takes its deadline from the helper that fills them in, which is not readable here
+    missing = [line for line, keywords in http_call_sites() if "timeout" not in keywords and None not in keywords]
+
+    assert not missing, f"spotify_monitor.py lines {missing} make an HTTP call without a timeout"
