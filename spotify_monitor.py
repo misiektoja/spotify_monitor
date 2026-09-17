@@ -2138,12 +2138,57 @@ def generate_config_with_current_values(values=None) -> str:
     return rendered
 
 
+# Removes inline secret assignments from a setup backup while preserving other configuration text
+def redact_config_backup(content):
+    import ast
+    try:
+        text = content.decode("utf-8")
+        tree = ast.parse(text)
+    except (UnicodeError, SyntaxError) as exc:
+        raise ValueError("Cannot create a secret-free configuration backup. Correct the existing file's UTF-8 encoding or assignment syntax before running setup") from exc
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line.encode("utf-8")))
+    replacements = []
+    secret_values = set()
+    for statement in ast.walk(tree):
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        if any(isinstance(target, ast.Name) and target.id in SECRET_KEYS for target in targets):
+            value = statement.value
+            if value is not None and value.end_lineno is not None and value.end_col_offset is not None:
+                start = offsets[value.lineno - 1] + value.col_offset
+                end = offsets[value.end_lineno - 1] + value.end_col_offset
+                replacements.append((start, end))
+                if isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value:
+                    secret_values.add(value.value)
+    for start, end in sorted(replacements, reverse=True):
+        content = content[:start] + b'""' + content[end:]
+    import io
+    import tokenize
+    text = content.decode("utf-8")
+    lines = text.splitlines(keepends=True)
+    for token in tokenize.generate_tokens(io.StringIO(text).readline):
+        if token.type == tokenize.COMMENT:
+            comment = token.string
+            for secret in sorted(secret_values, key=len, reverse=True):
+                comment = comment.replace(secret, "<redacted>")
+            row, start = token.start
+            end = token.end[1]
+            lines[row - 1] = lines[row - 1][:start] + comment + lines[row - 1][end:]
+    return "".join(lines).encode("utf-8")
+
+
 # Copies an existing file to a timestamped owner-only .bak beside it, returning the backup path or None when there was nothing to copy
-def create_timestamped_backup(destination, attempts=100):
+def create_timestamped_backup(destination, attempts=100, redact_secrets=False):
     destination_path = Path(destination).expanduser()
     if not destination_path.is_file():
         return None
     existing_bytes = destination_path.read_bytes()
+    if redact_secrets:
+        existing_bytes = redact_config_backup(existing_bytes)
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     for attempt in range(attempts):
         suffix = f".{stamp}.bak" if attempt == 0 else f".{stamp}-{attempt}.bak"
@@ -2169,7 +2214,7 @@ def create_timestamped_backup(destination, attempts=100):
 
 
 # Writes validated config content atomically and backs up an existing destination
-def write_config_file(destination, content: str):
+def write_config_file(destination, content: str, redact_secrets=False):
     destination_path = Path(destination).expanduser()
     validate_config_content(content, str(destination_path))
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2184,7 +2229,7 @@ def write_config_file(destination, content: str):
             os.fsync(temporary_file.fileno())
 
         if destination_path.exists():
-            backup_path = create_timestamped_backup(destination_path)
+            backup_path = create_timestamped_backup(destination_path, redact_secrets=redact_secrets)
 
         os.replace(temporary_path, destination_path)
         temporary_path = None
@@ -3600,6 +3645,13 @@ def _colorize_quoted_name(match, style_name):
     return f"{match.group(1)}{colorize(style_name, name)}{match.group(3)}"
 
 
+# Colors a count transition using decimal text comparison without unbounded integer conversion
+def _colorize_count_change(match):
+    before, after = ("".join(str(int(digit)) for digit in match.group(index)).lstrip("0") or "0" for index in (2, 4))
+    style = "count_up" if (len(after), after) >= (len(before), before) else "count_down"
+    return f"{match.group(1)}{colorize(style, match.group(2))}{match.group(3)}{colorize(style, match.group(4))}"
+
+
 # Applies colour rules to a single output line
 def _colorize_line(line):
     lowered = line.lower()
@@ -3657,7 +3709,7 @@ def _colorize_line(line):
     line = _sub_outside_color(_USER_FIELD_RE, lambda mo: f"{mo.group(1)}{mo.group(2)}{colorize('id', mo.group(3))}", line)
 
     # Highlight counters and their differences
-    line = _sub_outside_color(_FROM_TO_COUNT_RE, lambda mo: f"{mo.group(1)}{colorize('count_up' if int(mo.group(4)) >= int(mo.group(2)) else 'count_down', mo.group(2))}{mo.group(3)}{colorize('count_up' if int(mo.group(4)) >= int(mo.group(2)) else 'count_down', mo.group(4))}", line)
+    line = _sub_outside_color(_FROM_TO_COUNT_RE, _colorize_count_change, line)
     line = _sub_outside_color(_DIFF_COUNT_UP_RE, lambda mo: colorize("count_up", mo.group(0)), line)
     line = _sub_outside_color(_DIFF_COUNT_DOWN_RE, lambda mo: colorize("count_down", mo.group(0)), line)
 
@@ -10515,7 +10567,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     auth = state.auth
     config_content = generate_config_with_current_values(config_values)
     try:
-        write_status = write_config_file(config_path, config_content)
+        write_status = write_config_file(config_path, config_content, redact_secrets=True)
     except Exception:
         print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
         raise SystemExit(1) from None
@@ -10684,7 +10736,7 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     auth = state.auth
     config_content = generate_config_with_current_values(config_values)
     try:
-        write_status = write_config_file(config_path, config_content)
+        write_status = write_config_file(config_path, config_content, redact_secrets=True)
     except Exception:
         print(f"Setup could not write configuration file '{config_path}'. No dotenv changes were attempted.")
         raise SystemExit(1) from None

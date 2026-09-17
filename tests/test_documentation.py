@@ -156,7 +156,7 @@ def test_docs_cover_portable_mounts_and_safe_dotenv_copy():
 def test_installation_docs_cover_delivery_and_upgrade_commands():
     installation = read_asset("docs/installation.md")
     commands = fenced_code_lines(installation)
-    required_commands = ("pip install spotify_monitor", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt", "pip install --upgrade -r requirements.txt", "docker build --pull --tag spotify-monitor:local .", "docker pull misiektoja/spotify-monitor:latest", "docker compose pull")
+    required_commands = ("pip install spotify_monitor", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt", "pip install --upgrade -r requirements.txt", "docker build --pull --no-cache --tag spotify-monitor:local .", "docker pull misiektoja/spotify-monitor:latest", "docker compose pull")
     for command in required_commands:
         assert command in commands
     assert_concepts(installation, "PyPI", "Docker Hub", "Docker Compose", "Manual")
