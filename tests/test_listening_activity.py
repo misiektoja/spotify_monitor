@@ -333,11 +333,11 @@ def live_track_info(token, uri):
 
 
 # Runs selected live snapshots through the real monitoring loop
-def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name=""):
+def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name="", track_info=live_track_info):
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 45)
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", Mock(return_value="token"))
-    monkeypatch.setattr(monitor, "spotify_get_track_info", live_track_info)
+    monkeypatch.setattr(monitor, "spotify_get_track_info", track_info)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
     payloads = [monitor.spotify_normalize_listening_activity({"entities": [snapshot]}) for snapshot in snapshots]
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads))
@@ -349,7 +349,7 @@ def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name=""):
 # Same-track playing and pause updates neither add songs nor expire an ongoing long track
 def test_live_pause_resume_and_timestamps_do_not_duplicate_tracks(loop_environment, monkeypatch, capsys):
     now = loop_environment.now
-    snapshots = [feed_entity(now - 600), feed_entity(now), feed_entity(now + 30, playing=False), feed_entity(now + 60)]
+    snapshots = [feed_entity(now), feed_entity(now), feed_entity(now + 30, playing=False), feed_entity(now + 60)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     output = capsys.readouterr().out
     assert "\nTrack:\t\t\t\t" in output
@@ -522,7 +522,6 @@ def session_track_info(token, uri):
 
 # Played time follows the feed's track-start timestamps rather than polling moments, so fully played tracks are not reported as cut short
 def test_live_full_tracks_follow_feed_timestamps(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "spotify_get_track_info", session_track_info)
     now = loop_environment.now
     starts = [(now - 5, TRACK_URI), (now + 198, OTHER_TRACK_URI), (now + 438, THIRD_TRACK_URI)]
     snapshots = []
@@ -531,7 +530,7 @@ def test_live_full_tracks_follow_feed_timestamps(loop_environment, monkeypatch, 
         sampled_at = now if sample == 0 else now + 30 * (sample - 1)
         started, track = [entry for entry in starts if entry[0] <= sampled_at][-1]
         snapshots.append(feed_entity(started, track=track))
-    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, track_info=session_track_info)
     output = capsys.readouterr().out
     assert "User played the previous track for" not in output
     assert "Songs played:\t\t\t2 (3 minutes, 23 seconds)" in output
@@ -591,6 +590,76 @@ def test_live_skips_follow_previous_track_and_inactive_report_summarizes_session
     assert "User played 3 songs, skipped 1 songs (33%)" in body
     assert "Second" in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED", 1)[0]
     assert "Third" not in body.split("Recently listened songs in this session:", 1)[1].split("SKIPPED", 1)[0]
+    # The last-track line joins the session summary after the song counts with the time in bold
+    assert "User played 3 songs, skipped 1 songs (33%)\n\nUser played the last track for: 0 seconds (out of 16 minutes, 40 seconds) (0%)\n\nRecently listened songs in this session:" in body
+    assert "Duration: 16 minutes, 40 seconds\n\nUser played the last track" not in body
+    assert "User played the last track for: <b>0 seconds</b> (out of 16 minutes, 40 seconds) (0%)<br><br>Recently listened songs" in delivery.call_args.args[3]
+    assert "for: <b>30 seconds</b> (out of 3 minutes, 20 seconds) (15%)" in delivery.call_args_list[1].args[3]
+
+
+# Same-track timestamp moves are position changes unless they land on a predicted finish, and a finish is settled by the next sample
+def test_live_timing_classifies_same_track_timestamp_moves():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=50, max_gap=60)
+    assert timing.observe(1000, True, 60, 1000, track_changed=True) == ("", 0)
+    timing.start_track(1000, True, source_ts=1000, duration=50, max_gap=60)
+    assert timing.finishes == [(1050, 1000, "start")]
+    # Spotify reports the same start again two seconds later, which keeps the original anchor
+    assert timing.observe(1005, True, 60, 1002) == ("", 0)
+    assert timing.anchor_ts == 1000
+    assert timing.observe(1040, True, 60, 1037) == ("", 0)
+    assert timing.anchor_ts == 1037 and timing.finishes[-1] == (1087, 1037, "seek") and not timing.repeat_confirmed()
+    # The finish lands where the observed start predicts it, so the earlier update did not move the playhead
+    assert timing.observe(1050, True, 60, 1048) == ("", 0)
+    assert timing.repeat_confirmed() and timing.proven_restart() is None
+    assert timing.observe(1055, True, 60, 1049, track_changed=True) == ("", 0)
+    assert timing.event_trusted and timing.track_seconds == 50
+    assert timing.played_for(50, 1) == ("50 seconds", False, False)
+    timing.start_track(1055, True, source_ts=1049, duration=50, max_gap=60)
+    assert not timing.repeat_confirmed() and timing.finishes == [(1099, 1049, "start")]
+
+
+# Formats the played-for text for HTML bodies with the time and the SKIPPED mark in bold
+@pytest.mark.parametrize("text,expected", [("30 seconds (out of 3 minutes) (16%)", "<b>30 seconds</b> (out of 3 minutes) (16%)"), ("1 minute (out of 3 minutes) - SKIPPED (33%)", "<b>1 minute</b> (out of 3 minutes) - <b>SKIPPED</b> (33%)"), ("3 minutes", "<b>3 minutes</b>")])
+def test_format_played_for_html(text, expected):
+    assert monitor.format_played_for_html(text) == expected
+
+
+# A feed timestamp landing where the track is predicted to finish, followed by the same track still playing, is the same track played again and counted as a song on loop
+def test_live_repeats_count_as_plays_and_loops(loop_environment, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(monitor, "SONG_ON_LOOP_VALUE", 3)
+    now = loop_environment.now
+    starts = [now, now + 200, now + 400]
+    snapshots = []
+    for sample in range(17):
+        sampled_at = now if sample == 0 else now + 30 * (sample - 1)
+        snapshots.append(feed_entity([started for started in starts if started <= sampled_at][-1]))
+    snapshots.extend(feed_entity(now + 460, playing=False) for _ in range(3))
+    destination = tmp_path / "observed.csv"
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
+    output = capsys.readouterr().out
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 3
+    assert "User played the previous track for" not in output
+    assert "Songs played:\t\t\t2 (3 minutes, 20 seconds)" in output
+    assert "Songs played:\t\t\t3 (6 minutes, 40 seconds)" in output
+    assert output.count("User plays song on LOOP (3 times)") == 1
+    assert "User played the last track for: 1 minute (out of 3 minutes, 20 seconds) (30%)\n─" in output
+    assert "*** User played 3 songs\n*** User played 1 songs on loop" in output
+    assert len(destination.read_text().splitlines()) == 4
+
+
+# A same-track timestamp move that lands on no predicted finish moved the playhead, which shows as an overlong played time once the track finishes late
+def test_live_position_changes_extend_the_played_time(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    snapshots = [feed_entity(now, track=OTHER_TRACK_URI)] * 2 + [feed_entity(now + 30)] * 5 + [feed_entity(now + 180)] * 6 + [feed_entity(now + 360)] * 2 + [feed_entity(now + 400, track=OTHER_TRACK_URI)] + [feed_entity(now + 430, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "User played the previous track for: 5 minutes, 30 seconds (out of 3 minutes, 20 seconds) (165%)\n─" in output
+    assert "User played the previous track for: 40 seconds (out of 3 minutes, 20 seconds) - SKIPPED (20%)\n─" in output
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert "Songs played:\t\t\t3 (6 minutes)" in output
+    assert "LOOP" not in output
 
 
 # Local playback mirrors pause and resume without restarting the current track
@@ -652,3 +721,137 @@ def test_live_csv_and_notifications_count_track_changes(loop_environment, monkey
     assert "Songs played: 2 (1 minute)" in delivery.call_args.args[2]
     assert "User played the previous track (Artist - First) for: 30 seconds (out of 3 minutes, 20 seconds) (15%)" in delivery.call_args.args[2]
     assert "SKIPPED" not in delivery.call_args.args[2]
+
+
+# The predicted finish moves by the paused time, so a track that plays to its end after a resume finishes where expected
+def test_live_timing_shifts_the_finish_by_the_paused_time():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=200, max_gap=60)
+    assert timing.observe(950, True, 60, 950, track_changed=True) == ("", 0)
+    timing.start_track(950, True, source_ts=950, duration=200, max_gap=60)
+    assert timing.finishes == [(1150, 950, "start")]
+    assert timing.observe(1010, False, 60, 1000) == ("paused", 100)
+    assert timing.observe(1070, True, 60, 1060) == ("resumed", 60)
+    assert timing.finishes == [(1210, 950, "start")]
+    assert timing.observe(1120, True, 60, 1060) == ("", 0)
+    assert timing.observe(1160, True, 60, 1150) == ("", 0)
+    assert not timing.repeat_confirmed()
+    assert timing.observe(1215, True, 60, 1208) == ("", 0)
+    assert timing.repeat_confirmed()
+
+
+# A finish one track length after a position change proves that the change put the playhead at the track start, so the play that began there can be split off
+def test_live_timing_proves_a_restart_after_a_position_change():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(1000, True, 60, 1000)
+    timing.start_track(1000, True, new_session=True, source_ts=1000, duration=200, max_gap=60)
+    assert timing.finishes == [(1200, 1000, "unobserved")]
+    assert timing.observe(1055, True, 60, 1050) == ("", 0)
+    for sampled_at in (1105, 1155, 1205):
+        assert timing.observe(sampled_at, True, 60, 1050) == ("", 0)
+    assert timing.observe(1255, True, 60, 1250) == ("", 0)
+    assert timing.repeat_confirmed() and timing.proven_restart() == 1050
+    timing.split_at_restart(1050)
+    assert timing.played_for(200, 1) == ("50 seconds (out of 3 minutes, 20 seconds) (25%)", False, True)
+    timing.start_repeat(1050)
+    assert timing.track_started_at == 1050 and timing.finishes == [(1250, 1050, "start")]
+    assert timing.repeat_confirmed() and timing.proven_restart() is None
+    assert timing.observe(1255, True, 60, 1250, track_changed=True) == ("", 0)
+    assert timing.played_for(200, 1) == ("3 minutes, 20 seconds", False, False)
+    timing.start_track(1255, True, source_ts=1250, duration=200, max_gap=60)
+    assert not timing.repeat_confirmed() and timing.finishes == [(1450, 1250, "start")]
+
+
+# A position change that lands a few seconds into the track ends sooner than a restart would, so the finish credits the play from its start
+@pytest.mark.parametrize("finish_ts, proven", [(1247, True), (1246, False)])
+def test_live_timing_proves_a_restart_only_when_the_finish_lands_close_to_one_length_after_the_move(finish_ts, proven):
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(1000, True, 60, 1000)
+    timing.start_track(1000, True, new_session=True, source_ts=1000, duration=200, max_gap=60)
+    assert timing.observe(1055, True, 60, 1050) == ("", 0)
+    for sampled_at in (1105, 1155, 1205):
+        assert timing.observe(sampled_at, True, 60, 1050) == ("", 0)
+    assert timing.observe(finish_ts + 2, True, 60, finish_ts) == ("", 0)
+    assert timing.repeat_confirmed()
+    assert (timing.proven_restart() == 1050) == proven
+    if not proven:
+        assert timing.observe(1251, True, 60, finish_ts + 1, track_changed=True) == ("", 0)
+        assert timing.played_for(200, 1) == ("4 minutes, 6 seconds (out of 3 minutes, 20 seconds) (123%)", False, True)
+
+
+# A position change landing a few seconds into the track is not turned into a backdated play when the track finishes sooner than a restart would
+def test_live_position_change_near_the_start_is_not_a_restart(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    snapshots = [feed_entity(now)] * 3 + [feed_entity(now + 50)] * 7 + [feed_entity(now + 245)] + [feed_entity(now + 246)] * 2 + [feed_entity(now + 330, playing=False)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "SKIPPED" not in output
+    assert "User played the previous track for: 4 minutes, 5 seconds (out of 3 minutes, 20 seconds) (123%)\n─" in output
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 246)}" in output
+    assert "Songs played:\t\t\t2 (4 minutes, 6 seconds)" in output
+    assert "*** User played 2 songs" in output
+
+
+# A track restarted part-way through a play is reported once the next full play proves it, as a backdated track block that counts and loops like any other play
+def test_live_restart_part_way_through_a_play_is_reported_when_the_next_play_proves_it(loop_environment, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(monitor, "SONG_ON_LOOP_VALUE", 3)
+    now = loop_environment.now
+    snapshots = [feed_entity(now)] * 3 + [feed_entity(now + 50)] * 3 + [feed_entity(now + 150)] * 7 + [feed_entity(now + 350)] * 2 + [feed_entity(now + 380, playing=False)] * 3
+    destination = tmp_path / "observed.csv"
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, str(destination))
+    output = capsys.readouterr().out
+    assert "User played the previous track for: 2 minutes, 30 seconds (out of 3 minutes, 20 seconds) (75%)\n─" in output
+    assert output.count("User played the previous track for") == 1
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 3
+    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 150)}" in output
+    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 350)}" in output
+    assert "Songs played:\t\t\t2 (2 minutes, 30 seconds)" in output
+    assert "Songs played:\t\t\t3 (5 minutes, 50 seconds)" in output
+    assert output.count("User plays song on LOOP (3 times)") == 1
+    assert "User played the last track for: 30 seconds (out of 3 minutes, 20 seconds) (15%)\n─" in output
+    assert "*** User played 3 songs\n*** User played 1 songs on loop" in output
+    assert len(destination.read_text().splitlines()) == 4
+    # The backdated play is reported without another check or sleep
+    assert len(loop_environment.sleeps) == len(snapshots) - 1
+
+
+# A track that plays to its end after a pause and resume counts as a repeat
+def test_live_restart_after_a_resume_counts_as_a_play(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    snapshots = [feed_entity(now, track=OTHER_TRACK_URI)] * 2 + [feed_entity(now + 30)] + [feed_entity(now + 55, playing=False)] * 2 + [feed_entity(now + 110)] * 6 + [feed_entity(now + 285)] * 2 + [feed_entity(now + 340, playing=False)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "User PAUSED playing after 55 seconds" in output
+    assert "User RESUMED playing after 55 seconds" in output
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert "Songs played:\t\t\t3 (4 minutes, 45 seconds)" in output
+    assert "*** User played 3 songs" in output
+
+
+# Spotify announces a finishing track a moment before its end, so a finish followed by another track is one complete play and no repeat
+def test_live_finish_before_another_track_is_not_a_repeat(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    snapshots = [feed_entity(now)] * 8 + [feed_entity(now + 198)] + [feed_entity(now + 200, track=OTHER_TRACK_URI)] + [feed_entity(now + 230, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 1
+    assert output.count("\nTrack:\t\t\t\tArtist - Second") == 1
+    assert "User played the previous track for" not in output
+    assert "Songs played:\t\t\t2 (3 minutes, 20 seconds)" in output
+    assert "User played the last track for: 30 seconds (out of 3 minutes, 20 seconds) (15%)\n─" in output
+    assert "*** User played 2 songs" in output
+
+
+# A same-track update that does not move the playhead does not hide the repeat that the finish predicted by the start confirms
+def test_live_update_without_a_position_change_does_not_hide_the_repeat(loop_environment, monkeypatch, capsys):
+    now = loop_environment.now
+    snapshots = [feed_entity(now, track=OTHER_TRACK_URI)] * 2 + [feed_entity(now + 30)] + [feed_entity(now + 45)] * 6 + [feed_entity(now + 228)] * 2 + [feed_entity(now + 260, playing=False)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert output.count("User played the previous track for") == 1
+    assert "Songs played:\t\t\t3 (3 minutes, 48 seconds)" in output
+    assert "User played the last track for: 32 seconds (out of 3 minutes, 20 seconds) (16%)\n─" in output
+    assert "*** User played 3 songs" in output

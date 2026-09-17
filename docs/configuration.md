@@ -91,7 +91,7 @@ spotify_monitor --friend-activity-backend listening_activity --list-friends
 | Value | Behavior |
 | --- | --- |
 | `"listening_activity"` (default) | Uses Spotify's Listening Activity feed. Shows the current track when Spotify reports playback and the last shared track when playback stops. |
-| `"buddylist"` | Uses the legacy Friend Activity endpoint and its completed-track timing. Retains skip, crossfade and same-track repeat estimates. |
+| `"buddylist"` | Uses the legacy Friend Activity endpoint and its completed-track timing. Keeps the skip, crossfade and loop estimates made from completed tracks. |
 
 Existing configuration files without this setting use `"listening_activity"`. To restore the old behavior, set `FRIEND_ACTIVITY_BACKEND = "buddylist"`. This choice is independent of `TOKEN_SOURCE` and does not affect scrobble health.
 
@@ -109,15 +109,17 @@ Each backend has its own timers. The live feed reports playback changes as they 
 
 The TRAP and ABRT signals adjust the inactivity timer of the selected backend. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
 
-The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
+The live feed requests up to 100 entries. It can contain a different set of users from the legacy endpoint. Spotify lets a user share listening activity with all followers or with selected people only. A user who picks selected people disappears from the legacy endpoint and does not come back after switching to all followers again. The live feed still shows that user to the accounts allowed by the setting. If a friend you follow is missing with the legacy backend, use the live backend. Neither source guarantees a complete history or that every follower is visible. There is no automatic switch between them after an error.
 
-Live tracking starts a session only when playback is observed. Starting the tool while playback is stopped shows the last shared track without counting it or sending an ACTIVE notification. The first observed playback produces the full track report and counts one track, even if it resumes that same track.
+Live tracking starts a session when playback is observed. Starting the tool while playback is stopped shows the last shared track without counting it or sending an ACTIVE notification.
 
-During a session, **PAUSED** shows how long playback ran since the session start or the last resume, with the pause moment as the last activity, and **RESUMED** shows the pause length. A brief pause keeps the session open and does not add another track or send another ACTIVE notification. The inactivity timer ends the session after playback stops. Playback observed after the session ends starts a new session. Paused timestamps alone cannot start or extend a session.
+During a session, **PAUSED** and **RESUMED** report each pause and its length. A pause keeps the session open. The session ends when the inactivity timer runs out after playback stops.
 
-**Played duration and skips** are reported before the next track: `User played the previous track for: 1 minute, 45 seconds (out of 3 minutes, 20 seconds) - SKIPPED (52%)`. Track starts, pauses, resumes and track changes are timed with the activity timestamps from the feed when they are newer than the previous check, so the result does not depend on polling moments. Pauses are excluded and tracks played to the end are not reported. A track first seen already playing or after a gap in observations reports its played time but is never marked as skipped. `SKIPPED_SONG_THRESHOLD` controls the skip threshold. Inactivity reports show how long the last track played, completed pauses with their share of the session and skipped tracks in the recent-track list.
+**Played duration and skips** are reported before the next track: `User played the previous track for: 1 minute, 45 seconds (out of 3 minutes, 20 seconds) - SKIPPED (52%)`. Pauses are excluded and tracks played to the end are not reported. A track first seen already playing or after a gap in checks is never marked as skipped. `SKIPPED_SONG_THRESHOLD` controls the skip threshold. Inactivity reports list the last track's played time, the pauses and the skipped tracks of the session.
 
-Polling can miss short tracks, seeks and changes between checks. When a feed timestamp is unchanged or not plausible, the check time is used instead and a played duration within one polling interval of the track length is not reported. Played durations do not prove completion. The live feed does not provide playback position or reliable replay evidence, so crossfade and same-track loop detection remain available only with the legacy backend.
+**Songs on loop** work as with the legacy backend. A song played again from its start counts as another play, and `SONG_ON_LOOP_VALUE` plays in a row produce the `User plays song on LOOP` line and the loop alert. Spotify reports the end of a track a moment before it finishes, so the next play appears at the following check. A song restarted before its end also counts, once it has played through, and its track block then shows the restart time as `Last activity`. A track played longer than its length, for example after moving back within it, shows that time, such as `(165%)`.
+
+Polling can miss short tracks and quick changes between checks. Played durations do not prove completion. Crossfade detection remains available only with the legacy backend.
 
 The monitor obtains missing user, track and playlist names from Spotify's metadata services. Playlist names come from Spotify's playlist service, which also resolves personalized playlists such as Liked Songs, with the web-player metadata query as the fallback. If an optional user or playlist name is unavailable, it shows the user ID or context URI. Doctor checks activity visibility without requiring these metadata lookups.
 

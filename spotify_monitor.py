@@ -44,7 +44,7 @@ TOKEN_SOURCE = "cookie"
 # Friend Activity source: "listening_activity" for live activity or "buddylist" for legacy completed plays
 # Applies to monitoring, --list-friends, Doctor and cookie validation
 # Override for one run with --friend-activity-backend
-# Live activity times played tracks, pauses and skips from feed timestamps without crossfade or same-track repeat detection
+# Live activity monitors track plays, pauses, skips and repeating the same track using feed timestamps without detecting crossfades
 FRIEND_ACTIVITY_BACKEND = "listening_activity"
 
 # Spotify user to monitor by raw ID, Spotify user URI or Spotify profile URL
@@ -1020,6 +1020,15 @@ SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-acti
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
+
+# The feed sometimes reports one track start twice a few seconds apart, so a same-track timestamp this close to the previous one is not a position change
+LIVE_POSITION_JITTER = 3
+
+# A same-track timestamp at least the track length minus this many seconds after the last position change means the track played to its end
+LIVE_REPEAT_TOLERANCE = 5
+
+# A finish this close to one track length after a position change proves that the change restarted the track, since a move landing further into it ends sooner
+LIVE_RESTART_TOLERANCE = 3
 
 # Short-lived profile and context metadata avoids extra requests on every track change
 SP_ACTIVITY_METADATA_CACHE: dict = {}
@@ -7512,6 +7521,14 @@ class LivePlaybackTiming:
     event_trusted: bool = False
     # Whether the last sample was the first one, so its feed timestamp is the only start evidence
     first_sample: bool = False
+    # Feed timestamp of the last playback position change, ignoring duplicate start reports
+    anchor_ts: Optional[float] = None
+    # Length of the current track, used to predict when it finishes
+    duration: float = 0
+    # Predicted finish moments, each with the moment the playhead was at the track start and whether that start was observed, a seek or assumed
+    finishes: List[Tuple[float, float, str]] = field(default_factory=list)
+    # Finishing update seen by the last sample with the start it matched, settled by the next sample
+    pending_finish: Optional[Tuple[float, float, str]] = None
 
     # Reports whether the sample follows the previous one closely enough to treat the interval as observed
     def continuous(self, now: float, max_gap: float) -> bool:
@@ -7535,22 +7552,40 @@ class LivePlaybackTiming:
             self.segment_seconds += played
             self.segment_started_at = None
 
+    # Finds the predicted finish that a same-track timestamp update lands on, preferring the known start over a seek and an exact match over a late one
+    def _matching_finish(self, source_ts: float) -> Optional[Tuple[float, float, str]]:
+        if self.duration <= 0:
+            return None
+        exact = [entry for entry in self.finishes if entry[2] != "unobserved" and abs(source_ts - entry[0]) <= (LIVE_RESTART_TOLERANCE if entry[2] == "seek" else LIVE_REPEAT_TOLERANCE)]
+        if exact:
+            return min(exact, key=lambda entry: (entry[2] != "start", entry[1]))
+        for finish, origin, kind in self.finishes:
+            if kind != "seek" and source_ts >= finish - LIVE_REPEAT_TOLERANCE:
+                return finish, origin, kind
+        return None
+
     # Records a sample and reports pause or resume transitions with the playing or paused time they end
     def observe(self, now: float, playing: bool, max_gap: float, source_ts: Optional[float] = None, track_changed: bool = False) -> Tuple[str, float]:
         gap = not self.continuous(now, max_gap)
         was_playing = self.playing
         self.event_trusted = False
         self.first_sample = self.sampled_at is None
+        pending = self.pending_finish
+        self.pending_finish = None
         if gap:
-            # Playback across an unobserved interval is credited only up to the last sample
+            # Playback across an unobserved interval is credited only up to the last sample, and the last feed timestamp is the only start evidence left
             self.start_observed = False
             self.precise = False
+            self.finishes = [(self.anchor_ts + self.duration, self.anchor_ts, "unobserved")] if self.anchor_ts is not None else []
             if was_playing:
                 self._close_segment(self.sampled_at if self.sampled_at is not None else now)
         event, duration = "", 0.0
         if was_playing and not playing:
             at = self._event_time(now, source_ts, self.sampled_at if self.sampled_at is not None else now)
-            self._close_segment(at)
+            # A track that finished before the pause is credited up to its finish only
+            self._close_segment(min(at, pending[0]) if pending is not None else at)
+            if pending is not None:
+                self.track_seconds = max(self.track_seconds, self.duration)
             self.paused_at = at
             self.pauses += 1
             event, duration = "paused", self.segment_seconds
@@ -7563,21 +7598,72 @@ class LivePlaybackTiming:
                 self.paused_seconds += duration
                 self.paused_at = None
                 event = "resumed"
+                # The playhead keeps its position through a pause, so every predicted finish moves by the paused time
+                self.finishes = [(finish + duration, origin, kind) for finish, origin, kind in self.finishes]
         elif playing and track_changed:
-            at = self._event_time(now, source_ts, now)
-            self._close_segment(at)
+            if pending is not None and source_ts is not None and 0 <= source_ts - pending[0] <= LIVE_POSITION_JITTER:
+                # The sample settling a finish carries the finishing timestamp or one from the restart a moment later
+                at = source_ts
+                self.event_trusted = True
+            else:
+                at = self._event_time(now, source_ts, now)
+            self._close_segment(min(at, pending[0]) if pending is not None else at)
+            if pending is not None:
+                self.track_seconds = max(self.track_seconds, self.duration)
             self.segment_started_at = at
         elif playing and gap:
             self.segment_started_at = now
+        elif playing and source_ts is not None and self.source_ts is not None and self.anchor_ts is not None and source_ts > self.source_ts and source_ts - self.anchor_ts > LIVE_POSITION_JITTER:
+            matched = self._matching_finish(source_ts)
+            if matched is not None:
+                # The track reached its end, but whether it started again or another track followed is known from the next sample
+                self.pending_finish = (source_ts, matched[1], matched[2])
+            else:
+                # Any other moved timestamp on the same track is a seek or an update without a position change, and a finish one track length later proves it restarted the track
+                self.finishes.append((source_ts + self.duration, source_ts, "seek"))
+        if source_ts is not None and (self.anchor_ts is None or event or track_changed or gap or source_ts < self.anchor_ts or source_ts - self.anchor_ts > LIVE_POSITION_JITTER):
+            self.anchor_ts = source_ts
         self.sampled_at = now
         self.source_ts = source_ts
         self.playing = playing
         return event, duration
 
+    # Reports whether the last sample saw the current track finish, so a same-track playing sample now means it started again
+    def repeat_confirmed(self) -> bool:
+        return self.pending_finish is not None
+
+    # Timestamp of the position change that the pending finish proves to be a restart, since the track finished one length after it
+    def proven_restart(self) -> Optional[float]:
+        return self.pending_finish[1] if self.pending_finish is not None and self.pending_finish[2] == "seek" else None
+
+    # Closes the play that ended at a position change proven to be a restart, so played_for reports the play up to that moment before the one that began there
+    def split_at_restart(self, restart_ts: float) -> None:
+        if self.segment_started_at is not None:
+            played = max(0, restart_ts - self.segment_started_at)
+            self.track_seconds += played
+            self.segment_seconds += played
+            self.segment_started_at = restart_ts
+
+    # Starts timing the play that began at a proven restart, keeping the playing time credited since then and the finish that ends it
+    def start_repeat(self, restart_ts: float) -> None:
+        self.playing = True
+        self.track_seconds = 0
+        self.paused_at = None
+        self.start_observed = True
+        self.precise = True
+        self.segment_started_at = restart_ts
+        self.track_started_at = restart_ts
+        self.anchor_ts = restart_ts
+        self.finishes = [(restart_ts + self.duration, restart_ts, "start")]
+        if self.pending_finish is not None:
+            self.pending_finish = (self.pending_finish[0], restart_ts, "start")
+
     # Starts timing the track reported by the last sample, anchoring an unobserved start at the feed timestamp when it fits the track
     def start_track(self, now: float, start_observed: bool, new_session: bool = False, source_ts: Optional[float] = None, duration: float = 0, max_gap: float = 0) -> None:
         self.playing = True
         self.track_seconds = 0
+        self.duration = duration
+        self.pending_finish = None
         self.paused_at = None
         self.start_observed = start_observed
         self.precise = start_observed and self.event_trusted
@@ -7586,6 +7672,9 @@ class LivePlaybackTiming:
         if self.first_sample and not start_observed and source_ts is not None and source_ts <= now and now - source_ts <= duration + max_gap:
             self.segment_started_at = source_ts
         self.track_started_at = self.segment_started_at
+        # The feed timestamp is the last position change, so it predicts the finish even when the start itself was not observed
+        origin = self.anchor_ts if self.anchor_ts is not None else self.track_started_at
+        self.finishes = [(origin + duration, origin, "start" if self.precise else "unobserved")]
         if new_session:
             self.session_started_at = self.track_started_at
             self.segment_seconds = 0
@@ -7597,7 +7686,7 @@ class LivePlaybackTiming:
         open_segment = max(0, now - self.segment_started_at) if self.playing and self.segment_started_at is not None else 0
         return self.track_seconds + open_segment
 
-    # Formats the played time and reports whether the track counts as skipped and whether it ended early
+    # Formats the played time and reports whether the track counts as skipped and whether the time deserves a report
     def played_for(self, duration: float, tolerance: float, allow_skip: bool = False) -> Tuple[str, bool, bool]:
         played = int(self.track_seconds)
         if duration > 0 and played < duration - tolerance:
@@ -7606,6 +7695,10 @@ class LivePlaybackTiming:
             skipped = allow_skip and self.start_observed and percentage <= SKIPPED_SONG_THRESHOLD
             text += f" - SKIPPED ({int(percentage * 100)}%)" if skipped else f" ({int(percentage * 100)}%)"
             return text, skipped, True
+        if duration > 0 and played > duration + tolerance + LIVE_POSITION_JITTER:
+            # Longer than the track means parts were replayed, or plays were missed between samples
+            text = f"{display_time(played)} (out of {display_time(int(duration))}) ({int(played / max(1, duration - 1) * 100)}%)"
+            return text, False, True
         return display_time(played), False, False
 
 
@@ -11632,6 +11725,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     sp_accessToken = ""
     live_activity_seen_at = 0
     live_timing = LivePlaybackTiming()
+    # Previous sample, the sample held back while the play that a proven restart began is reported first, and that restart moment
+    live_last_sample = None
+    live_replay = None
+    live_restart_ts = None
     check_interval = activity_check_interval()
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
@@ -11931,6 +12028,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             sp_ts_old = sp_ts
             sp_track_uri_old = sp_track_uri
+            live_last_sample = sp_data
             alive_since = int(time.time())
 
             email_sent = False
@@ -11947,6 +12045,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 check_started_at = debug_monitor_check_start(check_count, user_uri_id)
 
                 while True:
+                    if live_replay is not None:
+                        sp_found, sp_data = True, live_replay
+                        live_replay = None
+                        break
                     # Sometimes Spotify network functions halt even though we specified the timeout
                     # To overcome this we use alarm signal functionality to kill it inevitably, not available on Windows
                     alarm_state = _start_timeout_alarm(ALARM_TIMEOUT)
@@ -12074,13 +12176,22 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 sp_ts = sp_data["sp_ts"]
                 cur_ts = int(time.time())
                 live_activity = "sp_is_playing" in sp_data
+                # A finish one track length after a position change proves that the change put the playhead at the track start, so the play that began there is reported first with its own start time and this sample right after it
+                live_restart_ts = live_timing.proven_restart() if live_activity and live_last_sample is not None else None
+                if live_restart_ts is not None:
+                    live_replay = sp_data
+                    sp_data = dict(live_last_sample)
+                    sp_data["sp_ts"] = int(live_restart_ts)
+                    sp_data["sp_is_playing"] = True
+                    sp_ts = sp_data["sp_ts"]
                 activity_label = "Track" if sp_data.get("sp_is_playing") else "Last played"
                 activity_tabs = "\t\t\t\t" if activity_label == "Track" else "\t\t\t"
                 resumed_live_session = live_activity and sp_active_ts_start == 0 and bool(sp_data["sp_is_playing"])
                 if live_activity and sp_data["sp_is_playing"]:
                     live_activity_seen_at = cur_ts
-                # Live timestamps can change on pause or resume without starting a different track
-                track_changed = (sp_data["sp_is_playing"] and (sp_data["sp_track_uri"] != sp_track_uri_old or resumed_live_session)) if live_activity else sp_ts != sp_ts_old
+                # Live timestamps can change on pause, resume or a position change without starting a different track, while a track seen finishing by the previous check and still playing now is the same track played again
+                live_repeat = live_activity and bool(sp_data["sp_is_playing"]) and sp_data["sp_track_uri"] == sp_track_uri_old and not resumed_live_session and live_timing.repeat_confirmed()
+                track_changed = (sp_data["sp_is_playing"] and (sp_data["sp_track_uri"] != sp_track_uri_old or resumed_live_session or live_repeat)) if live_activity else sp_ts != sp_ts_old
                 if track_changed:
                     sp_artist_old = sp_artist
                     sp_track_old = sp_track
@@ -12133,8 +12244,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     sp_album_url = sp_track_data["sp_album_url"]
 
                     # If tracking functionality is enabled then play the current song via Spotify client
+                    # A play reported for an earlier restart is already over, so it does not restart local playback
 
-                    if TRACK_SONGS and sp_track_uri_id:
+                    if TRACK_SONGS and sp_track_uri_id and live_restart_ts is None:
                         if platform.system() == 'Darwin':       # macOS
                             spotify_macos_play_song(sp_track_uri_id)
                         elif platform.system() == 'Windows':    # Windows
@@ -12150,7 +12262,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         playlist_m_body = ""
                         playlist_m_body_html = ""
 
-                    if not live_activity and sp_artist == sp_artist_old and sp_track == sp_track_old:
+                    if not resumed_live_session and sp_artist == sp_artist_old and sp_track == sp_track_old:
                         song_on_loop += 1
                         if song_on_loop == SONG_ON_LOOP_VALUE:
                             looped_songs += 1
@@ -12164,7 +12276,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     song_skipped = False
                     if live_activity:
                         # The previous track is settled before its successor is reported
-                        playback_event, playback_duration = live_timing.observe(cur_ts, True, check_interval * 2, sp_ts, track_changed=True)
+                        if live_restart_ts is not None:
+                            playback_event, playback_duration = "", 0.0
+                            live_timing.split_at_restart(live_restart_ts)
+                        else:
+                            playback_event, playback_duration = live_timing.observe(cur_ts, True, check_interval * 2, sp_ts, track_changed=True)
                         if playback_event == "resumed" and sp_active_ts_start > 0:
                             print(f"User RESUMED playing after {display_time(int(playback_duration))}")
                             print_cur_ts("\nTimestamp:\t\t\t")
@@ -12177,18 +12293,21 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         played_for_m_body_html = ""
                         if not resumed_live_session:
                             played_for_tolerance = PLAYED_FOR_DURATION_TOLERANCE if live_timing.precise else activity_check_interval(True) + 1
-                            played_for, song_skipped, ended_early = live_timing.played_for(previous_track_duration, played_for_tolerance, allow_skip=True)
-                            if ended_early:
+                            played_for, song_skipped, played_for_reported = live_timing.played_for(previous_track_duration, played_for_tolerance, allow_skip=True)
+                            if played_for_reported:
                                 print(f"User played the previous track for: {played_for}")
                                 print("─" * HORIZONTAL_LINE)
                                 played_for_m_body = f"\n\nUser played the previous track ({sp_artist_old} - {sp_track_old}) for: {played_for}"
-                                played_for_html = played_for.replace(" - SKIPPED", " - <b>SKIPPED</b>")
+                                played_for_html = format_played_for_html(played_for)
                                 played_for_m_body_html = f"<br><br>User played the previous track (<b>{escape(sp_artist_old)} - {escape(sp_track_old)}</b>) for: {played_for_html}"
                             if song_skipped:
                                 skipped_songs += 1
                                 if recent_songs_session:
                                     recent_songs_session[-1]['skipped'] = True
-                        live_timing.start_track(cur_ts, live_start_observed, new_session=resumed_live_session, source_ts=sp_ts, duration=sp_track_duration, max_gap=check_interval * 2)
+                        if live_restart_ts is not None:
+                            live_timing.start_repeat(live_restart_ts)
+                        else:
+                            live_timing.start_track(cur_ts, live_start_observed, new_session=resumed_live_session, source_ts=sp_ts, duration=sp_track_duration, max_gap=check_interval * 2)
                         activity_ts = int(live_timing.track_started_at)
                     else:
                         activity_ts = sp_ts
@@ -12295,7 +12414,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if not is_playlist:
                         sp_playlist = ""
 
-                    if not live_activity and song_on_loop == SONG_ON_LOOP_VALUE:
+                    if song_on_loop == SONG_ON_LOOP_VALUE:
                         print("─" * HORIZONTAL_LINE)
                         print(f"User plays song on LOOP ({song_on_loop} times)")
                         print("─" * HORIZONTAL_LINE)
@@ -12365,7 +12484,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         on_the_list = True
 
                     # Check for loop notification first so each channel can suppress its lower-priority song alert
-                    if not live_activity and song_on_loop == SONG_ON_LOOP_VALUE and ((SONG_ON_LOOP_NOTIFICATION and not email_sent) or (webhook_event_enabled("loop") and not webhook_sent)):
+                    if song_on_loop == SONG_ON_LOOP_VALUE and ((SONG_ON_LOOP_NOTIFICATION and not email_sent) or (webhook_event_enabled("loop") and not webhook_sent)):
                         music_urls_text = format_music_urls_email_text(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url)
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
@@ -12609,6 +12728,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print_liveness_banner(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
                         alive_since = int(time.time())
 
+                live_last_sample = sp_data
+                if live_replay is not None:
+                    continue
                 # An open session polls at the live active interval, so pauses and resumes are timed closely
                 check_interval = activity_check_interval(sp_active_ts_start > 0)
                 debug_monitor_check_timing(check_count, user_uri_id, check_started_at, check_interval)
