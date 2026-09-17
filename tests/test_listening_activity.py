@@ -644,8 +644,9 @@ def test_live_repeats_count_as_plays_and_loops(loop_environment, monkeypatch, tm
     assert "Songs played:\t\t\t2 (3 minutes, 20 seconds)" in output
     assert "Songs played:\t\t\t3 (6 minutes, 40 seconds)" in output
     assert output.count("User plays song on LOOP (3 times)") == 1
+    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 200)}" not in output
     assert "User played the last track for: 1 minute (out of 3 minutes, 20 seconds) (30%)\n─" in output
-    assert "*** User played 3 songs\n*** User played 1 songs on loop" in output
+    assert "*** User played 3 songs\n*** User played 1 songs on loop\n\n*** Last activity:" in output
     assert len(destination.read_text().splitlines()) == 4
 
 
@@ -789,7 +790,6 @@ def test_live_position_change_near_the_start_is_not_a_restart(loop_environment, 
     assert "SKIPPED" not in output
     assert "User played the previous track for: 4 minutes, 5 seconds (out of 3 minutes, 20 seconds) (123%)\n─" in output
     assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
-    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 246)}" in output
     assert "Songs played:\t\t\t2 (4 minutes, 6 seconds)" in output
     assert "*** User played 2 songs" in output
 
@@ -805,8 +805,6 @@ def test_live_restart_part_way_through_a_play_is_reported_when_the_next_play_pro
     assert "User played the previous track for: 2 minutes, 30 seconds (out of 3 minutes, 20 seconds) (75%)\n─" in output
     assert output.count("User played the previous track for") == 1
     assert output.count("\nTrack:\t\t\t\tArtist - First") == 3
-    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 150)}" in output
-    assert f"Last activity:\t\t\t{monitor.get_date_from_ts(now + 350)}" in output
     assert "Songs played:\t\t\t2 (2 minutes, 30 seconds)" in output
     assert "Songs played:\t\t\t3 (5 minutes, 50 seconds)" in output
     assert output.count("User plays song on LOOP (3 times)") == 1
