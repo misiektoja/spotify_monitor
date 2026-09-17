@@ -1548,11 +1548,14 @@ def iter_exc_chain(error, max_depth=8):
         current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
 
 
-# Reports whether any exception in the chain is the local file descriptor limit rather than a remote failure
+# Reports whether this process hit the local file descriptor limit rather than a remote failure
 def is_too_many_open_files(error):
     for current in iter_exc_chain(error):
         if isinstance(current, OSError) and getattr(current, "errno", None) == 24:
             return True
+        # A server controls the wording of its own reply, so its text never proves a local limit here
+        if getattr(current, "response", None) is not None:
+            continue
         message = str(current).lower()
         if "too many open files" in message or re.search(r"\berrno 24\b", message):
             return True
@@ -4601,24 +4604,26 @@ def format_payload(template: Any, payload: dict) -> Any:
             return template.format(**payload)
         except KeyError:
             return template
+        # A placeholder the payload cannot fill, such as {title[9]} or the positional {0}, is a setting
+        # to correct rather than a delivery failure, so it names the template text that could not render
+        except Exception as exc:
+            raise ValueError(f"WEBHOOK_TEMPLATE cannot render '{template}': {type(exc).__name__}: {exc}. Use plain placeholders such as {{title}} and {{description}}") from exc
     return template
 
 
 # Parses legacy and current Discord templates before validating their object shape
 def render_discord_template(template, values):
-    # A placeholder the payload cannot fill, such as the positional {0}, fails inside str.format rather than as a
-    # value error, so every parsing and rendering failure is reported as the one error callers already handle
-    try:
-        if isinstance(template, str):
+    if isinstance(template, str):
+        try:
+            template = json.loads(template)
+        except json.JSONDecodeError:
             try:
-                template = json.loads(template)
-            except json.JSONDecodeError:
                 template = json.loads(str(format_payload(template, values)))
-        if isinstance(template, dict):
-            return format_payload(template, values)
-    except Exception as exc:
-        raise ValueError("WEBHOOK_TEMPLATE must be a dictionary or a JSON object string") from exc
-    raise ValueError("WEBHOOK_TEMPLATE must be a dictionary or a JSON object string")
+            except json.JSONDecodeError as exc:
+                raise ValueError("WEBHOOK_TEMPLATE must be a dictionary or a JSON object string") from exc
+    if not isinstance(template, dict):
+        raise ValueError("WEBHOOK_TEMPLATE must be a dictionary or a JSON object string")
+    return format_payload(template, values)
 
 
 # Returns a configuration error for unsafe or unsupported webhook customization
@@ -4645,7 +4650,10 @@ def validate_webhook_customization(provider: Any = None) -> Optional[str]:
     if selected_provider == "discord":
         try:
             render_discord_template(WEBHOOK_TEMPLATE, {"title": "", "description": "", "username": "", "avatar_url": "", "image_url": "", "fields_str": "", "fields": [], "color": 0, "timestamp": "", "version": VERSION})
-        except (ValueError, TypeError):
+        # The rendering error names the placeholder to correct, which the shape message cannot
+        except ValueError as exc:
+            return str(exc)
+        except TypeError:
             return "WEBHOOK_TEMPLATE must be a dictionary or a JSON object string"
     return None
 
@@ -4681,6 +4689,9 @@ def build_webhook_payload(title: str, description: str, notification_type: str, 
     values = build_webhook_values(title, description, notification_type, image_url) if payload_values is None else payload_values
     try:
         payload = render_discord_template(WEBHOOK_TEMPLATE, values)
+    # The named placeholder error is the one a user can act on, so it reaches the caller unchanged
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError("WEBHOOK_TEMPLATE could not be formatted with the supported placeholders") from exc
     if not isinstance(payload, dict):
@@ -8428,6 +8439,20 @@ def doctor_secret_checks(env_path=None) -> List[DoctorCheck]:
     return checks
 
 
+# The values this file defines for the settings checked below, so a configuration file that makes one
+# unusable can be reported and then ignored instead of stopping the commands that exist to correct it
+BUILT_IN_SHAPE_SETTINGS = {name: globals()[name] for name in ('SP_LOGFILE', 'CSV_FILE', 'MONITOR_LIST_FILE', 'DOTENV_FILE', 'COLOR_THEME') if name in globals()}
+
+# Shape errors whose settings were replaced with the built-in values, so doctor still names them
+DISCARDED_SETTING_ERRORS = []
+
+
+# True when the selected command exists to correct the configuration, so a malformed setting is reported
+# there instead of stopping the one run that could repair it
+def command_reports_configuration(arguments=()):
+    return any(str(argument) in ("--doctor", "--setup") or str(argument).startswith("--set-") for argument in arguments)
+
+
 # Validates effective path settings before startup expands or opens them
 def prepare_configured_paths(args):
     overrides = {'DOTENV_FILE': 'env_file', 'CSV_FILE': 'csv_file', 'MONITOR_LIST_FILE': 'monitor_list'}
@@ -8437,15 +8462,30 @@ def prepare_configured_paths(args):
         if value:
             settings[name] = value
     errors = configuration_shape_errors(settings)
-    if errors:
-        print_recovery_advice(make_recovery_advice("config.invalid", "Invalid settings: " + ". ".join(errors), recovery_fix_with_guide("Correct the named settings in the configuration file or command line", CONFIG_GUIDE_URL), False))
+    if not errors:
+        # Cleared here so a run that starts with usable settings cannot inherit an earlier run's report
+        DISCARDED_SETTING_ERRORS.clear()
+        return
+    advice = make_recovery_advice("config.invalid", "Invalid settings: " + ". ".join(errors), recovery_fix_with_guide("Correct the named settings in the configuration file or command line", CONFIG_GUIDE_URL), False)
+    # A monitoring run cannot continue on a value this broken, but doctor, the setup wizard and the secret
+    # commands are how it gets corrected, so they fall back to the built-in values and report the setting
+    if not command_reports_configuration(sys.argv[1:]):
+        print_recovery_advice(advice)
         raise SystemExit(1)
+    DISCARDED_SETTING_ERRORS[:] = errors
+    # Only the values that are broken after command-line overrides are replaced, so an override still wins
+    for name, built_in in BUILT_IN_SHAPE_SETTINGS.items():
+        if name in settings and configuration_shape_errors({name: settings[name]}):
+            globals()[name] = built_in
+    if "--doctor" not in sys.argv:
+        print_recovery_advice(advice, label="Warning")
+        print()
 
 
 # Names malformed path and color settings before diagnostics consume their values
 def configuration_shape_errors(settings=None):
+    errors = list(DISCARDED_SETTING_ERRORS) if settings is None else []
     settings = globals() if settings is None else settings
-    errors = []
     for name in ('SP_LOGFILE', 'CSV_FILE', 'MONITOR_LIST_FILE', 'DOTENV_FILE'):
         if name in settings and not isinstance(settings[name], (str, os.PathLike)):
             errors.append(f"{name} must be a path string")
@@ -8457,12 +8497,21 @@ def configuration_shape_errors(settings=None):
     return errors
 
 
+# Replaces every setting still holding a value this file cannot use with the built-in one, so a report reached
+# from any entry point reads a usable value after it has named the setting
+def discard_invalid_shape_settings():
+    for name, built_in in BUILT_IN_SHAPE_SETTINGS.items():
+        if configuration_shape_errors({name: globals().get(name)}):
+            globals()[name] = built_in
+
+
 # Validates effective config values and configured file destinations without writing them
 def doctor_check_configuration(config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), target_value=None, lastfm_username=None) -> List[DoctorCheck]:
-    shape_errors = configuration_shape_errors()
-    if shape_errors:
-        return [make_doctor_check("Configuration", "FAIL", detail, advice=make_recovery_advice("config.invalid", detail, recovery_fix_with_guide("Correct the named setting in the configuration file", CONFIG_GUIDE_URL), False)) for detail in shape_errors]
-    checks = list(startup_checks)
+    # Read before the unusable values are replaced, so each row names the value the user configured
+    # Reported as ordinary rows so one malformed setting cannot hide the rest of the configuration report
+    checks = [make_doctor_check("Configuration", "FAIL", detail, advice=make_recovery_advice("config.invalid", detail, recovery_fix_with_guide("Correct the named setting in the configuration file", CONFIG_GUIDE_URL), False)) for detail in configuration_shape_errors()]
+    checks.extend(list(startup_checks))
+    discard_invalid_shape_settings()
     if not any(check.section == "Configuration" and "configuration file" in check.label.lower() for check in checks):
         if config_path:
             checks.append(make_doctor_check("Configuration", "PASS", "Configuration file loaded", f"Path: {config_path}"))
