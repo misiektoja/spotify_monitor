@@ -1,26 +1,15 @@
 # Setup & First Run
 
-Moving the dotenv destination reviews the private settings again. Kept file credentials are saved to the new destination when you choose Save. An existing value at that destination, including an empty value, takes precedence unless you explicitly replace it. The old file is left intact.
-
-Printed commands use short names. Activate the tool's virtual environment before running them. For a downloaded script, run them from the script directory. Recovery commands retain selected configuration and dotenv paths.
-
-Before replacing a configuration, setup copies retained inline credentials to the selected private dotenv file when that file has no value for the same key. An existing dotenv value, including an explicit empty value, keeps precedence. If preservation fails, the original configuration stays in place. Setup backups omit inline credentials.
-
 <a id="new-here-run-the-setup-wizard"></a>
-When rebuilding an existing configuration, setup keeps its saved `DOTENV_FILE` unless you pass `--env-file PATH`. A nonempty exported secret takes precedence over the dotenv file. An explicit empty value in that file still overrides the configuration, both after saving and on the next run. Quoted dotenv keys receive the same replacement confirmation as unquoted keys.
-
-
 ## Run the setup wizard
 
-This page assumes Spotify Monitor is already installed (see [Installation](installation.md)). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose [PyPI](installation.md#install-from-pypi), the [manual Python script](installation.md#manual-installation), the [Docker image](installation.md#docker-image) or [Docker Compose](installation.md#docker-compose), finish that method's steps then return here.
+Already installed? Run the setup command below for your installation and follow the prompts. Otherwise, start with [Installation](installation.md).
 
-Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify, how often to poll, which alerts to enable and where output goes. The output questions ask whether to write the per-target log file and whether to write a CSV file, and the CSV path is asked for only after you say yes, so answering no clears a saved one. A CSV path with no extension is saved with `.csv` added. The polling interval accepts seconds directly, decimal units such as `1.5h` or compound durations such as `1h 30m`. Supported units are `s`, `m`, `h` and `d`. You can review and change your answers before saving. Regular settings go in `spotify_monitor.conf`. Private values such as login cookies and webhook URLs go in `.env`.
+For Friend Activity, setup asks who to monitor, how to connect to Spotify and which alerts and output files you want. You can review your answers before saving. Regular settings go in `spotify_monitor.conf` and private values go in `.env`. Keep `.env` private.
 
-Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup. Cancelling before the save leaves the destination files untouched. After the save, Ctrl+C only skips the doctor and start-monitoring offers and the saved setup stays in place.
+Press Enter to accept a default or Ctrl+C to cancel. Cancelling before saving leaves your files untouched. Cancelling after saving keeps the saved settings. For changes to an existing setup, see [Configuration File](configuration.md#configuration-file).
 
-Every answer setup cannot use offers a way out, so one value you cannot produce right now does not cost you the answers already given. A blank answer asks whether to continue without it and names what stops working, and a rejected one offers to enter it again. Declining switches the part that needed it off, so half a mail server or a webhook with no destination is never written. A rebuilt file starts from the settings already in place with your answers applied over them. A section you decline is cleared rather than carried over, so declining email leaves no mail server behind. A manually entered `sp_dc` value is validated before it is queued for saving. Email setup signs in to the mail server before saving, so a wrong password or an unreachable host is caught during setup instead of at the first alert. No email is sent. A refused sign-in offers the mail server questions again, and if the server was only unreachable the answers are kept so `--doctor` can check them later.
-
-After saving, the wizard offers the Doctor checks whenever a target was given. For a local install it then offers to start monitoring once those checks passed.
+After saving, follow the offered Doctor checks and monitoring steps. If you installed in a virtual environment, activate it before running commands. For a downloaded script, run them from the script directory.
 
 Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.
 
@@ -85,9 +74,9 @@ The focused wizard selects scrobble health as the saved mode. It asks for the La
 
 Authorize the Spotify account whose completed plays should be checked. A separate Spotify account is not required. If that account is different from the app owner, add it under the app's User Management first. See Spotify's [app creation guide](https://developer.spotify.com/documentation/web-api/concepts/apps) and [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) for the corresponding Dashboard screens.
 
-The wizard offers email or webhook alerts for missing scrobbles, scrobbles appearing again and operational errors. It defaults to five consecutive missing completed plays plus a 20 minute dead period. Duration prompts show seconds plus a readable equivalent such as `120s - 2m`. Enter seconds directly or add `s` for seconds, `m` for minutes, `h` for hours or `d` for days. Examples include `120`, `120s`, `2m`, `1h` and `1d`. Use the regular `--setup` wizard instead for Friend Activity monitoring.
+The wizard offers email or webhook alerts for missing scrobbles, scrobbles appearing again and operational errors. By default, an alert requires five consecutive missing completed plays with the oldest at least 20 minutes old. Duration prompts accept seconds or units such as `2m` and `1h`. Use the regular `--setup` wizard for Friend Activity monitoring.
 
-Like regular setup, the focused wizard lets you review or change each section before saving. It defaults to `spotify_monitor_scrobble_health.conf` plus `.env.scrobble_health` so its settings and private values do not replace the Friend Activity files. Pass `--config-file` or `--env-file` to choose another destination. With complete local authentication it can run the focused Doctor checks then start monitoring immediately. If authentication remains incomplete, it prints the exact authentication command before the Doctor and monitoring commands. Once monitoring starts, the console prints the first check and its result with the same timestamp separator used by Friend Activity. After that `--verbose` reports changes in the comparison result. Missing-scrobble alerts, notifications that scrobbles are appearing again and errors remain visible normally. A liveness banner prints in any mode at the `LIVENESS_CHECK_INTERVAL` cadence and names the current result, such as `Scrobble health monitor running for USERNAME. Current result: Idle.` A `Waiting` result is not announced as a change because delayed scrobbles can briefly appear missing before they match.
+The wizard saves settings in `spotify_monitor_scrobble_health.conf` and private values in `.env.scrobble_health`, keeping them separate from Friend Activity. Use `--config-file` or `--env-file` to choose other files. After saving, follow the offered authentication, Doctor and monitoring steps. See [Scrobble Health Mode](usage.md#scrobble-health-mode) for later runs and [Troubleshooting](troubleshooting.md#doctor-preflight) for help interpreting results.
 
 To enter or replace only `LASTFM_API_KEY` through a hidden prompt, run `spotify_monitor --set-lastfm-credentials`. It saves only the API key in `.env.scrobble_health` by default because scrobble health does not need the Last.fm shared secret.
 
@@ -109,17 +98,17 @@ In this documentation, a **target** is the Spotify user whose activity you want 
 
 The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation.
 
-Both wizards display the detected installation method plus the selected configuration and dotenv destinations before the first prompt. Both destinations are checked before the first question, so an unwritable path or a directory given by mistake is reported straight away rather than after you have answered everything. Each needs somewhere to put both files, so `--setup` and `--setup-scrobble-health` refuse `--config-file none` and `--env-file none`. They detect PyPI, a downloaded script, Docker or Docker Compose then print matching commands with paths formatted for the current operating system.
+Both wizards need writable configuration and `.env` files. Use `--config-file PATH` and `--env-file PATH` to choose their destinations. Setup does not accept `none` for either file.
 
-Container setup destinations must stay inside `/data`. That directory is the current host directory mounted into the temporary setup container, so files written there survive `--rm`. The wizard rejects paths such as `/tmp/spotify_monitor.conf` instead of printing a command for a different file.
+Container setup destinations must stay inside `/data`, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.
 
 After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
 
 For Docker or Docker Compose, choose **Import from Firefox after setup**. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt. It then prints the matching command to mount the signed-in host profile read-only once and save `SP_DC_COOKIE` in the host `.env` file. Windows commands use the Firefox profile under `%APPDATA%\Mozilla\Firefox`. Use [manual extraction](configuration.md#manual-cookie-extraction) only when that mount is unavailable.
 
-If the selected configuration contains `TARGET_USER_URI_ID`, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard. Any other run without a target reports the missing target before it checks the `sp_dc` cookie, so the simpler problem is named first.
+With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.
 
-If the selected `.env` file already contains a saved `SP_DC_COOKIE`, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.
+Container setup can keep a saved Spotify login. If you choose Firefox import instead, run the printed import command before the Doctor and monitoring commands.
 
 <a id="before-you-start"></a>
 ## Before you start

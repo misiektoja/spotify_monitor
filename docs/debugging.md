@@ -46,9 +46,7 @@ python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --downloa
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ## Secret Key Extraction from Spotify Web Player Bundles
 
-The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) reads TOTP keys from Spotify Web Player JavaScript bundles. It scans the loaded source first and keeps the older runtime hook as a fallback.
-
-The extractor can return v59, v60 and v61 from the current web-player bundle even when the older runtime hook finds nothing.
+The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) extracts TOTP keys from Spotify Web Player JavaScript bundles.
 
 The extractor returns a nonzero exit status when it finds no usable secrets, extraction fails or `--all` cannot write every requested output file.
 

@@ -182,7 +182,7 @@ pip install spotify_monitor
 spotify_monitor --version
 ```
 
-Each command below that uses square brackets installs the base `spotify_monitor` package plus the named optional dependency. Run only the command that matches your needs. You do not need to run the plain install command first.
+Optional extras include the base package. Choose the extra you need instead of running the plain install first.
 
 Firefox cookie import needs no extra dependency. To import from Chrome, Brave or Chromium on macOS or Linux install the browser extra:
 
@@ -206,7 +206,7 @@ Spotipy is optional. Install the legacy OAuth extra only if you already have wor
 pip install "spotify_monitor[legacy-oauth]"
 ```
 
-This installs Spotify Monitor and the optional Spotipy dependency. It also includes the base package, so this single command is sufficient.
+This includes Spotify Monitor and Spotipy.
 
 Extras can be installed together:
 
@@ -334,7 +334,7 @@ Compose makes the current host directory available as `/data` inside the contain
 docker compose run --rm --pull=always spotify_monitor --setup
 ```
 
-The `--pull=always` flag pulls the current image first, so no separate `docker compose pull` is needed during onboarding. On a native Linux container engine, export the UID and GID shown above in the same terminal before you run setup. See [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard) for the wizard walkthrough.
+On native Linux, set the UID and GID above in the same terminal before setup. Continue with [Setup & First Run](setup-and-first-run.md#new-here-run-the-setup-wizard).
 
 <a id="build-docker-locally"></a>
 ### Build the Docker Image Locally

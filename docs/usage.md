@@ -18,7 +18,7 @@ For example, `spotify_monitor --doctor TARGET` becomes `docker compose run --rm 
 
 The first `docker run` command works in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the `docker` CLI. In Windows Command Prompt replace `${PWD}` with `%cd%`.
 
-The manual-script examples assume the current directory contains `spotify_monitor.py`. Commands printed by setup, Doctor and recovery messages use the running interpreter and the full script path. Packaged installations use the running interpreter with `-m spotify_monitor`.
+The manual-script examples assume the current directory contains `spotify_monitor.py`. If you installed in a virtual environment, activate it before using the printed commands. Setup and recovery commands retain your selected configuration and `.env` paths.
 
 See [Installation](installation.md) for setup, optional dependencies, image details and upgrade commands.
 
@@ -95,7 +95,7 @@ spotify_monitor --setup-scrobble-health
 
 The setup wizard walks you through the whole process. With complete local authentication it can run Doctor tests and then start scrobble health monitoring immediately.
 
-This mode reads the authorized Spotify account's completed plays through the official `user-read-recently-played` scope then compares them with public Last.fm recent tracks. It ignores Last.fm's currently playing row. Matching uses normalized artist and track names plus a configurable timestamp window. Competing duplicate plays are assigned together so one early match cannot create a false missing-scrobble alert later in the same history.
+This mode compares the authorized Spotify account's completed plays with Last.fm recent tracks. It matches artist and track names within a configurable time window. Last.fm's currently playing track is excluded.
 
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
@@ -137,7 +137,7 @@ Use focused Doctor checks before leaving it unattended:
 spotify_monitor --monitor-mode scrobble_health --doctor
 ```
 
-Doctor verifies scoped Spotify recent-play access and Last.fm recent-track access without changing the saved health state. If Spotify rotates the refresh token during that check, Doctor atomically updates only `SPOTIFY_SCROBBLE_REFRESH_TOKEN` in the selected dotenv file so later monitoring can continue. After a successful check it prints the monitoring command for the detected installation and preserves the selected configuration plus dotenv paths.
+Doctor checks access to Spotify recent plays and Last.fm tracks, then prints the matching monitoring command. It preserves alert history but may save a replacement Spotify refresh token if the service rotates it.
 
 To inspect the actual Spotify and Last.fm track histories instead of only their counts, add `--verbose`:
 
@@ -291,9 +291,7 @@ Host Spotify auto-play is unavailable by default inside a container because the 
 <a id="terminal-output"></a>
 ## Terminal Output
 
-The `--help` examples are grouped by task: getting started, notifications, information and diagnostics, and scrobble health mode. Each command is preceded by a comment saying what it does, and every command matches the detected installation method.
-
-Spotify Monitor starts user-facing commands with the selected ASCII equalizer banner. Plain ASCII keeps the banner readable in terminals, redirected output and container logs. Machine-oriented `--version` and `--generate-config` output intentionally omit it.
+Use `--help` for examples grouped by task and matched to your installation.
 
 Normal monitoring shows the target, authentication method, polling interval, alert state, output destination, configuration path, `.env` path and metadata source. Optional features appear only when enabled. When file logging is enabled, the log receives a complete summary that excludes private values.
 
@@ -305,22 +303,16 @@ spotify_monitor <spotify_target> --verbose
 
 The complete summary also names the detected install method and which secrets came from the dotenv file, the environment or the configuration file, by name only.
 
-Spotify Monitor normally checks every 30 seconds. Verbose mode reports metadata fallback, the first temporary friend-list miss and recovery from temporary problems. The periodic liveness banner prints in any mode. Routine token refreshes are `--debug` detail. It does not print every successful check when nothing changed.
-
-`--debug` retains per-poll lifecycle and scheduling detail plus sanitized request flow and internal state diagnostics. Secrets never appear in summaries, verbose events, debug output or the complete log summary.
+Spotify Monitor normally checks every 30 seconds and stays quiet when nothing changes. Periodic liveness banners confirm it is running. Use `--verbose` for occasional operational events or `--debug` for detailed diagnostics.
 
 Use `--truncate N` or `TRUNCATE_CHARS` to limit screen line width. Set it to `999` to detect the terminal width automatically. Truncation does not change log files and is ignored when logging is disabled with `-d`.
 
 <a id="coloured-terminal-output"></a>
 ### Coloured Terminal Output
 
-Spotify Monitor colours live terminal output by default. Usernames, track, playlist and album names, dates, durations, counters, links and activity headers each get their own colour, and errors, warnings and received signals are highlighted as a whole line.
+Spotify Monitor colours live terminal output and help by default. Saved log files stay plain text.
 
-The `--help` screen is coloured too. Group headings, option names, the values those options take, the example commands and the comments above them each get their own colour, so the screen can be scanned instead of read.
-
-Colour never reaches saved output: log files are written with the escape sequences stripped, so `grep`, `tail` and any log viewer see plain text.
-
-Turn it off for one run with `--no-color`, or permanently with `COLORED_OUTPUT = False` in the configuration file. The setting is read before the startup banner is printed, so a configured value applies to the very first line of output. Colour also switches itself off when it cannot be displayed safely: when output is redirected or piped, when `TERM` is unset or `dumb`, and when the standard [`NO_COLOR`](https://no-color.org/) environment variable is set. On Windows, install the optional `colorama` package for the best results in the classic Command Prompt.
+Turn colour off for one run with `--no-color` or permanently with `COLORED_OUTPUT = False`. Colour is also disabled for redirected output, `NO_COLOR` or an unsupported terminal. See [Terminal Colours](configuration.md#terminal-colours) for details and Windows support.
 
 Override individual colours with `COLOR_THEME`. It is merged over the built-in theme, so you only name the parts you want to change:
 
@@ -471,6 +463,8 @@ spotify_monitor <spotify_target> -b spotify_tracks_USER_ID.csv
 
 Spotify Monitor creates the file if it does not exist.
 
+The setup wizard adds `.csv` if the filename has no extension. Declining CSV output during setup clears a previously saved CSV path.
+
 <a id="activity-flag-file"></a>
 ## Activity Flag File
 
@@ -482,7 +476,7 @@ spotify_monitor TARGET --flag-file /path/spotify_user_active
 
 For a container, place the file under `/data` so it appears in the host directory. Each concurrently monitored user should have a different flag path.
 
-The flag is written atomically, so a reader never sees a half-written file. Because other tools act on the flag's presence, Spotify Monitor never leaves it in a state that misreports activity. A leftover flag from a previous run is removed at startup, and if it cannot be removed the tool reports the reason and exits instead of starting with a stale "active" marker. If creating or deleting the flag fails later, for example because the path became unwritable or was replaced by a directory, Spotify Monitor prints the error and disables the flag integration for the rest of the run. Monitoring itself continues, so check the output if an external automation stops seeing updates.
+A stale flag is removed at startup. If it cannot be removed, the tool exits with an error. Later failures to create or remove the flag disable this integration for the rest of the run while monitoring continues. Check the error output and correct the path before restarting.
 
 <a id="automatic-playback-of-listened-tracks-in-the-spotify-client"></a>
 ## Automatic Playback of Listened Tracks in the Spotify Client
@@ -537,8 +531,10 @@ For current-track progress plus pause and resume detection, see [lastfm_monitor]
 The polling interval is the number of seconds between Friend Activity checks. Set it through `SPOTIFY_CHECK_INTERVAL` or `-c`:
 
 ```sh
-spotify_monitor <spotify_target> -c 20
+spotify_monitor <spotify_target> -c 30
 ```
+
+In the setup wizard, you can also enter durations such as `30s`, `1.5h` or `1h 30m`. Supported units are `s`, `m`, `h` and `d`.
 
 An interval below 30 seconds invites the Spotify rate limiter, which stops the tool seeing anything. `--doctor` warns when the configured interval is that short.
 
@@ -548,7 +544,7 @@ For scrobble health, set the time between successful comparisons through `SCROBB
 spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 ```
 
-Operational failures use `SPOTIFY_ERROR_INTERVAL` as a separate retry delay, which is three minutes by default. Scrobble health first makes one short bounded retry for connection failures, timeouts and temporary 5xx responses. This includes failures during Spotify recent-play access-token refreshes. It sends an operational email or webhook only after three consecutive failed comparisons. It does not immediately retry a Spotify 429 response or block for a very long `Retry-After` value. A structured `QUOTA_EXCEEDED` response identifies exhaustion of the user-owned app's Development Mode quota and links to Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
 The inactivity timer starts at the last reported track. Set the number of seconds through `SPOTIFY_INACTIVITY_CHECK` or `-o`:
 
