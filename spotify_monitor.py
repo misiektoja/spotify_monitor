@@ -10108,6 +10108,16 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path,
         return auth
 
 
+# Prints the setup file summary, naming the dotenv only when a step wrote it
+def _wizard_print_saved_files(write_status: dict, dotenv_status: Optional[dict]) -> None:
+    print(colorize('header', "\nSaved files\n"))
+    print(f"  Configuration: {write_status['path']}")
+    if write_status["backup_path"]:
+        print(f"  Backup:        {write_status['backup_path']}")
+    if dotenv_status:
+        print(f"  {'Secrets:':<15}{dotenv_status['path']}")
+
+
 # Config values reset before one setup section is collected again
 WIZARD_AUTH_CONFIG_KEYS = ("TOKEN_SOURCE", "LOGIN_REQUEST_BODY_FILE", "CLIENTTOKEN_REQUEST_BODY_FILE", "DEVICE_ID", "SYSTEM_ID", "USER_URI_ID", "APP_VERSION", "CPU_ARCH", "OS_BUILD", "PLATFORM", "OS_MAJOR", "OS_MINOR", "CLIENT_MODEL")
 WIZARD_EMAIL_CONFIG_KEYS = ("SMTP_HOST", "SMTP_PORT", "SMTP_SSL", "SMTP_USER", "SENDER_EMAIL", "RECEIVER_EMAIL", "ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
@@ -10607,28 +10617,33 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     except Exception:
         print(f"Setup could not write configuration file '{config_path}'. The original configuration was kept. Any preserved credentials remain in the selected dotenv file.")
         raise SystemExit(1) from None
-    print(colorize('header', "\nSaved files\n"))
-    print(f"  Configuration: {write_status['path']}")
-    if write_status["backup_path"]:
-        print(f"  Backup:        {write_status['backup_path']}")
-    if preserved_dotenv and not secret_updates:
-        print(f"  {'Secrets:':<15}{preserved_dotenv['path']}")
+    dotenv_status = preserved_dotenv
     # A dotenv with nothing in it is noise beside the config, so an empty one is never created
     if secret_updates:
         try:
-            update_status = update_dotenv_file(env_path, secret_updates)
-            print(f"  {'Secrets:':<15}{update_status['path']}")
+            dotenv_status = update_dotenv_file(env_path, secret_updates)
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
     doctor_failed = False
     doctor_ran = False
-    try:
-        if auth.get("browser") and method not in ("docker", "compose"):
-            print()
+    checks_skipped = False
+    # The import writes the cookie itself, so it runs before the file summary and the summary can list its dotenv
+    if auth.get("browser") and method not in ("docker", "compose"):
+        print(colorize('header', "\nBrowser cookie import\n"))
+        try:
             auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "")
+        except (EOFError, KeyboardInterrupt):
+            # The config is already written, so an interrupt here leaves authentication to the printed commands
+            checks_skipped = True
         if auth["complete"]:
+            dotenv_status = {"path": str(env_path)}
+    _wizard_print_saved_files(write_status, dotenv_status)
+    if checks_skipped:
+        print("\n" + colorize("warning", "Setup is saved. Use the commands below when ready."))
+    try:
+        if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
                 follow_status = _wizard_offer_target_follow(target)
                 if follow_status in ("already_followed", "followed"):
@@ -10637,7 +10652,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
                 print(colorize('header', "\nFollowing check\n"))
                 print("Follow status could not be checked because the saved setup could not be loaded.")
         # A container Firefox import still has to run on the host, so doctor would only report the missing login
-        doctor_offered = bool(target) and not (auth.get("browser") and method in ("docker", "compose"))
+        doctor_offered = bool(target) and not checks_skipped and not (auth.get("browser") and method in ("docker", "compose"))
         if doctor_offered:
             print()
         if doctor_offered and _wizard_ask_yes_no("Run doctor now? It writes no files and offers real delivery tests only with separate approval.", default=True):
@@ -10779,21 +10794,16 @@ def run_scrobble_health_setup_wizard(config_file=None, env_file=None) -> None:
     except Exception:
         print(f"Setup could not write configuration file '{config_path}'. The original configuration was kept. Any preserved credentials remain in the selected dotenv file.")
         raise SystemExit(1) from None
-    print(colorize('header', "\nSaved files\n"))
-    print(f"  Configuration: {write_status['path']}")
-    if write_status["backup_path"]:
-        print(f"  Backup:        {write_status['backup_path']}")
-    if preserved_dotenv and not secret_updates:
-        print(f"  {'Secrets:':<15}{preserved_dotenv['path']}")
+    dotenv_status = preserved_dotenv
     # A dotenv with nothing in it is noise beside the config, so an empty one is never created
     if secret_updates:
         try:
-            update_status = update_dotenv_file(env_path, secret_updates)
-            print(f"  {'Secrets:':<15}{update_status['path']}")
+            dotenv_status = update_dotenv_file(env_path, secret_updates)
         except Exception:
             print(f"Configuration was saved but dotenv destination '{env_path}' could not be updated.")
             print("Setup remains incomplete.")
             raise SystemExit(1) from None
+    _wizard_print_saved_files(write_status, dotenv_status)
     doctor_failed = False
     doctor_ran = False
     print()

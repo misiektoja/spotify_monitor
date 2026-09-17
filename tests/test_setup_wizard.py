@@ -478,8 +478,10 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert import_mock.call_args.kwargs["browser"] == "firefox"
         output = capsys.readouterr().out
         assert monitor.SPOTIFY_WEB_LOGIN_URL in output
-        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}" in output
-        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n\n* Browser prerequisite: test guidance" in output
+        # The import runs under its own heading and the file summary that follows lists the dotenv it wrote
+        assert "\nBrowser cookie import\n\n* Browser prerequisite: test guidance" in output
+        assert output.index("* Browser prerequisite: test guidance") < output.index("\nSaved files\n")
+        assert f"\nSaved files\n\n  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n  Secrets:       {env_path.resolve()}\n" in output
         assert "  Dotenv:        " not in output
         assert "browser-private-value" not in output
 
@@ -1531,6 +1533,29 @@ def test_interrupting_the_doctor_offer_keeps_the_saved_setup(monkeypatch, capsys
         assert "Setup is saved. Use the commands below when ready." in output
         assert "Setup cancelled" not in output
         assert "Next steps" in output
+        assert config_path.is_file()
+
+
+# Verifies an interrupt during browser import still prints the file summary once and skips the optional checks
+def test_interrupting_the_browser_import_keeps_the_saved_setup(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        auth = {"complete": False, "validated": False, "browser": "firefox", "source": "browser import (Firefox)", "host_os": None}
+        ask_mock, _ = install_minimal_wizard_flow(monkeypatch, "manual", auth, [False])
+        monkeypatch.setattr(monitor, "_wizard_finish_browser_import", Mock(side_effect=KeyboardInterrupt))
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
+
+        output = capsys.readouterr().out
+        assert error.value.code == 0
+        assert output.count("Setup is saved. Use the commands below when ready.") == 1
+        assert output.index("\nBrowser cookie import\n") < output.index("\nSaved files\n")
+        assert f"\nSaved files\n\n  Configuration: {config_path.resolve()}\n\n" in output
+        assert "  Secrets:" not in output
+        assert not any(call.args[0].startswith("Run doctor now?") for call in ask_mock.call_args_list)
+        assert "Authentication still needs to be completed." in output
         assert config_path.is_file()
 
 
