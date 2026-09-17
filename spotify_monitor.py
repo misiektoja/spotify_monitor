@@ -6441,7 +6441,7 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
     notification_timestamp = get_cur_ts()
     if action == "recovery":
         subject = f"spotify_monitor: Spotify scrobbles are appearing on Last.fm again for {username}"
-        message = f"Spotify scrobbles are appearing on Last.fm again. A newer Spotify play was found on the Last.fm profile.\n\nProfile: {profile_url}"
+        message = f"Spotify scrobbles are appearing on Last.fm again for {username}.\n\nProfile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
         count = len(evaluation.unmatched)
@@ -6449,13 +6449,13 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
         recent_missing = evaluation.unmatched[-5:]
         examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in recent_missing)
         examples_heading = f"{len(recent_missing)} most recent missing plays:" if count > len(recent_missing) else "Missing plays:"
-        reminder = " Reminder: recent Spotify plays are still missing from Last.fm." if action == "outage_reminder" else ""
+        reminder = "Reminder: " if action == "outage_reminder" else ""
         subject = f"spotify_monitor: Spotify plays missing from Last.fm for {username}"
         play_description = "completed Spotify play was" if count == 1 else "consecutive completed Spotify plays were"
-        message = f"{count} {play_description} not found on Last.fm. Earliest missing play in this comparison: {oldest}.{reminder}\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
+        message = f"{reminder}{count} {play_description} not found on Last.fm for {username}. Earliest missing play in this comparison: {oldest}.\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
     body = f"{message}\n\nTimestamp: {notification_timestamp}"
-    print(f"* {subject}\n{message}")
+    print(f"* {message}")
     email_selected, webhook_selected = selected_channels if selected_channels is not None else (bool(SCROBBLE_HEALTH_NOTIFICATION), webhook_event_enabled("scrobble_health"))
     successful_channels = send_notification_channels("scrobble_health", subject, body, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
     print_cur_ts("\nTimestamp:\t\t\t")

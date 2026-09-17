@@ -813,7 +813,10 @@ def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, 
     assert delivery_mock.call_args.args[1] == "spotify_monitor: Spotify plays missing from Last.fm for lastfm-user"
     assert "Earliest missing play in this comparison: PLAYED-1000." in outage_body
     assert "Check whether Spotify Scrobbling is connected in your Last.fm settings:" in outage_body
-    assert ("Reminder: recent Spotify plays are still missing from Last.fm." in outage_body) is (action == "outage_reminder")
+    reminder_prefix = "Reminder: " if action == "outage_reminder" else ""
+    assert outage_output.startswith(f"* {reminder_prefix}6 consecutive completed Spotify plays were not found on Last.fm for lastfm-user.")
+    assert outage_body.startswith(f"{reminder_prefix}6 consecutive completed Spotify plays were not found on Last.fm for lastfm-user.")
+    assert "spotify_monitor:" not in outage_output
     assert "outage" not in outage_body.lower()
     assert "5 most recent missing plays:" in outage_body
     assert "\n- PLAYED-1000 | Artist - First" not in outage_body
@@ -829,7 +832,11 @@ def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, 
     monitor.send_scrobble_health_notification("lastfm-user", monitor.ScrobbleHealthEvaluation("healthy"), "recovery")
     recovery_output = capsys.readouterr().out
     recovery_body = delivery_mock.call_args.args[2]
-    assert "Spotify scrobbles are appearing on Last.fm again. A newer Spotify play was found on the Last.fm profile." in recovery_body
+    assert recovery_body.startswith("Spotify scrobbles are appearing on Last.fm again for lastfm-user.\n\nProfile:")
+    assert recovery_output.startswith("* Spotify scrobbles are appearing on Last.fm again for lastfm-user.\n\nProfile:")
+    assert recovery_output.count("Spotify scrobbles are appearing on Last.fm again") == 1
+    assert "spotify_monitor:" not in recovery_output
+    assert delivery_mock.call_args.args[1].startswith("spotify_monitor:")
     assert "recovered" not in delivery_mock.call_args.args[1]
     assert recovery_body.endswith("Timestamp: ALERT-TIMESTAMP")
     assert "Profile: https://www.last.fm/user/lastfm-user\n\nTimestamp:" in recovery_output

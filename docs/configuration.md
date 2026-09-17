@@ -133,7 +133,7 @@ spotify_monitor --monitor-mode scrobble_health --lastfm-username LASTFM_USERNAME
 
 You can pass the credentials with `--lastfm-api-key`, `--scrobble-client-id` and `--scrobble-refresh-token` instead. Use `--scrobble-redirect-uri` if the app does not register the default redirect. Private values passed as arguments may remain visible in shell history or process listings.
 
-The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This tolerates short Last.fm delays and occasional missing scrobbles. A **Missing scrobbles** result means those thresholds were met. It does not establish that either service is unavailable or that the integration is disconnected. Alerts identify the earliest missing play in the current comparison and list up to five of the most recent missing plays. The relevant settings are:
+The default alert requires five consecutive unmatched completed plays. The oldest of those plays must be at least 20 minutes old. This tolerates short Last.fm delays and occasional missing scrobbles. A **Missing scrobbles** result means those thresholds were met. It does not establish that either service is unavailable or that the integration is disconnected. Alerts identify the earliest missing play in the current comparison and list up to five of the most recent missing plays. Console alerts print the message once without a notification subject or application prefix. The relevant settings are:
 
 | Setting | One-run option | Default | Purpose |
 | --- | --- | ---: | --- |
