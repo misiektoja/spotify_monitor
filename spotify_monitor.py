@@ -259,7 +259,7 @@ WEBHOOK_TRANSFORMS = []
 
 # Each Friend Activity backend has its own group of timers below
 # Only the group matching FRIEND_ACTIVITY_BACKEND is used, the other group is ignored
-# The -c, -k and -o flags set the timers of the selected backend
+# The -c, -k, -o and -m flags set the timers of the selected backend
 
 # ============================
 # Live backend timers
@@ -285,6 +285,11 @@ SPOTIFY_LIVE_INACTIVITY_CHECK = 180  # 3 minutes
 # The feed drops a user who starts a private session, so a low value reports it within seconds
 SPOTIFY_LIVE_DISAPPEARED_COUNTER = 2
 
+# Time between checks while the user is not visible; in seconds
+# A shorter interval times the user's return more closely
+# Can also be set using the -m flag
+SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = 30  # 30 seconds
+
 # ============================
 # Legacy backend timers
 # ============================
@@ -301,6 +306,12 @@ SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 # Can also be set using the -o flag
 # Songs longer than this value can cause the user to appear inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
+
+# Time between checks while the user is not visible; in seconds
+# A user leaves the list after turning off activity sharing, unfollowing or blocking the monitoring account,
+# or during a Spotify glitch
+# Can also be set using the -m flag
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 
 # ============================
 # Settings for both backends
@@ -325,13 +336,6 @@ DETECT_CROSSFADED_SONGS = True
 # as crossfaded if DETECT_CROSSFADED_SONGS is enabled
 CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
 CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
-
-# Interval for checking whether a user who is no longer visible has come back; in seconds
-# A user leaves the feed after starting a private session (live backend), turning off activity sharing,
-# unfollowing or blocking the monitoring account, or during a Spotify glitch
-# A shorter interval times the user's return more closely
-# Can also be set using the -m flag
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 
 # ----------------------------
 # Last.fm Scrobble Health Mode
@@ -880,15 +884,16 @@ SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = 0
 SPOTIFY_LIVE_ERROR_INTERVAL = 0
 SPOTIFY_LIVE_INACTIVITY_CHECK = 0
 SPOTIFY_LIVE_DISAPPEARED_COUNTER = 0
+SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = 0
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 INACTIVE_EMAIL_RECENT_SONGS_COUNT = 0
 PLAYED_FOR_DURATION_TOLERANCE = 0
 DETECT_CROSSFADED_SONGS = False
 CROSSFADE_DETECTION_MIN = 0.0
 CROSSFADE_DETECTION_MAX = 0.0
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 LASTFM_USERNAME = ""
 LASTFM_API_KEY = ""
 SPOTIFY_SCROBBLE_CLIENT_ID = ""
@@ -5438,6 +5443,11 @@ def activity_disappeared_counter() -> int:
     return SPOTIFY_LIVE_DISAPPEARED_COUNTER if live_activity_backend() else REMOVED_DISAPPEARED_COUNTER
 
 
+# Returns the time between checks while the target is not visible with the selected backend
+def activity_disappeared_interval() -> int:
+    return SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL if live_activity_backend() else SPOTIFY_DISAPPEARED_CHECK_INTERVAL
+
+
 # Changes the inactivity timer of the selected backend by the given number of seconds when the result stays positive
 def adjust_inactivity_check(delta: int) -> None:
     global SPOTIFY_INACTIVITY_CHECK, SPOTIFY_LIVE_INACTIVITY_CHECK
@@ -7978,7 +7988,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Authentication", authentication, concise=True),
         StartupSummaryRow("Polling interval", f"[offline: {display_time(SPOTIFY_LIVE_CHECK_INTERVAL)}] [active: {display_time(SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)}]" if live_activity_backend() else display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
         StartupSummaryRow("Inactivity timer", display_time(activity_inactivity_check()), concise=False),
-        StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
+        StartupSummaryRow("Disappeared timer", display_time(activity_disappeared_interval()), concise=False),
         StartupSummaryRow("Error retry timer", display_time(activity_error_interval()), concise=False),
         StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
         *_startup_email_detail_rows(),
@@ -8942,7 +8952,7 @@ def runtime_boolean_errors() -> List[str]:
 # Returns all type and range errors in settings that control runtime timing or counts
 def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
-    positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
+    positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
     positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES), ("SPOTIFY_LIVE_DISAPPEARED_COUNTER", SPOTIFY_LIVE_DISAPPEARED_COUNTER))
     for name, value in positive_numbers:
@@ -9125,10 +9135,10 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
 
     if live_activity_backend():
         interval_floor = DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL
-        interval_settings = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL))
+        interval_settings = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL))
     else:
         interval_floor = DOCTOR_MIN_SAFE_CHECK_INTERVAL
-        interval_settings = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL),)
+        interval_settings = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL))
     short_intervals = [(name, value) for name, value in interval_settings if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < interval_floor]
     if short_intervals:
         intervals = ", ".join(f"{display_time(value)} between checks ({name})" for name, value in short_intervals)
@@ -12206,18 +12216,18 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         invisible_since = visible_last_at or now
                         absence_advice_shown = False
                         if is_user_removed(sp_accessToken, user_uri_id):
-                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
                                 m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) was probably removed<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(activity_disappeared_interval())} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) was probably removed<br>Retrying in <b>{display_time(activity_disappeared_interval())}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
                             profile_url = spotify_user_profile_url(user_uri_id)
-                            retry_text = f"Checking every {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}"
+                            retry_text = f"Checking every {display_time(activity_disappeared_interval())}"
                             if live_activity:
                                 # The live feed hides a user during a private session, so the follow advice waits until the absence outlasts one
                                 reason_text = "private session, sharing turned off, unfollowed or blocked"
@@ -12246,8 +12256,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                         print(f"To fix: {not_visible_advice.fix}")
                         print_cur_ts("Timestamp:\t\t\t")
-                    debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
-                    time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
+                    debug_monitor_check_timing(check_count, user_uri_id, check_started_at, activity_disappeared_interval())
+                    time.sleep(activity_disappeared_interval())
                     continue
                 else:
                     # User is back in the activity response
@@ -12861,19 +12871,19 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         else:
             if user_not_found is False:
                 if is_user_removed(sp_accessToken, user_uri_id):
-                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(activity_disappeared_interval())} intervals")
                     not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
-                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
                     not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                     if recovery_hint_tracker.should_render(not_visible_advice):
                         print(f"To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
-            debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, "the target profile is not visible")
-            time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
+            debug_monitor_wait_timing(user_uri_id, activity_disappeared_interval(), "the target profile is not visible")
+            time.sleep(activity_disappeared_interval())
             continue
 
 
@@ -12942,7 +12952,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -14037,7 +14047,10 @@ def main():
         else:
             SPOTIFY_INACTIVITY_CHECK = args.offline_timer
     if args.disappeared_timer is not None:
-        SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
+        if live_activity_backend():
+            SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
+        else:
+            SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
     for value, option in ((args.check_interval, "--check-interval"), (args.active_check_interval, "--active-check-interval"), (args.offline_timer, "--offline-timer"), (args.disappeared_timer, "--disappeared-timer"), (args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched"), (args.scrobble_match_window, "--scrobble-match-window"), (args.scrobble_lookback, "--scrobble-lookback")):
         if value is not None and value <= 0:
             parser.error(f"{option} must be greater than zero")
