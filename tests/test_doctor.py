@@ -653,6 +653,32 @@ def test_malformed_target_fails():
     assert require_advice(check).code == "target.invalid"
 
 
+# Verifies Doctor names the follow state of an invisible target, so the reader knows which sharing path to fix
+@pytest.mark.parametrize("followed,expected", [
+    (True, "The monitoring account follows the target, so the target is not sharing listening activity with it or is in a private session"),
+    (False, "The monitoring account does not follow the target"),
+])
+def test_target_not_visible_names_the_follow_state(monkeypatch, followed, expected):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=followed))
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    assert check.status == "FAIL"
+    assert check.detail.endswith(expected)
+    advice = require_advice(check)
+    assert "unless the target shares listening activity with that account directly" in advice.fix
+    assert "A private session hides the target until it ends\nGuide: " in advice.fix
+
+
+# Verifies the legacy backend keeps the private session out of the invisible-target explanation and survives a failed follow lookup
+def test_target_not_visible_with_the_legacy_backend_omits_private_sessions(monkeypatch):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=RuntimeError("offline")))
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    assert check.status == "FAIL"
+    assert check.detail == "Target 'friend.user' was absent from the authenticated buddylist response"
+    assert "private session" not in require_advice(check).fix
+
+
 # Verifies an absent target is described as invisible with its normalized profile link
 @pytest.mark.parametrize("target_value", ["friend.user", "spotify:user:friend.user", "https://open.spotify.com/user/friend%2Euser?si=test"])
 def test_target_absent_from_buddy_list_is_not_visible(target_value):
