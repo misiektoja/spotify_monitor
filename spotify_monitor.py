@@ -1730,9 +1730,12 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "target_invalid":
         return make_recovery_advice("target.invalid", "Invalid Spotify target", recovery_fix_with_guide("Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", TARGET_GUIDE_URL), False, safe_detail)
     if context == "target_not_visible":
-        fix = "Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity"
+        sharing = "The target must share listening activity with all followers or with selected people that include that account"
+        fix = f"Confirm the target appears in Spotify Friend Activity for the account represented by these credentials. {sharing}"
         if target_user_id:
-            fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\nProfile: {spotify_user_profile_url(target_user_id)}\nThe target also needs to share listening activity"
+            fix = f"Follow this profile from the Spotify account represented by these credentials, unless the target shares listening activity with that account directly:\nProfile: {spotify_user_profile_url(target_user_id)}\n{sharing}"
+        if live_activity_backend():
+            fix += "\nA private session hides the target until it ends"
         return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
         return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
@@ -9307,8 +9310,24 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         return [make_doctor_check("Target", "FAIL", "The activity response could not be inspected", advice.detail, advice)]
     if found:
         return [make_doctor_check("Target", "PASS", f"Target '{target_id}' can be monitored", "The target is visible in the authenticated activity response")]
-    advice = classify_recovery_error(context="target_not_visible", detail=f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response", target_user_id=target_id)
+    detail = f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
+    followed = doctor_target_follow_state(report, target_id)
+    if followed is True:
+        detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
+    elif followed is False:
+        detail += ". The monitoring account does not follow the target"
+    advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+
+
+# Reports whether the monitoring account follows the target, or None when the follow state cannot be checked
+def doctor_target_follow_state(report: DoctorReport, target_id: Optional[str]) -> Optional[bool]:
+    if report.access_token is None or not target_id:
+        return None
+    try:
+        return spotify_user_is_followed(report.access_token, target_id)
+    except Exception:
+        return None
 
 
 # Checks optional OAuth metadata configuration and live access without creating an OAuth cache
@@ -10799,6 +10818,17 @@ def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_upda
     return result
 
 
+# Reports whether the target already appears in the activity response fetched by the authentication check
+def _wizard_target_visible(report: DoctorReport, target_user_id: str) -> bool:
+    if report.buddy_list is None:
+        return False
+    try:
+        found, _ = spotify_get_friend_info(report.buddy_list, normalize_spotify_user_id(target_user_id))
+    except Exception:
+        return False
+    return bool(found)
+
+
 # Checks the target follow state and offers one confirmed follow mutation when needed
 def _wizard_offer_target_follow(target_user_id: str) -> str:
     print(colorize('header', "\nFollowing check\n"))
@@ -10821,6 +10851,11 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         # codeql[py/clear-text-logging-sensitive-data]
         print(f"The monitoring account already follows '{target_user_id}'.")
         return "already_followed"
+    if _wizard_target_visible(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"The monitoring account does not follow '{target_user_id}', but the target already shares listening activity with it, so following is not required.")
+        return "visible"
     # The target user ID is public profile data, the scanner conflates it with the token that fetched it
     # codeql[py/clear-text-logging-sensitive-data]
     print(f"The monitoring account does not follow '{target_user_id}'.")
@@ -11511,7 +11546,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
                 follow_status = _wizard_offer_target_follow(target)
-                if follow_status in ("already_followed", "followed"):
+                if follow_status in ("already_followed", "followed", "visible"):
                     auth["validated"] = True
             else:
                 print(colorize('header', "\nFollowing check\n"))
