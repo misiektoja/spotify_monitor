@@ -65,6 +65,7 @@ def loop_environment(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 4)
     monkeypatch.setattr(monitor, "ALARM_RETRY", 15)
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 0)
     monkeypatch.setattr(monitor, "FLAG_FILE", "")
@@ -222,6 +223,7 @@ def test_a_quiet_cycle_stays_silent_in_verbose(loop_environment, monkeypatch, ca
 def test_a_verbose_notice_closes_with_a_timestamp(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
     monkeypatch.setattr(monitor, "REMOVED_DISAPPEARED_COUNTER", 3)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 3)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     # The target has to be found once before the loop that reports it missing is reached
@@ -257,6 +259,29 @@ def test_a_token_refresh_notice_closes_its_own_block_only_while_monitoring(monke
     assert lines[0] == "* Authentication token refreshed (cookie mode)"
     assert lines[1].startswith("Timestamp:")
     assert set(lines[2]) == {"─"}
+
+
+# Verifies a legacy disappearance names its possible causes, keeps the follow advice and times the return
+def test_a_legacy_disappearance_names_its_causes_and_times_the_return(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "REMOVED_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    now_ms = int(loop_environment.now) * 1000
+    responses = iter([buddy_list(timestamp_ms=now_ms), buddy_list(timestamp_ms=now_ms), {"friends": []}, {"friends": []}, buddy_list(timestamp_ms=now_ms)])
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: next(responses))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 4
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    assert "Spotify user 'watched-user' (Watched Friend) has disappeared from Friend Activity (sharing turned off, unfollowed or blocked). Checking every 3 minutes\nTo fix:" in output
+    assert "Spotify user watched-user (Watched Friend) has reappeared after 4 minutes\nTimestamp:" in output
+    assert "no longer visible" not in output
 
 
 # Verifies a target missing from the buddy list does not raise the activity flag

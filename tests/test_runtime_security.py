@@ -232,7 +232,7 @@ def test_every_logging_suppression_sits_above_a_print_with_its_reason():
     lines = (PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8").splitlines()
     suppressions = [index for index, line in enumerate(lines) if line.strip() == "# codeql[py/clear-text-logging-sensitive-data]"]
 
-    assert len(suppressions) == 7
+    assert len(suppressions) == 8
     for index in suppressions:
         assert "print(" in lines[index + 1]
         reasons = [line for line in lines[max(index - 4, 0):index] if line.strip().startswith("# ")]

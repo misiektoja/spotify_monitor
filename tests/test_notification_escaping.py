@@ -12,7 +12,7 @@ HOSTILE_ESCAPED = "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
 # Interpolations that are safe without escape() because the value is a counter or a flag this tool
 # computes itself, never text Spotify returns. Listed explicitly so a new unescaped name cannot slip
 # in behind a blanket exemption
-ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix", "completed_pauses", "paused_percentage"})
+ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix", "completed_pauses", "paused_percentage", "invisible_periods"})
 
 # Helpers that emit their own markup or render only dates, durations and numbers. None of them can carry
 # Spotify-supplied text, so escaping their output would only mangle the timestamps users read
