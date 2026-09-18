@@ -863,7 +863,7 @@ def test_live_crossfaded_track_is_labelled_before_the_next_track(loop_environmen
 # The live feed drops a user who starts a private session, so a short absence is confirmed by two checks, timed on return, sent as an activity notification and listed in the session summary
 def test_live_target_out_of_view_is_reported_timed_and_summarized(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
-    monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 180)
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
     monkeypatch.setattr(monitor, "INACTIVE_NOTIFICATION", True)
     delivery = Mock(return_value=(False, False))
@@ -888,7 +888,7 @@ def test_live_target_out_of_view_is_reported_timed_and_summarized(loop_environme
 # A private session ends within hours, so a longer absence earns the follow and sharing advice once
 def test_live_long_absence_prints_the_follow_advice_once(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
-    monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 4 * 3600)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 4 * 3600)
     monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
     now = loop_environment.now
     snapshots = [feed_entity(now)] * 2 + [None] * 5
