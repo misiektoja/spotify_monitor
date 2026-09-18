@@ -93,7 +93,7 @@ For the manual single-file method, optional extras and upgrade commands, see [In
 ### 🔍 Real-time Tracking
 - **Friend Activity**: Track what your friends are listening to.
 - **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
-- **Presence Detection**: Detect when friends get **online** or **offline**.
+- **Presence Detection**: Detect when friends get **online** or **offline** and how long they stay **out of view**, such as during a private session.
 - **Session Stats**: Display **duration, track counts, pauses** and **songs on loop**.
 
 ### 🎮 Playback Control
