@@ -434,6 +434,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Run Individual Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#save-a-spotify-login" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save a Spotify login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save-notification-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save notification credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -702,6 +741,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Run Individual Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#save-a-spotify-login" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save a Spotify login
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save-notification-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save notification credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -741,13 +819,12 @@
 
 
 <h1 id="setup-first-run">Setup &amp; First Run<a class="headerlink" href="#setup-first-run" title="Permanent link">&para;</a></h1>
-<p><a id="new-here-run-the-setup-wizard"></a></p>
+<p><a id="run-the-setup-wizard"></a></p>
 <h2 id="run-the-setup-wizard">Run the setup wizard<a class="headerlink" href="#run-the-setup-wizard" title="Permanent link">&para;</a></h2>
-<p>This page assumes Spotify Monitor is already installed (see <a href="../installation/">Installation</a>). It walks through the interactive setup wizard then your first monitoring run. If you opened this page first, choose <a href="../installation/#install-from-pypi">PyPI</a>, the <a href="../installation/#manual-installation">manual Python script</a>, the <a href="../installation/#docker-image">Docker image</a> or <a href="../installation/#docker-compose">Docker Compose</a>, finish that method's steps then return here.</p>
-<p>Then use the regular interactive setup wizard for Friend Activity monitoring. It asks who to monitor, how to connect to Spotify, how often to poll and which alerts to enable. The polling interval accepts seconds directly, decimal units such as <code>1.5h</code> or compound durations such as <code>1h 30m</code>. Supported units are <code>s</code>, <code>m</code>, <code>h</code> and <code>d</code>. You can review and change your answers before saving. Regular settings go in <code>spotify_monitor.conf</code>. Private values such as login cookies and webhook URLs go in <code>.env</code>.</p>
-<p>Both setup wizards explain at the beginning that Enter accepts the shown default and Ctrl+C cancels setup.</p>
-<p>For a local install, the wizard can check the setup and start monitoring immediately.</p>
-<p>Use the tab that matches how you installed the tool. Copy and run only the commands in that tab.</p>
+<p>Already installed? Run the setup command below for your installation and follow the prompts. Otherwise, start with <a href="../installation/">Installation</a>.</p>
+<p>For Friend Activity, setup asks who to monitor, how to connect to Spotify and which alerts and output files you want. You can review your answers before saving. Regular settings go in <code>spotify_monitor.conf</code> and private values go in <code>.env</code>. Keep <code>.env</code> private.</p>
+<p>Press Enter to accept a default or Ctrl+C to cancel. Cancelling before saving leaves your files untouched. Cancelling after saving keeps the saved settings. For changes to an existing setup, see <a href="../configuration/#configuration-file">Configuration File</a>.</p>
+<p>After saving, follow the offered Doctor checks and monitoring steps.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:6"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><input id="__tabbed_1_5" name="__tabbed_1" type="radio" /><input id="__tabbed_1_6" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">PyPI</label><label for="__tabbed_1_2">Manual Python script on macOS or Linux</label><label for="__tabbed_1_3">Manual Python script on Windows</label><label for="__tabbed_1_4">Docker image on macOS or Windows</label><label for="__tabbed_1_5">Docker image on Linux</label><label for="__tabbed_1_6">Docker Compose</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -772,7 +849,7 @@
 </div>
 <div class="tabbed-block">
 <p>Run setup from the directory used during installation. You do not need to download <code>docker-compose.yml</code> again.</p>
-<p>On a native Linux container engine, run these shell commands in the same terminal immediately before setup unless the variables are already set there or you saved the numeric values in the Compose <code>.env</code> file during installation. For permanent project values, use the numeric <code>.env</code> form under <a href="../installation/#docker-compose">Install with Docker Compose</a>. Docker-compatible runtimes on macOS and Windows should skip this export block.</p>
+<p>On a native Linux container engine, run these shell commands in the same terminal immediately before setup unless the variables are already set there or you saved the numeric values in the Compose <code>.env</code> file during installation. For permanent project values, use the numeric <code>.env</code> form under <a href="../installation/#install-with-docker-compose">Install with Docker Compose</a>. Docker-compatible runtimes on macOS and Windows should skip this export block.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_UID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">"</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SPOTIFY_MONITOR_GID</span><span class="o">=</span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span>
 </code></pre></div>
@@ -782,31 +859,26 @@
 </div>
 </div>
 </div>
-<p>Run interactive setup commands by themselves instead of including them in a multi-command paste.</p>
+<p>In friend activity mode, a <strong>target</strong> is the Spotify user whose activity you want to monitor. The <strong>monitoring account</strong> is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.</p>
+<p>The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional <code>pycookiecheat</code> package. If it is missing, the wizard can install it in a local Python installation.</p>
+<p>Container setup destinations must stay inside <code>/data</code>, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.</p>
+<p>After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.</p>
+<p>With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.</p>
 <h3 id="set-up-lastfm-scrobble-health-instead">Set up Last.fm scrobble health instead<a class="headerlink" href="#set-up-lastfm-scrobble-health-instead" title="Permanent link">&para;</a></h3>
-<p>Spotify's six-month reauthorization requirement can disconnect Spotify Scrobbling. Last.fm currently shows only a website banner and sends no email warning, so the problem can remain unnoticed when someone rarely opens the website. Use the focused wizard to configure independent console, email or webhook alerts:</p>
+<p>Spotify's six-month re-authorization requirement can disconnect Spotify Scrobbling. Last.fm currently shows only a website banner and sends no explicit email warning, so the problem can remain unnoticed when someone rarely opens the website.</p>
+<p>Use the focused setup wizard to configure independent console, email or webhook alerts:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>--setup-scrobble-health
 </code></pre></div>
-<p>The focused wizard selects scrobble health as the saved mode. It asks for the Last.fm username and API key, links to <a href="https://www.last.fm/api/accounts">Last.fm API account management</a> and guides you through a user-owned app in the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>. The app owner needs Spotify Premium in Development Mode. Create or open an app, add the recommended <code>http://127.0.0.1:8888/callback</code> redirect URI, select Web API in the API/SDKs section and save the app before copying its Client ID. The wizard uses this redirect automatically instead of asking you to choose one. A Client Secret is not needed. Spotify Monitor requests only <code>user-read-recently-played</code> through PKCE, opens or prints the authorization URL then asks you to paste the complete redirected URL from the browser address bar. The redirect page may fail to load because Spotify Monitor does not need to run a callback web server.</p>
-<p>Authorize the Spotify account whose completed plays should be checked. A separate Spotify account is not required. If that account is different from the app owner, add it under the app's User Management first. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation guide</a> and <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE guide</a> for the corresponding Dashboard screens.</p>
-<p>The wizard offers email or webhook alerts only for outages, recovery and operational errors. It defaults to five consecutive missing completed plays plus a 20 minute dead period. Duration prompts show seconds plus a readable equivalent such as <code>120s - 2m</code>. Enter seconds directly or add <code>s</code> for seconds, <code>m</code> for minutes, <code>h</code> for hours or <code>d</code> for days. Examples include <code>120</code>, <code>120s</code>, <code>2m</code>, <code>1h</code> and <code>1d</code>. Use the regular <code>--setup</code> wizard instead for Friend Activity monitoring.</p>
-<p>Like regular setup, the focused wizard lets you review or change each section before saving. It defaults to <code>spotify_monitor_scrobble_health.conf</code> plus <code>.env.scrobble_health</code> so its settings and private values do not replace the Friend Activity files. Pass <code>--config-file</code> or <code>--env-file</code> to choose another destination. With complete local authentication it can run the focused Doctor checks then start monitoring immediately. If authentication remains incomplete, it prints the exact authentication command before the Doctor and monitoring commands. Once monitoring starts, the console prints the first check and its result with the same timestamp separator used by Friend Activity. Later routine results appear with <code>--verbose</code> while outages, recoveries and errors remain visible normally.</p>
+<p>The setup wizard asks for the Last.fm username and API key, links to <a href="https://www.last.fm/api/accounts">Last.fm API account management</a> and guides you through a user-owned app in the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>.</p>
+<p>The Spotify app owner needs Spotify Premium in Development Mode. Create or open an app, add the recommended <code>http://127.0.0.1:8888/callback</code> redirect URI, select Web API in the API/SDKs section and save the app before copying its Client ID. The wizard uses this redirect automatically instead of asking you to choose one. A Client Secret is not needed. Spotify Monitor requests only <code>user-read-recently-played</code> through PKCE. Authorize the Spotify account whose completed plays should be checked.</p>
+<p>The wizard saves settings in <code>spotify_monitor_scrobble_health.conf</code> and private values in <code>.env.scrobble_health</code>, keeping them separate from Friend Activity. Use <code>--config-file</code> or <code>--env-file</code> to choose other files.</p>
 <p>To enter or replace only <code>LASTFM_API_KEY</code> through a hidden prompt, run <code>spotify_monitor --set-lastfm-credentials</code>. It saves only the API key in <code>.env.scrobble_health</code> by default because scrobble health does not need the Last.fm shared secret.</p>
 <p>To grant access again after the Spotify authorization expires or is revoked, run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
 </code></pre></div>
-<p>The command reuses the saved Client ID and redirect URI then replaces only <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> in <code>.env.scrobble_health</code>. It also prints the matching Doctor and monitoring commands. Spotify refresh tokens expire after six months, so this reauthorization is separate from reconnecting Spotify Scrobbling on Last.fm when the monitor detects an outage.</p>
-<p>Saved files are optional. For a one-off or externally managed run, select <code>--monitor-mode scrobble_health</code> then provide <code>--lastfm-username</code>, <code>--lastfm-api-key</code>, <code>--scrobble-client-id</code> and <code>--scrobble-refresh-token</code>. The redirect URI defaults to <code>http://127.0.0.1:8888/callback</code> and can be overridden with <code>--scrobble-redirect-uri</code>. The same private values can come from environment variables. Private command-line values may remain in shell history or process listings, so process environment variables are safer when persistence is not needed.</p>
+<p>Saved configuration or dotenv files are optional. For a one-off or externally managed run, select <code>--monitor-mode scrobble_health</code> then provide <code>--lastfm-username</code>, <code>--lastfm-api-key</code>, <code>--scrobble-client-id</code> and <code>--scrobble-refresh-token</code>. The redirect URI defaults to <code>http://127.0.0.1:8888/callback</code> and can be overridden with <code>--scrobble-redirect-uri</code>.</p>
 <p>For Docker Compose use <code>docker compose run --rm spotify_monitor --setup-scrobble-health</code>. For a direct Docker image replace <code>--setup</code> in the matching command above with <code>--setup-scrobble-health</code>.</p>
 <p>The macOS shell and Windows PowerShell examples use <code>${PWD}</code>. In Windows Command Prompt replace <code>${PWD}</code> with <code>%cd%</code>. Windows hosts must use Linux containers. The <code>:z</code> suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only <code>:z</code>.</p>
-<p>In this documentation, a <strong>target</strong> is the Spotify user whose activity you want to monitor. The <strong>monitoring account</strong> is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.</p>
-<p>The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional <code>pycookiecheat</code> package. If it is missing, the wizard can install it in a local Python installation.</p>
-<p>Both wizards display the detected installation method plus the selected configuration and dotenv destinations before the first prompt. They detect PyPI, a downloaded script, Docker or Docker Compose then print matching commands with paths formatted for the current operating system.</p>
-<p>Container setup destinations must stay inside <code>/data</code>. That directory is the current host directory mounted into the temporary setup container, so files written there survive <code>--rm</code>. The wizard rejects paths such as <code>/tmp/spotify_monitor.conf</code> instead of printing a command for a different file.</p>
-<p>After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.</p>
-<p>For Docker or Docker Compose, choose <strong>Import from Firefox after setup</strong>. The wizard asks whether Docker runs on macOS, standard Linux, Linux with Snap, Linux with Flatpak, Windows PowerShell or Windows Command Prompt. It then prints the matching command to mount the signed-in host profile read-only once and save <code>SP_DC_COOKIE</code> in the host <code>.env</code> file. Windows commands use the Firefox profile under <code>%APPDATA%\Mozilla\Firefox</code>. Use <a href="../configuration/#manual-cookie-extraction">manual extraction</a> only when that mount is unavailable.</p>
-<p>If the selected configuration contains <code>TARGET_USER_URI_ID</code>, running Spotify Monitor without a target starts that saved user. If no target is saved, an interactive no-argument run shows setup guidance and offers the setup wizard.</p>
-<p>If the selected <code>.env</code> file already contains a saved <code>SP_DC_COOKIE</code>, container setup offers to keep it. Otherwise Firefox import remains the default. Setup does not run Doctor while that import is pending. It finishes with the host-specific import command followed by the Doctor and monitoring commands.</p>
 <p><a id="before-you-start"></a></p>
 <h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
 <p>Spotify only shows a person's listening activity when both of these conditions are met:</p>
@@ -831,7 +903,7 @@
 </tr>
 <tr>
 <td>Start monitoring with existing authentication</td>
-<td><code>spotify_monitor TARGET</code>, where <code>TARGET</code> is a complete profile URL, <code>spotify:user:</code> URI or user ID</td>
+<td><code>spotify_monitor &lt;spotify_target&gt;</code>, where the target is a complete profile URL, <code>spotify:user:</code> URI or user ID</td>
 </tr>
 <tr>
 <td>Start the target saved in <code>TARGET_USER_URI_ID</code></td>
@@ -839,7 +911,7 @@
 </tr>
 <tr>
 <td>Check authentication, connectivity and one target</td>
-<td><code>spotify_monitor --doctor TARGET</code></td>
+<td><code>spotify_monitor --doctor &lt;spotify_target&gt;</code></td>
 </tr>
 <tr>
 <td>List Spotify friends visible to the configured account</td>
@@ -869,7 +941,9 @@
 </table>
 <p><a id="run-individual-commands"></a></p>
 <h2 id="run-individual-commands">Run Individual Commands<a class="headerlink" href="#run-individual-commands" title="Permanent link">&para;</a></h2>
-<p>The examples below use PyPI. For a manual script, replace <code>spotify_monitor</code> with <code>python3 spotify_monitor.py</code> on macOS or Linux. Use <code>python spotify_monitor.py</code> on Windows. Docker users should copy the matching prefix under <a href="../usage/#command-format">Command Format by Installation Method</a>.</p>
+<p>The examples below use PyPI. For a manual script, replace <code>spotify_monitor</code> with <code>python3 spotify_monitor.py</code> on macOS or Linux. Use <code>python spotify_monitor.py</code> on Windows and run it from the directory holding the script or give its full path. Docker users should copy the matching prefix under <a href="../usage/#command-format-by-installation-method">Command Format by Installation Method</a>.</p>
+<p><a id="save-a-spotify-login"></a></p>
+<h3 id="save-a-spotify-login">Save a Spotify login<a class="headerlink" href="#save-a-spotify-login" title="Permanent link">&para;</a></h3>
 <p>To configure authentication without the wizard, first open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the monitoring account. Then import that browser login:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
 </code></pre></div>
@@ -891,44 +965,51 @@
 <a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--set-sp-dc<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p><code>--set-sp-dc</code> does not accept the cookie as a command-line value. Use <code>--env-file PATH</code> to select another <code>.env</code> file. Add <code>--config-file PATH</code> when its success output should preserve a nondefault configuration path. <code>--env-file none</code> is invalid because this command must save the validated cookie. The older <code>-u</code> and <code>--spotify-dc-cookie</code> options still work, but their values may appear in shell history or process listings.</p>
+<p><a id="save-notification-credentials"></a></p>
+<h3 id="save-notification-credentials">Save notification credentials<a class="headerlink" href="#save-notification-credentials" title="Permanent link">&para;</a></h3>
+<p>The SMTP password is entered through a hidden prompt, checked against the mail server and saved as <code>SMTP_PASSWORD</code> in <code>.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>spotify_monitor<span class="w"> </span>--set-smtp-password
+</code></pre></div>
 <p>A webhook URL is the private address used to deliver notifications. Treat it like a password because anyone who has it may be able to post through it. Follow the <a href="../configuration/#webhook-settings">webhook setup steps</a> then save the link with the command that matches your installation:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># PyPI install</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>spotify_monitor<span class="w"> </span>--set-webhook-url
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Manual Python script</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--set-webhook-url
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># Docker Compose</span>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1"># Docker image on macOS or Windows</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="c1"># Docker image on Linux</span>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># PyPI install</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>spotify_monitor<span class="w"> </span>--set-webhook-url
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Manual Python script</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>--set-webhook-url
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Docker Compose</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Docker image on macOS or Windows</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># Docker image on Linux</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>--user<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>id<span class="w"> </span>-u<span class="k">)</span><span class="s2">:</span><span class="k">$(</span>id<span class="w"> </span>-g<span class="k">)</span><span class="s2">"</span><span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--set-webhook-url<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>The link is entered through a hidden prompt and saved as <code>WEBHOOK_URL</code> in <code>.env</code>. This command only saves the link. It does not turn on webhook alerts or send a message. See <a href="../configuration/#webhook-settings">Webhook Settings</a> to choose your alerts then run <code>spotify_monitor --send-test-webhook</code> to test them.</p>
+<p><a id="start-monitoring"></a></p>
+<h3 id="start-monitoring">Start monitoring<a class="headerlink" href="#start-monitoring" title="Permanent link">&para;</a></h3>
 <p>Before monitoring, <a href="../configuration/#following-the-monitored-user">follow the Spotify user</a> from the account represented by your configured credentials.</p>
 <p>Start monitoring with a complete Spotify profile URL, a <code>spotify:user:</code> URI or a user ID. The first two PyPI examples use a positional target. The third uses a saved <code>TARGET_USER_URI_ID</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>spotify_monitor<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>spotify_monitor<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>spotify_monitor<span class="w"> </span>--config-file<span class="w"> </span>spotify_monitor.conf
 </code></pre></div>
-<p>For a <a href="../installation/#manual-installation">manual script</a>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>&lt;spotify_target&gt;
+<p>For a <a href="../installation/#install-the-manual-script">manual script</a>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>python3<span class="w"> </span>spotify_monitor.py<span class="w"> </span>&lt;spotify_target&gt;
 </code></pre></div>
 <p>For Docker Compose, use <code>/data</code> paths inside the container. If the target was saved by setup use the first command. Otherwise use the second form with any supported target:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>--no-log-prefix
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>spotify_monitor<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p><code>docker compose up --no-log-prefix</code> uses the default <code>/data/spotify_monitor.conf</code> and <code>/data/.env</code> paths declared in <code>docker-compose.yml</code>. If setup saved either file under another <code>/data</code> path, use the explicit <code>docker compose run</code> command printed by setup.</p>
 <p>For a direct <code>docker run</code> command on macOS or Windows PowerShell:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span>--init<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PWD</span><span class="si">}</span><span class="s2">:/data:z"</span><span class="w"> </span>misiektoja/spotify-monitor:latest<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span><span class="w"> </span>--config-file<span class="w"> </span>/data/spotify_monitor.conf<span class="w"> </span>--env-file<span class="w"> </span>/data/.env
 </code></pre></div>
 <p>These commands work in macOS shells and Windows PowerShell with a Docker-compatible runtime that provides the <code>docker</code> CLI. In Windows Command Prompt replace <code>${PWD}</code> with <code>%cd%</code>. On a native Linux container engine replace <code>${PWD}</code> with <code>$PWD</code> and add <code>--user "$(id -u):$(id -g)"</code> immediately after <code>--init</code>.</p>
 <p>To see all supported command-line arguments and flags:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>spotify_monitor<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>spotify_monitor<span class="w"> </span>--help
 </code></pre></div>
 <p><a id="next-step"></a></p>
 <h2 id="next-step">Next Step<a class="headerlink" href="#next-step" title="Permanent link">&para;</a></h2>

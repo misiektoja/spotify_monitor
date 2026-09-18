@@ -468,6 +468,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#common-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours-look-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -483,6 +494,39 @@
     <span class="md-ellipsis">
       
         Choosing the Right Logging Level
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verbose-and-debug-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verbose and Debug Output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-and-command-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation and Command Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invalid-saved-settings-and-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid saved settings and state
       
     </span>
   </a>
@@ -616,6 +660,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#common-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours-look-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -631,6 +686,39 @@
     <span class="md-ellipsis">
       
         Choosing the Right Logging Level
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verbose-and-debug-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verbose and Debug Output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation-and-command-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation and Command Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#invalid-saved-settings-and-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Invalid saved settings and state
       
     </span>
   </a>
@@ -663,26 +751,29 @@
 
 
 <h1 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h1>
-<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. If you chose another installation, replace that command with the matching <a href="../usage/#command-format">command prefix</a>. The setup wizard and <code>--help</code> also print commands for the detected installation.</p>
+<p>Examples on this page use the PyPI command <code>spotify_monitor</code>. If you chose another installation, replace that command with the matching <a href="../usage/#command-format-by-installation-method">command prefix</a>. The setup wizard and <code>--help</code> also print commands for the detected installation.</p>
 <p><a id="doctor-preflight"></a></p>
 <h2 id="doctor-preflight">Doctor Preflight<a class="headerlink" href="#doctor-preflight" title="Permanent link">&para;</a></h2>
 <p>Before a long monitoring run, check the current configuration:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>spotify_monitor<span class="w"> </span>--doctor
 </code></pre></div>
-<p>The report shows only sections relevant to the checks it performed. It uses <code>[PASS]</code>, <code>[WARN]</code> and <code>[FAIL]</code> markers in these possible sections:</p>
+<p>The report shows only sections relevant to the checks it performed. It uses <code>[PASS]</code>, <code>[WARN]</code>, <code>[FAIL]</code> and <code>[SKIP]</code> markers, colour-coded by status when colour output is on, in these possible sections:</p>
 <ul>
-<li>Environment</li>
-<li>Configuration</li>
-<li>Authentication</li>
-<li>Metadata</li>
-<li>Connectivity</li>
-<li>Target</li>
-<li>Scrobble health</li>
-<li>Notifications</li>
-<li>Summary</li>
+<li><strong>Environment</strong></li>
+<li><strong>Configuration</strong></li>
+<li><strong>Authentication</strong></li>
+<li><strong>Metadata</strong></li>
+<li><strong>Connectivity</strong></li>
+<li><strong>Target</strong></li>
+<li><strong>Scrobble health</strong></li>
+<li><strong>Notifications</strong></li>
 </ul>
-<p>Doctor loads the same settings as a normal run. It checks the Spotify login, connection and selected target. If complete legacy OAuth credentials are present, it requests a temporary token and checks track metadata. A failed legacy check becomes a warning when the web-player fallback works. Doctor names the configuration file and the dotenv file it loaded, then lists which secrets are in effect and whether each one came from the dotenv file, an environment variable or the configuration file. Secret names are listed, never their values. Doctor also checks configured email and webhook settings without sending a message. It does not create logs, CSV files, flag files or OAuth caches. Friend Activity Doctor does not change configuration or <code>.env</code> files. Focused scrobble health Doctor may atomically update <code>SPOTIFY_SCROBBLE_REFRESH_TOKEN</code> if Spotify rotates it while access is checked.</p>
-<p>In an interactive terminal, Doctor can offer one real delivery test for each notification channel that passes its checks. Each prompt defaults to No. Answering Yes to the email prompt sends one test email. Answering Yes to the webhook prompt sends one Discord or ntfy message. Doctor does not offer delivery tests when it runs without an interactive terminal.</p>
+<p>Every <code>[WARN]</code> and <code>[FAIL]</code> row carries an indented <code>To fix:</code> line under its marker, plus a <code>Guide:</code> link when a documentation page covers that row. A <code>[SKIP]</code> row names a check that could not run and says why.</p>
+<p>Doctor uses your normal settings to check authentication, connectivity, the target, output paths and notifications. It shows the configuration and <code>.env</code> files in use and where credentials came from, without displaying their values. A failed optional legacy metadata check is a warning if the web-player fallback works. It also warns when <a href="../configuration/#tls-verification">TLS verification</a> is off.</p>
+<p>Doctor checks email login and webhook settings without sending messages. It does not create monitoring output files. Friend Activity checks leave configuration and credentials unchanged. Scrobble health checks may save a replacement refresh token if Spotify rotates it.</p>
+<p>If Spotify Desktop and <code>--list-friends</code> show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy <code>buddylist</code> backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. The <strong>Friend Activity backend</strong> row in Doctor names the source in use. See <a href="../configuration/#friend-activity-backend">Friend Activity Backend</a>.</p>
+<p>In an interactive terminal, Doctor offers a delivery test for each ready notification channel. Each test sends one real message only if you answer Yes. The default is No. Ctrl+C ends the run. Delivery tests are not offered in noninteractive runs.</p>
+<p>The <strong>Next steps</strong> block gives the monitoring command with your target and selected file paths. Resolve failing checks before starting.</p>
 <p>Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--doctor
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_target&gt;
@@ -700,26 +791,106 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
 </code></pre></div>
 <p>The command shows the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, the exact redirect URI plus Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation</a> and <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE</a> guides. Confirm that the app owner has Premium, Web API is selected and the redirect URI matches exactly. If the Spotify account being authorized is not the app owner, add it under User Management.</p>
-<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. This is not evidence that Last.fm scrobbling is broken. Spotify Monitor leaves the current health state unchanged, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
-<p>Each failed check includes a <code>To fix:</code> action. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
+<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports <strong>Check failed</strong>, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
+<p>Scrobble health liveness banners say <code>Scrobble health monitor running for &lt;lastfm_username&gt;. Current result: &lt;result&gt;.</code> The result describes the current comparison. <strong>Idle</strong> means no completed Spotify plays were returned within the comparison period, even if an earlier check triggered an alert. <strong>Missing scrobbles</strong> means recent plays met the alert threshold. It does not identify the cause or establish a service outage. See <a href="../configuration/#lastfm-scrobble-health">scrobble health settings</a> for reminder and matching rules.</p>
+<p>Each failed check includes a <code>To fix:</code> action. A command in that action matches how you installed the tool and carries the <code>--config-file</code> or <code>--env-file</code> you started with, so it can be pasted as it is. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
 </code></pre></div>
 <p>Inside Docker or Docker Compose, the suggested fix shows the read-only Firefox host profile import first. If manual extraction is needed, it shows the recommended <code>--set-sp-dc</code> command because its hidden prompt is the most secure entry method. See <a href="../usage/#import-firefox-into-container-authentication">Import Firefox into Container Authentication</a> for Linux, Snap, Flatpak and macOS commands.</p>
-<p>For advanced client-mode failures, repeat the <a href="../configuration/#spotify-desktop-client">Spotify Desktop Client</a> export steps. Add <code>--debug</code> to Doctor or a normal run for sanitized technical detail. Use <code>--verbose</code> for a complete startup summary plus occasional state changes without output for every poll. Cookies, tokens, authorization headers, email passwords and webhook URLs remain hidden.</p>
+<p>A monitoring failure is reported immediately with recovery guidance. Persistent failures produce an hourly <code>Monitoring degraded</code> reminder, even if liveness banners are disabled. <code>Monitoring recovered</code> reports when the failure clears and how long it lasted.</p>
+<p>The old <code>ERROR_500_NUMBER_LIMIT</code>, <code>ERROR_500_TIME_LIMIT</code>, <code>ERROR_NETWORK_ISSUES_NUMBER_LIMIT</code> and <code>ERROR_NETWORK_ISSUES_TIME_LIMIT</code> settings are ignored. Existing configurations containing them still load with a note.</p>
+<p>For advanced client-mode failures, repeat the <a href="../configuration/#spotify-desktop-client">Spotify Desktop Client</a> export steps. Add <code>--debug</code> to Doctor or a normal run for technical diagnostics. Debug mode keeps earlier terminal output visible and hides private credentials.</p>
+<p><a id="common-problems"></a></p>
+<h2 id="common-problems">Common Problems<a class="headerlink" href="#common-problems" title="Permanent link">&para;</a></h2>
+<p>Every failure is reported in the same three-part shape: what went wrong, a <code>To fix:</code> action and a <code>Guide:</code> link to the page that covers it. The fix command matches how you installed the tool and carries the <code>--config-file</code> or <code>--env-file</code> you started with, so it can be pasted as it is. <code>--debug</code> appends a <code>Technical detail:</code> line for bug reports. Secrets are redacted from all three.</p>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Where to look</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sp_dc</code> cookie rejected or expired</td>
+<td>The monitoring account signed out or Spotify rotated the session</td>
+<td><a href="../configuration/#spotify-sp_dc-cookie">Spotify sp_dc Cookie</a> then rerun <code>--set-sp-dc</code></td>
+</tr>
+<tr>
+<td>No friend activity appears</td>
+<td>The monitoring account does not follow the target</td>
+<td><a href="../configuration/#following-the-monitored-user">Following the Monitored User</a></td>
+</tr>
+<tr>
+<td>Scrobble health reports nothing</td>
+<td>The Last.fm credentials or the recent-play authorization are missing</td>
+<td><a href="../configuration/#lastfm-scrobble-health">Last.fm Scrobble Health</a></td>
+</tr>
+<tr>
+<td>The run stops naming a file and a line number</td>
+<td>A configuration line is not a plain <code>SETTING = value</code> assignment</td>
+<td><a href="../configuration/#configuration-file">Configuration File</a></td>
+</tr>
+<tr>
+<td>Emails never arrive</td>
+<td>Incomplete SMTP settings</td>
+<td><a href="../configuration/#smtp-settings">SMTP Settings</a> then run <code>spotify_monitor --send-test-email</code></td>
+</tr>
+<tr>
+<td>Webhook alerts never arrive</td>
+<td>Provider mismatch or a stale destination</td>
+<td><a href="../configuration/#webhook-settings">Webhook Settings</a> then run <code>spotify_monitor --send-test-webhook</code></td>
+</tr>
+<tr>
+<td><code>spotify_monitor</code> is not found after installation</td>
+<td>The shell has not picked up the new command</td>
+<td><a href="#installation-and-command-problems">Installation and Command Problems</a></td>
+</tr>
+<tr>
+<td>Escape sequences such as <code>[36m</code> printed as text or no colour at all</td>
+<td>The terminal cannot display ANSI colour or colour was switched off</td>
+<td><a href="#terminal-colours-look-wrong">Terminal Colours Look Wrong</a></td>
+</tr>
+</tbody>
+</table>
+<p>A continuing outage produces a <code>* Monitoring degraded</code> reminder once an hour, even when the <a href="../usage/#liveness-reminder">liveness reminder</a> is switched off. <code>* Monitoring recovered</code> marks recovery. Use <code>--verbose</code> to see the first failed check.</p>
 <p><a id="terminal-colours-look-wrong"></a></p>
 <h2 id="terminal-colours-look-wrong">Terminal Colours Look Wrong<a class="headerlink" href="#terminal-colours-look-wrong" title="Permanent link">&para;</a></h2>
-<p>If escape sequences such as <code>[36m</code> appear as literal text, the terminal does not understand ANSI colour. Start the tool with <code>--no-color</code>, or set <code>COLORED_OUTPUT = False</code> in the configuration file. On Windows, <code>pip install colorama</code> fixes the classic Command Prompt.</p>
-<p>If colour is missing where you expect it, check in this order: <code>--no-color</code> on the command line, <code>COLORED_OUTPUT</code> in the configuration file, a <code>NO_COLOR</code> environment variable, and whether output is redirected or piped. Colour is switched off in all of those cases, and also when <code>TERM</code> is unset or set to <code>dumb</code>.</p>
+<p>If escape sequences such as <code>[36m</code> appear as literal text, the terminal does not understand ANSI colour. Start the tool with <code>--no-color</code> or set <code>COLORED_OUTPUT = False</code> in the configuration file. On Windows, <code>pip install colorama</code> fixes the classic Command Prompt.</p>
+<p>If colour is missing where you expect it, check in this order: <code>--no-color</code> on the command line, <code>COLORED_OUTPUT</code> in the configuration file, a <code>NO_COLOR</code> environment variable and whether output is redirected or piped. Colour is switched off in all of those cases and also when <code>TERM</code> is unset or set to <code>dumb</code>.</p>
 <p>Log files never contain colour by design. To colour a saved log while reading it, see <a href="../usage/#coloring-log-output-with-grc">Coloring Log Output with GRC</a>.</p>
 <p>To change which colours are used, see <a href="../configuration/#terminal-colours">Terminal Colours</a>.</p>
 <p><a id="choosing-the-right-logging-level"></a></p>
 <h2 id="choosing-the-right-logging-level">Choosing the Right Logging Level<a class="headerlink" href="#choosing-the-right-logging-level" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Default mode</strong> reports activity changes and important errors</li>
-<li><strong>Verbose mode (<code>--verbose</code>)</strong> adds occasional state changes and a complete startup summary without private values</li>
+<li><strong>Verbose mode (<code>--verbose</code>)</strong> adds occasional state changes, a line naming where each delivered alert went and a complete startup summary without private values. Set <code>DELIVERY_CONFIRMATIONS = False</code> to keep verbose mode without those delivery lines</li>
 <li><strong>Debug mode (<code>--debug</code>)</strong> adds sanitized request flow, scheduling details and internal diagnostics</li>
 </ul>
+<p>Delivery confirmations name the recipient or webhook provider. <code>DELIVERY_CONFIRMATIONS = False</code> hides these optional success messages. Monitoring events, send attempts and errors remain visible.</p>
+<p>Both <code>--verbose</code> and <code>--debug</code> show the complete startup summary, including notification settings and credential sources. Use it to check which configuration is active without displaying private values.</p>
 <p>Start with <code>--doctor</code>. If the suggested fix does not resolve the issue, retry with <code>--debug</code> and include only sanitized output when opening a GitHub issue.</p>
+<p><a id="verbose-and-debug-output"></a></p>
+<h2 id="verbose-and-debug-output">Verbose and Debug Output<a class="headerlink" href="#verbose-and-debug-output" title="Permanent link">&para;</a></h2>
+<p><code>--verbose</code> adds the decisions a run made, in the same <code>*</code> lines as the rest of the output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--verbose
+</code></pre></div>
+<p><code>--debug</code> traces what the tool is doing in timestamped <code>[DEBUG HH:MM:SS]</code> lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--debug
+</code></pre></div>
+<p>Lines with details read <code>Operation: key=value, key=value</code>. Fields depend on the operation. Some results report <code>outcome=OK</code>, <code>failed</code>, <code>degraded</code> or <code>unavailable</code>.</p>
+<p><a id="installation-and-command-problems"></a></p>
+<h2 id="installation-and-command-problems">Installation and Command Problems<a class="headerlink" href="#installation-and-command-problems" title="Permanent link">&para;</a></h2>
+<p>If Python or <code>pip</code> is missing, use the <a href="../installation/#new-to-python-check-and-install">Python install walkthrough</a>.</p>
+<p>If <code>spotify_monitor</code> is not found after installation, close the terminal and open it again. On Windows with Python Install Manager, run <code>py install --refresh</code> to refresh command aliases. For a pipx installation, run <code>pipx ensurepath</code> then reopen the terminal. If you downloaded the script, use the <a href="../usage/#command-format-by-installation-method">manual command</a> from its directory.</p>
+<p>If <code>pip</code> reports an externally managed environment, follow the pipx steps in <a href="../installation/#install-spotify-monitor">Installation</a>. Use <code>pipx upgrade spotify_monitor</code> for later upgrades.</p>
+<p>If the tool cannot import a dependency, install the dependencies with the same Python interpreter that runs the script. On macOS or Linux use <code>python3 -m pip install -r requirements.txt</code>. On Windows use <code>python -m pip install -r requirements.txt</code>. Match the requirements file to your downloaded script.</p>
+<p>If a new terminal cannot find your saved settings, return to the directory used during setup or pass both <code>--config-file</code> and <code>--env-file</code> explicitly. Run <code>spotify_monitor --doctor</code> to see which settings are loaded.</p>
+<h2 id="invalid-saved-settings-and-state">Invalid saved settings and state<a class="headerlink" href="#invalid-saved-settings-and-state" title="Permanent link">&para;</a></h2>
+<p>Timing values must be finite and within the documented range. Normal startup checks effective timing settings before monitoring. A configuration syntax error reports its file, line number and parser message without echoing source text that may contain credentials.</p>
+<p>Unusable scrobble-health timestamps reset to zero with a warning naming each field. Other valid fields remain available.</p>
+<p>Doctor names invalid path, truncation and colour settings so you can correct them. Normal monitoring stops for invalid paths, but Doctor, setup and credential commands remain available for recovery. <code>TRUNCATE_CHARS</code> must be an integer zero or greater. Use <code>0</code> for full lines or <code>999</code> to detect terminal width.</p>
 
 
 
