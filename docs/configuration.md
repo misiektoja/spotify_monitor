@@ -65,15 +65,14 @@ spotify_monitor other_user_id
 <a id="following-the-monitored-user"></a>
 ## Following the Monitored User
 
-To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
+The target must share listening activity with the monitoring account, the Spotify account behind the `sp_dc` cookie or `client` credentials. Spotify offers two sharing settings:
 
-If the monitoring account does not follow the target, setup offers to follow them. It sends the request only after you confirm.
+- **All followers**: the monitoring account must follow the target.
+- **Selected people**: the target selects the monitoring account. Following is not required.
 
-This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, follow the target manually in Spotify.
+If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
 
-If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.
-
-Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
+Doctor reports whether the monitoring account follows an invisible target, so you know which setting to fix.
 
 ## How to Find a Friend's Spotify Profile URL
 
@@ -114,6 +113,8 @@ Spotify Monitor by default follows Spotify's Listening Activity live feed, the s
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
 
+The feed drops a user who starts a private session, turns off activity sharing, blocks the monitoring account or, when sharing with all followers, is no longer followed by it. The tool cannot tell these causes apart. After `SPOTIFY_LIVE_DISAPPEARED_COUNTER` checks in a row without the user, it reports `is no longer visible in listening activity` and checks every `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` seconds (`-m`) until the user returns, then reports `is visible again after` with the time away. After six hours away it prints the follow and sharing advice once, since a private session ends sooner. These reports use the inactive and active notification settings. A session stays open while the user is away and its summary lists the time the user was not visible.
+
 Songs on loop are counted when a song is played again from its start `SONG_ON_LOOP_VALUE` times.
 
 It is the default mode for activity feed. It can also be set explicitly via `FRIEND_ACTIVITY_BACKEND = "listening_activity"` in the configuration file or you can pass `--friend-activity-backend listening_activity` for one run:
@@ -130,6 +131,8 @@ Polling can miss short tracks and quick changes between checks.
 | `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` | `-k` | 10 seconds | Time between checks while a listening session is open |
 | `SPOTIFY_LIVE_ERROR_INTERVAL` | | 60 seconds | Retry delay after a failed check |
 | `SPOTIFY_LIVE_INACTIVITY_CHECK` | `-o` | 180 seconds | Time without playback after which the session ends |
+| `SPOTIFY_LIVE_DISAPPEARED_COUNTER` | | 2 checks | Checks in a row without the user before the absence is reported |
+| `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` | `-m` | 180 seconds | Time between checks while the user is not visible, shared with the legacy backend |
 
 `--doctor` warns when an interval is below 5 seconds. The TRAP and ABRT signals adjust the inactivity timer. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
 
@@ -144,13 +147,14 @@ To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` i
 spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID
 ```
 
-The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c` and `-o` set them when it is selected.
+The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c` and `-o` set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports `has disappeared from Friend Activity` only after `REMOVED_DISAPPEARED_COUNTER` checks in a row and prints the follow and sharing advice at once.
 
 | Setting | One-run option | Default | Purpose |
 | --- | --- | ---: | --- |
 | `SPOTIFY_CHECK_INTERVAL` | `-c` | 30 seconds | Time between checks |
 | `SPOTIFY_ERROR_INTERVAL` | | 180 seconds | Retry delay after a failed check |
 | `SPOTIFY_INACTIVITY_CHECK` | `-o` | 660 seconds | Time after the last completed track after which the user is inactive |
+| `REMOVED_DISAPPEARED_COUNTER` | | 4 checks | Checks in a row without the user before the disappearance is reported |
 
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health
