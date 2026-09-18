@@ -9807,6 +9807,8 @@ def _wizard_print_summary_rows(rows) -> None:
 # Prints one labelled command with sibling-style indentation and spacing
 def _wizard_print_command(label: str, command: str, suffix: str = "") -> None:
     print(label)
+    # The next-step commands name flags and paths, never a secret value
+    # codeql[py/clear-text-logging-sensitive-data]
     print(f"    {colorize('section', command)}{colorize('info', suffix) if suffix else ''}\n")
 
 
@@ -10815,8 +10817,12 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print("No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
     if is_followed:
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
         print(f"The monitoring account already follows '{target_user_id}'.")
         return "already_followed"
+    # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+    # codeql[py/clear-text-logging-sensitive-data]
     print(f"The monitoring account does not follow '{target_user_id}'.")
     print()
     if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
@@ -10834,6 +10840,8 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print(f"Spotify follow verification failed: {sanitize_error_text(exc)}")
         return "follow_failed"
     if verified:
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
         print(f"Follow verified. The monitoring account now follows '{target_user_id}'.")
         return "followed"
     if mutation_error:
@@ -10909,6 +10917,8 @@ def _wizard_print_saved_files(write_status: dict, dotenv_status: Optional[dict])
     if write_status["backup_path"]:
         print(f"  Backup:        {write_status['backup_path']}")
     if dotenv_status:
+        # The row prints the dotenv file path, not what the file holds
+        # codeql[py/clear-text-logging-sensitive-data]
         print(f"  {'Secrets:':<15}{dotenv_status['path']}")
 
 
@@ -11309,6 +11319,8 @@ def _wizard_collect_scrobble_health_destination_section(state: ScrobbleHealthSet
 # Prints the current editable scrobble health answers without exposing secrets
 def _wizard_print_scrobble_health_setup_summary(state: ScrobbleHealthSetupState, method: str) -> None:
     print(colorize('header', "\nSetup summary\n"))
+    # The username is not a secret, the scanner conflates it with the hidden answers that share the wizard state
+    # codeql[py/clear-text-logging-sensitive-data]
     print(f"  Last.fm user: {state.username}")
     print(f"  Missing-play threshold: {state.config_values['SCROBBLE_HEALTH_MIN_UNMATCHED']}")
     print(f"  Dead period: {_wizard_format_duration(int(state.config_values['SCROBBLE_HEALTH_DEAD_PERIOD']))}")
