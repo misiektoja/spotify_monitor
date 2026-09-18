@@ -58,13 +58,13 @@ After saving, follow the offered Doctor checks and monitoring steps.
     docker compose run --rm --pull=always spotify_monitor --setup
     ```
 
-In friend activity mode, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.
+In friend activity mode, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The target must share listening activity with the monitoring account, either with all followers, which requires the monitoring account to follow the target, or with selected people that include it. They are normally different accounts.
 
 The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation.
 
 Container setup destinations must stay inside `/data`, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.
 
-After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.
+After saving authentication, the wizard checks whether the target is visible or followed. It offers to follow the target only when neither is the case and sends the follow request only after you confirm.
 
 With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.
 
@@ -101,12 +101,12 @@ The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command
 <a id="before-you-start"></a>
 ## Before you start
 
-Spotify only shows a person's listening activity when both of these conditions are met:
+Spotify only shows a person's listening activity when that person shares it with the account used by Spotify Monitor, in one of two ways:
 
-1. The Spotify account used by Spotify Monitor follows the person you want to monitor.
-2. That person has enabled listening activity sharing in Spotify.
+1. With **all followers**: the account used by Spotify Monitor must follow the person you want to monitor.
+2. With **selected people**: the person selects the account used by Spotify Monitor. Following is not required.
 
-The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](configuration.md#following-the-monitored-user).
+The setup wizard checks whether the target is visible or followed and offers to follow the target when neither is the case. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](configuration.md#following-the-monitored-user).
 
 <a id="not-sure-which-command-you-need"></a>
 ## Not sure which command you need?
@@ -194,7 +194,7 @@ The link is entered through a hidden prompt and saved as `WEBHOOK_URL` in `.env`
 <a id="start-monitoring"></a>
 ### Start monitoring
 
-Before monitoring, [follow the Spotify user](configuration.md#following-the-monitored-user) from the account represented by your configured credentials.
+Before monitoring, make sure the target shares listening activity with the account represented by your configured credentials. See [Following the Monitored User](configuration.md#following-the-monitored-user).
 
 Start monitoring with a complete Spotify profile URL, a `spotify:user:` URI or a user ID. The first two PyPI examples use a positional target. The third uses a saved `TARGET_USER_URI_ID`:
 
