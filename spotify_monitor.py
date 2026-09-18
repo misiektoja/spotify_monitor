@@ -281,6 +281,10 @@ SPOTIFY_LIVE_ERROR_INTERVAL = 60  # 1 minute
 # Can also be set using the -o flag
 SPOTIFY_LIVE_INACTIVITY_CHECK = 180  # 3 minutes
 
+# How many checks in a row without the user in the feed confirm that the user is no longer visible
+# The feed drops a user who starts a private session, so a low value reports it within seconds
+SPOTIFY_LIVE_DISAPPEARED_COUNTER = 2
+
 # ============================
 # Legacy backend timers
 # ============================
@@ -322,13 +326,10 @@ DETECT_CROSSFADED_SONGS = True
 CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
 CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
 
-# Interval for checking whether a missing user has reappeared in seconds
-# Can happen due to:
-#   - unfollowing the user
-#   - Spotify service issues
-#   - private session bugs
-#   - user inactivity for over a week
-# The tool continues checking for the user's reappearance at this interval
+# Interval for checking whether a user who is no longer visible has come back; in seconds
+# A user leaves the feed after starting a private session (live backend), turning off activity sharing,
+# unfollowing or blocking the monitoring account, or during a Spotify glitch
+# A shorter interval times the user's return more closely
 # Can also be set using the -m flag
 SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 
@@ -448,8 +449,9 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
 
-# Occasionally, the Spotify API glitches and reports that the user has disappeared from the list of friends
-# To avoid false alarms, we delay alerts until this happens REMOVED_DISAPPEARED_COUNTER times in a row
+# The legacy endpoint occasionally drops a user from the list of friends for a few checks
+# To avoid false alarms, the legacy backend reports a disappearance only after this many checks in a row
+# The live backend uses SPOTIFY_LIVE_DISAPPEARED_COUNTER instead
 REMOVED_DISAPPEARED_COUNTER = 4
 
 # ----------------------------
@@ -877,6 +879,7 @@ SPOTIFY_LIVE_CHECK_INTERVAL = 0
 SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = 0
 SPOTIFY_LIVE_ERROR_INTERVAL = 0
 SPOTIFY_LIVE_INACTIVITY_CHECK = 0
+SPOTIFY_LIVE_DISAPPEARED_COUNTER = 0
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
@@ -1029,6 +1032,8 @@ LIVE_REPEAT_TOLERANCE = 5
 
 # A finish this close to one track length after a position change proves that the change restarted the track, since a move landing further into it ends sooner
 LIVE_RESTART_TOLERANCE = 3
+# Absence after which the live backend prints the follow and sharing advice, long enough to outlast a private session
+LIVE_ABSENCE_ADVICE_AFTER = 6 * 3600
 
 # Short-lived profile and context metadata avoids extra requests on every track change
 SP_ACTIVITY_METADATA_CACHE: dict = {}
@@ -5428,6 +5433,11 @@ def activity_inactivity_check() -> int:
     return SPOTIFY_LIVE_INACTIVITY_CHECK if live_activity_backend() else SPOTIFY_INACTIVITY_CHECK
 
 
+# Returns how many checks in a row without the target confirm a disappearance with the selected backend
+def activity_disappeared_counter() -> int:
+    return SPOTIFY_LIVE_DISAPPEARED_COUNTER if live_activity_backend() else REMOVED_DISAPPEARED_COUNTER
+
+
 # Changes the inactivity timer of the selected backend by the given number of seconds when the result stays positive
 def adjust_inactivity_check(delta: int) -> None:
     global SPOTIFY_INACTIVITY_CHECK, SPOTIFY_LIVE_INACTIVITY_CHECK
@@ -8934,7 +8944,7 @@ def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
     positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
-    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
+    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES), ("SPOTIFY_LIVE_DISAPPEARED_COUNTER", SPOTIFY_LIVE_DISAPPEARED_COUNTER))
     for name, value in positive_numbers:
         if not finite_number(value) or value <= 0:
             errors.append(f"{name} must be a number greater than zero, not {value!r}")
@@ -11782,6 +11792,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     live_last_sample = None
     live_replay = None
     live_restart_ts = None
+    # Check time of the last response listing the target, when a confirmed absence began and whether its long-absence advice was printed
+    visible_last_at = 0
+    invisible_since = 0
+    absence_advice_shown = False
+    # Length and count of confirmed absences during the open session
+    invisible_seconds = 0
+    invisible_periods = 0
     check_interval = activity_check_interval()
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
@@ -11899,6 +11916,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         # User is found in the Spotify's friend list just after starting the tool
         if sp_found:
             user_not_found = False
+            visible_last_at = int(time.time())
 
             sp_track_uri = sp_data["sp_track_uri"]
             sp_track_uri_id = sp_data["sp_track_uri_id"]
@@ -12175,15 +12193,18 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         time.sleep(retry_seconds)
 
                 if sp_found is False:
-                    # User has disappeared from the Spotify's friend list or account has been removed
+                    # The target left the activity response, which the live feed does during a private session and both backends do after a sharing or follow change
                     disappeared_counter += 1
                     if disappeared_counter == 1:
                         verbose_notice(f"Target {user_uri_id} was absent from one activity response. Waiting for confirmation before reporting disappearance")
-                    if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
+                    if disappeared_counter < activity_disappeared_counter():
                         debug_monitor_check_timing(check_count, user_uri_id, check_started_at, check_interval)
                         time.sleep(check_interval)
                         continue
+                    now = int(time.time())
                     if user_not_found is False:
+                        invisible_since = visible_last_at or now
+                        absence_advice_shown = False
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
@@ -12195,35 +12216,65 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) was probably removed<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
-                            print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                            not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
-                            if recovery_hint_tracker.should_render(not_visible_advice):
-                                print(f"To fix: {not_visible_advice.fix}")
-                            if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
-                                profile_url = spotify_user_profile_url(user_uri_id)
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nProfile: {profile_url}\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Profile: <a href=\"{escape_html_attr(profile_url)}\">{escape(profile_url)}</a><br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
+                            profile_url = spotify_user_profile_url(user_uri_id)
+                            retry_text = f"Checking every {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}"
+                            if live_activity:
+                                # The live feed hides a user during a private session, so the follow advice waits until the absence outlasts one
+                                reason_text = "private session, sharing turned off, unfollowed or blocked"
+                                status_text = f"Spotify user {user_uri_id} ({sp_username}) is no longer visible in listening activity"
+                                status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) is no longer visible in listening activity"
+                                print(f"Spotify user '{user_uri_id}' ({sp_username}) is no longer visible in listening activity ({reason_text}). {retry_text}")
+                            else:
+                                reason_text = "sharing turned off, unfollowed or blocked"
+                                status_text = f"Spotify user {user_uri_id} ({sp_username}) has disappeared from Friend Activity"
+                                status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has disappeared from Friend Activity"
+                                print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared from Friend Activity ({reason_text}). {retry_text}")
+                                not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                                if recovery_hint_tracker.should_render(not_visible_advice):
+                                    print(f"To fix: {not_visible_advice.fix}")
+                            if INACTIVE_NOTIFICATION or webhook_event_enabled("inactive"):
+                                m_subject = f"{status_text}!"
+                                m_body = f"{status_text} ({reason_text})\nLast seen: {get_date_from_ts(invisible_since)}\nProfile: {profile_url}\n{retry_text}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>{status_html} ({escape(reason_text)})<br>Last seen: <b>{get_date_from_ts(invisible_since)}</b><br>Profile: <a href=\"{escape_html_attr(profile_url)}\">{escape(profile_url)}</a><br>{escape(retry_text)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
+                    elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
+                        # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
+                        absence_advice_shown = True
+                        print(f"Spotify user '{user_uri_id}' ({sp_username}) has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
+                        not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                        print(f"To fix: {not_visible_advice.fix}")
+                        print_cur_ts("Timestamp:\t\t\t")
                     debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
                     time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
                     continue
                 else:
-                    # User reappeared in the Spotify's friend list
+                    # User is back in the activity response
                     transient_visibility_misses = disappeared_counter
                     disappeared_counter = 0
                     if transient_visibility_misses and user_not_found is False:
                         verbose_notice("Target visibility recovered before disappearance was confirmed")
                     if user_not_found is True:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
-                        if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                            send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
+                        now = int(time.time())
+                        if sp_active_ts_start > 0:
+                            invisible_seconds += max(0, now - invisible_since)
+                            invisible_periods += 1
+                        invisible_for = calculate_timespan(now, invisible_since)
+                        if live_activity:
+                            status_text = f"Spotify user {user_uri_id} ({sp_username}) is visible again after {invisible_for}"
+                            status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) is visible again after <b>{invisible_for}</b>"
+                        else:
+                            status_text = f"Spotify user {user_uri_id} ({sp_username}) has reappeared after {invisible_for}"
+                            status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has reappeared after <b>{invisible_for}</b>"
+                        print(status_text)
+                        if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
+                            m_subject = f"{status_text}!"
+                            m_body = f"{status_text}\nNot visible since: {get_date_from_ts(invisible_since)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{status_html}<br>Not visible since: <b>{get_date_from_ts(invisible_since)}</b>{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
+                    visible_last_at = int(time.time())
 
                 user_not_found = False
                 sp_ts = sp_data["sp_ts"]
@@ -12485,6 +12536,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         skipped_songs = 0
                         looped_songs = 0
                         song_on_loop = 1
+                        invisible_seconds = 0
+                        invisible_periods = 0
                         recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': activity_ts, 'skipped': False}]
 
                         if FLAG_FILE:
@@ -12643,6 +12696,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         paused_text = ""
                         paused_m_body = ""
                         paused_m_body_html = ""
+                        invisible_text = ""
+                        invisible_m_body = ""
+                        invisible_m_body_html = ""
                         last_track_m_body = ""
                         last_track_m_body_html = ""
                         if live_activity:
@@ -12663,10 +12719,16 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 paused_text = f"User paused music {completed_pauses} times for {display_time(int(live_timing.paused_seconds))} ({paused_percentage}%)"
                                 paused_m_body = f"\n{paused_text}"
                                 paused_m_body_html = f"<br>User paused music <b>{completed_pauses}</b> times for <b>{display_time(int(live_timing.paused_seconds))} ({paused_percentage}%)</b>"
+                            if invisible_periods > 0 and invisible_seconds > 0:
+                                invisible_text = f"User was not visible {invisible_periods} times for {display_time(int(invisible_seconds))}"
+                                invisible_m_body = f"\n{invisible_text}"
+                                invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:
                             print(f"*** {paused_text}")
+                        if invisible_text:
+                            print(f"*** {invisible_text}")
 
                         if FLAG_FILE:
                             flag_file_delete()
@@ -12760,8 +12822,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     lyrics_section_html = ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs, inactive=True)
-                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{last_track_m_body}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{last_track_m_body_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{invisible_m_body}{listened_songs_mbody}{last_track_m_body}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{invisible_m_body_html}{listened_songs_mbody_html}{last_track_m_body_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                             email_succeeded, webhook_succeeded = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
@@ -12775,6 +12837,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         looped_songs = 0
                         skipped_songs = 0
                         song_on_loop = 0
+                        invisible_seconds = 0
+                        invisible_periods = 0
                         recent_songs_session = []
                         print_cur_ts("\nTimestamp:\t\t\t")
 
@@ -13312,7 +13376,7 @@ def main():
         dest="disappeared_timer",
         metavar="SECONDS",
         type=int,
-        help="Wait time between checks once the user disappears from friends list, in seconds"
+        help="Wait time between checks while the user is not visible, in seconds"
     )
     times.add_argument(
         "--scrobble-check-interval",
