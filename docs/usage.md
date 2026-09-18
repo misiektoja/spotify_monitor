@@ -358,6 +358,8 @@ To send an email when a user becomes inactive:
 spotify_monitor <spotify_target> -i
 ```
 
+The inactive and active emails also report when the user is no longer visible in listening activity, for example during a private session, and when the user is visible again with the time away.
+
 Inactivity emails list recent tracks from the session with their skipped status, how long the last track played and how long the user paused. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To send an email when a listed track, playlist or album plays:
@@ -429,8 +431,8 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 
 | Event | Config setting | CLI override |
 | --- | --- | --- |
-| User becomes active | `WEBHOOK_ACTIVE_NOTIFICATION` | `--webhook-active` |
-| User becomes inactive | `WEBHOOK_INACTIVE_NOTIFICATION` | `--webhook-inactive` |
+| User becomes active or is visible again | `WEBHOOK_ACTIVE_NOTIFICATION` | `--webhook-active` |
+| User becomes inactive or is no longer visible | `WEBHOOK_INACTIVE_NOTIFICATION` | `--webhook-inactive` |
 | Monitored track, playlist or album plays | `WEBHOOK_TRACK_NOTIFICATION` | `--webhook-track` |
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
@@ -557,7 +559,7 @@ Each check that reports playback keeps the session active, including during long
 spotify_monitor <spotify_target> -o 900
 ```
 
-If a user disappears from Friend Activity, use `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` to control the delay between visibility checks:
+When the user is no longer visible, for example during a private session, the tool reports it and checks every `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` seconds until the user returns, then reports how long the user was away. A shorter interval times the return more closely:
 
 ```sh
 spotify_monitor <spotify_target> -m 180
