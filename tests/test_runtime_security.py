@@ -223,17 +223,22 @@ def test_every_http_call_verifies_through_the_configured_setting():
     assert offenders == []
 
 
-# The in-code CodeQL suppression stands in for sanitize_error_text, which the query does not model as a
-# sanitizer. It is only honoured while it sits on its own line directly above the flagged call, so a
-# refactor that moves the redaction or the comment must fail here instead of silently logging in clear text
-def test_debug_logging_suppression_stays_attached_to_its_sanitizer():
+# Each in-code CodeQL suppression marks a print the query cannot tell apart from a leak, such as the
+# sanitized debug line or a row that names a secret without its value. A suppression is only honoured
+# while it sits on its own line directly above the flagged call and each one must carry its reason in
+# the comment above it, so a refactor that moves the call or the comment fails here instead of
+# silently logging in clear text
+def test_every_logging_suppression_sits_above_a_print_with_its_reason():
     lines = (PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8").splitlines()
     suppressions = [index for index, line in enumerate(lines) if line.strip() == "# codeql[py/clear-text-logging-sensitive-data]"]
 
-    assert len(suppressions) == 1
-    index = suppressions[0]
-    assert "sanitize_error_text(message)" in lines[index + 1]
-    assert any("sanitize_error_text" in line for line in lines[max(index - 4, 0):index] if line.strip().startswith("#"))
+    assert len(suppressions) == 7
+    for index in suppressions:
+        assert "print(" in lines[index + 1]
+        reasons = [line for line in lines[max(index - 4, 0):index] if line.strip().startswith("# ")]
+        assert reasons, f"line {index + 1} has no reason above its suppression"
+    debug_line = next(index for index in suppressions if "sanitize_error_text(message)" in lines[index + 1])
+    assert any("sanitize_error_text" in line for line in lines[max(debug_line - 4, 0):debug_line] if line.strip().startswith("#"))
 
 
 # A setting assigned inside a function without a global declaration becomes a local, so the module value the
