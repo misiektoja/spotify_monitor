@@ -2,6 +2,18 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.5 (TBD)
+
+Version **3.5** reports when a monitored user **stops being visible** in listening activity, for example during a **private session**, and how long the user stayed away. Setup and Doctor accept targets who **share listening activity with selected people**, so following is no longer required in that case.
+
+**Features and improvements**:
+
+- **NEW:** **Visibility reports** - The live feed drops a user who starts a private session, turns off sharing, blocks the monitoring account or stops being followed. The tool now reports **`is no longer visible in listening activity`** after two checks in a row without the user, checks every `-m` seconds and reports **`is visible again after`** with the time away. The session summary lists the time the user was not visible. Set `SPOTIFY_LIVE_DISAPPEARED_COUNTER` to change the number of checks. After six hours away the follow and sharing advice is printed once. The legacy backend keeps `REMOVED_DISAPPEARED_COUNTER` and reports `has disappeared from Friend Activity` with the possible causes
+- **IMPROVE:** **Following is optional for shared targets** - A target who shares listening activity with selected people that include the monitoring account is visible without a follow. Setup skips the follow offer for a visible target and Doctor reports whether the monitoring account follows an invisible target, so the advice names the setting to fix
+- **CONFIG CHANGE:** **Visibility alerts use the activity switches** - Alerts about a user who is no longer visible or visible again are sent with the inactive and active notification settings (`-i`, `-a`, `--webhook-inactive`, `--webhook-active`) instead of the error notification. A deleted profile is still reported as an error
+
+Smaller fixes and development changes are listed in the [full change history](https://github.com/misiektoja/spotify_monitor/compare/v3.4...v3.5).
+
 # Changes in 3.4 (18 Sep 2026)
 
 Version **3.4** switches Friend Activity to **live listening activity**, with a **legacy backend option** for completed-track reporting. It also adds **private SMTP password entry**, improves the **`--setup` wizard** and Doctor reports and makes **Last.fm scrobble alerts** clearer. Diagnostics are quieter and configuration, credentials and notification delivery are better protected.
