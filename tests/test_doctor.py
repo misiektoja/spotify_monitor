@@ -64,6 +64,7 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 60)
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SMTP_PORT", 587)
     monkeypatch.setattr(monitor, "MONITOR_LIST_FILE", "")
     monkeypatch.setattr(monitor, "CSV_FILE", "")
