@@ -3,6 +3,11 @@ name: spotify_monitor CodeQL configuration
 queries:
   - uses: security-extended
 
+# The suppression query turns the in-code codeql[...] comments into suppressed alerts. Without it
+# the comments are inert and every marked line stays open in code scanning
+packs:
+  - codeql/python-queries:AlertSuppression.ql
+
 query-filters:
   # VERIFY_SSL is a documented setting that defaults to True. It exists so someone behind a
   # TLS-inspecting proxy can opt out deliberately, so every HTTPS call passes verify=VERIFY_SSL and
