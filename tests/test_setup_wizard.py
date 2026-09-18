@@ -1101,6 +1101,25 @@ def test_setup_follow_check_reports_already_followed(monkeypatch, capsys):
     assert "\n  The monitoring account" not in output
 
 
+# Verifies setup skips the follow offer when the target already shares listening activity with the monitoring account
+def test_setup_follow_check_accepts_a_visible_target_without_following(monkeypatch, capsys):
+    def authenticate(report):
+        report.access_token = "authenticated-token"
+        report.buddy_list = {"friends": []}
+        return []
+    monkeypatch.setattr(monitor, "doctor_check_authentication", authenticate)
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=False))
+    monkeypatch.setattr(monitor, "spotify_get_friend_info", lambda feed, user_id: (user_id == "target.user", {}))
+    follow = Mock()
+    ask = Mock()
+    monkeypatch.setattr(monitor, "spotify_follow_user", follow)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
+    assert monitor._wizard_offer_target_follow("spotify:user:target.user") == "visible"
+    follow.assert_not_called()
+    ask.assert_not_called()
+    assert "but the target already shares listening activity with it, so following is not required." in capsys.readouterr().out
+
+
 # Verifies declining the follow prompt leaves the Spotify account unchanged
 def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
