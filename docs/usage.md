@@ -559,10 +559,10 @@ Each check that reports playback keeps the session active, including during long
 spotify_monitor <spotify_target> -o 900
 ```
 
-When the user is no longer visible, for example during a private session, the tool reports it and checks every `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` seconds until the user returns, then reports how long the user was away. A shorter interval times the return more closely:
+When the user is no longer visible, for example during a private session, the tool reports it and checks every `SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL` seconds, 30 by default, until the user returns, then reports how long the user was away. A shorter interval times the return more closely. `-m` sets the timer of the selected backend, the legacy one is `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` with a default of three minutes:
 
 ```sh
-spotify_monitor <spotify_target> -m 180
+spotify_monitor <spotify_target> -m 30
 ```
 
 <a id="liveness-reminder"></a>
