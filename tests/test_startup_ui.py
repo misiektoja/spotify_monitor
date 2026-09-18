@@ -26,6 +26,10 @@ def configure_summary(monkeypatch):
         "SPOTIFY_INACTIVITY_CHECK": 660,
         "SPOTIFY_DISAPPEARED_CHECK_INTERVAL": 180,
         "SPOTIFY_ERROR_INTERVAL": 180,
+        "SPOTIFY_LIVE_CHECK_INTERVAL": 30,
+        "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL": 10,
+        "SPOTIFY_LIVE_ERROR_INTERVAL": 180,
+        "SPOTIFY_LIVE_INACTIVITY_CHECK": 660,
         "ACTIVE_NOTIFICATION": False,
         "INACTIVE_NOTIFICATION": False,
         "TRACK_NOTIFICATION": False,
@@ -135,11 +139,11 @@ def test_help_banner_once_and_raw_epilog():
     assert result.returncode == 0
     assert result.stdout.count(" .---------------.") == 1
     assert "Show rare operational events plus the complete startup summary" in result.stdout
-    assert f"Examples:\n\nFriend Activity:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
+    assert f"Examples:\n\nGetting started:\n  # Guided setup, recommended for the first run\n  {prefix} --setup" in result.stdout
     assert "# Then import Spotify login from Firefox (recommended for local installs)" in result.stdout
     assert f"{prefix} --set-sp-dc" in result.stdout
-    assert f"{prefix} --set-webhook-url" in result.stdout
-    assert f"{prefix} --send-test-webhook" not in result.stdout
+    assert f"{prefix} <spotify_target> -a -i" in result.stdout
+    assert f"{prefix} --send-test-webhook" in result.stdout
     assert "Select the monitoring mode for this run (default: saved mode or friend_activity)" in result.stdout
     assert "Path to a config file (mode-specific auto-search if omitted, disable with 'none')" in result.stdout
     assert "--scrobble-health" not in result.stdout
@@ -154,9 +158,9 @@ def test_help_banner_once_and_raw_epilog():
     assert "--scrobble-repeat-interval" in result.stdout
     assert "--scrobble-state-file" in result.stdout
     assert f"{prefix} --monitor-mode scrobble_health --doctor --verbose" not in result.stdout
-    assert f"{prefix} --monitor-mode friend_activity <spotify_user_id>" not in result.stdout
-    assert f"\n  # Monitor one Spotify user\n  # A spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_user_id>" in result.stdout
-    assert result.stdout.index("Friend Activity:") < result.stdout.index("Scrobble Health:")
+    assert f"{prefix} --monitor-mode friend_activity <spotify_target>" not in result.stdout
+    assert f"\n  # Start monitoring, a spotify:user URI or profile URL is also accepted\n  {prefix} <spotify_target>" in result.stdout
+    assert result.stdout.index("Getting started:") < result.stdout.index("Scrobble health mode:")
     assert f"Guide: {monitor.QUICK_START_GUIDE_URL}" in result.stdout
 
 
@@ -166,7 +170,7 @@ def test_no_argument_welcome_uses_spaced_quick_start_blocks():
     prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 1
     assert "Welcome to Spotify Monitor" not in result.stdout
-    assert "For <spotify_target>, use a Spotify user ID or complete profile URL.\n" in result.stdout
+    assert "For <spotify_target>, use a complete Spotify profile URL, spotify:user URI or user ID.\n" in result.stdout
     assert f"Quickest start (already configured):\n    {prefix} <spotify_target>\n" in result.stdout
     assert f"Easiest start (guided setup wizard):\n    {prefix} --setup\n" in result.stdout
     assert f"Check setup before monitoring:\n    {prefix} --doctor <spotify_target>\n" in result.stdout
@@ -187,7 +191,7 @@ def test_generate_config_output_is_machine_friendly():
     result = run_cli("--generate-config")
     assert result.returncode == 0
     assert result.stdout.startswith("# Select one of two independent monitoring modes:")
-    assert "#   friend_activity - monitors a followed Spotify user's completed tracks, presence and sessions" in result.stdout
+    assert "#   friend_activity - monitors a followed Spotify user's shared tracks, presence and sessions" in result.stdout
     assert "#                     Run --setup to configure the target, Spotify authentication and notifications" in result.stdout
     assert "#                     Run --setup-scrobble-health to configure Spotify, Last.fm and alerts" in result.stdout
     assert "# Use --monitor-mode to override this value for one run" in result.stdout
@@ -252,8 +256,28 @@ def test_long_notification_summary_rows_wrap_without_starred_continuations():
 def test_concise_summary_hides_disabled_advanced_defaults(monkeypatch):
     configure_summary(monkeypatch)
     output = emit_to_string(summary_rows())
-    for hidden in ("Token source", "Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
+    for hidden in ("Inactivity timer", "CSV output", "Monitored-track alerts", "Spotify playback control", "Crossfade detection", "Flag file", "Terminal truncation", "Verbose mode", "Debug mode", "Legacy OAuth cache"):
         assert hidden not in output
+
+
+# Verifies the activity backend row sits next to the metadata backend row and nothing repeats the authentication mode
+def test_summary_lists_the_activity_backend_before_the_metadata_backend(monkeypatch):
+    configure_summary(monkeypatch)
+    output = emit_to_string(summary_rows(), show_full=True)
+    assert "Token source" not in output
+    assert output.index("* Authentication:") < output.index("* Activity backend:") < output.index("* Metadata backend:")
+    assert output.index("* Dotenv:") < output.index("* Activity backend:")
+
+
+# Verifies the complete summary states the crossfade window or that detection is off
+@pytest.mark.parametrize("enabled,expected", [(True, "* Crossfade detection:          96% to 99% played"), (False, "* Crossfade detection:          Disabled")])
+def test_full_summary_shows_crossfade_detection(monkeypatch, enabled, expected):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", enabled)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MIN", 0.96)
+    monkeypatch.setattr(monitor, "CROSSFADE_DETECTION_MAX", 0.99)
+    output = emit_to_string(summary_rows(), show_full=True)
+    assert expected in output
 
 
 # Verifies enabled optional settings appear in the concise view
@@ -283,8 +307,22 @@ def test_webhook_summary_is_secret_safe(monkeypatch):
     output = emit_to_string(summary_rows(), show_full=True)
     assert "* Notifications (webhook):      On (active, errors)" in output
     assert "Webhook enabled" not in output
-    assert "Webhook provider" not in output
     assert "known-webhook-secret" not in output
+
+
+# Verifies the provider row names the service and its state without the path that carries the topic or the token
+def test_the_webhook_provider_row_names_the_service(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "ntfy")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.sh/private-topic")
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "tk_secret")
+
+    output = emit_to_string(summary_rows(), show_full=True)
+
+    assert "*   Webhook provider:           ntfy (enabled)" in output
+    assert "private-topic" not in output
+    assert "tk_secret" not in output
 
 
 # Verifies client authentication uses the advanced intent label
@@ -355,7 +393,7 @@ def test_verbose_runtime_is_event_driven(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", False)
     actual_started_at = monitor.debug_monitor_check_start(3, "target.user", started_at)
     monitor.debug_monitor_check_timing(3, "target.user", actual_started_at, 30, completed_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, completed_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", completed_at)
     monitor.verbose_print("Authentication token refreshed (cookie mode)")
     output = capsys.readouterr().out
     assert actual_started_at == started_at
@@ -373,13 +411,17 @@ def test_debug_runtime_check_timing(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", True)
     actual_started_at = monitor.debug_monitor_check_start(3, "target.user", started_at)
     monitor.debug_monitor_check_timing(3, "target.user", actual_started_at, 30, completed_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, completed_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", completed_at)
     output = capsys.readouterr().out
-    assert "Starting check #3 for target.user" in output
+    assert "Starting check: check=#3, user=target.user" in output
+    # A completed poll is the one traced operation with a result, so it reports the result rather than only its timing
+    assert "Completed check: check=#3, user=target.user, outcome=OK" in output
     assert f"last={monitor.get_date_from_ts(started_at)}" in output
     assert f"next={monitor.get_date_from_ts(completed_at + monitor.timedelta(seconds=30))}" in output
     assert "interval=30 seconds" in output
-    assert f"Next visibility check for target.user: {monitor.get_date_from_ts(completed_at + monitor.timedelta(seconds=180))}" in output
+    assert f"Next visibility check: user=target.user, next={monitor.get_date_from_ts(completed_at + monitor.timedelta(seconds=180))}" in output
+    # A wait that only says how long it is leaves the reader guessing what the run is waiting for
+    assert "interval=3 minutes, reason=the target profile is not visible" in output
 
 
 # Verifies normal mode suppresses verbose events and per-poll debug timing
@@ -389,7 +431,7 @@ def test_normal_mode_suppresses_runtime_check_status(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "DEBUG_MODE", False)
     actual_started_at = monitor.debug_monitor_check_start(1, "target.user", started_at)
     monitor.debug_monitor_check_timing(1, "target.user", actual_started_at, 30, started_at)
-    monitor.debug_monitor_wait_timing("target.user", 180, started_at)
+    monitor.debug_monitor_wait_timing("target.user", 180, "the target profile is not visible", started_at)
     monitor.verbose_print("Authentication token refreshed (cookie mode)")
     assert actual_started_at == started_at
     assert capsys.readouterr().out == ""
@@ -423,6 +465,29 @@ def test_logging_disabled_summary_behavior(monkeypatch):
     assert "full summary written" not in concise.casefold()
     assert "Output logging:" in full and "Disabled" in full
     assert "Dotenv:" in concise and "None" in concise
+
+
+# Verifies the complete view alone reports the install method and names the origin of every loaded secret
+def test_full_summary_reports_install_method_and_secret_origins(monkeypatch, tmp_path):
+    configure_summary(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text("SMTP_PASSWORD=known-smtp-secret\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py"])
+    monkeypatch.setattr(monitor.os.path, "exists", lambda path: False)
+    monkeypatch.setenv("SP_DC_COOKIE", "known-cookie-secret")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "dotenv file", "SP_DC_COOKIE": "environment"}, raising=False)
+    rows = monitor.build_startup_summary("target.user", None, str(env_file), None)
+    concise = emit_to_string(rows)
+    full = emit_to_string(rows, show_full=True)
+
+    for label in ("Install method", "Secrets from dotenv", "Secrets from environment"):
+        assert label not in concise
+        assert label in full
+    assert "* Install method:" in full and "downloaded script" in full
+    assert "* Secrets from dotenv:" in full and "SMTP_PASSWORD" in full
+    assert "* Secrets from environment:" in full and "SP_DC_COOKIE" in full
+    for secret in monitor.known_secret_values():
+        assert secret not in full
 
 
 # Verifies known secrets never enter concise, full or log-only summary output
@@ -481,3 +546,81 @@ def test_logger_terminal_only_and_log_only(monkeypatch, tmp_path):
     assert "abcdefgh" not in log_output
     assert "        log-only-value\n" in log_output
     assert "terminal-and-log\n" in log_output
+
+
+# The rows shared with the sibling monitors, in the order every one of them prints
+SHARED_ROW_ORDER = ("Target", "Authentication", "Polling interval", "Notifications (email)", "Email transport", "Email recipient", "Notifications (webhook)", "Webhook provider", "Delivery confirmations", "Output", "Output logging", "Config", "Dotenv", "Liveness output", "CSV output", "Terminal truncation", "Process id", "Python version", "Operating system", "Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+
+
+# Verifies the shared rows keep the order and the label column width every sibling monitor prints
+def test_the_shared_summary_rows_match_the_sibling_tools(monkeypatch):
+    configure_summary(monkeypatch)
+    rows = monitor.build_startup_summary("target.user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    assert [row.label for row in rows if row.label in SHARED_ROW_ORDER] == list(SHARED_ROW_ORDER)
+    # The renderer pads "<label>:" into a 30-character column, so a longer label swallows the separating space
+    assert max(len(row.label) for row in rows) <= 28
+
+
+# Verifies the scrobble health view keeps the shared tail rows the other modes and tools print
+def test_the_scrobble_health_summary_keeps_the_shared_tail(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+    tail = ("Install method", "Secrets from dotenv", "Secrets from environment", "Secrets from config file", "Secrets from command line", "TLS verification", "ASCII log separators", "Coloured output", "Verbose mode", "Debug mode", "More details")
+
+    assert [row.label for row in rows if row.label in tail] == list(tail)
+    assert max(len(row.label) for row in rows) <= 28
+
+
+# Verifies the scrobble health view reports the matching settings, the reminder interval and the shared output rows
+def test_the_scrobble_health_summary_reports_the_matching_settings(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_LOOKBACK", 21600)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_MATCH_WINDOW", 300)
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_REPEAT_INTERVAL", 86400)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 86400)
+    monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    concise = emit_to_string(rows)
+    full = emit_to_string(rows, show_full=True)
+    assert "* Liveness output:              1 day" in concise
+    for advanced in ("Comparison period", "Timestamp tolerance", "Scrobble alert reminders", "Error retry timer", "Terminal truncation"):
+        assert advanced not in concise
+    for visible in ("* Comparison period:            6 hours", "* Timestamp tolerance:          5 minutes", "* Scrobble alert reminders:     1 day", "* Error retry timer:            3 minutes", "* Terminal truncation:          Disabled"):
+        assert visible in full
+
+
+# Verifies disabled scrobble health reminders and liveness output stay visible in the concise view
+def test_the_scrobble_health_summary_flags_disabled_reminders(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_REPEAT_INTERVAL", 0)
+    monkeypatch.setattr(monitor, "LIVENESS_CHECK_INTERVAL", 0)
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    concise = emit_to_string(rows)
+    assert "* Scrobble alert reminders:     Disabled" in concise
+    assert "Liveness output" not in concise
+    assert "* Liveness output:              Disabled" in emit_to_string(rows, show_full=True)
+
+
+# Verifies a first run without a target is told about the target before it is told about the cookie
+def test_a_missing_target_is_reported_before_the_credentials():
+    result = run_cli("--config-file", "none", "--env-file", "none")
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 1
+    assert "* Error: No Spotify target was provided" in output
+    assert "SP_DC_COOKIE" not in output
+
+
+# Verifies the friend listing keeps working without a target, since the gate above it must stay exempt
+def test_the_friend_listing_stays_exempt_from_the_target_gate():
+    result = run_cli("--list-friends", "--config-file", "none", "--env-file", "none")
+
+    output = result.stdout + result.stderr
+    assert "No Spotify target was provided" not in output
+    assert "SP_DC_COOKIE" in output

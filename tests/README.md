@@ -32,6 +32,20 @@ same absent-dependency behavior a user would see.
 
 | File | Area under test |
 | --- | --- |
+| `test_notification_receipts.py` | SMTP acceptance despite cleanup failures, receipt controls and unchanged notification content |
+| `test_oauth_validation_boundaries.py` | Fresh OAuth validation and immediate resource failure with real HTTP clients |
+| `test_configuration_notification_boundaries.py` | Invalid output settings, CLI precedence and strict webhook fields with legacy JSON support |
+| `test_boundary_regressions.py` | Real notification transports, literal secret resolution and malformed startup paths |
+| `test_resource_boundaries.py` | Optional network work stops after real transport resource exhaustion |
+| `test_release_boundaries.py` | Real HTTP retries, Discord mention safety, unrenderable templates, SMTP password round trips, split terminal writes and the width cap without wcwidth |
+| `test_compact_commands.py` | Literal short command prefixes, real help output and dependency hints |
+| `test_release_safety.py` | Credential preservation, private errors, timing checks and scrobble-health state recovery |
+| `test_recovery_safety.py` | Real dotenv reloads, setup backups, oversized counts and provider-error privacy |
+| `test_secret_policy.py` | Shared credential priority, reload ownership and setup destination conflicts |
+| `test_smtp_error_privacy.py` | Short and escaped passwords in rejected SMTP sign-ins through commands, setup, Doctor and delivery |
+| `test_setup_resolution_regressions.py` | Saved dotenv destinations, empty secrets, export precedence and recovery paths |
+| `test_spotipy_request_policy.py` | TLS policy at the Spotipy request boundary for token exchanges and refreshes |
+| `test_dotenv_quoted_keys.py` | Quoted dotenv keys, export prefixes, multiline values and duplicate removal |
 | `test_config_and_inputs.py` | Target normalization, CLI and config precedence, duration parsing, URI to URL conversion |
 | `test_config_effects.py` | Config-file settings reaching their consumers, including check interval, connectivity and TLS verification |
 | `test_setup_wizard.py` | Prompt helpers, validation, reprompting and the generated configuration |
@@ -39,14 +53,18 @@ same absent-dependency behavior a user would see.
 | `test_set_lastfm_credentials.py` | `--set-lastfm-credentials` prompts, partial updates and replacement confirmation |
 | `test_browser_cookie_import.py` | Firefox and Chromium profile discovery, selection and cookie extraction |
 | `test_spotify_web_backends.py` | TOTP generation, token validity probes, metadata backend selection and running without spotipy |
+| `test_startup_summary_channels.py` | Summary rows naming the webhook provider, the mail server, the masked recipient, the delivery confirmations and the runtime |
 | `test_totp_secret_extraction.py` | Secret extraction from bundles and the debug utility's destination and redirect restrictions |
 | `test_monitoring_loop.py` | Friend Activity loop error and auth recovery, retry timing, activity flags and track-change recording |
-| `test_scrobble_health.py` | Spotify to Last.fm authorization, token retries, play matching and outage detection |
+| `test_listening_activity.py` | Activity source selection, live feed normalization, metadata enrichment and pause, resume and inactivity behavior |
+| `test_scrobble_health.py` | Spotify to Last.fm authorization, token retries, play matching and missing-scrobble alerts |
 | `test_webhook_notifications.py` | Webhook URL validation, provider detection, ntfy normalization and `SIGHUP` reload |
 | `test_notification_escaping.py` | Source-level sweep proving every HTML email body and attribute escapes Spotify-supplied text |
 | `test_local_transports.py` | Real loopback HTTP and SMTP delivery, marked `integration` |
 | `test_runtime_security.py` | Request deadlines and watchdog nesting, playback argument lists, cookie polling and terminal-safe Spotify output |
 | `test_terminal_color.py` | Coloured terminal output: theme resolution, line rules, the colour-aware sanitizer, plain log files and the uncoloured Doctor progress line |
+| `test_help_screen.py` | The `--help` screen: the shared argument group names, the task-grouped examples and the startup banner |
+| `test_tls_verification.py` | Every connection honouring `VERIFY_SSL` and the single shared TLS context builder |
 | `test_recovery_errors.py` | Error classification and install-method-aware recovery advice |
 | `test_doctor.py` | `--doctor` report structure, sections, detail indentation and exit status |
 | `test_startup_ui.py` | Startup banner rendering, alignment and machine-friendly `--version` and `--generate-config` output |
@@ -56,6 +74,8 @@ same absent-dependency behavior a user would see.
 | `test_documentation.py` | Semantic documentation contracts, community health files, issue templates and security workflows plus repository metadata: citation, funding, line endings, the declared editor style, the pinned linter and release integrity |
 | `test_container_assets.py` | Dockerfile, Compose and publishing workflow contracts |
 | `test_packaging.py` | Wheel contents, installed console commands, action pinning and version consistency |
+| `test_moved_private_settings.py` | Kept credentials across dotenv destination changes and startup error handling |
+| `conftest.py` | Shared fixture resetting the dotenv and secret state that the monitor mutates in place |
 
 ## Conventions
 

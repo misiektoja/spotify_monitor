@@ -2,11 +2,13 @@ import builtins
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock
 
+import signal
 import pytest
 from dotenv import dotenv_values
 
@@ -16,6 +18,14 @@ import spotify_monitor as monitor
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_ROOT = PROJECT_ROOT / "local" / "wizard_test_artifacts"
 COLLECT_WEBHOOK = monitor._wizard_collect_webhook
+
+
+# Completes the mail settings a sign-in needs, so a test about the password is not stopped by the guard in front of it
+def configure_mail(monkeypatch):
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "owner@example.test")
 
 
 # Keeps wizard scenarios on deterministic Linux behavior and their original notification channel
@@ -44,7 +54,7 @@ def install_inputs(monkeypatch, responses):
     monkeypatch.setattr(builtins, "input", lambda prompt="": next(iterator))
 
 
-# Installs a minimal mocked wizard flow for doctor and launch boundary tests
+# Installs a minimal mocked wizard flow for doctor and launch boundary tests and returns its yes-or-no and doctor mocks
 def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None):
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: method)
@@ -52,18 +62,24 @@ def install_minimal_wizard_flow(monkeypatch, method, auth, answers, report=None)
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
     monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: dict(auth))
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 30)
-    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default, maximum=None: default)
     monkeypatch.setattr(monitor, "_wizard_collect_email", lambda config, secrets, env: [])
-    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(side_effect=list(answers)))
+    ask_mock = Mock(side_effect=list(answers))
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask_mock)
+    monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
     monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="already_followed"))
+    doctor_mock = None
     if report is not None:
-        monkeypatch.setattr(monitor, "build_doctor_report", Mock(return_value=report))
-        monkeypatch.setattr(monitor, "render_doctor_report", lambda selected: "DOCTOR REPORT")
+        doctor_mock = Mock(return_value=report)
+        monkeypatch.setattr(monitor, "build_doctor_report", doctor_mock)
+        monkeypatch.setattr(monitor, "render_doctor_sections", lambda selected: "DOCTOR REPORT")
+        monkeypatch.setattr(monitor, "render_doctor_summary", lambda checks: "DOCTOR SUMMARY")
+    return ask_mock, doctor_mock
 
 
-# Verifies required text re-prompts and applies defaults
+# Verifies required text offers a retry before re-prompting and applies defaults
 def test_text_helper_required_and_default(monkeypatch, capsys):
-    install_inputs(monkeypatch, ["", "value"])
+    install_inputs(monkeypatch, ["", "y", "value"])
     assert monitor._wizard_ask_text("Required", required=True) == "value"
     assert "required" in capsys.readouterr().out.casefold()
     install_inputs(monkeypatch, [""])
@@ -94,7 +110,7 @@ def test_webhook_prompt_names_supported_services(monkeypatch):
 
 # Verifies positive integer input rejects zero and non-numeric values
 def test_positive_integer_helper_reprompts(monkeypatch, capsys):
-    install_inputs(monkeypatch, ["bad", "0", "15"])
+    install_inputs(monkeypatch, ["bad", "y", "0", "y", "15"])
     assert monitor._wizard_ask_positive_int("Interval", 30) == 15
     assert capsys.readouterr().out.count("positive whole number") == 2
 
@@ -108,10 +124,10 @@ def test_duration_helper_accepts_supported_units(monkeypatch, value, expected):
 
 # Verifies duration prompts show readable defaults and explain invalid input
 def test_duration_helper_shows_readable_default_and_reprompts(monkeypatch, capsys):
-    input_mock = Mock(side_effect=["bad", "2m"])
+    input_mock = Mock(side_effect=["bad", "y", "2m"])
     monkeypatch.setattr(monitor, "_wizard_input", input_mock)
     assert monitor._wizard_ask_duration("Comparison interval", 120) == 120
-    assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Comparison interval [120s - 2m]: ",)]
+    assert [item.args for item in input_mock.call_args_list] == [("Comparison interval [120s - 2m]: ",), ("Try entering the Comparison interval again? [Y/n]: ",), ("Comparison interval [120s - 2m]: ",)]
     assert "120, 2m, 1.5h, 1h 30m or 1d" in capsys.readouterr().out
 
 
@@ -123,31 +139,58 @@ def test_duration_helper_accepts_default(monkeypatch):
     input_mock.assert_called_once_with("Dead period before an alert [1200s - 20m]: ")
 
 
-# Verifies regular setup accepts unit-based polling intervals and stores seconds
+# Verifies regular setup accepts unit-based polling intervals and stores seconds for the legacy backend
 def test_polling_section_uses_duration_input(monkeypatch, tmp_path):
     baseline = dict(vars(monitor))
+    baseline["FRIEND_ACTIVITY_BACKEND"] = "buddylist"
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
     duration_mock = Mock(return_value=3600)
     monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
     monitor._wizard_collect_polling_section(state)
     assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == 3600
     duration_mock.assert_called_once_with("Spotify polling interval (seconds or use s/m/h/d)", monitor.SPOTIFY_CHECK_INTERVAL)
+    assert monitor._wizard_polling_summary(state) == monitor._wizard_format_duration(3600)
 
 
-# Verifies Ctrl+C and Ctrl+D cancel cleanly without a traceback
+# Verifies the live backend asks for both live polling intervals and leaves the legacy interval alone
+def test_polling_section_asks_live_intervals(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    baseline["FRIEND_ACTIVITY_BACKEND"] = "listening_activity"
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    duration_mock = Mock(side_effect=[45, 5])
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", duration_mock)
+    monitor._wizard_collect_polling_section(state)
+    assert (state.config_values["SPOTIFY_LIVE_CHECK_INTERVAL"], state.config_values["SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL"]) == (45, 5)
+    assert state.config_values["SPOTIFY_CHECK_INTERVAL"] == monitor.SPOTIFY_CHECK_INTERVAL
+    assert [call.args for call in duration_mock.call_args_list] == [("Spotify polling interval while the user is not playing (seconds or use s/m/h/d)", monitor.SPOTIFY_LIVE_CHECK_INTERVAL), ("Spotify polling interval while the user is playing (seconds or use s/m/h/d)", monitor.SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)]
+    assert monitor._wizard_polling_summary(state) == "45s when not playing, 5s when playing"
+
+
+# Verifies a CSV answer without an extension is saved as a .csv file while an explicit extension is left alone
+def test_the_csv_answer_gains_a_csv_extension_when_it_has_none(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    for typed, expected in (("activity", "activity.csv"), ("activity.csv", "activity.csv"), ("activity.txt", "activity.txt"), ("", "")):
+        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", answer=typed, **kwargs: answer)
+        monitor._wizard_collect_output_section(state)
+        assert state.config_values["CSV_FILE"] == expected
+
+
+# Verifies Ctrl+C and Ctrl+D end the prompt line and reach the handler that reports what was written
 @pytest.mark.parametrize("error_type", [KeyboardInterrupt, EOFError])
 def test_input_cancellation_is_clean(monkeypatch, capsys, error_type):
     monkeypatch.setattr(builtins, "input", Mock(side_effect=error_type))
-    with pytest.raises(SystemExit) as error:
+    with pytest.raises(error_type):
         monitor._wizard_input("Prompt: ")
-    assert error.value.code == 1
-    assert "Setup cancelled" in capsys.readouterr().out
+    assert capsys.readouterr().out == "\n"
 
 
 # Verifies secret input uses getpass and rejects an empty secret
 def test_secret_helper_uses_getpass(monkeypatch, capsys):
     getpass_mock = Mock(side_effect=["", "private-value"])
     monkeypatch.setattr(monitor.getpass, "getpass", getpass_mock)
+    assert monitor._wizard_ask_secret("Secret") == ""
     assert monitor._wizard_ask_secret("Secret") == "private-value"
     assert getpass_mock.call_count == 2
     assert "private-value" not in capsys.readouterr().out
@@ -283,6 +326,7 @@ def test_container_cookie_setup_offers_hidden_manual_fallback(tmp_path, monkeypa
 
     monkeypatch.setattr(monitor, "_wizard_ask_choice", choose)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: secret)
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
     updates = {}
     result = monitor._wizard_collect_cookie_auth("docker", tmp_path / ".env", updates)
     assert captured["options"][1][0] == "Enter sp_dc privately"
@@ -295,8 +339,23 @@ def test_container_cookie_setup_offers_hidden_manual_fallback(tmp_path, monkeypa
 # Verifies target prompts accept every supported form and re-prompt after invalid input
 @pytest.mark.parametrize("raw", ["target.user", "spotify:user:target.user", "https://open.spotify.com/user/target.user"])
 def test_target_helper_normalizes_supported_forms(monkeypatch, raw):
-    install_inputs(monkeypatch, ["bad target", raw])
+    install_inputs(monkeypatch, ["bad target", "y", raw])
     assert monitor._wizard_target() == "target.user"
+
+
+# Verifies the question names every form the helper accepts, so a URI is not left looking unsupported
+def test_the_target_question_names_every_accepted_form(monkeypatch):
+    prompts = []
+
+    def record(prompt=""):
+        prompts.append(prompt)
+        return "target.user"
+
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(builtins, "input", record)
+
+    assert monitor._wizard_target() == "target.user"
+    assert "Spotify profile URL, spotify:user URI or user ID to monitor" in prompts[0]
 
 
 # Verifies a confirmed manual-cookie setup keeps its secret out of the generated config and output
@@ -305,8 +364,9 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "1", "4", "n", "", "n"])
+        install_inputs(monkeypatch, ["spotify:user:target.user", "y", "", "", "1", "4", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -321,11 +381,11 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert "authentication has not been validated" in output
         assert "Setup Wizard\n\nThis asks a few questions" in output
         assert "Press Enter to accept the shown default. Ctrl+C cancels." in output
-        assert f"Detected install method: manual\nConfiguration:          {config_path}\nDotenv:                 {env_path}\n" in output
+        assert f"Detected install method: manual\nConfiguration:          {config_path.resolve()}\nDotenv:                 {env_path.resolve()}\n" in output
         assert "The monitoring account must follow the target. Setup checks this after authentication is saved." in output
         assert "If needed, the tool offers to follow the target. The target must also share listening activity." in output
         assert "Uses exported Protobuf request bodies.\n\nHow should cookie authentication be configured?" in output
-        assert "Install method: manual\n\nWhat would you like to do?" in output
+        assert "Install method:        manual\n\nWhat would you like to do?" in output
         assert "\nSaved files\n\n  Configuration:" in output
         assert "\nNext steps\n\nCheck setup again:" in output
         assert monitor.QUICK_START_GUIDE_URL in output
@@ -334,13 +394,43 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         assert f"  Find the sp_dc cookie first: {monitor.MANUAL_COOKIE_GUIDE_URL}" not in output
 
 
+# Verifies a rerun over an existing configuration proposes its saved settings, which is what the rebuild question offers
+def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        config_path.write_text('TARGET_USER_URI_ID = "saved.review.user"\nSPOTIFY_LIVE_CHECK_INTERVAL = 1234\nCSV_FILE = "saved-records.csv"\n', encoding="utf-8")
+        env_path = directory / ".env"
+        prompts = []
+        iterator = iter(["y", "", "y", "", "", "1", "4", "n", "y", "", "", "", "n"])
+        # The finished wizard loads what it saved, so the settings it reads back are restored when the test ends
+        for name in ("TARGET_USER_URI_ID", "SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", "CSV_FILE"):
+            monkeypatch.setattr(monitor, name, getattr(monitor, name))
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(builtins, "input", lambda prompt="": prompts.append(prompt) or next(iterator))
+        monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
+
+        assert error.value.code == 0
+        assert any("[saved.review.user]" in prompt for prompt in prompts)
+        assert any("1234s" in prompt for prompt in prompts)
+        config = config_path.read_text(encoding="utf-8")
+        assert 'TARGET_USER_URI_ID = "saved.review.user"' in config
+        assert "SPOTIFY_LIVE_CHECK_INTERVAL = 1234" in config
+        assert 'CSV_FILE = "saved-records.csv"' in config
+
+
 # Verifies declining final confirmation leaves both setup destinations unchanged
 def test_cancellation_before_confirmation_changes_no_files(monkeypatch):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "3", "y"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "1", "5", "n", "y", "", "3", "y"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -354,12 +444,12 @@ def test_setup_review_edits_polling_before_save(monkeypatch):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         config_path = directory / "spotify_monitor.conf"
-        install_inputs(monkeypatch, ["target.user", "y", "", "1", "5", "n", "2", "2", "45", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "1", "5", "n", "y", "", "2", "2", "45", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
         assert error.value.code == 0
-        assert "SPOTIFY_CHECK_INTERVAL = 45" in config_path.read_text(encoding="utf-8")
+        assert "SPOTIFY_LIVE_CHECK_INTERVAL = 45" in config_path.read_text(encoding="utf-8")
 
 
 # Verifies a non-persisted target remains absent from config and appears in exact next commands
@@ -367,7 +457,7 @@ def test_nonpersisted_target_is_added_to_commands(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         monkeypatch.chdir(directory)
-        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "1", "3", "n", "", "n"])
+        install_inputs(monkeypatch, ["https://open.spotify.com/user/target.user", "n", "", "", "1", "3", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "compose")
         monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
         with pytest.raises(SystemExit) as error:
@@ -386,7 +476,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
         env_path = directory / ".env"
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "", "n", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "n", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
 
@@ -404,16 +494,61 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
         assert import_mock.call_args.kwargs["browser"] == "firefox"
         output = capsys.readouterr().out
         assert monitor.SPOTIFY_WEB_LOGIN_URL in output
-        assert f"  Configuration: {(directory / 'spotify_monitor.conf').resolve()}" in output
-        assert f"  Dotenv:        {env_path.resolve()}\n\n* Browser prerequisite: test guidance" in output
+        # The import runs under its own heading and the file summary that follows lists the dotenv it wrote
+        assert "\nBrowser cookie import\n\n* Browser prerequisite: test guidance" in output
+        assert output.index("* Browser prerequisite: test guidance") < output.index("\nSaved files\n")
+        assert f"\nSaved files\n\n  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n  Secrets:       {env_path.resolve()}\n" in output
+        assert "  Dotenv:        " not in output
         assert "browser-private-value" not in output
+
+
+# Verifies a completed import leaves its standalone next steps out and one blank line separates it from the file summary
+def test_a_completed_browser_import_is_followed_directly_by_the_file_summary(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        env_path = directory / ".env"
+        cookie_file = directory / "cookies.sqlite"
+        cookie_file.touch()
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "n", "n"])
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+        monkeypatch.setattr(monitor, "select_browser_profile", lambda *args, **kwargs: {"name": "default", "dir": str(directory), "cookie_file": str(cookie_file)})
+        monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="browser-private-value"))
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
+        assert error.value.code == 0
+        output = capsys.readouterr().out
+        assert f"* Browser cookie import completed successfully\n\nSaved files\n\n  Configuration: {(directory / 'spotify_monitor.conf').resolve()}\n  Secrets:       {env_path.resolve()}\n" in output
+        assert output.count("Check setup again:") == 1
+        assert output.index("Check setup again:") > output.index("\nNext steps\n")
+        assert "browser-private-value" not in output
+
+
+# Verifies the wizard tells the import runner whether the config will supply the target, so its printed
+# commands carry the target exactly when the config does not hold it
+@pytest.mark.parametrize("persist_answer, expected_saved", [("y", "target.user"), ("n", "")])
+def test_browser_import_receives_the_persisted_target_decision(monkeypatch, persist_answer, expected_saved):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        install_inputs(monkeypatch, ["target.user", persist_answer, "1", "", "1", "", "n", "y", "", "", "n", "n"])
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+        import_mock = Mock(side_effect=lambda **kwargs: monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"}))
+        monkeypatch.setattr(monitor, "run_browser_cookie_import", import_mock)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        assert import_mock.call_args.kwargs["target"] == "target.user"
+        assert import_mock.call_args.kwargs["saved_target"] == expected_saved
+        assert import_mock.call_args.kwargs["config_path"] == str((directory / "spotify_monitor.conf").resolve())
 
 
 # Verifies browser import failure can finish setup without discarding the generated config
 def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["target.user", "y", "1", "1", "", "n", "", "3", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "3", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(monitor, "run_browser_cookie_import", Mock(side_effect=monitor.BrowserCookieImportError("safe import failure")))
@@ -434,8 +569,9 @@ def test_browser_import_retry_succeeds(monkeypatch):
         runner = Mock(side_effect=[monitor.BrowserCookieImportError("safe failure"), str(env_path)])
         monkeypatch.setattr(monitor, "run_browser_cookie_import", runner)
         monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
-        result = monitor._wizard_finish_browser_import(auth, env_path)
+        result = monitor._wizard_finish_browser_import(auth, env_path, Path(directory_name) / "spotify_monitor.conf", "friend.user", "")
         assert runner.call_count == 2
+        assert runner.call_args.kwargs["target"] == "friend.user"
         assert result["complete"] is True
         assert result["validated"] is True
 
@@ -447,6 +583,7 @@ def test_manual_cookie_replacement_decline_retains_existing(monkeypatch, capsys)
         env_path.write_text("SP_DC_COOKIE=existing-private-value\n", encoding="utf-8")
         install_inputs(monkeypatch, ["4", "n"])
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "new-private-value")
+        monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         updates = {}
         result = monitor._wizard_collect_cookie_auth("manual", env_path, updates)
         assert updates == {}
@@ -463,7 +600,7 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
         directory = Path(directory_name)
         login_path = directory / "login.protobuf"
         login_path.write_bytes(b"fixture")
-        install_inputs(monkeypatch, ["target.user", "y", "", "2", "y", str(login_path), "n", "n", "", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "", "", "2", "y", str(login_path), "n", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "parse_login_request_body_file", lambda path: ("device-id", "system-id", "account-id", "refresh-private-value"))
         with pytest.raises(SystemExit) as error:
@@ -482,9 +619,11 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
 # Verifies disabled email clears every generated notification flag without SMTP access
 def test_email_disabled_clears_all_flags(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
-    config_values = {name: True for name in ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")}
+    notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+    config_values = {name: True for name in notification_names}
     assert monitor._wizard_collect_email(config_values, {}, Path("unused.env")) == []
-    assert not any(config_values.values())
+    assert not any(config_values[name] for name in notification_names)
+    assert config_values["SMTP_HOST"] == "your_smtp_server_ssl"
 
 
 # Verifies the recommended email preset validates locally and queues only the password secret
@@ -497,7 +636,7 @@ def test_email_recommended_preset_uses_shared_validation(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "smtp-private-value")
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
-    connect_mock = Mock(side_effect=AssertionError("SMTP connected"))
+    connect_mock = Mock(return_value=Mock())
     monkeypatch.setattr(monitor, "smtp_connect_and_login", connect_mock)
     config_values = {}
     secrets = {}
@@ -507,8 +646,88 @@ def test_email_recommended_preset_uses_shared_validation(monkeypatch, tmp_path):
     assert config_values["TRACK_NOTIFICATION"] is False
     assert config_values["SONG_NOTIFICATION"] is False
     assert config_values["SONG_ON_LOOP_NOTIFICATION"] is False
-    connect_mock.assert_not_called()
+    connect_mock.assert_called_once()
     assert questions == ["Configure email notifications?", "Enable TLS/SSL for SMTP?"]
+
+
+# Verifies a blank SMTP password keeps the stored one without queueing an empty secret or asking to replace it
+def test_a_blank_smtp_password_queues_nothing_and_asks_no_replace_question(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="stored-private-value"\n', encoding="utf-8")
+    yes_no = iter([True, True])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    questions = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: (questions.append(question) or next(yes_no)))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
+    config_values = {}
+    secrets = {}
+    enabled = monitor._wizard_collect_email(config_values, secrets, env_path)
+    assert enabled == ["active", "inactive", "errors"]
+    assert secrets == {}
+    assert config_values["SMTP_HOST"] == "smtp.example.com"
+    assert questions == ["Configure email notifications?", "Enable TLS/SSL for SMTP?"]
+    assert env_path.read_text(encoding="utf-8") == 'SMTP_PASSWORD="stored-private-value"\n'
+
+
+# Setup reports the sign-in succeeded and then writes the files a restart reads, so the value it proves has to be
+# the value the next run resolves. Startup prefers an export over the dotenv file and setup has to agree
+def test_the_effective_secret_follows_the_startup_precedence(monkeypatch, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "from-config-file", raising=False)
+
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {}) == ("saved-in-file", False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("accepted", False)
+    monkeypatch.setenv("SMTP_PASSWORD", "exported")
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", env_path, {"SMTP_PASSWORD": "accepted"}) == ("exported", True)
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    assert monitor.effective_secret_after_setup("SMTP_PASSWORD", tmp_path / "absent.env", {}) == ("from-config-file", False)
+
+
+# Verifies keeping the saved password checks that one rather than the one just typed and thrown away
+def test_a_declined_replacement_checks_the_password_that_is_kept(monkeypatch, tmp_path):
+    checked = []
+    env_path = tmp_path / ".env"
+    env_path.write_text('SMTP_PASSWORD="saved-in-file"\n', encoding="utf-8")
+    monkeypatch.delenv("SMTP_PASSWORD", raising=False)
+    yes_no = iter([True, True, False])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: next(yes_no))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "typed-new")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: checked.append(password))
+    secrets = {}
+
+    assert monitor._wizard_collect_email({}, secrets, env_path) == ["active", "inactive", "errors"]
+    assert checked == ["saved-in-file"]
+    assert "SMTP_PASSWORD" not in secrets
+
+
+# Verifies an exported password is the one signed in with and that setup says so, since an export wins at startup
+def test_an_exported_password_is_checked_and_reported(monkeypatch, tmp_path, capsys):
+    checked = []
+    monkeypatch.setenv("SMTP_PASSWORD", "exported-elsewhere")
+    yes_no = iter([True, True])
+    text_values = iter(["smtp.example.com", "user", "sender@example.com", "receiver@example.com"])
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, **kwargs: next(yes_no))
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(text_values))
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "typed-new")
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: checked.append(password))
+    secrets = {}
+
+    assert monitor._wizard_collect_email({}, secrets, tmp_path / ".env") == ["active", "inactive", "errors"]
+    assert checked == ["exported-elsewhere"]
+    assert secrets["SMTP_PASSWORD"] == "typed-new"
+    assert "SMTP_PASSWORD is exported in this environment" in capsys.readouterr().out
 
 
 # Verifies all-events and custom presets set each notification flag as selected
@@ -522,6 +741,7 @@ def test_email_all_and_custom_presets(monkeypatch, tmp_path, preset, custom_answ
     monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda *args, **kwargs: 587)
     monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "smtp-private-value")
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: preset)
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: None)
     config_values = {}
     monitor._wizard_collect_email(config_values, {}, tmp_path / ".env")
     names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
@@ -550,7 +770,36 @@ def test_existing_config_decline_uses_alternate_path(monkeypatch):
         existing.write_text("old\n", encoding="utf-8")
         monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
         monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: str(alternate))
-        assert monitor._wizard_choose_config_destination(existing) == alternate.resolve()
+        assert monitor._wizard_choose_config_destination(existing, "manual") == alternate.resolve()
+
+
+# Verifies an alternate destination that cannot be written is refused and asked again instead of failing at the save
+def test_existing_config_decline_rejects_an_unusable_alternate_path(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        existing = directory / "spotify_monitor.conf"
+        alternate = directory / "alternate.conf"
+        existing.write_text("old\n", encoding="utf-8")
+        answers = iter([str(directory), str(existing / "nested.conf"), str(alternate)])
+        monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
+        monkeypatch.setattr(monitor, "_wizard_ask_text", lambda *args, **kwargs: next(answers))
+
+        assert monitor._wizard_choose_config_destination(existing, "manual") == alternate.resolve()
+
+        output = capsys.readouterr().out
+        assert "Configuration destination must be a file path, not a directory." in output
+        assert "Configuration destination does not have a usable parent directory." in output
+
+
+# Verifies a host destination is checked for being a file with a writable parent, as the setup page promises
+def test_host_destinations_are_checked_before_the_first_question(tmp_path):
+    with pytest.raises(ValueError, match="must be a file path, not a directory"):
+        monitor._wizard_validate_destination("manual", tmp_path, "Configuration destination")
+    blocker = tmp_path / "blocker"
+    blocker.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="does not have a usable parent directory"):
+        monitor._wizard_validate_destination("pip", blocker / "nested.conf", "Dotenv destination")
+    assert monitor._wizard_validate_destination("manual", tmp_path / "missing" / "spotify_monitor.conf", "Configuration destination") == (tmp_path / "missing" / "spotify_monitor.conf").resolve()
 
 
 # Verifies setup review can edit one section then save without recollecting other sections
@@ -591,7 +840,7 @@ def test_setup_edit_menu_offers_every_section(monkeypatch, tmp_path, capsys):
     summary = capsys.readouterr().out
     monitor._wizard_edit_setup_section(state, "manual")
     assert summary.index("Polling interval:") < summary.index("Token source:")
-    assert [label for label, _ in captured["options"]] == ["Target and persistence", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "File destinations", "Return to summary"]
+    assert [label for label, _ in captured["options"]] == ["Target", "Polling interval", "Authentication", "Email notifications", "Webhook alerts", "Output files", "File destinations", "Return to summary"]
     assert state.target == "new.user"
     assert state.config_values["TARGET_USER_URI_ID"] == ""
 
@@ -604,12 +853,13 @@ def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, cap
     monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
     monkeypatch.setattr(monitor, "_wizard_destinations", lambda config, env, method=None: (config_path, env_path))
-    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path: path)
+    monkeypatch.setattr(monitor, "_wizard_choose_config_destination", lambda path, method: path)
     monkeypatch.setattr(monitor, "_wizard_collect_target_section", lambda state, target=None: events.append("target"))
     monkeypatch.setattr(monitor, "_wizard_collect_polling_section", lambda state: (events.append("polling"), print("Spotify polling interval [1800s - 30m]:")))
     monkeypatch.setattr(monitor, "_wizard_collect_auth_section", lambda state, method: (events.append("authentication"), print("\nChoose an authentication mode")))
     monkeypatch.setattr(monitor, "_wizard_collect_email_section", lambda state: events.append("email"))
     monkeypatch.setattr(monitor, "_wizard_collect_webhook_section", lambda state: events.append("webhook"))
+    monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: events.append("output"))
     monkeypatch.setattr(monitor, "_wizard_review_setup", lambda state, method: False)
 
     with pytest.raises(SystemExit) as error:
@@ -617,13 +867,13 @@ def test_setup_collects_polling_before_authentication(monkeypatch, tmp_path, cap
 
     output = capsys.readouterr().out
     assert error.value.code == 1
-    assert events == ["target", "polling", "authentication", "email", "webhook"]
+    assert events == ["target", "polling", "authentication", "email", "webhook", "output"]
     assert "Spotify polling interval [1800s - 30m]:\n\nChoose an authentication mode" in output
     assert "Spotify polling interval [1800s - 30m]:\n\n\nChoose an authentication mode" not in output
 
 
 # Verifies each non-target edit choice invokes only its matching section collector
-@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_polling_section", False), (2, "_wizard_collect_auth_section", True), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_destination_section", True)])
+@pytest.mark.parametrize("section,function_name,with_method", [(1, "_wizard_collect_polling_section", False), (2, "_wizard_collect_auth_section", True), (3, "_wizard_collect_email_section", False), (4, "_wizard_collect_webhook_section", False), (5, "_wizard_collect_output_section", False), (6, "_wizard_collect_destination_section", True)])
 def test_setup_edit_routes_to_selected_section(monkeypatch, tmp_path, section, function_name, with_method):
     baseline = dict(vars(monitor))
     state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
@@ -731,6 +981,30 @@ def test_doctor_failure_blocks_local_start(monkeypatch, capsys):
         assert "saved but is not ready" in capsys.readouterr().out
 
 
+# Verifies a save without secrets creates no dotenv and the doctor, printed commands and launch leave --env-file out
+def test_a_secret_free_save_creates_no_dotenv_and_omits_the_env_file(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        env_path = directory / ".env"
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        report = monitor.DoctorReport(checks=[monitor.DoctorCheck("Environment", "PASS", "All good")])
+        _, doctor_mock = install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, True, True, True], report)
+        exec_mock = Mock()
+        monkeypatch.setattr(monitor.os, "execv", exec_mock)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
+        assert error.value.code == 0
+        assert not env_path.exists()
+        assert doctor_mock is not None and doctor_mock.call_args.args[2] is None
+        arguments = exec_mock.call_args.args[1]
+        assert "--config-file" in arguments
+        assert "--env-file" not in arguments
+        output = capsys.readouterr().out
+        assert "  Dotenv:        " not in output
+        assert "--doctor" in output
+        assert "--env-file" not in output
+
+
 # Verifies Compose prints prefix-free up only for complete authentication with a persisted target
 def test_compose_ready_setup_prints_up_without_exec(monkeypatch, capsys):
     with make_test_directory() as directory_name:
@@ -763,7 +1037,9 @@ def test_compose_custom_destinations_do_not_print_up(monkeypatch, capsys):
         assert error.value.code == 0
         output = capsys.readouterr().out
         assert "docker compose up --no-log-prefix" not in output
-        assert "spotify_monitor --config-file /data/custom.conf --env-file /data/custom.env" in output
+        assert "spotify_monitor --config-file /data/custom.conf" in output
+        # Nothing wrote the dotenv, so the command does not name a file that does not exist
+        assert "--env-file" not in output
 
 
 # Verifies deferred macOS Firefox setup skips Doctor and prints ordered host commands
@@ -781,7 +1057,8 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
-        assert (directory / ".env").read_text(encoding="utf-8") == ""
+        # The import command will write the dotenv later, so no empty one is created now but every command still names it
+        assert not (directory / ".env").exists()
         doctor_mock.assert_not_called()
         prompts = [call.args[0] for call in ask_mock.call_args_list]
         assert not any("Run doctor now" in prompt for prompt in prompts)
@@ -791,6 +1068,8 @@ def test_deferred_container_firefox_setup_skips_doctor(monkeypatch, capsys):
         doctor_index = output.index("After authentication succeeds, verify authentication and the target:")
         start_index = output.index("After Doctor passes, start monitoring:")
         assert prerequisite_index < import_index < doctor_index < start_index
+        command_lines = [line for line in output.splitlines() if "--config-file /data/" in line]
+        assert command_lines and all("--env-file /data/.env" in line for line in command_lines)
         assert '${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro' in output
         assert "--config-file /data/" in output
         assert "spotify_monitor.conf" in output
@@ -877,8 +1156,34 @@ def test_interactive_welcome_accepts_setup(monkeypatch):
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: True)
     setup_mock = Mock()
     monkeypatch.setattr(monitor, "run_setup_wizard", setup_mock)
-    monitor._wizard_welcome()
+    monitor.print_welcome_screen()
     setup_mock.assert_called_once_with()
+
+
+@pytest.mark.parametrize("command", ["run_setup_wizard", "run_scrobble_health_setup_wizard"])
+# Verifies a destination the wizard cannot use is refused with the fix and the guide rather than a bare line
+def test_an_unusable_setup_destination_is_refused_with_its_fix(monkeypatch, capsys, tmp_path, command):
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+
+    with pytest.raises(SystemExit) as error:
+        getattr(monitor, command)(config_file=str(tmp_path))
+
+    output = capsys.readouterr().out
+    assert error.value.code == 1
+    assert "* Error: Configuration destination must be a file path, not a directory" in output
+    assert "To fix: Choose a file path inside an existing directory you can write to with --config-file or --env-file" in output
+    assert f"Guide: {monitor.CONFIG_GUIDE_URL}" in output
+    assert "Setup cannot start" not in output
+
+
+# Verifies a destination switched off is still reported as the choice it was rather than a permissions problem
+def test_a_setup_destination_switched_off_names_the_flag_to_replace():
+    advice = monitor.classify_recovery_error(context="setup.destination", detail="--setup has nowhere to write the private settings")
+
+    assert advice.code == "file.unwritable"
+    assert "Replace '--env-file none' with a writable path" in advice.fix
+    assert monitor.SECRETS_GUIDE_URL in advice.fix
 
 
 # Verifies setup rejects noninteractive use before touching destination files
@@ -890,3 +1195,690 @@ def test_noninteractive_setup_is_rejected(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "interactive terminal" in output
     assert monitor.QUICK_START_GUIDE_URL in output
+
+
+# Verifies the output section records the log choice and the CSV destination it was given
+def test_the_output_section_records_the_log_and_csv_choices(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["n", "y", str(tmp_path / "plays.csv")])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["DISABLE_LOGGING"] is True
+    assert state.config_values["CSV_FILE"] == str(tmp_path / "plays.csv")
+
+
+# Verifies declining CSV output clears a saved path, which the path prompt alone could never do
+def test_declining_csv_output_clears_a_saved_path(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    baseline["CSV_FILE"] = "saved.csv"
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["y", "n"])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["CSV_FILE"] == ""
+
+
+# Verifies a blank CSV answer disables CSV output rather than storing an empty path as a file name
+def test_a_blank_csv_answer_disables_csv_output(monkeypatch, tmp_path):
+    baseline = dict(vars(monitor))
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "source": "existing SP_DC_COOKIE"}, [], [])
+    install_inputs(monkeypatch, ["y", ""])
+
+    monitor._wizard_collect_output_section(state)
+
+    assert state.config_values["DISABLE_LOGGING"] is False
+    assert state.config_values["CSV_FILE"] == ""
+
+
+# Verifies the two escape wordings, so a blank answer and a rejected one are never asked the same way
+@pytest.mark.parametrize(("consequence", "question", "answer", "expected"), (("", "Try entering the webhook URL again?", "y", True), ("", "Try entering the webhook URL again?", "n", False), ("Webhook alerts stay off until one is set", "Continue without the webhook URL? Webhook alerts stay off until one is set", "y", False), ("Webhook alerts stay off until one is set", "Continue without the webhook URL? Webhook alerts stay off until one is set", "n", True)))
+def test_the_escape_wording_matches_the_kind_of_rejection(monkeypatch, consequence, question, answer, expected):
+    questions = []
+    monkeypatch.setattr(monitor, "_wizard_input", lambda prompt: questions.append(prompt) or answer)
+
+    assert monitor._wizard_offer_retry("webhook URL", consequence) is expected
+    assert question in questions[0]
+
+
+# Verifies a required answer can be abandoned instead of trapping the wizard in its own loop
+def test_a_required_text_answer_can_be_abandoned(monkeypatch):
+    install_inputs(monkeypatch, ["", "n"])
+
+    assert monitor._wizard_ask_text("SMTP username", required=True) == ""
+
+
+# Verifies a target the wizard cannot normalize can be abandoned rather than asked forever, and that an answer already abandoned is not queried twice
+@pytest.mark.parametrize(("answer", "expected_offers"), (("", []), ("not a spotify profile", ["Spotify profile"])))
+def test_an_unusable_target_can_be_abandoned(monkeypatch, answer, expected_offers):
+    offers = []
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: answer)
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": offers.append(label) or False)
+
+    assert monitor._wizard_target() == ""
+    assert offers == expected_offers
+
+
+# Verifies abandoning any mail server answer switches every email alert off rather than saving half a server
+@pytest.mark.parametrize("abandoned", ["SMTP host", "SMTP username", "Sender email", "Receiver email"])
+def test_an_abandoned_mail_server_answer_switches_email_off(monkeypatch, tmp_path, abandoned):
+    notification_names = ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION")
+    config_values = {name: True for name in notification_names}
+    secret_updates = {}
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "" if question == abandoned else "answer@example.test")
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
+
+    assert monitor._wizard_collect_email(config_values, secret_updates, tmp_path / ".env") == []
+    assert not any(config_values[name] for name in notification_names)
+    assert config_values["SMTP_HOST"] == "your_smtp_server_ssl"
+    assert secret_updates == {}
+
+
+# Verifies an abandoned mail server answer also switches the scrobble health alert off, since it shares the channel
+def test_an_abandoned_mail_server_answer_switches_scrobble_health_email_off(monkeypatch, tmp_path):
+    config_values = {"SCROBBLE_HEALTH_NOTIFICATION": True, "ERROR_NOTIFICATION": True}
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
+
+    assert monitor._wizard_collect_email(config_values, {}, tmp_path / ".env", scrobble_health=True) == []
+    assert config_values["SCROBBLE_HEALTH_NOTIFICATION"] is False
+
+
+# Verifies a mail server that refuses the sign-in can be abandoned, which switches every email alert off
+def test_rejected_mail_server_settings_can_be_abandoned(monkeypatch, tmp_path):
+    config_values = {"ACTIVE_NOTIFICATION": True, "ERROR_NOTIFICATION": True}
+    labels = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_text", lambda question, default="", required=False: "answer@example.test")
+    monkeypatch.setattr(monitor, "_wizard_ask_positive_int", lambda question, default, maximum=None: default)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "private-password")
+    monkeypatch.setattr(monitor, "_wizard_verify_smtp", lambda values, password: monitor.make_recovery_advice("smtp.invalid", "SMTP settings are invalid", "Correct SENDER_EMAIL", False, "SENDER_EMAIL is not a valid address"))
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append(label) or False)
+
+    assert monitor._wizard_collect_email(config_values, {}, tmp_path / ".env") == []
+    assert labels == ["mail server settings"]
+    assert config_values["ACTIVE_NOTIFICATION"] is False
+    assert config_values["ERROR_NOTIFICATION"] is False
+
+
+# Verifies a webhook URL nobody can supply switches the channel off instead of repeating the prompt
+@pytest.mark.parametrize(("entry", "consequence_expected"), (("", True), ("not-a-url", False)))
+def test_an_unusable_webhook_url_can_be_abandoned(monkeypatch, tmp_path, entry, consequence_expected):
+    config_values = {"WEBHOOK_ENABLED": True, "NTFY_IMAGES": True, "WEBHOOK_ACTIVE_NOTIFICATION": True, "WEBHOOK_ERROR_NOTIFICATION": True}
+    secret_updates = {}
+    labels = []
+    monkeypatch.delenv("WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: 0)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: entry)
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append((label, consequence)) or False)
+
+    assert COLLECT_WEBHOOK(config_values, secret_updates, tmp_path / ".env") == []
+    assert labels == [("webhook URL", "Webhook alerts stay off until one is set" if consequence_expected else "")]
+    assert config_values["WEBHOOK_ENABLED"] is False
+    assert config_values["NTFY_IMAGES"] is False
+    assert config_values["WEBHOOK_ACTIVE_NOTIFICATION"] is False
+    assert config_values["WEBHOOK_ERROR_NOTIFICATION"] is False
+    assert secret_updates == {}
+
+
+# Verifies a retried webhook URL is still collected after one unusable entry
+def test_a_retried_webhook_url_is_accepted(monkeypatch, tmp_path):
+    config_values = {}
+    secret_updates = {}
+    entries = iter(["", "https://discord.com/api/webhooks/1/token"])
+    monkeypatch.delenv("WEBHOOK_URL", raising=False)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: 0)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: next(entries))
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": True)
+
+    COLLECT_WEBHOOK(config_values, secret_updates, tmp_path / ".env")
+
+    assert secret_updates["WEBHOOK_URL"] == "https://discord.com/api/webhooks/1/token"
+    assert config_values["WEBHOOK_ENABLED"] is True
+
+
+# Verifies a blank ntfy access token means no token rather than an unanswerable prompt
+def test_a_blank_ntfy_access_token_means_no_token(monkeypatch, tmp_path):
+    secret_updates = {}
+    monkeypatch.delenv("NTFY_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "")
+
+    monitor._wizard_collect_ntfy_access_token(secret_updates, tmp_path / ".env")
+
+    assert secret_updates == {}
+
+
+# Verifies a token pasted with its authorization scheme can be abandoned and is never saved
+def test_an_ntfy_access_token_pasted_with_its_scheme_can_be_abandoned(monkeypatch, tmp_path):
+    secret_updates = {}
+    labels = []
+    monkeypatch.delenv("NTFY_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=True: True)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "Bearer tk_secret")
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append(label) or False)
+
+    monitor._wizard_collect_ntfy_access_token(secret_updates, tmp_path / ".env")
+
+    assert labels == ["ntfy access token"]
+    assert secret_updates == {}
+
+
+# Verifies a blank sp_dc entry is never queued as an empty secret and can be abandoned
+def test_a_blank_sp_dc_entry_is_not_queued(monkeypatch, tmp_path):
+    secret_updates = {}
+    labels = []
+    monkeypatch.delenv("SP_DC_COOKIE", raising=False)
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: [])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: len(options) - 2)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda question: "")
+    monkeypatch.setattr(monitor, "_wizard_offer_retry", lambda label, consequence="": labels.append((label, consequence)) or False)
+
+    auth = monitor._wizard_collect_cookie_auth("pip", tmp_path / ".env", secret_updates)
+
+    assert labels == [("sp_dc cookie", "Monitoring cannot start until one is set")]
+    assert auth["complete"] is False
+    assert auth["source"] == "not configured"
+    assert secret_updates == {}
+
+
+# Verifies the one-shot command signs in before the password reaches the dotenv file
+def test_set_smtp_password_signs_in_before_saving(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("# keep\nUNRELATED=stay\n", encoding="utf-8")
+        sign_in = Mock(return_value="monitor@example.test")
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+        monkeypatch.setattr(monitor, "find_config_file", lambda: None)
+        configure_mail(monkeypatch)
+
+        result = monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "app-password", sign_in=sign_in)
+
+        assert result == str(destination.resolve())
+        sign_in.assert_called_once_with("app-password", timeout=5)
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay", "SMTP_PASSWORD": "app-password"}
+        output = capsys.readouterr().out
+        assert "signing in to smtp.example.test as monitor@example.test" in output
+        assert "The mail server accepted the password for monitor@example.test" in output
+        assert "app-password" not in output
+
+
+# Verifies a password the mail server refuses leaves the dotenv file untouched
+def test_set_smtp_password_keeps_the_dotenv_file_on_a_refused_sign_in(monkeypatch):
+    with make_test_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("UNRELATED=stay\n", encoding="utf-8")
+        configure_mail(monkeypatch)
+        refuse = Mock(side_effect=monitor.smtplib.SMTPAuthenticationError(535, b"authentication failed"))
+
+        with pytest.raises(monitor.RecoveryError) as error:
+            monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "wrong", sign_in=refuse)
+
+        assert error.value.advice.code == "smtp.authentication"
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
+
+
+# Several providers quote the credentials back in the rejection reply. The sign-in has already restored the
+# previous password by then, so the value that was tried has to reach the redaction from the caller
+def test_a_reply_quoting_the_password_is_redacted(tmp_path, monkeypatch, capsys):
+    destination = tmp_path / ".env"
+    configure_mail(monkeypatch)
+    echo = Mock(side_effect=monitor.smtplib.SMTPAuthenticationError(535, b"5.7.8 Not accepted. Sent: pass=app-password-value"))
+
+    with pytest.raises(monitor.RecoveryError) as error:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=lambda prompt: "app-password-value", sign_in=echo)
+
+    advice = error.value.advice
+    rendered = " ".join((advice.summary, advice.fix, advice.detail))
+    assert "app-password-value" not in rendered
+    assert "<redacted>" in advice.detail
+    assert advice.code == "smtp.authentication"
+    assert "app-password-value" not in capsys.readouterr().out
+    assert not destination.exists()
+
+
+# Verifies incomplete mail settings are reported before the password is asked for, not after the sign-in fails
+def test_incomplete_mail_settings_are_refused_before_the_prompt(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=Mock(side_effect=AssertionError("hidden prompt used")), sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    assert raised.value.advice.summary == "The mail server settings are incomplete, SENDER_EMAIL and RECEIVER_EMAIL are not set"
+    assert "Set SENDER_EMAIL and RECEIVER_EMAIL in the config file" in raised.value.advice.fix
+    assert not destination.exists()
+
+
+# Verifies a host still holding its shipped placeholder counts as unset, so a first run is not sent to it
+def test_a_placeholder_mail_host_is_refused_before_the_prompt(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    configure_mail(monkeypatch)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "your_smtp_server_ssl")
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=Mock(side_effect=AssertionError("hidden prompt used")), sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    assert raised.value.advice.summary == "The mail server settings are incomplete, SMTP_HOST is not set"
+
+
+# Verifies the command refuses without a terminal or a writable dotenv destination
+def test_set_smtp_password_requires_safe_persistence():
+    with pytest.raises(monitor.RecoveryError, match="interactive terminal"):
+        monitor.run_set_smtp_password(interactive=False, getpass_func=Mock(side_effect=AssertionError("prompted")))
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file="none", interactive=True, getpass_func=Mock(side_effect=AssertionError("prompted")))
+    assert raised.value.advice.summary == "--set-smtp-password has nowhere to write the private settings"
+    assert "Replace '--env-file none' with a writable path" in raised.value.advice.fix
+
+
+# Verifies each setup destination switched off is refused with the flag to replace and the matching guide
+@pytest.mark.parametrize("flag, summary, fix, guide", [
+    ("--config-file", "--setup has nowhere to write the configuration", "Replace '--config-file none' with a writable path, or drop the flag to write spotify_monitor.conf in the current directory", "#configuration-file"),
+    ("--env-file", "--setup has nowhere to write the private settings", "Replace '--env-file none' with a writable path, or drop the flag to write .env in the current directory", "#storing-secrets"),
+])
+def test_setup_refuses_a_destination_switched_off(tmp_path, flag, summary, fix, guide):
+    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--setup", flag, "none"], cwd=tmp_path, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 1
+    assert f"* Error: {summary}" in result.stdout
+    assert f"To fix: {fix}" in result.stdout
+    assert f"Guide: https://misiektoja.github.io/spotify_monitor/configuration/{guide}" in result.stdout
+    assert "usage:" not in result.stderr
+
+
+# Verifies the sign-in uses the configured mail server and restores the password it borrowed
+def test_smtp_sign_in_uses_the_configured_mail_server(monkeypatch):
+    session = Mock()
+    connect = Mock(return_value=session)
+    monkeypatch.setattr(monitor, "validate_smtp_configuration", lambda: None)
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", connect)
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor@example.test")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "saved")
+    monkeypatch.setattr(monitor, "SMTP_SSL", True)
+
+    assert monitor.smtp_sign_in("entered", timeout=5) == "monitor@example.test"
+
+    connect.assert_called_once_with(True, smtp_timeout=5)
+    session.quit.assert_called_once()
+    assert monitor.SMTP_PASSWORD == "saved"
+
+
+# Verifies a blank password is refused rather than saved as an empty secret
+def test_smtp_sign_in_refuses_a_blank_password():
+    with pytest.raises(monitor.RecoveryError) as error:
+        monitor.smtp_sign_in("")
+
+    assert "No SMTP password was entered" in error.value.advice.detail
+
+
+# Verifies Ctrl+C at the welcome offer reports one line instead of a traceback
+def test_interrupting_the_welcome_offer_reports_a_cancellation(monkeypatch, capsys):
+    def interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(builtins, "input", interrupt)
+    monkeypatch.setattr(monitor, "run_setup_wizard", lambda *args, **kwargs: pytest.fail("the wizard ran after being interrupted"))
+
+    with pytest.raises(SystemExit) as exit_error:
+        monitor.print_welcome_screen()
+
+    assert exit_error.value.code == 1
+    assert "Setup cancelled." in capsys.readouterr().out
+
+
+# Verifies an interrupt before the save says the destination files are untouched
+def test_interrupting_the_questions_reports_untouched_files(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(builtins, "input", Mock(side_effect=KeyboardInterrupt))
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
+
+        assert error.value.code == 1
+        assert "Setup cancelled. Destination files were not changed." in capsys.readouterr().out
+        assert not config_path.exists()
+
+
+# Verifies an interrupt at the doctor offer reports the saved setup instead of a cancellation
+def test_interrupting_the_doctor_offer_keeps_the_saved_setup(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, KeyboardInterrupt, False])
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
+
+        output = capsys.readouterr().out
+        assert error.value.code == 0
+        assert "Setup is saved. Use the commands below when ready." in output
+        assert "Setup cancelled" not in output
+        assert "Next steps" in output
+        assert config_path.is_file()
+
+
+# Verifies an interrupt during browser import still prints the file summary once and skips the optional checks
+def test_interrupting_the_browser_import_keeps_the_saved_setup(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        auth = {"complete": False, "validated": False, "browser": "firefox", "source": "browser import (Firefox)", "host_os": None}
+        ask_mock, _ = install_minimal_wizard_flow(monkeypatch, "manual", auth, [False])
+        monkeypatch.setattr(monitor, "_wizard_finish_browser_import", Mock(side_effect=KeyboardInterrupt))
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
+
+        output = capsys.readouterr().out
+        assert error.value.code == 0
+        assert output.count("Setup is saved. Use the commands below when ready.") == 1
+        assert output.index("\nBrowser cookie import\n") < output.index("\nSaved files\n")
+        assert f"\nSaved files\n\n  Configuration: {config_path.resolve()}\n\n" in output
+        assert "  Secrets:" not in output
+        assert not any(call.args[0].startswith("Run doctor now?") for call in ask_mock.call_args_list)
+        assert "Authentication still needs to be completed." in output
+        assert config_path.is_file()
+
+
+# Verifies an interrupt at the launch offer reports the saved setup and points at the printed command
+def test_interrupting_the_launch_offer_keeps_the_saved_setup(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        config_path = directory / "spotify_monitor.conf"
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        report = monitor.DoctorReport(checks=[monitor.DoctorCheck("Environment", "WARN", "Optional warning")])
+        install_minimal_wizard_flow(monkeypatch, "manual", auth, [False, True, KeyboardInterrupt], report)
+        exec_mock = Mock()
+        monkeypatch.setattr(monitor.os, "execv", exec_mock)
+
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=config_path, env_file=directory / ".env")
+
+        output = capsys.readouterr().out
+        assert error.value.code == 0
+        assert "Setup is saved. Start monitoring with the command above when ready." in output
+        assert "Setup cancelled" not in output
+        exec_mock.assert_not_called()
+
+
+# Verifies a prompt runs with Python's default Ctrl+C behavior, so the signal handler cannot pre-empt it
+def test_prompts_restore_the_default_interrupt_handler(monkeypatch):
+    observed = {}
+
+    def answer(_prompt=""):
+        observed["during"] = signal.getsignal(signal.SIGINT)
+        return "value"
+
+    monkeypatch.setattr(builtins, "input", answer)
+    previous_handler = signal.signal(signal.SIGINT, monitor.signal_handler)
+    try:
+        assert monitor._wizard_input("Prompt: ") == "value"
+        assert observed["during"] is signal.default_int_handler
+        assert signal.getsignal(signal.SIGINT) is monitor.signal_handler
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+
+# Verifies hidden prompts are colorized like the visible ones, so one question does not look different
+def test_hidden_prompts_are_colorized_like_the_visible_ones(monkeypatch):
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {name: monitor._build_ansi_sequence(value) for name, value in monitor.DEFAULT_COLOR_THEME.items() if monitor._build_ansi_sequence(value)})
+    prompts = []
+    monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt: prompts.append(prompt) or "secret")
+    monkeypatch.setattr(builtins, "input", lambda prompt: prompts.append(prompt) or "")
+
+    assert monitor._wizard_ask_secret("SMTP password") == "secret"
+    assert monitor._wizard_input("Receiver email: ") == ""
+
+    hidden_prompt, visible_prompt = prompts
+    assert hidden_prompt == monitor.colorize("info", "SMTP password: ")
+    assert hidden_prompt.startswith(visible_prompt[:visible_prompt.index("R")])
+    assert hidden_prompt.endswith(monitor.ANSI_RESET)
+
+
+# Verifies debug output is off while a hidden value is read and restored afterwards
+def test_a_hidden_value_is_read_with_debug_output_off(monkeypatch):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", True)
+    seen = []
+    monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt: seen.append(monitor.DEBUG_MODE) or "secret")
+
+    assert monitor._wizard_ask_secret("SMTP password") == "secret"
+    assert monitor.read_secret_privately(lambda prompt: seen.append(monitor.DEBUG_MODE) or "value", "Enter it: ") == "value"
+    assert seen == [False, False]
+    assert monitor.DEBUG_MODE is True
+
+
+# Verifies an interrupted entry reports the cancel itself, with the command that resumes it
+def test_an_interrupted_secret_entry_reports_the_cancel(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    configure_mail(monkeypatch)
+
+    def interrupt(prompt=""):
+        raise KeyboardInterrupt
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, getpass_func=interrupt, sign_in=Mock(side_effect=AssertionError("signed in")))
+
+    advice = raised.value.advice
+    assert advice.summary == "SMTP password setup was cancelled and the dotenv file was not changed"
+    assert "Run --set-smtp-password again when you have the value ready" in advice.fix
+    assert monitor.SMTP_GUIDE_URL in advice.fix
+    assert not destination.exists()
+
+
+# Verifies a declined replacement reports the kept value rather than a cancelled entry
+def test_a_declined_secret_replacement_reports_the_kept_value(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    destination.write_text('SMTP_PASSWORD="original"\n', encoding="utf-8")
+    configure_mail(monkeypatch)
+
+    with pytest.raises(monitor.RecoveryError) as raised:
+        monitor.run_set_smtp_password(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=Mock(side_effect=AssertionError("hidden prompt used")))
+
+    advice = raised.value.advice
+    assert advice.summary == "The saved SMTP password was left as it is and the dotenv file was not changed"
+    assert "answer y to replace the saved value" in advice.fix
+    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="original"\n'
+
+
+# Verifies the polling question opens its own group, the way the sibling wizards separate their questions
+def test_the_polling_question_starts_its_own_group(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        answers = iter(["target.user", "y", "", ""])
+
+        # Echoes each prompt with its answer, so the captured text is the transcript a user reads
+        def answer(prompt=""):
+            typed = next(answers)
+            print(f"{prompt}{typed}")
+            return typed
+
+        monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+        monkeypatch.setattr(builtins, "input", answer)
+        monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        monkeypatch.setattr(monitor, "_wizard_collect_auth_section", Mock(side_effect=KeyboardInterrupt))
+
+        with pytest.raises(SystemExit):
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+
+        assert "\n\nSpotify polling interval while the user is not playing (seconds or use s/m/h/d)" in capsys.readouterr().out
+
+
+# Verifies the guide link opens the setup page the sibling monitors link, with no section fragment
+def test_the_welcome_guide_link_opens_the_shared_setup_page():
+    assert monitor.QUICK_START_GUIDE_URL.endswith("/setup-and-first-run/")
+
+
+# Verifies the doctor setup runs credits the dotenv file, not the fallback the empty source map produces
+def test_the_wizard_reload_credits_the_dotenv_file(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("SP_DC_COOKIE = 'your_sp_dc_cookie_value'\n", encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
+    monkeypatch.setattr(monitor, "EXPORTED_ENVIRONMENT_KEYS", frozenset())
+
+    assert monitor._wizard_load_effective_setup(config_path, env_path)
+
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "dotenv file"
+
+
+# Verifies a secret exported before startup keeps the environment as its source, since the export still wins
+def test_the_wizard_reload_leaves_an_exported_secret_to_the_environment(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("SP_DC_COOKIE = 'your_sp_dc_cookie_value'\n", encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text("SP_DC_COOKIE=a-saved-cookie-value\n", encoding="utf-8")
+    monkeypatch.setenv("SP_DC_COOKIE", "an-exported-cookie-value")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {})
+    monkeypatch.setattr(monitor, "EXPORTED_ENVIRONMENT_KEYS", frozenset({"SP_DC_COOKIE"}))
+
+    assert monitor._wizard_load_effective_setup(config_path, env_path)
+
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "environment"
+    assert monitor.SP_DC_COOKIE == "an-exported-cookie-value"
+
+
+# Verifies a manually pasted cookie is checked with Spotify before it is queued, not left for the first run
+def test_a_manually_entered_cookie_is_checked_with_spotify(monkeypatch, capsys):
+    checked = []
+    updates = {}
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "sp-dc-value")
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda *args, **kwargs: False)
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: checked.append(cookie))
+
+    result = monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), updates)
+
+    assert checked == ["sp-dc-value"]
+    assert updates["SP_DC_COOKIE"] == "sp-dc-value"
+    assert result["source"] == "private manual entry"
+    assert "  Checking the cookie with Spotify ..." in capsys.readouterr().out
+
+
+# Verifies a cookie Spotify rejects is never queued, so setup cannot save a value that cannot authenticate
+def test_a_rejected_cookie_is_not_queued(monkeypatch, capsys):
+    updates = {}
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: "stale-cookie")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: False)
+    monkeypatch.setattr(monitor, "_wizard_existing_secret", lambda *args, **kwargs: False)
+
+    def reject(_cookie):
+        raise monitor.BrowserCookieImportError("The imported sp_dc cookie is invalid or expired. Sign in to Spotify in the browser then retry.")
+
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", reject)
+
+    result = monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), updates)
+
+    assert "SP_DC_COOKIE" not in updates
+    assert result["complete"] is False
+    assert "Spotify rejected the entered sp_dc cookie" in capsys.readouterr().out
+
+
+# Verifies the port question rejects a number no TCP port can be, instead of saving it for the doctor to reject
+def test_the_smtp_port_question_rejects_a_number_above_the_port_range(monkeypatch, capsys):
+    answers = iter(["70000", "y", "2525"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    chosen = monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535)
+
+    assert chosen == 2525
+    assert "  Enter a whole number from 1 through 65535." in capsys.readouterr().out
+
+
+# Verifies declining the retry offer keeps the saved value rather than asking the same question forever
+def test_declining_the_retry_offer_keeps_the_saved_number(monkeypatch, capsys):
+    answers = iter(["70000", "n"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    assert monitor._wizard_ask_positive_int("SMTP port", 587, maximum=65535) == 587
+
+
+# Verifies a declined target ends the section without asking to persist a target that does not exist
+def test_a_declined_target_ends_the_section_without_the_persist_question(monkeypatch, tmp_path, capsys):
+    baseline = {name: value for name, value in vars(monitor).items() if name in monitor._config_allowed_names()}
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "", True, {"complete": False, "validated": False, "browser": None, "source": "not configured"}, [], [])
+    monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda *args, **kwargs: pytest.fail("the persist question was asked without a target"))
+
+    monitor._wizard_collect_target_section(state)
+
+    assert state.target == ""
+    assert state.config_values["TARGET_USER_URI_ID"] == ""
+    assert "No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line." in capsys.readouterr().out
+
+
+# Verifies the doctor is offered whenever a target was given, so a setup without authentication can see what is missing
+def test_the_doctor_offer_follows_the_target_rather_than_authentication(monkeypatch, capsys):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        monkeypatch.chdir(directory)
+        auth = {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False}
+        ask_mock, _ = install_minimal_wizard_flow(monkeypatch, "manual", auth, [True, False, False])
+        monkeypatch.setattr(monitor, "_wizard_validate_destination", lambda method, path, label: Path(path).expanduser().resolve())
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        prompts = [call.args[0] for call in ask_mock.call_args_list]
+        assert any(prompt.startswith("Run doctor now?") for prompt in prompts)
+        assert not any(prompt.startswith("Start monitoring now?") for prompt in prompts)
+        assert "Authentication still needs to be completed." in capsys.readouterr().out
+
+
+# Verifies the email question defaults to the saved alerts, so a rerun over configured email proposes keeping it
+def test_the_email_question_defaults_to_the_saved_alerts(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False, **kwargs: seen.append((question, default)) or False)
+
+    monitor._wizard_collect_email({"ERROR_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env")
+    assert seen == [("Configure email notifications?", False)]
+
+    monitor._wizard_collect_email({"ERROR_NOTIFICATION": True, "SMTP_HOST": "smtp.example.test"}, {}, tmp_path / ".env")
+    assert seen[-1] == ("Configure email notifications?", True)
+
+    monitor._wizard_collect_email({"TRACK_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env")
+    assert seen[-1] == ("Configure email notifications?", True)
+
+    monitor._wizard_collect_email({"SCROBBLE_HEALTH_NOTIFICATION": True, "SMTP_HOST": "your_smtp_server_ssl"}, {}, tmp_path / ".env", scrobble_health=True)
+    assert seen[-1] == ("Configure email notifications?", False)
+
+    monitor._wizard_collect_email({"SCROBBLE_HEALTH_NOTIFICATION": True, "SMTP_HOST": "smtp.example.test"}, {}, tmp_path / ".env", scrobble_health=True)
+    assert seen[-1] == ("Configure email notifications?", True)
+
+
+# Verifies declining the retry offer after a value the wizard cannot use keeps the default rather than asking again
+def test_a_rejected_duration_keeps_the_default(monkeypatch, capsys):
+    prompts = []
+    answers = iter(["later", "n"])
+
+    def script(prompt=""):
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", script)
+
+    assert monitor._wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", 60) == 60
+    assert "Keeping 60s - 1m." in capsys.readouterr().out
+    # The hint the question carries belongs in the prompt, not in the offer that repeats it
+    assert any("Try entering the Spotify polling interval again? [Y/n]: " in prompt for prompt in prompts), prompts

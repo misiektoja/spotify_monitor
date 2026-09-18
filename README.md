@@ -10,24 +10,24 @@
 [![Last Commit](https://img.shields.io/github/last-commit/misiektoja/spotify_monitor?style=flat-square&color=green)](https://github.com/misiektoja/spotify_monitor/commits/main)
 [![Maintenance](https://img.shields.io/badge/maintenance-active-brightgreen?style=flat-square)](https://github.com/misiektoja/spotify_monitor)
 
-Powerful real-time tracker for Spotify friend music activity: monitor listening habits, auto-sync playback to your local Spotify client, detect skipped tracks and receive instant notifications for every beat your friends play.
+Track Spotify friend listening activity, play reported tracks in your local Spotify client and receive activity notifications.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor.png" alt="spotify_monitor_screenshot" width="90%"/>
 </p>
 
-<a id="-quick-install-run"></a>
+<a id="quick-install-run"></a>
 ### 🚀 Quick Install & Run
 
 #### Python from PyPI
 
-New to Python or unsure what is installed? Follow the [Python install walkthrough](https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-install-everything) first.
+New to Python or unsure what is installed? Follow the [Python install walkthrough](https://misiektoja.github.io/spotify_monitor/installation/#new-to-python-check-and-install) first.
 
 ```sh
 pip install spotify_monitor
 ```
 
-Run setup for **friend activity mode** (Spotify friend's completed plays, activity status and listening session):
+Run setup for **friend activity mode** (Spotify friend's shared tracks, playback state and listening session):
 
 ```sh
 spotify_monitor --setup
@@ -37,6 +37,8 @@ Or for **Last.fm scrobble health mode** (checks whether plays from your Spotify 
 ```sh
 spotify_monitor --setup-scrobble-health
 ```
+
+The wizard asks for few details and optional notifications. Review the settings before saving them. See [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) for the other options.
 
 #### Docker image - fastest container setup
 
@@ -83,16 +85,16 @@ Run setup wizard:
 docker compose run --rm --pull=always spotify_monitor --setup
 ```
 
-For the manual single-file method, optional extras and upgrade commands for every method, see [Installation](https://misiektoja.github.io/spotify_monitor/installation/).
+For the manual single-file method, optional extras and upgrade commands, see [Installation](https://misiektoja.github.io/spotify_monitor/installation/).
 
 <a id="features"></a>
 ## Features
 
 ### 🔍 Real-time Tracking
-- **Friend Activity**: Monitor songs listened to by Spotify users in real time.
+- **Friend Activity**: Track what your friends are listening to.
 - **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
 - **Presence Detection**: Detect when friends get **online** or **offline**.
-- **Session Stats**: Display **duration, track counts** and **songs on loop**.
+- **Session Stats**: Display **duration, track counts, pauses** and **songs on loop**.
 
 ### 🎮 Playback Control
 - **Auto-Sync**: Automatically **play friends' songs** in your local Spotify client.
@@ -101,7 +103,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 
 ### 📊 Rich Insights
 - **Track Context**: View **playlist, artist** and **album info** with clickable URLs.
-- **Skip Detection**: Identify exactly when and how long a song was played.
+- **Skip Detection**: See **skipped songs** and how long each song was played.
 - **Global Search**: Instant links to **Spotify, YouTube Music, Apple Music, Tidal, lyrics** and more.
 - **Coloured Output**: Readable terminal colours with a **customizable theme**, while log files stay plain text.
 
@@ -112,7 +114,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
 - **Error Reporting**: Be notified if the monitoring process hits a snag.
 
 ### ⚙️ Power Features
-- **Auth Flexibility**: Cookie or Desktop Client access with automatic web-player metadata fallback and optional legacy OAuth app support.
+- **Auth Flexibility**: Sign in with a browser **cookie** or the **Spotify Desktop Client**, no developer app required.
 - **CSV Logging**: Save every listened song with full timestamps to a CSV file.
 - **Flexible Config**: Support for files, dotenv and environment variables.
 - **Signal Control**: Manage the running script via system signals (macOS/Linux).
@@ -122,7 +124,7 @@ For the manual single-file method, optional extras and upgrade commands for ever
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_skipped.png" alt="spotify_monitor_skipped" width="90%"/>
 </p>
 
-For pause and resume tracking, progress indicators and offline mode, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
+For track progress indicators and offline scrobble history, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 
 For Spotify profile and playlist change tracking, see [spotify_profile_monitor](https://github.com/misiektoja/spotify_profile_monitor).
 
@@ -141,37 +143,53 @@ The setup wizard checks whether the monitoring account follows the target. It ca
 <a id="common-commands"></a>
 ## Common Commands
 
-Use [Quick Install & Run](#-quick-install-run) above for first-time setup. The table uses PyPI commands. For manual script, direct Docker and Docker Compose equivalents, see [Run Individual Commands](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/#run-individual-commands).
+Use [Quick Install & Run](#-quick-install--run) above for first-time setup. The table uses PyPI commands. For manual script, direct Docker and Docker Compose equivalents, see [Run Individual Commands](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/#run-individual-commands).
+
+Replace the target placeholders with a complete Spotify profile URL, a `spotify:user:` URI or a user ID.
 
 | I want to... | Run this |
 | --- | --- |
-| Start monitoring with existing authentication | `spotify_monitor TARGET`, where `TARGET` is a complete profile URL, `spotify:user:` URI or user ID |
-| Check authentication, connectivity and one target | `spotify_monitor --doctor TARGET` |
+| Configure the target, credentials and alerts | `spotify_monitor --setup` |
+| Start monitoring with existing authentication | `spotify_monitor <spotify_target>` |
+| Check authentication, connectivity and one target | `spotify_monitor --doctor <spotify_target>` |
 | List Spotify friends visible to the configured account | `spotify_monitor --list-friends` |
 | Import a Spotify login from Firefox | Open [Spotify Web Player](https://open.spotify.com/) in Firefox, sign in then run `spotify_monitor --import-browser-cookie --browser firefox` |
 | Enter or replace securely a manually extracted `SP_DC_COOKIE` | Run `spotify_monitor --set-sp-dc` and enter `sp_dc` at the hidden prompt |
 | Enter or replace securely `LASTFM_API_KEY` | Run `spotify_monitor --set-lastfm-credentials` and enter the key at the hidden prompt |
 | Configure and test webhook alerts | Use the setup wizard or follow [Webhook Settings](https://misiektoja.github.io/spotify_monitor/configuration/#webhook-settings) |
-| Start scrobble health monitoring from saved settings | Run `spotify_monitor --monitor-mode scrobble_health` |
-| Select the monitoring mode for one run | Run `spotify_monitor --monitor-mode friend_activity TARGET` or `spotify_monitor --monitor-mode scrobble_health` |
+| Start scrobble health monitoring from saved settings | `spotify_monitor --monitor-mode scrobble_health` |
+| Select the monitoring mode for one run | `spotify_monitor --monitor-mode friend_activity <spotify_target>` or `spotify_monitor --monitor-mode scrobble_health` |
+| Save an SMTP password for email alerts | `spotify_monitor --set-smtp-password` |
+| Send a test email | `spotify_monitor --send-test-email` |
+| Save a new webhook URL | `spotify_monitor --set-webhook-url` |
+| Send a test webhook | `spotify_monitor --send-test-webhook` |
+| List every supported command-line flag | `spotify_monitor --help` |
 
 Running the tool with no arguments offers the wizard if you have not saved a target. If a target is already saved, it starts monitoring that target.
+
+The tool runs until interrupted (`Ctrl+C`). Use `tmux` or `screen` for persistence and run multiple copies to monitor several targets.
 
 For authentication, saved targets, configuration backups and setup recovery, see the [full Setup & First Run guide](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/).
 
 For browser profiles, manual cookie extraction, Docker authentication, email and webhook setup, see [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/). For notification choices, playback controls and output files, see [Usage](https://misiektoja.github.io/spotify_monitor/usage/).
+
+If a run fails, start with [Doctor Preflight](https://misiektoja.github.io/spotify_monitor/troubleshooting/#doctor-preflight).
 
 <a id="documentation"></a>
 ## Documentation
 
 Full documentation is available at **[misiektoja.github.io/spotify_monitor](https://misiektoja.github.io/spotify_monitor/)**:
 
-- [Installation](https://misiektoja.github.io/spotify_monitor/installation/) - PyPI, manual script, Docker installation and upgrades
-- [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) - setup wizard, authentication and first run
-- [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) - Spotify login, targets, SMTP, webhooks and secrets
-- [Usage](https://misiektoja.github.io/spotify_monitor/usage/) - command formats, monitoring, container operation, notifications, playback and output
-- [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) - the `--doctor` self-check and logging levels
-- [Debugging Tools](https://misiektoja.github.io/spotify_monitor/debugging/) - TOTP token testing and secret extraction
+| Page | What it covers |
+| --- | --- |
+| [Installation](https://misiektoja.github.io/spotify_monitor/installation/) | Python walkthrough, PyPI, manual script and Docker installation, upgrades |
+| [Setup & First Run](https://misiektoja.github.io/spotify_monitor/setup-and-first-run/) | Setup wizard, authentication, the first monitoring run |
+| [Configuration](https://misiektoja.github.io/spotify_monitor/configuration/) | Config file, Spotify login, targets, SMTP, webhooks, storing secrets, check intervals |
+| [Usage](https://misiektoja.github.io/spotify_monitor/usage/) | Command formats, monitoring modes, container operation, notifications, playback, terminal output |
+| [Troubleshooting](https://misiektoja.github.io/spotify_monitor/troubleshooting/) | `--doctor` preflight checks, what to do when something fails, `--verbose` and `--debug` output |
+| [Debugging Tools](https://misiektoja.github.io/spotify_monitor/debugging/) | TOTP token testing and secret extraction |
+| [Testing](https://misiektoja.github.io/spotify_monitor/testing/) | Running the offline suite, the linter and the docs build |
+| [About](https://misiektoja.github.io/spotify_monitor/about/) | Change log, contributing, security, license, support |
 
 <a id="change-log"></a>
 ## Change Log
@@ -201,5 +219,7 @@ Licensed under GPLv3. See [LICENSE](https://github.com/misiektoja/spotify_monito
 
 <a id="support"></a>
 ## Support
+
+Questions, bug reports and vulnerability reports each have a place, listed in [SUPPORT.md](https://github.com/misiektoja/spotify_monitor/blob/main/SUPPORT.md).
 
 If the project is useful to you, you can support its development through [GitHub Sponsors](https://github.com/sponsors/misiektoja) or [Buy Me a Coffee](https://buymeacoffee.com/misiektoja).

@@ -257,15 +257,14 @@ def test_advanced_webhook_customization_matches_instagram_features(monkeypatch):
     assert request.kwargs["headers"]["X-Webhook-Version"] == monitor.VERSION
 
 
-# Verifies a string webhook template is delivered as a raw request body
-def test_string_webhook_template_uses_raw_body(monkeypatch):
+# Rejects a non-JSON Discord payload before attempting delivery
+def test_non_json_webhook_template_is_refused(monkeypatch):
     configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor, "WEBHOOK_TEMPLATE", "{title}: {description}")
     webhook_post = Mock(return_value=FakeResponse())
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", webhook_post)
-    assert monitor.send_webhook("Title", "Body", "song") == 0
-    assert webhook_post.call_args.kwargs["data"] == "Title: Body"
-    assert "json" not in webhook_post.call_args.kwargs
+    assert monitor.send_webhook("Title", "Body", "song") == 1
+    webhook_post.assert_not_called()
 
 
 # Verifies formatted headers are validated again before network delivery
@@ -577,6 +576,43 @@ def test_webhook_http_retry_boundaries(monkeypatch, statuses, expected_calls, ex
     assert sleeps == expected_sleeps
 
 
+HTML_BODY = "<html><head></head><body>Now playing: <b><a href=\"https://open.spotify.com/t\">A &amp; B - Title</a></b><br>Duration: 3:45<br><br>Last activity: <b>Tue 15 Sep 2026, 20:17:27</b><br>Timestamp: Tue 15 Sep 2026, 20:19:02</body></html>"
+
+
+# Verifies the email body's formatting survives as the Discord markdown subset rather than reaching Discord as tags
+def test_an_html_body_becomes_discord_markdown():
+    assert monitor.html_body_to_discord_markdown(HTML_BODY) == (
+        "Now playing: **[A & B - Title](https://open.spotify.com/t)**\n"
+        "Duration: 3:45\n\n"
+        "Last activity: **Tue 15 Sep 2026, 20:17:27**\n"
+        "Timestamp: Tue 15 Sep 2026, 20:19:02"
+    )
+
+
+# Verifies a body with nothing to convert stays usable rather than producing stray markers
+@pytest.mark.parametrize("body, expected", [("", ""), ("<body>Plain line</body>", "Plain line"), ("<body>Count: <b></b></body>", "Count:")])
+def test_a_body_without_formatting_converts_cleanly(body, expected):
+    assert monitor.html_body_to_discord_markdown(body) == expected
+
+
+# Verifies the formatted body reaches Discord while ntfy keeps the plain one, since ntfy shows the markers literally
+@pytest.mark.parametrize("provider, destination, expected", [("discord", "https://discord.com/api/webhooks/123/private-token", "Last: **now**"), ("ntfy", "https://ntfy.sh/a-private-topic", "Last: now")])
+def test_only_discord_receives_the_formatted_body(monkeypatch, provider, destination, expected):
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", destination)
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {})
+    monkeypatch.setattr(monitor, "WEBHOOK_TRANSFORMS", [])
+    seen = []
+    real_values = monitor.build_webhook_values
+    monkeypatch.setattr(monitor, "build_webhook_values", lambda title, description, notification_type, image_url="": seen.append(description) or real_values(title, description, notification_type, image_url))
+    monkeypatch.setattr(monitor, "post_webhook_request", lambda *args, **kwargs: Mock(status_code=204, headers={}, text=""))
+
+    monitor.send_webhook("Title", "Last: now", "song", force=True, discord_description="Last: **now**")
+
+    assert seen == [expected]
+
+
 # Verifies email and webhook attempts remain independent in both directions
 def test_notification_channels_are_independent(monkeypatch):
     email = Mock(return_value=0)
@@ -589,7 +625,7 @@ def test_notification_channels_are_independent(monkeypatch):
     email.reset_mock()
     assert monitor.send_notification_channels("song", "Title", "Body", email_enabled=False, webhook_enabled=True) == (False, True)
     email.assert_not_called()
-    webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="")
+    webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="")
 
 
 # Verifies channel results report delivery success instead of attempted sends
@@ -625,7 +661,7 @@ def test_short_notification_content_is_ntfy_only_with_fallbacks(monkeypatch, pro
     webhook = Mock(return_value=0)
     monkeypatch.setattr(monitor, "send_webhook", webhook)
     assert monitor.send_notification_channels(notification_type, "Normal title", "Normal body", webhook_enabled=True, subject_short=subject_short, body_short=body_short) == (False, True)
-    webhook.assert_called_once_with(expected_subject, expected_body, notification_type, force=True, image_url="", ntfy_priority=0, ntfy_tags="")
+    webhook.assert_called_once_with(expected_subject, expected_body, notification_type, force=True, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="")
 
 
 # Verifies the recommended wizard preset stores the URL privately without contacting it
@@ -704,7 +740,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         config_path = directory / "spotify_monitor.conf"
         env_path = directory / ".env"
         secret = "https://discord.com/api/webhooks/123/private-token"
-        answers = iter([True, False, True, True, False])
+        answers = iter([True, False, True, True, False, False])
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "_wizard_target", lambda initial=None: "target.user")
@@ -715,6 +751,7 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: secret)
         monkeypatch.setattr(monitor, "_doctor_ask_yes_no", lambda question: False)
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
+        monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
         assert error.value.code == 0
@@ -737,7 +774,7 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
         env_path = directory / ".env"
         topic_url = "https://ntfy.example.test/private-topic"
         token = "tk_private_access_token"
-        answers = iter([True, False, True, True, False])
+        answers = iter([True, False, True, True, False, False])
         choices = iter([0, 1, 0, 0])
         secrets = iter([topic_url, token])
         monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
@@ -749,6 +786,7 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: default)
         monkeypatch.setattr(monitor, "_wizard_ask_secret", lambda *args, **kwargs: next(secrets))
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
+        monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
         assert error.value.code == 0
@@ -803,7 +841,7 @@ def test_send_test_webhook_cli_applies_runtime_overrides(monkeypatch):
     assert monitor.WEBHOOK_URL == url
     assert monitor.WEBHOOK_ENABLED is True
     assert monitor.WEBHOOK_ERROR_NOTIFICATION is True
-    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+    delivery.assert_called_once_with("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True, report_delivery=False)
 
 
 # Verifies a known ntfy URL corrects a stale configured provider before Doctor or test delivery
@@ -824,7 +862,7 @@ def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
     assert error.value.code == 0
     assert monitor.WEBHOOK_PROVIDER == "ntfy"
     assert "Using ntfy" in capsys.readouterr().out
-    delivery.assert_called_once_with("Spotify Monitor test", "Your webhook alerts are set up correctly.", "song", force=True)
+    delivery.assert_called_once_with("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.", "song", force=True, report_delivery=False)
 
 
 # Verifies the direct webhook URL CLI override retains strict HTTPS validation
@@ -849,7 +887,8 @@ def test_doctor_webhook_check_is_read_only(monkeypatch):
     post = Mock(side_effect=AssertionError("webhook request attempted"))
     monkeypatch.setattr(monitor.WEBHOOK_SESSION, "post", post)
     checks = monitor.doctor_check_webhook_notifications()
-    assert checks == [monitor.make_doctor_check("Notifications", "PASS", f"{monitor.WEBHOOK_READY_CHECK_LABEL} for {monitor.webhook_provider_display_name()}", "The private link was not displayed. No webhook was sent during this passive check")]
+    assert checks == [monitor.make_doctor_check("Notifications", "PASS", f"{monitor.WEBHOOK_READY_CHECK_LABEL} for {monitor.webhook_provider_display_name()}", f"Alerts: {', '.join(monitor._startup_webhook_notification_categories())}. The private link was not displayed. No webhook was sent during this passive check")]
+    assert checks[0].detail.startswith("Alerts: ")
     post.assert_not_called()
 
 
@@ -971,3 +1010,81 @@ def test_webhook_wizard_artwork_in_container_points_at_published_image(monkeypat
 
     assert monitor._wizard_collect_ntfy_images() is False
     assert "published Docker images" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flag, announcement", [("--send-test-email", "Sending test email notification"), ("--send-test-webhook", "Sending a test webhook")])
+# Verifies a delivery test checks the settings before it announces an attempt it cannot make
+def test_a_delivery_test_checks_the_settings_before_it_announces(monkeypatch, capsys, flag, announcement):
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: True)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "not a host")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])
+
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+
+    output = capsys.readouterr().out
+    assert error.value.code == 1
+    assert announcement not in output
+    assert "* Error: " in output
+    assert "To fix: " in output
+
+
+# Verifies both test commands carry the subject, title and body shared with the sibling monitors
+def test_the_test_messages_use_the_shared_wording(monkeypatch):
+    email = Mock(return_value=0)
+    delivery = Mock(return_value=0)
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", delivery)
+    monkeypatch.setattr(monitor, "validate_smtp_configuration", lambda: None)
+    monkeypatch.setattr(monitor, "validate_webhook_url", lambda *args, **kwargs: True)
+
+    for flag in ("--send-test-email", "--send-test-webhook"):
+        monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])
+        with pytest.raises(SystemExit) as error:
+            monitor.main()
+        assert error.value.code == 0
+
+    assert email.call_args.args[:2] == ("Spotify Monitor test email", "This test email was sent by --send-test-email. Your SMTP settings work.")
+    assert delivery.call_args.args[:2] == ("Spotify Monitor test webhook", "This test notification was sent by --send-test-webhook. Your webhook settings work.")
+
+
+# Verifies the webhook question defaults to the saved switch, so a rerun over a configured webhook proposes keeping it
+def test_the_webhook_question_defaults_to_the_saved_switch(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", lambda question, default=False, **kwargs: seen.append((question, default)) or False)
+
+    assert monitor._wizard_collect_webhook({"WEBHOOK_ENABLED": True}, {}, tmp_path / ".env") == []
+
+    assert seen == [("Set up webhook alerts (Discord, ntfy etc.)?", True)]
+
+
+# Verifies a link whose text repeats its destination reaches Discord bare, because a masked link there prints as plain text
+def test_self_labeled_links_stay_bare_in_discord_markdown():
+    profile_url = "https://open.spotify.com/user/misiektoja"
+    body_html = f"<html><head></head><body>Spotify user <b>misiektoja</b> has disappeared<br>Profile: <a href=\"{profile_url}\">{profile_url}</a><br></body></html>"
+    markdown = monitor.html_body_to_discord_markdown(body_html)
+    assert f"Profile: {profile_url}" in markdown
+    assert "[https://" not in markdown
+
+
+# Verifies a link with its own text keeps the masked form Discord renders as a hyperlink
+def test_labeled_links_keep_the_masked_discord_form():
+    body_html = "<b><a href=\"https://open.spotify.com/artist/1\">Artist</a></b> - <a href=\"https://open.spotify.com/track/2\">Track</a>"
+    assert monitor.html_body_to_discord_markdown(body_html) == "**[Artist](https://open.spotify.com/artist/1)** - [Track](https://open.spotify.com/track/2)"
+
+
+# Verifies an image link becomes its alt text or a bare URL instead of an empty masked link
+def test_image_links_never_produce_an_empty_discord_label():
+    with_alt = "<a href=\"https://open.spotify.com/track/2\"><img src=\"https://i.scdn.co/image/a.jpg\" alt=\"Cover\"></a>"
+    without_alt = "<a href=\"https://open.spotify.com/track/2\"><img src=\"https://i.scdn.co/image/a.jpg\"></a>"
+    assert monitor.html_body_to_discord_markdown(with_alt) == "[Cover](https://open.spotify.com/track/2)"
+    assert monitor.html_body_to_discord_markdown(without_alt) == "https://open.spotify.com/track/2"

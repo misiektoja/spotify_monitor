@@ -12,11 +12,11 @@ HOSTILE_ESCAPED = "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
 # Interpolations that are safe without escape() because the value is a counter or a flag this tool
 # computes itself, never text Spotify returns. Listed explicitly so a new unescaped name cannot slip
 # in behind a blanket exemption
-ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix"})
+ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix", "completed_pauses", "paused_percentage"})
 
 # Helpers that emit their own markup or render only dates, durations and numbers. None of them can carry
 # Spotify-supplied text, so escaping their output would only mangle the timestamps users read
-SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get_short_date_from_ts", "calculate_timespan", "get_range_of_dates_from_tss"})
+SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get_short_date_from_ts", "calculate_timespan", "get_range_of_dates_from_tss", "songs_played_text"})
 
 
 # Collects every HTML notification body the module builds, as (function, source line, expression) triples
@@ -50,7 +50,7 @@ def interpolation_is_safe(expression):
     if isinstance(parsed, ast.Call):
         function = parsed.func
         name = function.id if isinstance(function, ast.Name) else getattr(function, "attr", "")
-        return name in {"escape", "escape_html_attr", *SAFE_HELPERS}
+        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS}
 
     return False
 
@@ -71,7 +71,7 @@ def test_html_body_sweep_covers_every_notification():
 
 
 # Confirms an unescaped interpolation would actually be reported, so the sweep cannot pass vacuously
-@pytest.mark.parametrize("expression,expected", [("escape(sp_username)", True), ("escape_html_attr(sp_track_url)", True), ("music_section_html", True), ("listened_songs", True), ("sp_username", False), ("sp_track", False), ("sp_track_url", False), ("spotify_convert_uri_to_url(uri)", False)])
+@pytest.mark.parametrize("expression,expected", [("escape(sp_username)", True), ("html_text(advice.fix)", True), ("escape_html_attr(sp_track_url)", True), ("music_section_html", True), ("listened_songs", True), ("sp_username", False), ("sp_track", False), ("sp_track_url", False), ("spotify_convert_uri_to_url(uri)", False)])
 def test_interpolation_safety_rule(expression, expected):
     assert interpolation_is_safe(expression) is expected
 

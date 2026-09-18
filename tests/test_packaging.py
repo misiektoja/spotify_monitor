@@ -182,6 +182,19 @@ class TestVersionConsistency:
         assert newest.group(1) == monitor.VERSION
 
 
+# Verifies manual and packaged installs need the same runtime libraries, so both dependency lists must agree
+def test_runtime_dependency_declarations_agree():
+    pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    requirements = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    declared = re.search(r"^dependencies = \[(.*?)^\]", pyproject, re.S | re.M)
+    assert declared is not None
+    packaged = {name.casefold().replace("_", "-") for name in re.findall(r'"([A-Za-z0-9_.-]+)', declared.group(1))}
+    manual = {match.group(0).casefold().replace("_", "-") for line in requirements.splitlines() if line.strip() and not line.lstrip().startswith("#") if (match := re.match(r"[A-Za-z0-9_.-]+", line))}
+
+    assert manual == packaged
+
+
 # Verifies artwork support ships as an optional extra that keeps Python 3.9 on the last Pillow it supports
 def test_artwork_support_is_an_optional_extra():
     pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -199,3 +212,25 @@ def test_container_image_preinstalls_artwork_support():
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     install_line = next(line for line in dockerfile.splitlines() if "pip install" in line)
     assert "-r requirements.txt" in install_line and '"Pillow>=12.0.0"' in install_line
+
+
+# Verifies the minimum supported Python version is declared once and matches the packaging metadata
+def test_the_minimum_python_version_is_declared_once():
+    pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert monitor.MINIMUM_PYTHON_VERSION_TEXT == ".".join(str(part) for part in monitor.MINIMUM_PYTHON_VERSION)
+    assert f'requires-python = ">={monitor.MINIMUM_PYTHON_VERSION_TEXT}"' in pyproject
+    assert f"Programming Language :: Python :: {monitor.MINIMUM_PYTHON_VERSION_TEXT}" in pyproject
+    classifiers = re.findall(r"Programming Language :: Python :: (\d+\.\d+)", pyproject)
+    assert min(tuple(int(part) for part in version.split(".")) for version in classifiers) == monitor.MINIMUM_PYTHON_VERSION
+
+
+# Verifies published rebuilds refresh package updates even when the source is unchanged
+def test_published_images_do_not_reuse_package_update_layers():
+    publishers = []
+    for workflow in (PROJECT_ROOT / ".github" / "workflows").glob("*.yml"):
+        text = workflow.read_text(encoding="utf-8")
+        for match in re.finditer(r"uses: docker/build-push-action@[^\n]+\n(.*?)(?=\n      -|\Z)", text, re.S):
+            publishers.append(workflow.name)
+            assert re.search(r"^          no-cache: true$", match.group(1), re.M), workflow.name
+    assert len(publishers) == 2

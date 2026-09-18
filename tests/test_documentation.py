@@ -14,11 +14,32 @@ import spotify_monitor as monitor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_URL = "https://github.com/misiektoja/spotify_monitor"
+REPOSITORY_MARKDOWN = ("README.md", "SUPPORT.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "THIRD_PARTY_NOTICES.md", ".github/pull_request_template.md")
+ISSUE_TEMPLATES = (".github/ISSUE_TEMPLATE/config.yml", ".github/ISSUE_TEMPLATE/bug_report.yml", ".github/ISSUE_TEMPLATE/feature_request.yml")
+
+# Guide constants may point at Spotify's own developer documentation, which this repository cannot resolve to a page
+EXTERNAL_GUIDE_PREFIXES = ("https://developer.spotify.com/",)
 
 
 # Reads one repository asset as UTF-8
 def read_asset(relative_path: str) -> str:
     return (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+# Returns the anchors one Markdown page defines, from its headings and from explicit anchor tags
+def page_anchors(path: Path) -> set[str]:
+    text = path.read_text(encoding="utf-8")
+    anchors = set(re.findall(r'<a id="([^"]+)"></a>', text))
+    for _offset, _level, title in markdown_headings(text):
+        anchors.add("".join(character for character in title.casefold().replace(" ", "-") if character.isalnum() or character in "-_"))
+    return anchors
+
+
+# Returns every local link target in one repository document, including README anchors written as absolute project links
+def repository_link_targets(text: str) -> list[str]:
+    targets = re.findall(r"\]\((?!https?:|mailto:)([^)]+)\)", text)
+    return list(targets) + [f"README.md#{anchor}" for anchor in re.findall(rf"{re.escape(PROJECT_URL)}/?#([^\s)\"']+)", text)]
 
 
 # Returns Markdown headings and offsets while ignoring code-fence contents
@@ -75,6 +96,12 @@ def assert_concepts(text: str, *concepts: str) -> None:
         assert concept.casefold() in lowered
 
 
+# Returns the regexes the secret scanner treats as placeholders rather than leaked credentials
+def placeholder_allowlist_patterns():
+    block = read_asset(".gitleaks.toml").split('description = "Skip placeholders and variable references"', 1)[1]
+    return re.findall(r"'''(.*)'''", block.split("\\n]", 1)[0])
+
+
 # Reads and parses one repository YAML asset
 def read_yaml_asset(relative_path: str):
     return yaml.safe_load(read_asset(relative_path))
@@ -129,7 +156,7 @@ def test_docs_cover_portable_mounts_and_safe_dotenv_copy():
 def test_installation_docs_cover_delivery_and_upgrade_commands():
     installation = read_asset("docs/installation.md")
     commands = fenced_code_lines(installation)
-    required_commands = ("pip install spotify_monitor", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt", "pip install --upgrade -r requirements.txt", "docker build --pull --tag spotify-monitor:local .", "docker pull misiektoja/spotify-monitor:latest", "docker compose pull")
+    required_commands = ("pip install spotify_monitor", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/spotify_monitor.py", "curl -fsSLO https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/requirements.txt", "pip install --upgrade -r requirements.txt", "docker build --pull --no-cache --tag spotify-monitor:local .", "docker pull misiektoja/spotify-monitor:latest", "docker compose pull")
     for command in required_commands:
         assert command in commands
     assert_concepts(installation, "PyPI", "Docker Hub", "Docker Compose", "Manual")
@@ -186,7 +213,7 @@ def test_installation_docs_cover_optional_extra_contents():
 # Verifies landing pages retain app-free authentication concepts and the stable OAuth anchor
 def test_landing_pages_cover_authentication_policy():
     for relative_path in ("README.md", "docs/index.md"):
-        assert_concepts(read_asset(relative_path), "Cookie", "Desktop Client", "web-player", "optional legacy OAuth")
+        assert_concepts(read_asset(relative_path), "cookie", "Desktop Client", "no developer app required")
     configuration = read_asset("docs/configuration.md")
     assert '<a id="spotify-oauth-app"></a>' in configuration
     assert_concepts(configuration, "migration")
@@ -206,15 +233,20 @@ def test_configuration_docs_use_friend_focused_target_guidance():
     assert_concepts(configuration, "profile URL", "spotify:user:USER_ID", "standalone user ID")
 
 
-# Verifies every runtime documentation URL resolves to a published page and anchor
+# Verifies every runtime documentation URL resolves to a published page and anchor, enumerated so a new constant cannot escape the check
 def test_runtime_guide_urls_match_documentation_anchors():
-    guide_names = ("QUICK_START_GUIDE_URL", "INSTALLATION_GUIDE_URL", "CONFIG_GUIDE_URL", "COOKIE_GUIDE_URL", "MANUAL_COOKIE_GUIDE_URL", "CONTAINER_FIREFOX_GUIDE_URL", "CLIENT_GUIDE_URL", "TARGET_GUIDE_URL", "FOLLOWING_GUIDE_URL", "SMTP_GUIDE_URL", "WEBHOOK_GUIDE_URL", "SECRETS_GUIDE_URL", "INTERVALS_GUIDE_URL", "DOCTOR_GUIDE_URL", "OAUTH_GUIDE_URL", "SCROBBLE_AUTH_GUIDE_URL")
+    guide_names = sorted(name for name in vars(monitor) if name.endswith("_GUIDE_URL"))
+    assert guide_names, "no runtime guide constants were found"
+
     for name in guide_names:
         guide_url = getattr(monitor, name)
-        assert guide_url.startswith(monitor.DOCUMENTATION_URL + "/")
-        suffix = guide_url.removeprefix(monitor.DOCUMENTATION_URL).lstrip("/")
+        if not guide_url.startswith(monitor.DOCS_BASE_URL + "/"):
+            assert guide_url.startswith(EXTERNAL_GUIDE_PREFIXES), f"{name} points outside both this site and the allowed external guides: {guide_url}"
+            continue
+        suffix = guide_url.removeprefix(monitor.DOCS_BASE_URL).lstrip("/")
         relative_path, _separator, fragment = suffix.partition("#")
         document_path = "docs/index.md" if not relative_path else f"docs/{relative_path.rstrip('/')}" + ".md"
+        assert (PROJECT_ROOT / document_path).is_file(), f"{name} references missing page {document_path}"
         document = read_asset(document_path)
         if fragment:
             assert fragment in markdown_anchors(document), f"{name} references missing anchor #{fragment} in {document_path}"
@@ -291,6 +323,8 @@ def test_issue_templates_are_valid_issue_forms():
             assert element["id"] and element["attributes"]["label"], template.name
             if element["type"] == "dropdown":
                 assert len(element["attributes"]["options"]) >= 2, template.name
+        # A form whose every field is optional collects an empty report the maintainer has to chase
+        assert any(element.get("validations", {}).get("required") for element in form["body"]), template.name
 
 
 # Verifies the issue chooser routes vulnerabilities to private reporting instead of a public issue
@@ -303,6 +337,8 @@ def test_issue_chooser_routes_vulnerabilities_privately():
 
     bug_report = read_asset(".github/ISSUE_TEMPLATE/bug_report.yml")
     assert "SECURITY.md" in bug_report
+    # The form is where a user is most likely to paste a secret, so the instruction itself has to survive a rewording
+    assert "Never paste" in bug_report
 
 
 # Verifies the security policy names the private channel and the secrets a report must never carry
@@ -348,6 +384,17 @@ def test_third_party_notices_cover_every_declared_dependency():
     missing = sorted(name for name in declared if name.casefold() not in notices.casefold())
     assert missing == []
     assert_concepts(notices, "GPL-3.0-or-later", "python:3.13-slim-trixie", "spotipy")
+
+
+# Verifies the secret scanner accepts the placeholder shapes the suite writes, since the scan CI runs over
+# the full history reports a fake credential that looks real
+def test_the_secret_scanner_allows_the_shared_placeholder_shapes():
+    patterns = placeholder_allowlist_patterns()
+    for placeholder in ("{api_key}", "{settings.smtp_password}", "{ENV_TOKEN_NAME}", "github_pat_private_wizard_value", "your_smtp_password", "chosen-smtp-password-value"):
+        assert any(re.search(pattern, placeholder) for pattern in patterns), placeholder
+
+    # A value with no placeholder shape stays reportable, or the allowlist would hide a real leak
+    assert not any(re.search(pattern, "NotAPlaceholderValue123456") for pattern in patterns)
 
 
 # Verifies the code scanning and supply chain workflows stay present and keep analyzing this project's language
@@ -417,6 +464,9 @@ def test_editor_configuration_declares_the_repository_style():
     assert settings["*.toml"]["indent_size"] == "2"
     # Two trailing spaces are a Markdown line break, so they must stay exempt from trimming
     assert settings["*.md"]["trim_trailing_whitespace"] == "false"
+    # LICENSE is verbatim upstream text, so an editor must leave its ending and its spacing alone
+    assert settings["LICENSE"]["insert_final_newline"] == "unset"
+    assert settings["LICENSE"]["trim_trailing_whitespace"] == "unset"
 
 
 # Verifies tracked text files obey those whitespace rules, since an editor setting only warns on the machine that has it
@@ -425,10 +475,14 @@ def test_tracked_text_files_obey_the_declared_whitespace_rules():
     if listing.returncode != 0:
         pytest.skip("not a git checkout")
 
+    # The binary types are declared once in .gitattributes, so this list cannot drift away from that one
+    binary_suffixes = {suffix.casefold() for suffix in re.findall(r"^\*(\.[A-Za-z0-9]+)\s+binary\b", read_asset(".gitattributes"), re.M)}
+    assert binary_suffixes
+
     offenders = []
     for name in listing.stdout.split():
         asset = PROJECT_ROOT / name
-        if not asset.is_file() or asset.suffix.casefold() in {".png", ".jpg", ".gif"}:
+        if not asset.is_file() or asset.suffix.casefold() in binary_suffixes:
             continue
         content = asset.read_bytes()
         if b"\r\n" in content:
@@ -448,6 +502,33 @@ def test_support_document_routes_every_request_type():
         assert destination in support
     assert "spotify_monitor --doctor" in fenced_code_lines(support)
     assert_concepts(support, "sp_dc", "SMTP passwords", "webhook URLs", "--debug")
+
+
+# Verifies no repository document points at a missing file or a heading that no longer exists, which is how a docs move leaves dead links behind
+def test_no_repository_document_links_at_a_missing_local_target():
+    broken = []
+    for relative_path in REPOSITORY_MARKDOWN + ISSUE_TEMPLATES:
+        path = PROJECT_ROOT / relative_path
+        if not path.exists():
+            continue
+        for target in repository_link_targets(path.read_text(encoding="utf-8")):
+            page_part, _, anchor = target.partition("#")
+            target_page = path if not page_part else (PROJECT_ROOT / page_part)
+            if page_part and not target_page.exists():
+                broken.append(f"{relative_path} -> {target}")
+                continue
+            if anchor and anchor not in page_anchors(target_page):
+                broken.append(f"{relative_path} -> {target}")
+
+    assert not broken, f"repository documents linking at missing targets: {broken}"
+
+
+# Verifies the documentation build is a step CI runs, rather than only a job name that says so
+def test_the_documentation_build_is_a_ci_gate():
+    commands = [match.strip() for match in re.findall(r"^\s*run:\s*(.+)$", read_asset(".github/workflows/tests.yml"), flags=re.MULTILINE)]
+
+    assert any("mkdocs build --strict" in command for command in commands), "CI does not build the documentation site"
+    assert any("docs/requirements.txt" in command for command in commands), "CI does not install the documentation dependencies"
 
 
 # Verifies Git normalizes line endings, since one CRLF commit from a Windows contributor rewrites whole files
@@ -491,3 +572,20 @@ def test_release_archives_ship_checksums_and_provenance():
     assert "_SHA256SUMS.txt" in upload["with"]["files"]
     # Offline verifiers need the bundle as an asset, since the attestations API may be unreachable
     assert ".intoto.jsonl" in upload["with"]["files"]
+
+
+# A guide that lists the test files goes stale the moment one is added and nothing else notices
+def test_the_test_suite_guide_lists_every_test_file():
+    listed = set(re.findall(r"^\| `([^`]+)` \|", (PROJECT_ROOT / "tests" / "README.md").read_text(encoding="utf-8"), re.M))
+    present = {path.name for path in (PROJECT_ROOT / "tests").glob("test_*.py")} | {path.name for path in (PROJECT_ROOT / "tests").glob("conftest.py")}
+
+    assert present - listed == set(), f"test files missing from tests/README.md: {sorted(present - listed)}"
+    assert {name for name in listed if name.endswith(".py")} - present == set(), f"tests/README.md names files that do not exist: {sorted({name for name in listed if name.endswith('.py')} - present)}"
+
+
+# Verifies the documented doctor sections are exactly the ones the report renders
+def test_the_documented_doctor_sections_match_the_code():
+    text = read_asset("docs/troubleshooting.md")
+
+    for section in monitor.DOCTOR_SECTIONS:
+        assert f"**{section}**" in text, f"the {section} doctor section is not documented"

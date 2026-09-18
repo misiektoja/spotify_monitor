@@ -12,11 +12,13 @@ import spotify_monitor as monitor
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
+ARTIFACT_ROOT = PROJECT_ROOT / "local"
 
 
 # Returns one isolated project-local private-settings path
 def local_destination(name):
-    destination = PROJECT_ROOT / "local" / f"test-lastfm-credentials-{os.getpid()}-{name}.env"
+    ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+    destination = ARTIFACT_ROOT / f"test-lastfm-credentials-{os.getpid()}-{name}.env"
     if destination.exists():
         destination.unlink()
     return destination
@@ -93,13 +95,14 @@ def test_set_lastfm_credentials_updates_only_api_key(monkeypatch, capsys):
 # Verifies standalone Last.fm entry defaults to the isolated scrobble health dotenv file
 def test_set_lastfm_credentials_uses_scrobble_health_default(monkeypatch):
     update_mock = Mock(return_value={})
-    monkeypatch.chdir(PROJECT_ROOT / "local")
+    ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(ARTIFACT_ROOT)
     monkeypatch.setattr(monitor, "_dotenv_contains_key", lambda path, key: False)
     monkeypatch.setattr(monitor, "update_dotenv_file", update_mock)
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "find_scrobble_health_config_file", lambda: None)
     destination = monitor.run_set_lastfm_credentials(interactive=True, getpass_func=lambda prompt: "private-key")
-    assert destination == str((PROJECT_ROOT / "local" / ".env.scrobble_health").resolve())
+    assert destination == str((ARTIFACT_ROOT / ".env.scrobble_health").resolve())
     assert update_mock.call_args.args[0] == Path(destination)
 
 
@@ -110,7 +113,7 @@ def test_set_lastfm_credentials_requires_replacement_confirmation():
     try:
         destination.write_bytes(original)
         hidden_prompt = Mock(side_effect=AssertionError("hidden prompt used"))
-        with pytest.raises(monitor.LastfmConfigurationError, match="cancelled"):
+        with pytest.raises(monitor.RecoveryError, match="left as it is"):
             monitor.run_set_lastfm_credentials(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=hidden_prompt)
         hidden_prompt.assert_not_called()
         assert destination.read_bytes() == original

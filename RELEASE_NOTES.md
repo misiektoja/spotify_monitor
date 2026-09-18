@@ -2,6 +2,36 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.4 (18 Sep 2026)
+
+Version **3.4** switches Friend Activity to **live listening activity**, with a **legacy backend option** for completed-track reporting. It also adds **private SMTP password entry**, improves the **`--setup` wizard** and Doctor reports and makes **Last.fm scrobble alerts** clearer. Diagnostics are quieter and configuration, credentials and notification delivery are better protected.
+
+**Features and improvements**:
+
+- **NEW:** **Live Friend Activity** - Added support for Spotify's **live Listening Activity feed**, now the default for monitoring, friend listing and Doctor. The old endpoint reported a track only after it finished, so tracks appeared late and pauses were invisible. The live feed shows the **current track** as soon as playback starts, reports **PAUSED** and **RESUMED** with their durations, marks tracks cut short as **SKIPPED** with the played time and detects **songs on loop**, including a song restarted before its end. The live activity feed may show a different set of users from the legacy `buddylist` source, including friends who share their listening activity with selected people only (thanks [@JoaoGabriel-Lima](https://github.com/JoaoGabriel-Lima) for the idea, fixes [#60](https://github.com/misiektoja/spotify_monitor/issues/60))
+- **NEW:** **Legacy backend option** - Use `--friend-activity-backend buddylist` for one run or save `FRIEND_ACTIVITY_BACKEND = "buddylist"` to keep the old completed-track reporting
+- **NEW:** **Separate live polling timers** - The live backend checks every 30 seconds while the user is not playing and every 10 seconds during a listening session, retries a failed check after one minute and ends a session after three minutes without playback. Change them with `SPOTIFY_LIVE_CHECK_INTERVAL`, `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL`, `SPOTIFY_LIVE_ERROR_INTERVAL` and `SPOTIFY_LIVE_INACTIVITY_CHECK`. The legacy backend keeps its own timers. `-c`, `-o` and the new `-k` flag apply to the selected backend and the setup wizard asks for both live intervals
+- **NEW:** **Private SMTP password setup** - `--set-smtp-password` takes a hidden password and checks it with the mail server before saving. Guided setup also checks email credentials without sending a message
+- **NEW:** **Output choices in setup** - Choose whether to write a log and where to save CSV output, then review or edit those choices before saving
+- **IMPROVE:** **Setup preserves your progress** - The `--setup` wizard lets you skip unavailable answers and reuses saved settings. Changing destinations preserves retained credentials and keeps them out of configuration backups. Monitoring is offered after Doctor passes
+- **IMPROVE:** **Discord alerts match the email** - Discord now receives the same emphasis as the HTML email, with bold values and clickable links instead of plain text. ntfy keeps the plain body, since it would show the markers literally
+- **IMPROVE:** **More useful Doctor reports** - Reports validate settings, credentials, output destinations and alert choices. They warn about polling below 30 seconds and include approved delivery tests in the verdict. Invalid settings are reported without stopping the remaining checks
+- **IMPROVE:** **Quieter diagnostics and notifications** - `--verbose` reports operational changes and `--debug` adds technical traces with secrets redacted. Subjects omit program-name prefixes. Set `DELIVERY_CONFIRMATIONS = False` to hide delivery confirmations while keeping verbose diagnostics
+- **IMPROVE:** **Clearer errors and recovery** - Persistent outages produce hourly reminders and recovery notices. Temporary failures trigger error alerts after five minutes, while expired credentials alert immediately
+- **IMPROVE:** **Colours and screen width** - Existing colour overrides still apply. Remove the old `COLOR_THEME` block to follow updated defaults. `--truncate N` limits screen width while logs retain full lines. It works without `wcwidth`, which improves Unicode width measurements. Copy the updated `grc/conf.monitor_logs` to `~/.grc/` to use the live terminal colours in saved logs
+- **CONFIG CHANGE:** **Retired error aggregation settings** - `ERROR_500_NUMBER_LIMIT`, `ERROR_500_TIME_LIMIT`, `ERROR_NETWORK_ISSUES_NUMBER_LIMIT` and `ERROR_NETWORK_ISSUES_TIME_LIMIT` are ignored. Hourly outage reminders replace them. Existing configurations still load
+
+**Bug fixes**:
+
+- **BUGFIX:** **Clearer Last.fm scrobble alerts** - Reports distinguish missing or matched scrobbles from service outages. Reminders require recent missing plays to meet the threshold. New matches announce recovery and delayed scrobbles no longer repeat notices. Damaged saved timestamps are reported and reset
+- **BUGFIX:** **Safer configuration and secret updates** - `--generate-config FILE` confirms replacement and creates a backup. Non-interactive replacement requires `--force`. Shell redirection with `>` bypasses these protections. Exported secrets work without a dotenv file. Command-line credentials and nonempty startup exports retain priority after `SIGHUP`. Change those values and restart to replace them. Reloads apply changed or removed file-owned secrets
+- **BUGFIX:** **Validated credentials and settings** - Setup checks Spotify cookies before saving and offers alternatives after rejection. Invalid timing and web-player settings name what to fix. Declined notification settings are cleared and multiline dotenv values are replaced correctly
+- **BUGFIX:** **Consistent TLS verification** - `VERIFY_SSL` applies to mail-server checks, Spotify OAuth token requests and `--set-sp-dc` validation
+- **BUGFIX:** **Safer notification delivery** - Webhook retries keep their original destination and credentials. Discord templates cannot enable mentions and invalid templates are rejected before delivery. Error messages redact credentials, including SMTP rejection replies. Emails accepted by the mail server no longer become false failures if closing the connection fails, avoiding duplicate retries
+- **BUGFIX:** **Terminal and container fixes** - Corrected colour and truncation handling keeps external text readable. Container rebuilds refresh security updates
+
+Smaller fixes and development changes are listed in the [full change history](https://github.com/misiektoja/spotify_monitor/compare/v3.3.1...v3.4).
+
 # Changes in 3.3.1 (28 Aug 2026)
 
 Version **3.3.1** makes explicit **`--debug` and `--verbose` flags cover configuration startup** while preserving their precedence over saved defaults, and stops settings, diagnostics and fallback notices from being coloured as errors.

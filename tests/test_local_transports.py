@@ -175,3 +175,58 @@ def test_email_delivery_over_loopback(monkeypatch: pytest.MonkeyPatch, smtp_serv
     assert plain_body.get_content().strip() == "Plain body"
     assert html_body.get_content().strip() == "<strong>HTML body</strong>"
     assert any(command.startswith("AUTH PLAIN ") for command in handler.commands)
+
+
+# Verifies a webhook receipt names its provider
+@pytest.mark.integration
+def test_a_delivered_webhook_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatch, webhook_server: tuple[str, type[WebhookRequestHandler]], capsys: pytest.CaptureFixture[str]):
+    url, _ = webhook_server
+    configure_local_webhook(monkeypatch, url)
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+
+    assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
+
+    assert "* Webhook sent through Discord" in capsys.readouterr().out
+
+
+# Verifies an email receipt names its recipient
+@pytest.mark.integration
+def test_a_delivered_email_is_reported_in_verbose(monkeypatch: pytest.MonkeyPatch, smtp_server: tuple[int, type[SMTPRequestHandler]], capsys: pytest.CaptureFixture[str]):
+    port, _ = smtp_server
+    monkeypatch.setattr(monitor, "SMTP_HOST", "127.0.0.1")
+    monkeypatch.setattr(monitor, "SMTP_PORT", port)
+    monkeypatch.setattr(monitor, "SMTP_USER", "local-user")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "local-password")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "sender@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "receiver@example.test")
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+
+    assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
+
+    assert "* Email sent to receiver@example.test" in capsys.readouterr().out
+
+
+# Verifies DELIVERY_CONFIRMATIONS drops both delivery lines without turning the rest of verbose mode off
+@pytest.mark.integration
+def test_delivery_confirmations_can_be_turned_off(monkeypatch: pytest.MonkeyPatch, webhook_server: tuple[str, type[WebhookRequestHandler]], smtp_server: tuple[int, type[SMTPRequestHandler]], capsys: pytest.CaptureFixture[str]):
+    url, _ = webhook_server
+    port, _ = smtp_server
+    configure_local_webhook(monkeypatch, url)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "127.0.0.1")
+    monkeypatch.setattr(monitor, "SMTP_PORT", port)
+    monkeypatch.setattr(monitor, "SMTP_USER", "local-user")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "local-password")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "sender@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "receiver@example.test")
+    monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monkeypatch.setattr(monitor, "DELIVERY_CONFIRMATIONS", False)
+
+    assert monitor.send_webhook("Now playing", "Local body", "song", force=True) == 0
+    assert monitor.send_email("Now playing", "Plain body", "", False, smtp_timeout=5) == 0
+
+    output = capsys.readouterr().out
+    assert "Webhook sent through" not in output
+    assert "Email sent to" not in output

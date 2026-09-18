@@ -28,7 +28,7 @@ repos:
 
   # The same linter and version CI runs
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.16.7
     hooks:
       - id: ruff-check
         args: [--no-fix]

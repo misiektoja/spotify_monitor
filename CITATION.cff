@@ -10,8 +10,8 @@ authors:
     given-names: Michal
     alias: misiektoja
     email: misiektoja-github@rm-rf.ninja
-version: "3.3.1"
-date-released: 2026-08-28
+version: "3.4"
+date-released: 2026-09-18
 license: GPL-3.0-or-later
 repository-code: "https://github.com/misiektoja/spotify_monitor"
 url: "https://misiektoja.github.io/spotify_monitor/"

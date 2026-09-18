@@ -43,6 +43,24 @@ def test_set_sp_dc_cli_accepts_config_context():
     assert "cannot be combined" not in result.stderr
 
 
+# Verifies the selected configuration reaches private cookie entry, which validates the cookie over the network
+# before the normal configuration load and would otherwise check certificates against the default setting
+def test_set_sp_dc_applies_the_selected_tls_setting(tmp_path, monkeypatch):
+    config = tmp_path / "spotify_monitor.conf"
+    config.write_text("VERIFY_SSL = False\n", encoding="utf-8")
+    observed = {}
+    for name in ("VERIFY_SSL", "CLI_CONFIG_PATH", "CONFIG_DISCOVERY_DISABLED"):
+        monkeypatch.setattr(monitor, name, getattr(monitor, name))
+    monkeypatch.setattr(monitor, "VERIFY_SSL", True)
+    monkeypatch.setattr(monitor, "run_set_sp_dc", lambda **kwargs: observed.setdefault("verify_ssl", monitor.VERIFY_SSL))
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--set-sp-dc", "--config-file", str(config), "--env-file", str(tmp_path / ".env")])
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert observed["verify_ssl"] is False
+
+
 # Verifies disabling dotenv persistence is rejected before any hidden prompt
 def test_set_sp_dc_rejects_env_file_none():
     with pytest.raises(monitor.BrowserCookieImportError, match="requires a dotenv destination"):
@@ -93,7 +111,7 @@ def test_set_sp_dc_existing_cookie_requires_confirmation(tmp_path, monkeypatch):
     validate_mock = Mock(side_effect=AssertionError("validation used"))
     monkeypatch.setattr(monitor, "validate_imported_sp_dc", validate_mock)
 
-    with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
+    with pytest.raises(monitor.RecoveryError, match="left as it is"):
         monitor.run_set_sp_dc(env_file=destination, interactive=True, input_func=lambda prompt: "n", getpass_func=getpass_mock)
     getpass_mock.assert_not_called()
     validate_mock.assert_not_called()
@@ -129,7 +147,8 @@ def test_set_sp_dc_success_uses_install_aware_container_commands(tmp_path, monke
 
     output = capsys.readouterr().out
     assert "docker compose run --rm spotify_monitor --doctor --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
-    assert "docker compose run --rm spotify_monitor SPOTIFY_USER_URI_ID --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
+    assert "docker compose run --rm spotify_monitor <spotify_target> --config-file /data/spotify_monitor.conf --env-file /data/.env" in output
+    assert "SPOTIFY_USER_URI_ID" not in output
     assert str(destination.resolve()) in output
     assert secret not in output
 
@@ -140,3 +159,17 @@ def test_set_sp_dc_argument_conflicts(arguments):
     result = run_cli("--set-sp-dc", *arguments)
     assert result.returncode == 2
     assert "--set-sp-dc cannot be combined with" in result.stderr
+
+
+# Verifies the replace question names the secret the way every sibling one-shot command names its own
+def test_set_sp_dc_replace_question_uses_the_shared_wording(tmp_path, monkeypatch):
+    destination = tmp_path / ".env"
+    destination.write_text("SP_DC_COOKIE=old-value\n", encoding="utf-8")
+    prompts = []
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "find_config_file", lambda: None)
+
+    monitor.run_set_sp_dc(env_file=destination, interactive=True, input_func=lambda prompt: prompts.append(prompt) or "y", getpass_func=lambda prompt: "new-private-cookie")
+
+    assert prompts == [f"Replace the saved Spotify cookie in '{destination.resolve()}'? [y/N]: "]

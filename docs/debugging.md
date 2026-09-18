@@ -46,9 +46,7 @@ python3 spotify_monitor_totp_test.py --sp-dc "your_sp_dc_cookie_value" --downloa
 <a id="secret-key-extraction-from-spotify-web-player-bundles"></a>
 ## Secret Key Extraction from Spotify Web Player Bundles
 
-The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) reads TOTP keys from Spotify Web Player JavaScript bundles. It scans the loaded source first and keeps the older runtime hook as a fallback.
-
-The extractor can return v59, v60 and v61 from the current web-player bundle even when the older runtime hook finds nothing.
+The [spotify_monitor_secret_grabber](https://github.com/misiektoja/spotify_monitor/blob/main/debug/spotify_monitor_secret_grabber.py) extracts TOTP keys from Spotify Web Player JavaScript bundles.
 
 The extractor returns a nonzero exit status when it finds no usable secrets, extraction fails or `--all` cannot write every requested output file.
 
@@ -121,7 +119,7 @@ A prebuilt multi-architecture image is available on Docker Hub: [`misiektoja/spo
 
 The examples use the `latest` tag. `--pull=always` in direct commands and `pull_policy: always` in Compose make Docker check for a newer image before each run. To stay on one release, add a version such as `:1.3` to the image name.
 
-Image tags follow the extractor's own version, so `:1.4` is the image built from `spotify_monitor_secret_grabber.py` v1.4. The image is published whenever the extractor or its container files change, and rebuilt weekly so a published tag keeps picking up Debian and Chromium security updates. `latest` always points at the newest build.
+Image tags follow the extractor's own version, so `:1.4` is the image built from `spotify_monitor_secret_grabber.py` v1.4. The image is published whenever the extractor or its container files change and is rebuilt weekly so a published tag keeps picking up Debian and Chromium security updates. `latest` always points at the newest build.
 
 The image runs as a non-root user with UID and GID 1000 by default. This prevents root-owned output on typical native Linux hosts.
 

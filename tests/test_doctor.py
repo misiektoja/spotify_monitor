@@ -1,3 +1,5 @@
+from command_expectations import runtime_command
+import inspect
 import io
 import os
 import subprocess
@@ -12,6 +14,18 @@ import spotify_monitor as monitor
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+# Composes the two renderers the way run_doctor does, so a test can assert on the whole transcript
+def render_doctor_report(report):
+    return monitor.render_doctor_sections(report) + "\n" + monitor.render_doctor_summary(report.checks)
+
+
+# Builds the minimal advice a WARN or FAIL row is required to carry
+def actionable_advice():
+    return monitor.make_recovery_advice("unknown", "a summary", "do the thing", False)
+
+
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 ISOLATED_PRELUDE = "import requests, runpy, socket, sys; requests.sessions.Session.request = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network request attempted')); socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('network connection attempted')); "
 
@@ -45,6 +59,10 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SPOTIFY_ERROR_INTERVAL", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 660)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 30)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 10)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 60)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
     monkeypatch.setattr(monitor, "SMTP_PORT", 587)
     monkeypatch.setattr(monitor, "MONITOR_LIST_FILE", "")
@@ -66,6 +84,7 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "TRACK_SONGS", False)
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "fake-access-token")
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(target))
+    monkeypatch.setattr(monitor, "check_internet", lambda **kwargs: True)
 
 
 # Returns a dependency finder that reports every module as installed
@@ -83,7 +102,7 @@ def require_advice(check):
 def test_report_markers_and_sections(monkeypatch):
     configure_valid_doctor(monkeypatch)
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
     for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications", "Summary"):
         assert section in rendered
     assert "[PASS]" in rendered
@@ -109,11 +128,33 @@ def test_preflight_notice_names_the_scrobble_health_write(monkeypatch, capsys):
     assert "A rotated Spotify recent-play refresh token may be updated in the selected dotenv file." in capsys.readouterr().out
 
 
+# Verifies the install method is stated as context instead of a check that can never fail
+def test_report_states_the_install_method_without_a_marker():
+    report = monitor.DoctorReport([monitor.make_doctor_check("Environment", "PASS", "Python 3.12.0 is supported")])
+
+    rendered = render_doctor_report(report)
+
+    assert f"Doctor\nDetected install method: {monitor._wizard_install_method()}\n" in rendered
+    assert "[PASS] Install method" not in rendered
+
+
+# Verifies disabled output destinations are stated rather than left out of the report
+def test_report_names_disabled_output_destinations(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "CSV_FILE", "")
+    monkeypatch.setattr(monitor, "DISABLE_LOGGING", True)
+
+    rendered = render_doctor_report(monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present))
+
+    # The labels say everything, so neither row carries a detail that only repeats them
+    assert "[PASS] CSV logging is disabled\n[PASS] Output logging is disabled\n" in rendered
+
+
 # Verifies Doctor visually attaches explanatory details to their check rows
 def test_report_indents_check_details():
     report = monitor.DoctorReport([monitor.make_doctor_check("Configuration", "PASS", "Log destination appears writable", "Path: spotify_monitor")])
 
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
 
     assert "[PASS] Log destination appears writable\n  Path: spotify_monitor" in rendered
 
@@ -121,7 +162,7 @@ def test_report_indents_check_details():
 # Verifies reports omit sections that have no checks
 def test_report_omits_empty_sections():
     report = monitor.DoctorReport([monitor.make_doctor_check("Scrobble health", "PASS", "Spotify recent-play access succeeded")])
-    rendered = monitor.render_doctor_report(report)
+    rendered = render_doctor_report(report)
     assert "\nScrobble health\n" in rendered
     for section in ("Environment", "Configuration", "Authentication", "Metadata", "Connectivity", "Target", "Notifications"):
         assert f"\n{section}\n" not in rendered
@@ -192,13 +233,16 @@ def test_doctor_delivery_tests_can_be_declined_independently(monkeypatch):
     monkeypatch.setattr(monitor, "_doctor_ask_yes_no", consent)
     monkeypatch.setattr(monitor, "send_email", email)
     monkeypatch.setattr(monitor, "send_webhook", webhook)
-    assert monitor._doctor_offer_notification_tests(report) == []
+    provider = monitor.webhook_provider_display_name()
+    assert [(check.status, check.label) for check in monitor._doctor_offer_notification_tests(report)] == [("SKIP", "Test email was not sent"), ("SKIP", f"Test webhook through {provider} was not sent")]
     assert consent.call_count == 2
     email.assert_not_called()
     webhook.assert_not_called()
     output = stream.getvalue()
     assert "[SKIP] Test email was not sent" in output
-    assert "[SKIP] Test webhook was not sent" in output
+    assert f"[SKIP] Test webhook through {provider} was not sent" in output
+    # The declined row carries the same detail line the report gives every other row
+    assert "  You declined the real delivery test. Run doctor again and approve the email test when ready" in output
 
 
 # Verifies an empty doctor delivery answer defaults safely to no
@@ -224,9 +268,11 @@ def test_doctor_delivery_tests_send_approved_messages(monkeypatch):
     monkeypatch.setattr(monitor, "send_webhook", webhook)
     results = monitor._doctor_offer_notification_tests(report)
     assert [check.status for check in results] == ["PASS", "PASS"]
-    email.assert_called_once_with("spotify_monitor: doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5)
-    webhook.assert_called_once_with("Spotify Monitor doctor test", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True)
-    assert "[PASS] Doctor test webhook delivered" in stream.getvalue()
+    email.assert_called_once_with("Spotify Monitor doctor test email", "This test email was sent after approval in --doctor. Your SMTP delivery settings work.", "", monitor.SMTP_SSL, smtp_timeout=5, report_delivery=False)
+    webhook.assert_called_once_with("Spotify Monitor doctor test webhook", "This test notification was sent after approval in --doctor. Your webhook delivery settings work.", "song", force=True, report_delivery=False)
+    output = stream.getvalue()
+    assert "[PASS] Doctor test webhook through ntfy delivered" in output
+    assert "  One real test webhook was sent after confirmation" in output
 
 
 # Verifies the delivery-test gate still recognizes the readiness check once its label names the provider
@@ -284,8 +330,8 @@ def test_dependent_checks_are_skipped_clearly(monkeypatch):
     configure_valid_doctor(monkeypatch)
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", "")
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    assert any(check.section == "Connectivity" and check.status == "WARN" and "skipped" in check.label.lower() for check in report.checks)
-    assert any(check.section == "Target" and check.status == "WARN" and "skipped" in check.label.lower() for check in report.checks)
+    assert any(check.section == "Connectivity" and check.status == "SKIP" and check.label == "Spotify connectivity was not checked" for check in report.checks)
+    assert any(check.section == "Target" and check.status == "SKIP" and check.label == "The monitored profile was not checked" for check in report.checks)
 
 
 # Verifies Python version support reports pass and fail states
@@ -294,15 +340,39 @@ def test_python_version_check():
     unsupported = monitor.doctor_check_environment((3, 8, 18), all_dependencies_present)
     assert supported[0].status == "PASS"
     assert unsupported[0].status == "FAIL"
+    assert not any(check.label.startswith("Install method") for check in supported)
 
 
 # Verifies missing optional dependencies are warnings that do not affect normal monitoring
-def test_optional_dependency_reporting():
+def test_optional_dependency_reporting(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None if name in ("spotipy", "pycookiecheat", "PIL") else object())
     optional = [check for check in checks if "Optional dependency" in check.label]
     assert len(optional) == 3
     assert all(check.status == "WARN" for check in optional)
-    assert all("Normal monitoring is unaffected" in check.detail for check in optional)
+    assert all("Every other feature is unaffected" in check.detail for check in optional)
+
+
+# Verifies a warning about a library that cannot affect this machine is not shown at all
+@pytest.mark.parametrize("system, reported", [("Windows", True), ("Linux", False), ("Darwin", False)])
+def test_a_platform_specific_dependency_is_only_reported_where_it_applies(monkeypatch, system, reported):
+    monkeypatch.setattr(monitor.platform, "system", lambda: system)
+
+    checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None)
+
+    assert any("colorama" in check.label for check in checks) is reported
+
+
+# Verifies the Windows colour library is reported there, so broken colours on that platform have a diagnostic
+def test_missing_colorama_is_reported_on_windows(monkeypatch):
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Windows")
+
+    checks = monitor.doctor_check_environment((3, 9, 0), lambda name: None if name == "colorama" else object())
+
+    missing = next(check for check in checks if "colorama" in check.label)
+    assert missing.status == "WARN"
+    assert "Coloured output may not render in the classic Windows Command Prompt" in missing.detail
+    assert "Windows Terminal, which needs nothing extra" in require_advice(missing).fix
 
 
 # Verifies Chromium dependency guidance explicitly preserves Firefox import support
@@ -337,7 +407,7 @@ def test_doctor_omits_container_playback_warning_locally(monkeypatch):
 
 # Verifies an explicit missing config appears inside the doctor summary
 def test_explicit_missing_config_is_reported():
-    result = run_cli(["--doctor", "--config-file", "local/does-not-exist-phase3.conf", "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--config-file", "local/does-not-exist-phase3.conf", "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "configuration file was not found" in result.stdout.lower()
     assert "Summary" in result.stdout
@@ -347,16 +417,16 @@ def test_explicit_missing_config_is_reported():
 def test_malformed_config_is_reported_inside_summary(tmp_path):
     config_path = tmp_path / "broken.conf"
     config_path.write_text('TOKEN_SOURCE = "cookie"\nTARGET_USER_URI_ID = "broken\n', encoding="utf-8")
-    result = run_cli(["--doctor", "--config-file", str(config_path), "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--config-file", str(config_path), "--env-file", "none"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "Line: 2" in result.stdout
-    assert 'TARGET_USER_URI_ID = "broken' in result.stdout
+    assert 'TARGET_USER_URI_ID = "broken' not in result.stdout
     assert "Summary" in result.stdout
 
 
 # Verifies an explicit missing dotenv file is a doctor failure
 def test_explicit_missing_dotenv_is_reported():
-    result = run_cli(["--doctor", "--env-file", "local/does-not-exist-phase3.env"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_report'](runtime['DoctorReport'](list(checks)))) or 1);")
+    result = run_cli(["--doctor", "--env-file", "local/does-not-exist-phase3.env"], "runtime['run_doctor'] = lambda target, config, env, checks: (print(runtime['render_doctor_sections'](runtime['DoctorReport'](list(checks))) + runtime['render_doctor_summary'](list(checks))) or 1);")
     assert result.returncode == 1
     assert "dotenv file was not found" in result.stdout.lower()
 
@@ -409,10 +479,12 @@ def test_cookie_network_failure(monkeypatch):
     assert require_advice(monitor.doctor_check_authentication(report)[-1]).code == "network.unavailable"
 
 
-# Verifies invalid web-player TOTP parameters fail the configuration check in cookie mode
-def test_invalid_totp_config_fails(monkeypatch):
+@pytest.mark.parametrize("cipher_bytes", [(), 17])
+# Verifies invalid web-player TOTP parameters fail the configuration check in cookie mode, including a single
+# number written in place of the sequence, which is truthy and would otherwise be iterated
+def test_invalid_totp_config_fails(monkeypatch, cipher_bytes):
     configure_valid_doctor(monkeypatch)
-    monkeypatch.setattr(monitor, "TOTP_SECRET_CIPHER_BYTES", ())
+    monkeypatch.setattr(monitor, "TOTP_SECRET_CIPHER_BYTES", cipher_bytes)
     checks = monitor.doctor_check_configuration()
     totp_check = next(check for check in checks if "TOTP" in check.label)
     assert totp_check.status == "FAIL"
@@ -587,7 +659,7 @@ def test_target_absent_from_buddy_list_is_not_visible(target_value):
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else")), target_value)[0]
     assert check.status == "FAIL"
     assert require_advice(check).code == "target.not_visible"
-    rendered = monitor.render_doctor_report(monitor.DoctorReport([check]))
+    rendered = render_doctor_report(monitor.DoctorReport([check]))
     assert "deleted" not in rendered.lower()
     assert rendered.count("https://open.spotify.com/user/friend.user") == 1
 
@@ -611,14 +683,33 @@ def test_notifications_disabled_do_not_contact_smtp(monkeypatch):
     connect.assert_not_called()
 
 
-# Verifies incomplete enabled SMTP configuration fails before a connection
-def test_incomplete_enabled_smtp_config_fails(monkeypatch):
+# Verifies incomplete enabled SMTP settings are reported before a connection, as a warning rather than a failure
+def test_incomplete_enabled_smtp_config_warns(monkeypatch):
     configure_valid_doctor(monkeypatch)
     monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
     monkeypatch.setattr(monitor, "SMTP_HOST", "")
     check = monitor.doctor_check_notifications()[0]
-    assert check.status == "FAIL"
+    assert check.status == "WARN"
     assert require_advice(check).code == "smtp.invalid"
+
+
+# Verifies email alerts that cannot deliver are one WARN whose detail and action name the same settings
+def test_unusable_email_settings_warn_and_name_the_same_settings(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.invalid")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "owner@example.invalid")
+    monkeypatch.setattr(monitor, "SMTP_USER", "your_smtp_user")
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", Mock(side_effect=AssertionError("SMTP was contacted")))
+
+    check = monitor.doctor_check_notifications()[0]
+
+    assert check.status == "WARN"
+    assert check.label == monitor.EMAIL_UNUSABLE_CHECK_LABEL
+    assert check.detail == "SMTP_USER or SMTP_PASSWORD is empty or still set to its placeholder"
+    assert "Set SMTP_USER and SMTP_PASSWORD or turn the email alerts off" in require_advice(check).fix
+    assert monitor.SMTP_GUIDE_URL in require_advice(check).fix
 
 
 class FakeSMTP:
@@ -679,7 +770,7 @@ def test_doctor_output_contains_no_secret(monkeypatch):
     secret = "FAKE-DOCTOR-SECRET"
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", secret)
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
-    assert secret not in monitor.render_doctor_report(report)
+    assert secret not in render_doctor_report(report)
 
 
 # Verifies the doctor CLI can run without a positional target and bypass normal startup
@@ -689,8 +780,10 @@ def test_cli_doctor_without_target_bypasses_normal_startup():
     assert result.returncode == 0
     assert "connectivity gate called" not in result.stderr
     assert "monitor loop called" not in result.stderr
-    assert "After Doctor passes, start monitoring:" in result.stdout
-    assert "SPOTIFY_USER_URI_ID --env-file none" in result.stdout
+    assert "Start monitoring:" in result.stdout
+    # Nothing supplies a target here, so the command keeps the placeholder rather than printing one that cannot run
+    assert runtime_command("python3 spotify_monitor.py <spotify_target> --env-file none") in result.stdout
+    assert "SPOTIFY_USER_URI_ID" not in result.stdout
 
 
 # Verifies a successful Compose Doctor command prints the matching target and file context
@@ -698,9 +791,9 @@ def test_cli_doctor_success_prints_compose_monitoring_command():
     setup = "runtime['run_doctor'] = lambda *args: 0; runtime['_wizard_install_method'] = lambda: 'compose';"
     result = run_cli(["friend.user", "--doctor", "--env-file", "none"], setup)
     assert result.returncode == 0
-    assert "After Doctor passes, start monitoring:" in result.stdout
+    assert "Start monitoring:" in result.stdout
     assert "docker compose run --rm spotify_monitor friend.user --env-file none" in result.stdout
-    assert "--doctor" not in result.stdout.split("After Doctor passes, start monitoring:", 1)[1]
+    assert "--doctor" not in result.stdout.split("Start monitoring:", 1)[1]
 
 
 # Verifies successful scrobble Doctor output preserves local script paths and selected files
@@ -710,9 +803,9 @@ def test_cli_scrobble_doctor_success_prints_manual_monitoring_command(tmp_path):
     config_path.write_text(f'MONITOR_MODE = "scrobble_health"\nLASTFM_USERNAME = "lastfm-user"\nSPOTIFY_SCROBBLE_CLIENT_ID = "{"a" * 32}"\n', encoding="utf-8")
     env_path.write_text("LASTFM_API_KEY=private-api-key\nSPOTIFY_SCROBBLE_REFRESH_TOKEN=private-refresh-token\n", encoding="utf-8")
     result = run_cli(["--monitor-mode", "scrobble_health", "--doctor", "--config-file", str(config_path), "--env-file", str(env_path)], "runtime['run_scrobble_health_doctor'] = lambda *args: 0;")
-    expected_prefix = monitor._wizard_render_command([sys.executable, str(CLI_PATH)])
+    expected_prefix = monitor._wizard_cmd_prefix("manual")
     assert result.returncode == 0
-    assert "After Doctor passes, start scrobble health monitoring:" in result.stdout
+    assert "Start scrobble health monitoring:" in result.stdout
     assert f"{expected_prefix} --monitor-mode scrobble_health --config-file {config_path} --env-file {env_path}" in result.stdout
 
 
@@ -721,28 +814,37 @@ def test_cli_scrobble_doctor_success_prints_compose_monitoring_command():
     setup = "runtime['run_scrobble_health_doctor'] = lambda *args: 0; runtime['_wizard_install_method'] = lambda: 'compose';"
     result = run_cli(["--monitor-mode", "scrobble_health", "--doctor", "--config-file", "none", "--env-file", "none", "--lastfm-username", "lastfm-user", "--lastfm-api-key", "private-api-key", "--scrobble-client-id", "a" * 32, "--scrobble-refresh-token", "private-refresh-token"], setup)
     assert result.returncode == 0
-    assert "After Doctor passes, start scrobble health monitoring:" in result.stdout
+    assert "Start scrobble health monitoring:" in result.stdout
     assert f"docker compose run --rm spotify_monitor --monitor-mode scrobble_health --lastfm-username lastfm-user --scrobble-client-id {'a' * 32} --lastfm-api-key LASTFM_API_KEY --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN --config-file none --env-file none" in result.stdout
     assert "Replace the uppercase credential placeholders before running" in result.stdout
     assert "private-api-key" not in result.stdout
     assert "private-refresh-token" not in result.stdout
 
 
-# Verifies a target already saved in config is not replaced with a placeholder
-def test_doctor_monitoring_command_uses_saved_target(monkeypatch, capsys, tmp_path):
+# Verifies a run with no target of its own prints no placeholder, so the command can be pasted as it is
+def test_doctor_monitoring_command_carries_no_placeholder_target(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
-    monitor._wizard_print_monitor_after_doctor(tmp_path / "spotify_monitor.conf", tmp_path / ".env", target_is_saved=True)
+    monitor._wizard_print_monitor_after_doctor(tmp_path / "spotify_monitor.conf", tmp_path / ".env")
     output = capsys.readouterr().out
     assert "SPOTIFY_USER_URI_ID" not in output
     assert f"--config-file {tmp_path / 'spotify_monitor.conf'}" in output
     assert f"--env-file {tmp_path / '.env'}" in output
 
 
-# Verifies a failed Doctor command does not suggest starting monitoring
-def test_cli_doctor_failure_does_not_print_monitoring_command():
+# Verifies a failed Doctor still names the command, labelled so the failures are fixed first
+def test_cli_doctor_failure_asks_for_the_failures_first():
     result = run_cli(["friend.user", "--doctor", "--env-file", "none"], "runtime['run_doctor'] = lambda *args: 1;")
     assert result.returncode == 1
-    assert "After Doctor passes, start monitoring:" not in result.stdout
+    assert "After Doctor passes, start monitoring:" in result.stdout
+
+
+# Verifies a real run with discovery switched off carries the sentinel into the recovery command it prints,
+# since the command reads the config and pasting it without the flag would turn discovery back on
+def test_cli_discovery_switched_off_reaches_the_printed_recovery_command():
+    setup = "runtime['SP_DC_COOKIE'] = 'your_sp_dc_cookie_value'; runtime['TOKEN_SOURCE'] = 'cookie'; runtime['_wizard_install_method'] = lambda: 'manual'; runtime['check_internet'] = lambda *args, **kwargs: False;"
+    result = run_cli(["--doctor", "--config-file", "none", "--env-file", "none"], setup)
+
+    assert "--import-browser-cookie --browser firefox --config-file none" in result.stdout
 
 
 # Verifies contradictory doctor action flags are rejected
@@ -762,7 +864,7 @@ def test_optional_artwork_dependency_explains_ntfy_images(monkeypatch):
 
     assert check.status == "WARN"
     assert "NTFY_IMAGES is enabled" in check.detail
-    assert "spotify_monitor[notification-images]" in check.detail
+    assert "spotify_monitor[notification-images]" in require_advice(check).fix
 
 
 # Verifies artwork guidance inside a container points at the published images instead of pip
@@ -773,8 +875,8 @@ def test_optional_artwork_dependency_guides_container_users(monkeypatch):
     check = next(item for item in checks if "Pillow" in item.label)
 
     assert "currently disabled" in check.detail
-    assert "Docker images" in check.detail
-    assert "pip install" not in check.detail
+    assert "Docker images" in require_advice(check).fix
+    assert "pip install" not in require_advice(check).fix
 
 
 # Exported secrets are a documented alternative to a dotenv file, so they must apply when no file is loaded
@@ -790,6 +892,70 @@ def test_environment_secrets_apply_without_a_dotenv_file(monkeypatch):
     assert monitor.NTFY_ACCESS_TOKEN == "tk_from_environment"
 
 
+# Exported values win over duplicate dotenv keys and retain their effective source
+def test_environment_secret_wins_over_duplicate_dotenv_key(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("NTFY_ACCESS_TOKEN=tk_from_file\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", str(env_file)])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {}, raising=False)
+    monkeypatch.setenv("NTFY_ACCESS_TOKEN", "tk_from_environment")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.NTFY_ACCESS_TOKEN == "tk_from_environment"
+    assert monitor.SECRET_SOURCES["NTFY_ACCESS_TOKEN"] == "environment"
+
+
+# The documented precedence covers the non-secret environment settings too, not only the secrets
+def test_environment_setting_wins_over_duplicate_dotenv_key(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("SPOTIFY_SCROBBLE_CLIENT_ID=client-from-file\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", str(env_file)])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "SPOTIFY_SCROBBLE_CLIENT_ID", "", raising=False)
+    monkeypatch.setenv("SPOTIFY_SCROBBLE_CLIENT_ID", "client-from-environment")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.SPOTIFY_SCROBBLE_CLIENT_ID == "client-from-environment"
+
+
+# An empty export is a shell-profile leftover rather than a value, so it neither blocks nor blanks the dotenv value
+def test_an_empty_export_does_not_shadow_the_dotenv_value(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("NTFY_ACCESS_TOKEN=tk_from_file\n", encoding="utf-8")
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", str(env_file)])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {}, raising=False)
+    monkeypatch.setenv("NTFY_ACCESS_TOKEN", "")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.NTFY_ACCESS_TOKEN == "tk_from_file"
+    assert monitor.SECRET_SOURCES["NTFY_ACCESS_TOKEN"] == "dotenv file"
+
+
+# The same leftover must not blank a value the config file supplied, where no dotenv assignment exists to restore it
+def test_an_empty_export_does_not_blank_a_config_supplied_secret(monkeypatch):
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--doctor", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "run_doctor", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(monitor, "SP_DC_COOKIE", "cookie-from-the-config", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {}, raising=False)
+    monkeypatch.setenv("SP_DC_COOKIE", "")
+
+    with pytest.raises(SystemExit):
+        monitor.main()
+
+    assert monitor.SP_DC_COOKIE == "cookie-from-the-config"
+    assert monitor.SECRET_SOURCES["SP_DC_COOKIE"] == "configuration file or command line"
+
+
 # Each secret is attributed to the source it actually came from, so the report can name the dotenv path
 def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
@@ -797,10 +963,340 @@ def test_secret_sources_split_by_origin(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "SMTP_PASSWORD", "from-file", raising=False)
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "https://ntfy.sh/topic", raising=False)
     monkeypatch.setattr(monitor, "SP_DC_COOKIE", "your_sp_dc_cookie_value", raising=False)
-    monkeypatch.setenv("WEBHOOK_URL", "https://ntfy.sh/topic")
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "dotenv file", "WEBHOOK_URL": "environment"}, raising=False)
 
-    from_file, from_environment, from_settings = monitor.doctor_secret_sources(str(env_file))
+    from_file, from_environment, from_settings, from_command_line = monitor.doctor_secret_sources(str(env_file))
 
     assert "SMTP_PASSWORD" in from_file
     assert "WEBHOOK_URL" in from_environment
-    assert "SP_DC_COOKIE" not in from_file + from_environment + from_settings
+    assert "SP_DC_COOKIE" not in from_file + from_environment + from_settings + from_command_line
+
+
+# Verifies a row whose advice repeats its own summary prints that text once rather than as two problems
+def test_a_row_never_prints_its_summary_twice():
+    repeated = "No valid sp_dc cookie was found"
+
+    check = monitor.make_doctor_check("Configuration", "WARN", repeated, repeated, actionable_advice())
+
+    assert check.label == repeated
+    assert check.detail == ""
+
+
+# Verifies a secret passed as an argument is reported under the command line rather than the configuration file
+def test_a_command_line_secret_is_reported_as_such(monkeypatch):
+    for name in monitor.SECRET_KEYS:
+        monkeypatch.setattr(monitor, name, "your_placeholder", raising=False)
+    monkeypatch.setattr(monitor, "SECRET_SOURCES", {"SMTP_PASSWORD": "command line"}, raising=False)
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "a-real-secret-value", raising=False)
+
+    labels = [check.label for check in monitor.doctor_secret_checks(None)]
+
+    assert "Secrets loaded from the command line" in labels
+    assert "Secrets loaded from the configuration file or command line" not in labels
+
+
+# Verifies the Python row states the minimum it was judged against and that the fix names the same minimum
+def test_the_python_row_names_the_minimum_supported_version():
+    supported = monitor.doctor_check_environment((3, 9, 0), all_dependencies_present)[0]
+    unsupported = monitor.doctor_check_environment((3, 8, 18), all_dependencies_present)[0]
+
+    assert supported.detail == f"Minimum supported version: {monitor.MINIMUM_PYTHON_VERSION_TEXT}"
+    assert unsupported.detail == supported.detail
+    assert monitor.MINIMUM_PYTHON_VERSION_TEXT in require_advice(unsupported).fix
+
+
+# Verifies valid numeric settings take no row, since a value that is merely fine is not a finding
+def test_valid_numeric_settings_take_no_row(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+
+    checks = monitor.doctor_check_configuration()
+
+    assert not any("numeric" in check.label.casefold() for check in checks)
+
+
+# Verifies every doctor detail keeps to the agreed shapes: it never repeats its label, gives an instruction or joins values with a pipe
+def test_doctor_details_keep_to_the_agreed_shapes():
+    import ast
+    import inspect
+
+    # Renders one detail argument as text, standing in {} for the parts an f-string fills at runtime
+    def detail_text(node):
+        if isinstance(node, ast.Constant):
+            return node.value if isinstance(node.value, str) else None
+        if isinstance(node, ast.JoinedStr):
+            return "".join(part.value if isinstance(part, ast.Constant) and isinstance(part.value, str) else "{}" for part in node.values)
+        return None
+
+    offenders = []
+    for node in ast.walk(ast.parse(inspect.getsource(monitor))):
+        if not isinstance(node, ast.Call) or ast.unparse(node.func) not in {"make_doctor_check", "report.add"} or len(node.args) < 4:
+            continue
+        label, text = node.args[2], detail_text(node.args[3])
+        if text is None:
+            continue
+        if isinstance(label, ast.Constant) and text == label.value:
+            offenders.append(f"{node.lineno}: the detail repeats its label")
+        if text.startswith(("Use ", "Set ", "Run ")):
+            offenders.append(f"{node.lineno}: the detail gives an instruction, which belongs in the fix line")
+        if " | " in text:
+            offenders.append(f"{node.lineno}: the detail joins two values with a pipe")
+        if text.endswith("."):
+            offenders.append(f"{node.lineno}: the detail ends with a full stop")
+
+    assert not offenders, "doctor details outside the agreed shapes:\n" + "\n".join(offenders)
+
+
+# Verifies the constructor drops a detail that only repeats its label, so no row says the same thing twice
+def test_a_detail_that_repeats_its_label_is_dropped():
+    check = monitor.make_doctor_check("Configuration", "PASS", "Output logging is disabled", "Output logging is disabled")
+
+    assert check.detail == ""
+
+
+# Verifies a row the user has to act on cannot reach the report without an action
+def test_an_actionable_row_is_rejected_without_a_fix():
+    for status in ("WARN", "FAIL"):
+        with pytest.raises(ValueError):
+            monitor.make_doctor_check("Configuration", status, "a label", "some detail")
+
+    assert monitor.make_doctor_check("Configuration", "SKIP", "a label").status == "SKIP"
+
+
+# Verifies only the four shared markers can reach a report
+def test_only_the_four_shared_markers_are_accepted():
+    assert monitor.DOCTOR_STATUSES == ("PASS", "WARN", "FAIL", "SKIP")
+    assert [monitor.make_doctor_check("Configuration", status, "a label", advice=actionable_advice()).status for status in monitor.DOCTOR_STATUSES] == list(monitor.DOCTOR_STATUSES)
+
+    with pytest.raises(ValueError):
+        monitor.make_doctor_check("Configuration", "INFO", "a label")
+
+
+# Verifies one row reads as one block: the action lines sit under the marker at the detail indent while a pass row has none
+def test_the_action_lines_sit_indented_under_their_marker(monkeypatch):
+    monkeypatch.setattr(monitor, "colorize", lambda theme, text: text)
+    advice = monitor.make_recovery_advice("unknown", "a summary", monitor.recovery_fix_with_guide("do the thing", monitor.DOCTOR_GUIDE_URL), True)
+    report = monitor.DoctorReport([
+        monitor.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping", advice),
+        monitor.make_doctor_check("Configuration", "PASS", "a passing row", "", advice),
+    ])
+
+    lines = render_doctor_report(report).splitlines()
+    rows = lines[lines.index("[WARN] a warning row"):]
+
+    assert rows[:5] == ["[WARN] a warning row", "  a detail worth keeping", "  To fix: do the thing", f"  Guide: {monitor.DOCTOR_GUIDE_URL}", "[PASS] a passing row"]
+
+
+# Verifies an approved delivery test that failed reaches the summary, so a failing run cannot report a clean one
+def test_a_failed_delivery_test_reaches_the_summary(monkeypatch):
+    report = monitor.DoctorReport([monitor.make_doctor_check("Notifications", "PASS", monitor.SMTP_READY_CHECK_LABEL)])
+    monkeypatch.setattr(monitor.sys, "stdin", Mock(isatty=lambda: True))
+    monkeypatch.setattr(monitor.sys, "stdout", TTYBuffer())
+    monkeypatch.setattr(monitor, "_doctor_ask_yes_no", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "send_email", Mock(return_value=1))
+
+    monitor._doctor_offer_notification_tests(report)
+
+    assert [(check.section, check.status, check.label) for check in report.checks][-1] == (monitor.DOCTOR_DELIVERY_SECTION, "FAIL", "Doctor test email delivery failed")
+    assert "1 check(s) failed, 0 warning(s)." in monitor.render_doctor_summary(report.checks)
+
+
+# Verifies every doctor entry point renders its summary after the delivery tests, so the sentence and the exit code describe one run
+def test_the_summary_is_rendered_after_the_delivery_tests():
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(monitor))
+    checked = 0
+    for function in [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]:
+        calls = [(call.lineno, ast.unparse(call.func)) for call in ast.walk(function) if isinstance(call, ast.Call)]
+        offers = [lineno for lineno, name in calls if name.endswith("_doctor_offer_notification_tests")]
+        summaries = [lineno for lineno, name in calls if name.endswith("render_doctor_summary")]
+        if not offers or not summaries:
+            continue
+        checked += 1
+        assert max(offers) < min(summaries), f"{function.name} renders the summary before the delivery tests"
+
+    assert checked, "no doctor entry point runs the delivery tests and then the summary"
+
+
+# Verifies the connectivity row carries the label and the endpoint detail shared with the sibling monitors
+def test_the_connectivity_row_names_the_shared_endpoint(monkeypatch):
+    monkeypatch.setattr(monitor, "CHECK_INTERNET_URL", "https://probe.example/ping")
+    monkeypatch.setattr(monitor, "check_internet", lambda **kwargs: True)
+    passing = monitor.doctor_connectivity_endpoint_check()
+    monkeypatch.setattr(monitor, "check_internet", lambda **kwargs: False)
+    failing = monitor.doctor_connectivity_endpoint_check()
+
+    assert (passing.status, passing.label, passing.detail) == ("PASS", "The connectivity endpoint is reachable", "Endpoint: https://probe.example/ping")
+    assert (failing.status, failing.label, failing.detail) == ("FAIL", "The connectivity endpoint could not be reached", "Endpoint: https://probe.example/ping")
+    assert failing.advice is not None and failing.advice.fix == "Check network, DNS, proxy and CHECK_INTERNET_URL settings"
+
+
+# Verifies Ctrl+C at a delivery prompt ends the run instead of declining one test and asking the next
+def test_a_delivery_prompt_interrupt_ends_the_run(monkeypatch):
+    def interrupt(prompt=""):
+        raise KeyboardInterrupt
+
+    # The handler restores the saved stream, so it is pointed at the one this test captures
+    monkeypatch.setattr(monitor, "stdout_bck", monitor.sys.stdout)
+    monkeypatch.setattr(monitor, "FLAG_FILE", "")
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    with pytest.raises(SystemExit) as raised:
+        monitor._doctor_ask_yes_no("Send one test")
+
+    assert raised.value.code == 0
+
+
+# An interval below the safe floor gets the account rate limited, which looks like the tool being broken
+def test_a_rate_limiting_interval_is_warned_about(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 5)
+
+    rows = [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    assert [item.status for item in rows] == ["WARN"]
+    assert "SPOTIFY_CHECK_INTERVAL" in rows[0].detail
+    assert str(monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL) in require_advice(rows[0]).fix
+
+
+# The default interval is safe, so the row must stay away rather than warning about every run
+def test_a_safe_interval_is_not_warned_about(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", monitor.DOCTOR_MIN_SAFE_CHECK_INTERVAL)
+
+    assert not [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+
+# The live backend judges its own timers against the lower live floor, so the legacy value and the live defaults stay quiet
+def test_live_intervals_are_judged_against_the_live_floor(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", 5)
+
+    assert not [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", monitor.DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL - 1)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_CHECK_INTERVAL", 2)
+    rows = [item for item in monitor.doctor_check_configuration() if item.label == "Check intervals are short"]
+
+    assert [item.status for item in rows] == ["WARN"]
+    assert "SPOTIFY_LIVE_CHECK_INTERVAL" in rows[0].detail and "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL" in rows[0].detail
+    assert f"at least {monitor.DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL} seconds" in require_advice(rows[0]).fix
+
+
+# A run with no target warns with the sentence every monitor in this family uses, so the report reads the same
+def test_a_missing_target_warns_with_the_shared_detail(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+
+    checks = monitor.doctor_check_target(monitor.DoctorReport(), None)
+
+    assert [check.status for check in checks] == ["WARN"]
+    assert checks[0].detail == "Nothing will be monitored until one is given"
+
+
+# Verifies a quoted interval is reported as an unusable setting, since comparing it against the safe floor used to raise
+def test_an_interval_that_is_not_a_number_is_reported_rather_than_raised(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "SPOTIFY_CHECK_INTERVAL", "3600")
+
+    labels = [item.label for item in monitor.doctor_check_configuration()]
+
+    assert "One or more numeric settings are invalid" in labels
+    assert "Check intervals are short" not in labels
+
+
+# Verifies configured mail settings with no alert types selected warn, since nothing would ever be emailed
+def test_email_configured_but_nothing_selected_warns(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    for name in ("ACTIVE_NOTIFICATION", "INACTIVE_NOTIFICATION", "TRACK_NOTIFICATION", "SONG_NOTIFICATION", "SONG_ON_LOOP_NOTIFICATION", "ERROR_NOTIFICATION"):
+        monkeypatch.setattr(monitor, name, False)
+    monkeypatch.setattr(monitor, "SMTP_HOST", "smtp.example.test")
+    monkeypatch.setattr(monitor, "SMTP_USER", "monitor")
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "private-password")
+    monkeypatch.setattr(monitor, "SENDER_EMAIL", "monitor@example.test")
+    monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "alerts@example.test")
+    monkeypatch.setattr(monitor, "smtp_connect_and_login", Mock(side_effect=AssertionError("SMTP was contacted")))
+
+    check = monitor.doctor_check_notifications()[0]
+
+    assert (check.status, check.label) == ("WARN", "Email is configured but no alert types are selected")
+    assert check.detail == "Nothing would ever be emailed"
+    assert require_advice(check).code == "smtp.invalid"
+
+
+# Verifies webhook alert types selected while the channel is off warn, since nothing would ever be delivered
+def test_webhook_alerts_selected_but_switched_off_warn(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_ACTIVE_NOTIFICATION", True)
+
+    check = monitor.doctor_check_webhook_notifications()[0]
+
+    assert (check.status, check.label) == ("WARN", "Webhook alert types are selected but webhooks are switched off")
+    assert "WEBHOOK_ENABLED" in require_advice(check).fix
+
+
+# One row shape and one advice shape across the family: the advice rides on the row and its fix carries the
+# guide, so a row or an advice copied from a sibling means the same thing here
+def test_the_doctor_row_and_its_advice_share_one_contract():
+    row_parameters = list(inspect.signature(monitor.make_doctor_check).parameters.values())
+    advice_parameters = list(inspect.signature(monitor.make_recovery_advice).parameters.values())
+
+    assert [parameter.name for parameter in row_parameters] == ["section", "status", "label", "detail", "advice"]
+    assert [parameter.default for parameter in row_parameters[3:]] == ["", None]
+    assert [parameter.name for parameter in advice_parameters] == ["code", "summary", "fix", "retryable", "detail"]
+    assert monitor.recovery_fix_with_guide("do the thing", "https://example.invalid/page") == "do the thing\nGuide: https://example.invalid/page"
+
+
+# A non-pass row is refused without advice and keeps the advice it was given, which is where its fix and guide live
+def test_a_row_carries_its_advice_and_refuses_to_go_without():
+    advice = monitor.make_recovery_advice("config.invalid", "a warning row", monitor.recovery_fix_with_guide("do the thing", monitor.DOCTOR_GUIDE_URL), False)
+
+    row = monitor.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping", advice)
+
+    assert row.advice is advice
+    assert not hasattr(advice, "guide_url")
+    with pytest.raises(ValueError):
+        monitor.make_doctor_check("Configuration", "WARN", "a warning row", "a detail worth keeping")
+
+
+# A string such as "false" counts as on, so an on/off setting holding anything but True or False is named in one row
+def test_invalid_boolean_settings_are_reported_in_one_row(monkeypatch):
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", "false", raising=False)
+    monkeypatch.setattr(monitor, "SMTP_SSL", 1, raising=False)
+
+    rows = [item for item in monitor.doctor_check_configuration() if item.label == "One or more on/off settings are invalid"]
+
+    assert [item.status for item in rows] == ["FAIL"]
+    assert "ERROR_NOTIFICATION must be True or False, not 'false'" in rows[0].detail
+    assert "SMTP_SSL must be True or False, not 1" in rows[0].detail
+    assert require_advice(rows[0]).code == "config.invalid"
+
+
+# An on/off setting written as 0 or 1 was accepted before the values were checked, so it still reads as off and on
+def test_a_numeric_on_off_setting_is_read_as_a_boolean():
+    parsed = monitor.parse_config_content("VERIFY_SSL = 0\nDISABLE_LOGGING = 1\n")
+
+    assert parsed == {"VERIFY_SSL": False, "DISABLE_LOGGING": True}
+    assert all(isinstance(value, bool) for value in parsed.values())
+
+
+# The shipped defaults are all real booleans, so a run with nothing overridden never sees the on/off row
+def test_the_shipped_defaults_pass_the_boolean_check():
+    assert monitor.runtime_boolean_errors() == []
+
+
+# A malformed destination is a FAIL under the label every tool in the family uses, so a fix reads the same everywhere
+def test_a_malformed_webhook_url_fails_under_the_family_label(monkeypatch):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "discord.com/api/webhooks/1/abc")
+
+    check = monitor.doctor_check_webhook_notifications()[0]
+
+    assert (check.status, check.label) == ("FAIL", "WEBHOOK_URL must contain a complete HTTPS link")
+    assert require_advice(check).code == "webhook.invalid"

@@ -1,5 +1,6 @@
 """Terminal colour contract tests for the coloured output layer."""
 
+import ast
 import re
 from io import StringIO
 from pathlib import Path
@@ -21,12 +22,30 @@ def colored(monkeypatch):
     return styles
 
 
+# Reads a block the template ships commented out, as the parser would see it once uncommented
+def uncomment_block(first_line):
+    lines = monitor.CONFIG_BLOCK.split("\n")
+    start = next(index for index, line in enumerate(lines) if line.startswith(first_line))
+    end = next(index for index in range(start, len(lines)) if lines[index].rstrip() == "# }")
+    return "\n".join(line[2:] if line.startswith("# ") else line[1:] for line in lines[start:end + 1])
+
+
 # Verifies the shipped config template and the built-in theme describe exactly the same keys
 def test_config_template_theme_matches_the_built_in_theme():
     values = monitor.parse_config_content(monitor.CONFIG_BLOCK, "<built-in-config>")
+    commented = monitor.parse_config_content(uncomment_block("# COLOR_THEME = {"), "<built-in-config>")
 
     assert values["COLORED_OUTPUT"] is True
-    assert values["COLOR_THEME"] == monitor.DEFAULT_COLOR_THEME
+    assert "COLOR_THEME" not in values
+    assert commented["COLOR_THEME"] == monitor.DEFAULT_COLOR_THEME
+
+
+# Verifies a configuration that sets the commented-out theme is still accepted, since older files all set it
+def test_a_config_setting_the_theme_is_still_accepted(tmp_path):
+    config = tmp_path / "monitor.conf"
+    config.write_text('COLOR_THEME = { "username": "green" }\n', encoding="utf-8")
+
+    assert monitor.parse_config_content(config.read_text(encoding="utf-8"), str(config)) == {"COLOR_THEME": {"username": "green"}}
 
 
 # Verifies every style word used by the shipped theme resolves, allowing a deliberately uncoloured part
@@ -40,6 +59,12 @@ def test_timestamp_label_is_uncolored(colored):
     assert monitor.DEFAULT_COLOR_THEME["timestamp_label"] == ""
     assert "timestamp_label" not in colored
     assert monitor._colorize_line("Timestamp:\t\t\tWed 26 Aug 2026, 20:23:03") == f"Timestamp:\t\t\t{colored['timestamp_value']}Wed 26 Aug 2026, 20:23:03{monitor.ANSI_RESET}"
+
+
+# Verifies the liveness banner timestamp carries the timestamp colour instead of the generic date colour
+def test_liveness_check_timestamp_uses_timestamp_style(colored):
+    line = monitor._colorize_line("Liveness check, timestamp:\tWed 26 Aug 2026, 20:23:03")
+    assert line == f"Liveness check, timestamp:\t{colored['timestamp_value']}Wed 26 Aug 2026, 20:23:03{monitor.ANSI_RESET}"
 
 
 # Verifies a startup summary row is not block-coloured just because it names a mode
@@ -127,7 +152,7 @@ def test_startup_banner_art_is_unchanged(colored):
 # Verifies labelled Spotify rows colour the value with the expected theme part
 @pytest.mark.parametrize("line,part", [
     ("Username:\t\t\tJohn Doe", "username"),
-    ("User URI ID:\t\t\tsq58", "user_uri_id"),
+    ("User URI ID:\t\t\tsq58", "id"),
     ("Last played:\t\t\tDaft Punk - Around the World", "track"),
     ("Playlist:\t\t\tDiscover Weekly", "playlist"),
     ("Album:\t\t\t\tHomework", "album"),
@@ -409,6 +434,53 @@ def test_names_with_slashes_and_brackets_are_still_colored(colored, name):
     assert colored["playlist"] in monitor._colorize_line(f"- '{name}'")
 
 
+# Verifies a name's own apostrophe does not end it early, which left most of the name uncoloured
+@pytest.mark.parametrize("name", ["Don't Stop Me Now", "Ain't No Mountain High Enough"])
+def test_a_name_containing_an_apostrophe_is_coloured_whole(colored, name):
+    assert f"{colored['playlist']}{name}{monitor.ANSI_RESET}" in monitor._colorize_line(f"- '{name}'")
+
+
+# Verifies two quoted names on one line stay two names, since the closing quote rule could have joined them
+def test_two_quoted_names_on_one_line_stay_separate(colored):
+    result = monitor._colorize_line("- 'Deep Focus' and 'Peaceful Piano'")
+
+    assert f"{colored['playlist']}Deep Focus{monitor.ANSI_RESET}" in result
+    assert f"{colored['playlist']}Peaceful Piano{monitor.ANSI_RESET}" in result
+
+
+# Verifies a quoted placeholder inside a printed command stays plain, since it is text to replace rather than a name
+@pytest.mark.parametrize("line", ["Run: spotify_monitor '<user_uri_id>'", "Replace '<topic>' with your own ntfy topic"])
+def test_quoted_command_placeholders_stay_plain(colored, line):
+    assert colored["playlist"] not in monitor._colorize_line(line)
+
+
+# Verifies a quoted command-line option is left plain, since it is text to retype rather than a name
+def test_quoted_command_options_stay_plain(colored):
+    assert colored["playlist"] not in monitor._colorize_line("Replace '--env-file none' with a writable path")
+
+
+# Verifies sentence punctuation, brackets and quotes around a link stay outside the underlined address
+@pytest.mark.parametrize("line, url", [
+    ("Use a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID.", "https://open.spotify.com/user/USER_ID"),
+    ("# - Log in to Spotify web client (https://open.spotify.com/) and retrieve your sp_dc cookie", "https://open.spotify.com/"),
+    ('CLIENTTOKEN_URL = "https://clienttoken.spotify.com/v1/clienttoken"', "https://clienttoken.spotify.com/v1/clienttoken"),
+    ("Track URL:\t\t\thttps://open.spotify.com/track/abc", "https://open.spotify.com/track/abc"),
+])
+def test_link_colour_excludes_trailing_punctuation(colored, line, url):
+    result = monitor._colorize_line(line)
+
+    assert monitor.ANSI_ESCAPE_RE.sub("", result) == line
+    assert f"{colored['link']}{url}{monitor.ANSI_RESET}" in result
+
+
+# Verifies a quoted fragment of a URL stays plain, since it is a piece of an address rather than a name
+@pytest.mark.parametrize("value", ["?code=", "&state="])
+def test_quoted_url_fragments_stay_plain(colored, value):
+    line = f"Copy everything after '{value}' from the address bar."
+
+    assert monitor._colorize_line(line) == line
+
+
 # Verifies quoted values shaped like a file name or a path stay plain
 @pytest.mark.parametrize("value", ["monitor_state.json", "/data/spotify.log", "~/logs/output.txt", "C:\\Users\\me\\state.json"])
 def test_quoted_file_and_path_values_stay_plain(colored, value):
@@ -434,9 +506,35 @@ def test_change_reports_are_not_painted_end_to_end(colored, line):
 
 
 # Verifies a whole-line style is only ever applied to lines that report a problem, never to a change report
-def test_only_problem_lines_are_painted_end_to_end(colored):
-    for line, part in (("* Error: could not reach Spotify", "error"), ("* Warning: something odd", "warning")):
-        assert monitor._colorize_line(line).startswith(colored[part])
+@pytest.mark.parametrize("line, part", [("* Error: could not reach Spotify", "error"), ("Sending email notification to someone@example.com", "email"), ("Sending webhook notification", "webhook"), ("* Info: the token was refreshed", "info")])
+def test_only_problem_lines_are_painted_end_to_end(colored, line, part):
+    assert monitor._colorize_line(line).startswith(colored[part])
+
+
+# Warning and signal lines mark their own opening word instead of being painted end to end, so a value
+# inside them keeps the colour that says what it is
+def test_a_warning_marks_its_opening_word_and_leaves_the_rest(colored):
+    assert monitor._colorize_line("* Warning: something odd") == f"* {colored['warning']}Warning:{monitor.ANSI_RESET} something odd"
+
+
+def test_a_signal_line_marks_the_signal_it_reports(colored):
+    assert monitor._colorize_line("* Signal SIGUSR1 received") == f"* Signal {colored['signal']}SIGUSR1{monitor.ANSI_RESET} received"
+
+
+# The playlist colour is the yellow the warning line used to paint over, so the name it reports was
+# indistinguishable from the line around it
+def test_a_warning_row_still_shows_the_playlist_inside_it(colored):
+    rendered = monitor._colorize_line("* Warning: playlist 'My Mix' could not be read")
+
+    assert f"{colored['playlist']}My Mix{monitor.ANSI_RESET}" in rendered
+    assert not rendered.startswith(colored["warning"])
+
+
+# A value drawn in the colour of the block enclosing it disappears
+def test_a_block_style_never_hides_a_name(colored):
+    for block in monitor.BLOCK_STYLE_PARTS:
+        for name in monitor.NAME_STYLE_PARTS:
+            assert colored[name] != colored[block], f"{name} is invisible inside a {block} line"
 
 
 # Verifies every part the shipped theme offers is actually looked up somewhere, so the theme documents only
@@ -462,18 +560,62 @@ def test_every_theme_part_is_used():
     "User '31nnv6eqt4qswvjhcnknimtxqife' not found - make sure your friend is followed",
     "Spotify user '31nnv6eqt4qswvjhcnknimtxqife' (John Doe) has disappeared",
     "User URI ID:\t\t\t31nnv6eqt4qswvjhcnknimtxqife",
+    "* Target:                       31nnv6eqt4qswvjhcnknimtxqife",
 ])
 def test_target_id_uses_the_id_colour_everywhere(colored, line):
     result = monitor._colorize_line(line)
 
     assert monitor.ANSI_ESCAPE_RE.sub("", result) == line
-    assert f"{colored['user_uri_id']}31nnv6eqt4qswvjhcnknimtxqife{monitor.ANSI_RESET}" in result
+    assert f"{colored['id']}31nnv6eqt4qswvjhcnknimtxqife{monitor.ANSI_RESET}" in result
     assert colored["track"] not in result
+
+
+# Verifies the word after "user" stays plain in ordinary prose, since wizard and config text explains what
+# the tool does rather than naming the monitored friend
+@pytest.mark.parametrize("line", [
+    "     Alerts when the user becomes active, becomes inactive or monitoring has a problem.",
+    "# Spotify user to monitor by raw ID, Spotify user URI or Spotify profile URL",
+    "# How often to check for user activity in seconds",
+    "# Sends the Spotify user agent string to Protobuf",
+])
+def test_prose_after_the_word_user_stays_plain(colored, line):
+    assert monitor._colorize_line(line) == line
+
+
+# Verifies a labelled user field still colours any value, including a short name without digits
+@pytest.mark.parametrize("line, value", [
+    ("  Last.fm user: john", "john"),
+    ("Starting check: check=#3, user=target.user", "target.user"),
+])
+def test_labelled_user_fields_still_colour_their_value(colored, line, value):
+    assert f"{colored['id']}{value}{monitor.ANSI_RESET}" in monitor._colorize_line(line)
 
 
 # Verifies a display name still renders as a name, so the two identifiers stay distinguishable
 def test_display_name_still_uses_the_name_colour(colored):
     assert colored["username"] in monitor._colorize_line("Username:\t\t\tJohn Doe")
+
+
+# Verifies a config written against the pre-rename 'user_uri_id' key still colours identifiers
+def test_legacy_theme_key_still_applies(monkeypatch):
+    monkeypatch.setattr(monitor, "COLORED_OUTPUT", True)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {"user_uri_id": "red"})
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", False)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {})
+    monkeypatch.setattr(monitor, "_stream_supports_color", lambda stream: True)
+    monitor.init_color_output(StringIO())
+    assert monitor._COLOR_STYLES["id"] == monitor._build_ansi_sequence("red")
+
+
+# Verifies the current key name wins when a config sets both the old and the new name
+def test_current_theme_key_wins_over_the_legacy_name(monkeypatch):
+    monkeypatch.setattr(monitor, "COLORED_OUTPUT", True)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {"user_uri_id": "red", "id": "green"})
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", False)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {})
+    monkeypatch.setattr(monitor, "_stream_supports_color", lambda stream: True)
+    monitor.init_color_output(StringIO())
+    assert monitor._COLOR_STYLES["id"] == monitor._build_ansi_sequence("green")
 
 
 # Verifies the guided setup surface is coloured, not only the monitoring output. The install method decides
@@ -502,7 +644,8 @@ def test_wizard_prompt_and_menu_are_coloured(colored, capsys, monkeypatch):
 
 # Verifies the Doctor report headings and verdict are coloured, matching the sibling monitors
 def test_doctor_report_headings_are_coloured(colored):
-    report = monitor.render_doctor_report(monitor.build_doctor_report(None, None, "none"))
+    built = monitor.build_doctor_report(None, None, "none")
+    report = monitor.render_doctor_sections(built) + monitor.render_doctor_summary(built.checks)
 
     assert f"{colored['header']}Doctor{monitor.ANSI_RESET}" in report
     assert f"{colored['header']}Summary{monitor.ANSI_RESET}" in report
@@ -515,3 +658,109 @@ def test_recovery_guidance_uses_the_info_colour(colored):
     line = "To fix: Verify the --config-file path then retry"
 
     assert monitor._colorize_line(line).startswith(colored["info"])
+
+
+# Verifies truncation measures what is displayed, so colour codes do not eat into the visible width
+def test_truncation_measures_display_width_not_escape_sequences():
+    pytest.importorskip("wcwidth")
+
+    truncated = monitor.truncate_string_per_line("\x1b[31m0123456789ABCDEF\x1b[0m", 10)
+
+    assert re.sub(r"\x1b\[[0-9;]*m", "", truncated) == "0123456789"
+
+
+# Verifies a double-width character costs two columns, so a CJK title does not wrap past the limit
+def test_truncation_counts_double_width_characters():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("原神原神原神", 4) == "原神"
+
+
+# Verifies each line is measured on its own rather than the whole message being cut at one offset
+def test_truncation_applies_to_every_line():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("abcdef\nabcdef", 3) == "abc\nabc"
+
+
+# Verifies the TLS row colours its state word, the one setting whose off state weakens a security property
+def test_the_tls_row_colours_its_state(colored):
+    on_row = monitor._colorize_line("* TLS verification:             On")
+    off_row = monitor._colorize_line("* TLS verification:             Off, server certificates are not checked")
+
+    assert on_row == f"* TLS verification:             {colored['boolean_true']}On{monitor.ANSI_RESET}"
+    assert off_row == f"* TLS verification:             {colored['boolean_false']}Off{monitor.ANSI_RESET}, server certificates are not checked"
+
+
+# Verifies a cut line closes the colour it opened, so the truncated tail does not paint every line printed after it
+def test_a_truncated_line_closes_its_open_colour():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("\x1b[31m0123456789ABCDEF\x1b[0m", 10) == "\x1b[31m0123456789" + monitor.ANSI_RESET
+
+
+# Verifies no extra reset is added when the colour closed before the cut or the line was never cut
+def test_a_closed_or_uncut_colour_gains_no_extra_reset():
+    pytest.importorskip("wcwidth")
+
+    assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m456789ABCDEF", 10) == "\x1b[31m0123\x1b[0m456789"
+    assert monitor.truncate_string_per_line("\x1b[31m0123\x1b[0m", 10) == "\x1b[31m0123\x1b[0m"
+    assert monitor.truncate_string_per_line("0123456789ABCDEF", 10) == "0123456789"
+
+
+# Verifies the setup screens colour their links, since they print before the output stream colouriser is installed
+def test_setup_screen_links_are_coloured(monkeypatch):
+    link = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["link"])
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {"link": link})
+
+    assert monitor.colorize_links("Guide: https://example.test/page") == f"Guide: {link}https://example.test/page{monitor.ANSI_RESET}"
+
+
+# Verifies no setup screen prints a link without colouring it, which is how a plain link gets in
+def test_no_setup_screen_prints_a_plain_link():
+    setup = re.compile(r"^(?:run_setup_wizard|run_scrobble_health_setup_wizard|_wizard_|run_set_|run_browser_cookie_import|print_welcome_screen|print_doctor_next_steps|print_spotify_scrobble_app_guidance)")
+    tree = ast.parse(Path(monitor.__file__).read_text(encoding="utf-8"))
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    plain = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "print"):
+            continue
+        nested = list(ast.walk(node))
+        prints_link = any(isinstance(item, ast.Constant) and isinstance(item.value, str) and "http" in item.value for item in nested) or any(isinstance(item, ast.Name) and "URL" in item.id for item in nested)
+        coloured = any(isinstance(item, ast.Name) and item.id in ("colorize", "colorize_links") for item in nested)
+        owner, current = "", parents.get(node)
+        while current is not None:
+            if isinstance(current, ast.FunctionDef):
+                owner = current.name
+                break
+            current = parents.get(current)
+        if prints_link and not coloured and setup.match(owner):
+            plain.append(f"{owner}:{node.lineno}")
+
+    assert plain == []
+
+
+# Verifies a fix block keeps its guide line a link while the rest of the block stays informational
+def test_a_fix_block_guide_line_is_a_link(monkeypatch):
+    link = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["link"])
+    info = monitor._build_ansi_sequence(monitor.DEFAULT_COLOR_THEME["info"])
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {"link": link, "info": info})
+
+    assert monitor.colorize_fix_line("To fix: Set the key then re-run") == f"{info}To fix: Set the key then re-run{monitor.ANSI_RESET}"
+    assert monitor.colorize_fix_line("Guide: https://example.test/page") == f"Guide: {link}https://example.test/page{monitor.ANSI_RESET}"
+    assert 'colorize("info", f"Guide:' not in Path(monitor.__file__).read_text(encoding="utf-8")
+
+
+# Verifies the early peek carries the theme, since --help is printed and exited from inside argparse before the config load
+def test_the_early_output_config_carries_the_help_theme(monkeypatch, tmp_path):
+    (tmp_path / "spotify_monitor.conf").write_text('COLOR_THEME = {"help_heading": "bright_red"}\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "COLOR_THEME", {})
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor", "--help"])
+
+    monitor.apply_early_output_config()
+
+    assert monitor.COLOR_THEME == {"help_heading": "bright_red"}

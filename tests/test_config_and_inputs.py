@@ -1,3 +1,5 @@
+import stat
+import re
 import os
 import subprocess
 import sys
@@ -271,6 +273,123 @@ def test_dotenv_update_preserves_content_and_escapes_special_values(capsys):
     assert captured.err == ""
 
 
+# Verifies a secret cleared by its owner leaves the file rather than staying behind as an empty value
+def test_a_cleared_secret_is_removed_rather_than_emptied():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('UNRELATED=stay\nNTFY_ACCESS_TOKEN="tk_old"\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        content = destination.read_text(encoding="utf-8")
+        assert "NTFY_ACCESS_TOKEN" not in content
+        assert dotenv_values(destination, interpolate=False) == {"UNRELATED": "stay"}
+
+
+# Verifies a saved value written across several lines is replaced whole, since replacing only its first
+# line left the rest of the old secret behind and the next run could not parse what it wrote
+def test_a_multiline_secret_is_replaced_whole():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('NTFY_ACCESS_TOKEN="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": "replacement"})
+
+        assert destination.read_text(encoding="utf-8") == 'NTFY_ACCESS_TOKEN="replacement"\nOTHER=keep\n'
+
+
+# Verifies clearing such a value removes all of it, for the same reason
+def test_a_cleared_multiline_secret_leaves_nothing_behind():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text('NTFY_ACCESS_TOKEN="first line\nsecond line"\nOTHER=keep\n', encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        assert destination.read_text(encoding="utf-8") == "OTHER=keep\n"
+
+
+# Verifies clearing a secret the file never held does not add an empty line for it
+def test_clearing_an_absent_secret_writes_nothing():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / ".env"
+        destination.write_text("UNRELATED=stay\n", encoding="utf-8")
+
+        monitor.update_dotenv_file(destination, {"NTFY_ACCESS_TOKEN": ""})
+
+        assert destination.read_text(encoding="utf-8") == "UNRELATED=stay\n"
+
+
+# Verifies a generated config asks before it replaces a file, and keeps a backup once it does
+def test_a_generated_config_asks_before_replacing_an_existing_file():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=lambda prompt: "y")
+
+        assert written is True
+        assert backup_path is not None
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+        assert Path(backup_path).read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+
+
+# Verifies a declined replacement leaves the existing file exactly as it was
+def test_a_declined_replacement_keeps_the_existing_config():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=lambda prompt: "n")
+
+        assert (backup_path, written) == (None, False)
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+        assert list(destination.parent.glob("*.bak")) == []
+
+
+# Verifies --force replaces without asking, so a scripted run is not left waiting on a prompt
+def test_force_replaces_an_existing_config_without_asking():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        def refuse(prompt=""):
+            raise AssertionError("asked despite --force")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', force=True, interactive=True, input_func=refuse)
+
+        assert written is True
+        assert backup_path is not None
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+        assert Path(backup_path).exists()
+
+
+# Verifies a new destination is written without a prompt, because there is nothing to replace
+def test_a_new_destination_is_written_without_a_prompt():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+
+        def refuse(prompt=""):
+            raise AssertionError("asked about a file that does not exist")
+
+        backup_path, written = monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=True, input_func=refuse)
+
+        assert (backup_path, written) == (None, True)
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "new-user"\n'
+
+
+# Verifies a run with no terminal refuses instead of silently replacing a file nobody can confirm
+def test_a_replacement_without_a_terminal_is_refused():
+    with make_temp_directory() as directory_name:
+        destination = Path(directory_name) / "spotify_monitor.conf"
+        destination.write_text('TARGET_USER_URI_ID = "old-user"\n', encoding="utf-8")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            monitor.write_generated_config(destination, 'TARGET_USER_URI_ID = "new-user"\n', interactive=False)
+
+        assert destination.read_text(encoding="utf-8") == 'TARGET_USER_URI_ID = "old-user"\n'
+
+
 # Verifies dotenv updates reject keys outside the secret allowlist
 def test_dotenv_update_rejects_unknown_keys():
     with make_temp_directory() as directory_name:
@@ -298,9 +417,9 @@ def test_config_syntax_error_is_actionable(capsys):
         assert monitor.load_config_file(config_path, {}) is False
     output = capsys.readouterr().out
     assert str(config_path) in output
-    assert "* Line: 2" in output
-    assert 'TARGET_USER_URI_ID = "broken' in output
-    assert "* Parser:" in output
+    assert "Line: 2" in output
+    assert 'TARGET_USER_URI_ID = "broken' not in output
+    assert "Parser:" in output
     assert "To fix:" in output
     assert "matching quotes" in output
     assert "forward slashes or doubled backslashes" in output
@@ -332,7 +451,7 @@ def test_missing_explicit_config_is_actionable():
 
 # Verifies test email mode remains usable without any monitoring target
 def test_send_test_email_does_not_require_target():
-    setup = "runtime['check_internet'] = lambda: True; runtime['send_email'] = lambda *args, **kwargs: 0;"
+    setup = "runtime['check_internet'] = lambda: True; runtime['validate_smtp_configuration'] = lambda: None; runtime['send_email'] = lambda *args, **kwargs: 0;"
     result = run_cli(["--send-test-email", "--env-file", "none"], setup)
     assert result.returncode == 0, result.stderr
     assert "Email sent successfully" in result.stdout
@@ -438,7 +557,7 @@ def test_retired_allowance_does_not_accept_other_unknown_names():
 
 
 # Verifies invalid Friend Activity timing flags fail during argument validation
-@pytest.mark.parametrize("option", ["--check-interval", "--offline-timer", "--disappeared-timer"])
+@pytest.mark.parametrize("option", ["--check-interval", "--active-check-interval", "--offline-timer", "--disappeared-timer"])
 def test_nonpositive_friend_activity_timing_flags_are_rejected(option):
     result = run_cli([option, "0", "--doctor", "--env-file", "none"])
     assert result.returncode == 2
@@ -504,3 +623,184 @@ def test_convert_uri_to_url_matches_whole_parts():
 def test_ntfy_images_ships_disabled_and_documents_optional_dependency():
     assert "NTFY_IMAGES = False" in monitor.CONFIG_BLOCK
     assert 'pip install "spotify_monitor[notification-images]"' in monitor.CONFIG_BLOCK
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a read-only directory mode is POSIX-only")
+# Confirms a generated config that cannot be written reports the destination problem with a fix
+def test_a_generated_config_that_cannot_be_written_is_reported_with_a_fix():
+    with make_temp_directory() as directory_name:
+        read_only = Path(directory_name) / "read-only"
+        read_only.mkdir()
+        read_only.chmod(0o500)
+        target = read_only / "spotify_monitor.conf"
+        try:
+            result = run_cli(["--generate-config", str(target)])
+        finally:
+            read_only.chmod(0o700)
+
+    assert result.returncode == 1, result.stdout
+    assert "* Error: An output destination is not writable" in result.stdout
+    assert "To fix: Choose a writable path and verify its parent directory permissions then retry" in result.stdout
+
+
+# Verifies an assignment the owner exported keeps its export, since dropping it changes what a shell sourcing the file exports
+def test_an_exported_assignment_keeps_its_export(tmp_path):
+    destination = tmp_path / ".env"
+    destination.write_text('export SMTP_PASSWORD="old"\nOTHER=keep\n', encoding="utf-8")
+
+    monitor.update_dotenv_file(destination, {"SMTP_PASSWORD": "new"})
+
+    assert destination.read_text(encoding="utf-8") == 'export SMTP_PASSWORD="new"\nOTHER=keep\n'
+
+
+# Verifies a line break inside a value is escaped rather than written through, since a raw one would split the assignment
+def test_a_line_break_in_a_value_cannot_split_the_assignment(tmp_path):
+    destination = tmp_path / ".env"
+
+    monitor.update_dotenv_file(destination, {"SMTP_PASSWORD": "one\ntwo"})
+
+    assert destination.read_text(encoding="utf-8") == 'SMTP_PASSWORD="one\\ntwo"\n'
+
+
+# Verifies the writer refuses a key this tool does not ship, so a typo cannot put an unknown name in the private file
+def test_the_writer_refuses_a_key_this_tool_does_not_ship(tmp_path):
+    with pytest.raises(ValueError):
+        monitor.update_dotenv_file(tmp_path / ".env", {"NOT_A_SECRET": "value"})
+
+
+# Verifies the writer refuses a value that is not text, so a mistyped caller fails before the file is touched
+def test_the_writer_refuses_a_value_that_is_not_text(tmp_path):
+    with pytest.raises(TypeError):
+        monitor.update_dotenv_file(tmp_path / ".env", {"SMTP_PASSWORD": 1234})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the backup file mode is POSIX-only")
+# Verifies the backup name every tool in this family writes, so one documented shape covers them all
+def test_the_backup_carries_the_family_name_and_mode(tmp_path):
+    destination = tmp_path / "monitor.conf"
+    destination.write_text("SETTING = 1\n", encoding="utf-8")
+
+    backup_path = monitor.create_timestamped_backup(destination)
+
+    assert backup_path is not None
+    assert re.fullmatch(r"monitor\.conf\.\d{14}\.bak", Path(backup_path).name)
+    assert Path(backup_path).read_text(encoding="utf-8") == "SETTING = 1\n"
+    assert stat.S_IMODE(Path(backup_path).stat().st_mode) == 0o600
+
+
+# Verifies a second backup in the same second takes its own name rather than overwriting the first
+def test_a_second_backup_in_the_same_second_keeps_the_first(tmp_path):
+    destination = tmp_path / "monitor.conf"
+    destination.write_text("first\n", encoding="utf-8")
+    first = monitor.create_timestamped_backup(destination)
+    destination.write_text("second\n", encoding="utf-8")
+
+    second = monitor.create_timestamped_backup(destination)
+
+    assert first is not None and second is not None
+    assert first != second
+    assert Path(first).read_text(encoding="utf-8") == "first\n"
+    assert Path(second).read_text(encoding="utf-8") == "second\n"
+
+
+# Verifies a destination that is not there yet earns no backup, since there is nothing to copy
+def test_a_missing_destination_earns_no_backup(tmp_path):
+    assert monitor.create_timestamped_backup(tmp_path / "absent.conf") is None
+
+
+# A parent path that is a file is a write failure, not an existing config, so the advice must not say --force
+def test_a_file_in_the_way_of_the_parent_directory_is_not_an_existing_config(tmp_path):
+    blocker = tmp_path / "configs"
+    blocker.write_text("not a directory\n", encoding="utf-8")
+
+    with pytest.raises(OSError) as raised:
+        monitor.write_generated_config(blocker / "spotify_monitor.conf", "SMTP_PORT = 587\n", interactive=False)
+
+    assert not isinstance(raised.value, monitor.ConfigExistsError)
+    assert blocker.read_text(encoding="utf-8") == "not a directory\n"
+
+
+# Refusing to replace a config without a terminal is its own error, so the generate-config path can tell it apart
+def test_refusing_to_replace_a_config_without_a_terminal_raises_its_own_error(tmp_path):
+    destination = tmp_path / "spotify_monitor.conf"
+    destination.write_text("SMTP_PORT = 587\n", encoding="utf-8")
+
+    with pytest.raises(monitor.ConfigExistsError):
+        monitor.write_generated_config(destination, "SMTP_PORT = 465\n", interactive=False)
+
+    assert destination.read_text(encoding="utf-8") == "SMTP_PORT = 587\n"
+
+
+# The part of the configuration template every sibling monitor shares, in the order they all use
+SHARED_SETTING_ORDER = ("WEBHOOK_HEADERS", "NTFY_ACCESS_TOKEN", "WEBHOOK_TEMPLATE", "WEBHOOK_TRANSFORMS", "DISABLE_LOGGING", "ASCII_LOG_SEPARATORS", "TRUNCATE_CHARS", "CLEAR_SCREEN", "COLORED_OUTPUT", "COLOR_THEME", "VERBOSE_MODE", "DEBUG_MODE", "DELIVERY_CONFIRMATIONS")
+
+
+# Returns every setting the built-in template declares, in template order, including the commented theme block
+def template_setting_order(module):
+    order = []
+    for line in module.CONFIG_BLOCK.split("\n"):
+        match = re.match(r"^([A-Z][A-Z0-9_]*)\s*[:=]", line) or re.match(r"^# ([A-Z][A-Z0-9_]*)\s*=", line)
+        if match and match.group(1) not in order:
+            order.append(match.group(1))
+    return order
+
+
+# Verifies the template keeps the order shared with the sibling monitors, so one tool's config reads like the next
+def test_the_template_keeps_the_shared_setting_order():
+    order = template_setting_order(monitor)
+
+    assert set(SHARED_SETTING_ORDER) <= set(order), f"the template no longer declares {sorted(set(SHARED_SETTING_ORDER) - set(order))}"
+    assert [name for name in order if name in SHARED_SETTING_ORDER] == list(SHARED_SETTING_ORDER)
+
+
+# Verifies the linter defaults below the template repeat it in the same order, so a setting cannot drift or be filed twice
+def test_the_linter_defaults_follow_the_template_order():
+    source = Path(monitor.__file__).read_text(encoding="utf-8").split("\n")
+    start = next(index for index, line in enumerate(source) if line.startswith("# Do not change values below")) + 1
+    end = next(index for index, line in enumerate(source) if line.startswith("exec(CONFIG_BLOCK"))
+    order = template_setting_order(monitor)
+    mirrored = [match.group(1) for match in (re.match(r"^([A-Z][A-Z0-9_]*)\s*[:=]", line) for line in source[start:end]) if match and match.group(1) in set(order)]
+
+    assert len(mirrored) == len(set(mirrored)), "a setting is repeated in the linter defaults"
+    assert mirrored == [name for name in order if name in set(mirrored)]
+
+
+# Verifies an explicit colour theme survives a config rebuild, since the template ships the setting commented out
+def test_a_rebuilt_config_keeps_an_explicit_color_theme():
+    values = dict(monitor._config_template_defaults())
+    values["COLOR_THEME"] = {"header": "bright_red"}
+
+    rendered = monitor.generate_config_with_current_values(values)
+
+    assert monitor.parse_config_content(rendered, "<generated>")["COLOR_THEME"] == {"header": "bright_red"}
+
+
+# Verifies the shipped default stays commented out, so a rebuild does not pin a theme the user never chose
+def test_a_rebuilt_config_leaves_the_default_theme_commented():
+    rendered = monitor.generate_config_with_current_values(dict(monitor._config_template_defaults()))
+
+    assert "\nCOLOR_THEME = {" not in rendered
+
+
+# Verifies a run started with discovery off names the sentinel rather than a config file it deliberately ignored
+def test_a_printed_command_keeps_discovery_off(monkeypatch, tmp_path):
+    (tmp_path / "spotify_monitor.conf").write_text("DISABLE_LOGGING = True\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", True)
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+
+    assert monitor.find_config_file() is not None
+    assert monitor.resolved_command_config(None) == "none"
+    assert monitor.resolved_command_config("none") == "none"
+
+
+# Verifies discovery left on still names the file a printed command should carry
+def test_a_printed_command_names_the_discovered_config(monkeypatch, tmp_path):
+    config_path = tmp_path / "spotify_monitor.conf"
+    config_path.write_text("DISABLE_LOGGING = True\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+
+    assert str(monitor.resolved_command_config(None)) == str(config_path)
+    assert monitor.resolved_command_config("/given/path.conf") == "/given/path.conf"

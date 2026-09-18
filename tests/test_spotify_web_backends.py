@@ -71,7 +71,12 @@ def web_track_fixture():
 
 # Returns representative current Pathfinder playlist metadata
 def web_playlist_fixture():
-    return {"uri": PLAYLIST_URI, "name": "Cordas", "revisionId": "revision-1", "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"}, "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}},
+    return {
+        "uri": PLAYLIST_URI,
+        "name": "Cordas",
+        "revisionId": "revision-1",
+        "sharingInfo": {"shareUrl": "https://open.spotify.com/playlist/1yjvJQztEdo7pKTpIsIdOa?si=playlist"},
+        "ownerV2": {"data": {"uri": "spotify:user:brenda.juris", "name": "Agnes Hali", "username": "brenda.juris"}},
         "images": {
             "items": [
                 {
@@ -224,7 +229,6 @@ class SpotifyWebBackendTests(unittest.TestCase):
         memory_cache_factory.assert_called_once_with()
         self.assertIs(credentials_factory.call_args.kwargs["cache_handler"], memory_cache)
 
-
     # Verifies help exits successfully without network access or Spotipy
     def test_help_is_offline(self):
         result = run_cli("--help")
@@ -247,7 +251,9 @@ class SpotifyWebBackendTests(unittest.TestCase):
     # Verifies successful legacy track and playlist requests retain their existing shapes
     def test_legacy_web_api_success(self):
         track_response = FakeResponse(json_data={"duration_ms": 259933, "uri": TRACK_URI, "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU"}, "artists": [{"uri": "spotify:artist:1dgdvbogmctybPrGEcnYf6", "name": "Route 94", "external_urls": {"spotify": "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6"}}], "album": {"uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "name": "My Love", "external_urls": {"spotify": "https://open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4"}, "images": [{"url": "https://i.scdn.co/image/track-small.jpg", "width": 64}, {"url": "https://i.scdn.co/image/track-large.jpg", "width": 640}]}})
-        playlist_response = FakeResponse(json_data={"name": "Cordas", "owner": {"display_name": "Agnes Hali"},
+        playlist_response = FakeResponse(json_data={
+            "name": "Cordas",
+            "owner": {"display_name": "Agnes Hali"},
             "images": [
                 {"url": "https://i.scdn.co/image/small.jpg", "width": 64, "height": 64},
                 {"url": "https://i.scdn.co/image/large.jpg", "width": 640, "height": 640},
@@ -407,6 +413,10 @@ class SpotifyWebBackendTests(unittest.TestCase):
         with patch.object(monitor, "TOTP_SECRET_CIPHER_BYTES", ("bad", 55)):
             with self.assertRaises(ValueError):
                 monitor.generate_totp()
+        # A single number in place of the sequence is truthy, so it has to be rejected before anything iterates it
+        with patch.object(monitor, "TOTP_SECRET_CIPHER_BYTES", 17):
+            with self.assertRaises(ValueError):
+                monitor.generate_totp()
         with patch.object(monitor, "TOTP_VERSION", 0):
             with self.assertRaises(ValueError):
                 monitor.generate_totp()
@@ -478,12 +488,21 @@ class SpotifyWebBackendTests(unittest.TestCase):
     def test_anonymous_token_caching(self):
         token_data = {"access_token": "anonymous-token", "expires_at": int(time.time()) + 3600, "client_id": "web-client"}
         output = io.StringIO()
-        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh, patch.object(monitor, "VERBOSE_MODE", True), redirect_stdout(output):
+        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data) as refresh, patch.object(monitor, "DEBUG_MODE", True), redirect_stdout(output):
             first = monitor.spotify_get_web_access_token_data()
             second = monitor.spotify_get_web_access_token_data()
         self.assertEqual(first, second)
         self.assertEqual(refresh.call_count, 1)
-        self.assertEqual(output.getvalue().count("Web-player metadata token refreshed"), 1)
+        # The refresh is debug detail rather than a verbose notice, so a cached read prints nothing at all
+        self.assertEqual(output.getvalue().count("Anonymous Spotify web-player token obtained successfully"), 1)
+
+    # Verifies a routine token refresh is debug detail, so a verbose run stays quiet between real events
+    def test_a_routine_token_refresh_prints_nothing_in_verbose(self):
+        token_data = {"access_token": "anonymous-token", "expires_at": int(time.time()) + 3600, "client_id": "web-client"}
+        output = io.StringIO()
+        with patch.object(monitor, "refresh_access_token_from_sp_dc", return_value=token_data), patch.object(monitor, "VERBOSE_MODE", True), patch.object(monitor, "DEBUG_MODE", False), redirect_stdout(output):
+            monitor.spotify_get_web_access_token_data()
+        self.assertEqual(output.getvalue(), "")
 
     # Verifies current desktop bundles provide dynamically discovered operation hashes
     def test_persisted_query_discovery_and_cache(self):

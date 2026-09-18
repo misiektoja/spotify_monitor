@@ -119,8 +119,8 @@ def test_explicit_firefox_cookie_file_takes_precedence_and_prints_followup_comma
     assert dotenv_values(destination, interpolate=False)["SP_DC_COOKIE"] == "secret-cookie"
     output = capsys.readouterr().out
     assert monitor.SPOTIFY_WEB_LOGIN_URL in output
-    assert "* Browser cookie import completed successfully\n\nCheck authentication and the target:" in output
-    assert "Check authentication and the target:" in output
+    assert "* Browser cookie import completed successfully\n\nCheck setup again:" in output
+    assert "Check setup again:" in output
     assert "--doctor target.user" in output
     assert f"--config-file {config_path}" in output
     assert "After Doctor passes, start monitoring:" in output
@@ -590,3 +590,67 @@ def test_validation_buddy_list_rejection_is_distinct(monkeypatch):
 
     with pytest.raises(monitor.BrowserCookieImportError, match="Spotify authentication rejected"):
         monitor.validate_imported_sp_dc("secret-cookie")
+
+
+# Runs one successful import and returns the printed next-steps output
+def import_and_capture(tmp_path, monkeypatch, capsys, **keywords):
+    cookie_file = tmp_path / "cookies.sqlite"
+    cookie_file.touch()
+    monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="secret-cookie"))
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+    monitor.run_browser_cookie_import(cookie_file=str(cookie_file), env_file=str(tmp_path / "import.env"), interactive=False, **keywords)
+    return capsys.readouterr().out
+
+
+# Verifies a target the config will not supply is printed in both next-steps commands
+def test_a_target_the_config_does_not_hold_is_printed_in_both_commands(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, target="friend.user", saved_target="")
+    assert output.count("friend.user") == 2
+    assert "<spotify_target>" not in output
+
+
+# Verifies the caller can leave the next-steps commands out and the output then ends with the completion line
+def test_the_next_steps_can_be_left_out(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, print_next_steps=False)
+    assert output.endswith("* Browser cookie import completed successfully\n")
+    assert "Check setup again:" not in output
+
+
+# Verifies a target already saved in the config is left out of both next-steps commands
+def test_a_target_saved_in_the_config_is_left_out_of_both_commands(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, target="friend.user", saved_target="friend.user")
+    assert "friend.user" not in output
+    assert "<spotify_target>" not in output
+
+
+# Verifies only the monitoring command carries the placeholder when no target is known at all
+def test_no_known_target_places_the_placeholder_in_the_monitoring_command_only(tmp_path, monkeypatch, capsys):
+    output = import_and_capture(tmp_path, monkeypatch, capsys, saved_target="")
+    doctor_line, monitor_line = output.split("Check setup again:", 1)[1].split("After Doctor passes, start monitoring:", 1)
+    assert "<spotify_target>" not in doctor_line
+    assert "<spotify_target>" in monitor_line
+
+
+# Verifies the persisted target is read from the config file when the caller knows no target
+def test_a_config_file_target_is_read_when_the_caller_knows_no_target(tmp_path, monkeypatch, capsys):
+    with_target = tmp_path / "with_target.conf"
+    with_target.write_text('TARGET_USER_URI_ID = "saved.user"\n', encoding="utf-8")
+    without_target = tmp_path / "without_target.conf"
+    without_target.write_text('TARGET_USER_URI_ID = ""\n', encoding="utf-8")
+    saved_output = import_and_capture(tmp_path, monkeypatch, capsys, config_path=str(with_target))
+    unsaved_output = import_and_capture(tmp_path, monkeypatch, capsys, config_path=str(without_target), force=True)
+    assert "<spotify_target>" not in saved_output
+    assert "saved.user" not in saved_output
+    assert "<spotify_target>" in unsaved_output
+
+
+PROGRESS_LINES = (
+    "* Cookie extracted. Checking it with Spotify ...",
+    "* Checking the entered Spotify cookie before changing the dotenv file ...",
+)
+
+
+# Verifies each wait on a remote service is announced with the wording every sibling monitor uses
+@pytest.mark.parametrize("line", PROGRESS_LINES)
+def test_the_progress_lines_use_the_shared_checking_wording(line):
+    assert line in (PROJECT_ROOT / "spotify_monitor.py").read_text(encoding="utf-8"), line
