@@ -598,9 +598,193 @@ def test_single_profile_is_selected_automatically(tmp_path):
 
 # Verifies several profiles can be selected through an interactive prompt
 def test_multiple_profiles_support_interactive_selection(tmp_path, capsys):
-    selected = monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: "2")
+    supplied = iter(["2"])
+    selected = monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
     assert selected["name"] == "Work"
     assert capsys.readouterr().out.startswith("\nMultiple Firefox profiles found:")
+
+
+# Creates a synthetic Chromium cookie database holding only encrypted values
+def create_chromium_database(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE cookies (host_key TEXT, name TEXT, encrypted_value BLOB, expires_utc INTEGER, is_persistent INTEGER)")
+        connection.executemany("INSERT INTO cookies VALUES (?, ?, ?, ?, ?)", rows)
+
+
+# Returns profile records for the picker, marking which ones the probe should call live
+def picker_profiles(count, install=""):
+    return [{"dir": f"p{index}.name{index}", "name": f"name{index}", "path": f"/p/p{index}", "cookie_file": f"/p/p{index}/cookies.sqlite", "install": install} for index in range(1, count + 1)]
+
+
+# Verifies invalid input re-asks instead of ending the import, which a typo previously did
+@pytest.mark.parametrize("answers, expected", [
+    (["abc", "2"], "p2.name2"),
+    (["-1", "3"], "p3.name3"),
+    (["99", "1"], "p1.name1"),
+    (["", "2"], "p2.name2"),
+    (["2.5", "1"], "p1.name1"),
+])
+def test_the_picker_re_asks_on_invalid_input(monkeypatch, capsys, answers, expected):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+    supplied = iter(answers)
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    assert selected["dir"] == expected
+    assert "Enter a number between 1 and 3, or 0 to cancel." in capsys.readouterr().out
+
+
+# Verifies a negative number is refused rather than indexing backwards from the end of the list
+def test_the_picker_never_indexes_backwards(monkeypatch):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+    supplied = iter(["-1", "-3", "1"])
+
+    assert monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))["dir"] == "p1.name1"
+
+
+# Verifies a closed input stream cancels rather than looping forever
+@pytest.mark.parametrize("interruption", [EOFError, KeyboardInterrupt])
+def test_the_picker_cancels_on_a_closed_prompt(monkeypatch, interruption):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
+        monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=Mock(side_effect=interruption))
+
+
+# Verifies only profiles holding a current login are marked and the single one becomes the Enter default
+def test_the_picker_marks_and_preselects_the_only_live_profile(monkeypatch, capsys):
+    profiles = picker_profiles(3)
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda cookie_file, **keywords: cookie_file == profiles[1]["cookie_file"])
+
+    prompts = []
+    supplied = iter([""])
+
+    selected = monitor.select_browser_profile(profiles, "firefox", interactive=True, input_func=lambda prompt: (prompts.append(prompt), next(supplied))[1])
+
+    assert selected["dir"] == "p2.name2"
+    output = capsys.readouterr().out
+    assert "* marks a profile holding a current Spotify login" in output
+    assert "2) * name2" in output
+    assert "(default)" in output
+    assert "1) * " not in output
+    assert "Enter for default" in prompts[0]
+
+
+# Verifies nothing is marked or preselected when no profile holds a current login
+def test_the_picker_marks_nothing_when_no_profile_is_live(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: False)
+    supplied = iter(["", "2"])
+    prompts = []
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: (prompts.append(prompt), next(supplied))[1])
+
+    assert selected["dir"] == "p2.name2"
+    output = capsys.readouterr().out
+    assert "marks a profile" not in output
+    assert "(default)" not in output
+    assert "Enter for default" not in prompts[0]
+    assert "Enter a number between 1 and 3" in output
+
+
+# Verifies several live profiles are all marked but none is preselected
+def test_the_picker_preselects_nothing_when_several_are_live(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: True)
+    supplied = iter(["", "3"])
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    assert selected["dir"] == "p3.name3"
+    output = capsys.readouterr().out
+    assert output.count("* name") == 3
+    assert "(default)" not in output
+
+
+# Verifies profile numbers line up once the list reaches double digits
+def test_the_picker_right_aligns_its_numbers(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    supplied = iter(["1"])
+    monitor.select_browser_profile(picker_profiles(12), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    output = capsys.readouterr().out
+    assert "   1) name1" in output
+    assert "  12) name12" in output
+
+
+# Verifies the only profile available is warned about when it holds no current login
+def test_a_single_signed_out_profile_is_warned_about(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: False)
+
+    selected = monitor.select_browser_profile(picker_profiles(1), "firefox")
+
+    assert selected["dir"] == "p1.name1"
+    assert "holds no current Spotify login" in capsys.readouterr().out
+
+
+# Verifies an unreadable database leaves the only profile unwarned rather than called signed out
+def test_a_single_unreadable_profile_is_not_called_signed_out(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    monitor.select_browser_profile(picker_profiles(1), "firefox")
+
+    assert "holds no current Spotify login" not in capsys.readouterr().out
+
+
+# Verifies two installs sharing one profile directory name are told apart and given advice that works
+def test_a_directory_name_shared_by_two_installs_names_the_cookie_file(real_browser_profiles, tmp_path):
+    for relative_path in (".mozilla/firefox/abcd1234.default-release", "snap/firefox/common/.mozilla/firefox/abcd1234.default-release"):
+        create_firefox_database(tmp_path / relative_path / "cookies.sqlite", [])
+    profiles = monitor.discover_firefox_profiles(system_name="Linux", home=tmp_path)
+    assert [profile["install"] for profile in profiles] == ["", "Snap"]
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="separate Firefox installs") as error:
+        monitor.select_browser_profile(profiles, "firefox", requested_profile="abcd1234.default-release")
+    message = str(error.value)
+    assert "--cookie-file PATH" in message
+    assert "abcd1234.default-release (default-release) [Snap]" in message
+
+
+# Verifies a live Spotify cookie is recognised on both schemas without any value being decrypted
+def test_the_live_cookie_probe_reads_both_schemas(tmp_path):
+    now = 1_700_000_000
+    live_chromium = int((now + 86400 + monitor.CHROMIUM_EPOCH_OFFSET_SECONDS) * 1_000_000)
+    dead_chromium = int((now - 86400 + monitor.CHROMIUM_EPOCH_OFFSET_SECONDS) * 1_000_000)
+
+    create_firefox_database(tmp_path / "ff-live.sqlite", [("spotify.com", "sp_dc", "x", (now + 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-dead.sqlite", [("spotify.com", "sp_dc", "x", (now - 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-legacy.sqlite", [("spotify.com", "sp_dc", "x", now + 86400, 10)])
+    create_firefox_database(tmp_path / "ff-none.sqlite", [("spotify.com", "other", "x", (now + 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-foreign.sqlite", [("notspotify.com", "sp_dc", "x", (now + 86400) * 1000, 10)])
+    create_chromium_database(tmp_path / "cr-live.sqlite", [(".spotify.com", "sp_dc", b"encrypted", live_chromium, 1)])
+    create_chromium_database(tmp_path / "cr-dead.sqlite", [(".spotify.com", "sp_dc", b"encrypted", dead_chromium, 1)])
+    create_chromium_database(tmp_path / "cr-session.sqlite", [(".spotify.com", "sp_dc", b"encrypted", 0, 0)])
+    (tmp_path / "broken.sqlite").write_text("not a database", encoding="utf-8")
+
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-live.sqlite", firefox=True, now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-legacy.sqlite", firefox=True, now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-dead.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-none.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-foreign.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-live.sqlite", now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-dead.sqlite", now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-session.sqlite", now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "broken.sqlite", now=now) is None
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "absent.sqlite", now=now) is None
+    assert monitor.profile_has_live_spotify_cookie("", now=now) is None
+
+
+# Verifies each reason a Firefox listing can be empty gets its own fix
+def test_firefox_empty_listing_separates_its_causes(tmp_path, real_browser_profiles):
+    assert "no known Firefox profile location" in monitor.firefox_no_profiles_message(system_name="Plan9", home=tmp_path)
+
+    not_installed = monitor.firefox_no_profiles_message(system_name="Darwin", home=tmp_path)
+    assert "Install Firefox" in not_installed and "Looked in" in not_installed
+
+    (tmp_path / "Library/Application Support/Firefox").mkdir(parents=True)
+    no_cookies = monitor.firefox_no_profiles_message(system_name="Darwin", home=tmp_path)
+    assert "holds a cookie database yet" in no_cookies
+    assert "Install Firefox" not in no_cookies
 
 
 # Verifies several profiles fail actionably in a noninteractive environment
@@ -684,8 +868,9 @@ def test_cli_import_failure_exit_code():
 
 # Verifies interactive profile cancellation is reported as a failure
 def test_profile_selection_cancellation_is_failure(tmp_path):
+    supplied = iter(["0"])
     with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
-        monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: "0")
+        monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
 
 
 # Verifies CLI cancellation returns a nonzero exit code
