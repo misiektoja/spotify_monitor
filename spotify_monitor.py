@@ -1596,12 +1596,23 @@ def active_config_path():
     return CLI_CONFIG_PATH or ("none" if CONFIG_DISCOVERY_DISABLED else None)
 
 
+# Names the other browsers the import accepts
+def cookie_auth_recovery_browser_hint(method: Optional[str] = None) -> str:
+    # Nothing records which browser a cookie came from, so a message built around the Firefox command names the
+    # alternatives rather than sending a Chrome or Brave user to a browser they may not even have
+    others = [browser for browser in _wizard_import_browsers(method or _wizard_install_method()) if browser != "firefox"]
+    if not others:
+        return ""
+    listed = f"{', '.join(others[:-1])} or {others[-1]}" if len(others) > 1 else others[0]
+    return f" (use --browser {listed} to import from one of those instead)"
+
+
 # Returns install-aware cookie recovery guidance with host-specific container instructions
 def cookie_auth_recovery_fix() -> str:
     method = _wizard_install_method()
     if not is_container_environment():
         firefox_command = _wizard_firefox_import_cmd(method, active_dotenv_path(), config_path=active_config_path())
-        return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}"
+        return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}{cookie_auth_recovery_browser_hint(method)}"
     private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
     return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in. Then use the host-specific read-only profile import command in the guide below.\nManual fallback with hidden entry: {private_command}"
 
@@ -10184,7 +10195,7 @@ def _wizard_secret_command_paths(method: str, config_path, env_path) -> str:
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
-def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
+def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None, browser: str = "firefox") -> str:
     selected_host = host_os or "linux"
     prefix = _wizard_cmd_prefix(method, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
@@ -10193,7 +10204,7 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str
     elif method == "compose":
         profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
         prefix = f"docker compose run --rm -v {profile_mount} spotify_monitor"
-    command = f"{prefix} --import-browser-cookie --browser firefox"
+    command = f"{prefix} --import-browser-cookie --browser {browser}"
     if target:
         command += f" {_wizard_quote_argument(target)}"
     command += _wizard_secret_command_paths(method, config_path, env_path)
@@ -10271,8 +10282,55 @@ def _wizard_import_browsers(method: str) -> List[str]:
     return list(IMPORT_BROWSERS)
 
 
+# Per-browser profile counts for the setup menus, dropped before each menu so a login made while a prompt was waiting
+# is picked up rather than answered from a stale count
+_WIZARD_BROWSER_LOGIN_COUNTS: Dict[str, Optional[Tuple[int, int]]] = {}
+
+
+# Counts one browser's profiles and how many hold a current Spotify login, or None when they could not be read
+def _wizard_browser_login_counts(browser: str) -> Optional[Tuple[int, int]]:
+    # The cookie name, host and expiry are stored in the clear, so this answers before pycookiecheat is installed
+    if browser not in _WIZARD_BROWSER_LOGIN_COUNTS:
+        try:
+            is_firefox = browser == "firefox"
+            profiles = discover_firefox_profiles() if is_firefox else discover_chromium_profiles(browser)
+            states = [profile_has_live_spotify_cookie(profile["cookie_file"], firefox=is_firefox) for profile in profiles]
+            _WIZARD_BROWSER_LOGIN_COUNTS[browser] = (len([state for state in states if state]), len(states))
+        except Exception:
+            _WIZARD_BROWSER_LOGIN_COUNTS[browser] = None
+    return _WIZARD_BROWSER_LOGIN_COUNTS[browser]
+
+
+# Describes what setup can see of one browser's profiles, so the login menu is not a blind choice between browsers
+def _wizard_browser_login_note(browser: str) -> str:
+    counts = _wizard_browser_login_counts(browser)
+    if counts is None:
+        return ""
+    with_login, total = counts
+    if not total:
+        return f"No {browser_label(browser)} profiles were found on this machine."
+    if not with_login:
+        return f"No {browser_label(browser)} profile here holds a current Spotify login yet."
+    return f"{with_login} of {total} profiles here hold a current Spotify login." if total > 1 else "This profile holds a current Spotify login."
+
+
+# Summarises where a current Spotify login can be seen across the Chromium browsers offered as one menu entry
+def _wizard_chromium_group_note(browsers: List[str]) -> str:
+    counted = {browser: _wizard_browser_login_counts(browser) or (0, 0) for browser in browsers}
+    with_login = [browser_label(browser) for browser, counts in counted.items() if counts[0]]
+    if with_login:
+        return f"Signed in to Spotify in {' and '.join(with_login)}."
+    installed = [browser_label(browser) for browser, counts in counted.items() if counts[1]]
+    if installed:
+        return f"No current Spotify login found in {' or '.join(installed)}."
+    return "No Chrome, Brave or Chromium profiles were found on this machine."
+
+
 # Describes one browser import choice without exposing browser data
 def _wizard_browser_description(browser: str) -> str:
+    note = _wizard_browser_login_note(browser)
+    if note:
+        return note
     if browser == "firefox":
         return "Built-in reader for macOS, Linux and Windows with no extra package."
     return f"Import from the signed-in {browser_label(browser)} profile."
@@ -10954,10 +11012,14 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 options = [("Import from Firefox after setup, recommended", "Reuses a signed-in host Firefox profile through one read-only import command."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
                 actions = ("browser", "manual", "finish")
         else:
-            options = [("Import from Firefox, recommended", "Uses Firefox directly with no additional package.")]
+            # A login may have been made while an earlier prompt was waiting, so the counts are taken fresh each time
+            _WIZARD_BROWSER_LOGIN_COUNTS.clear()
+            options = [("Import from Firefox, recommended", f"Uses Firefox directly with no additional package. {_wizard_browser_login_note('firefox')}".strip())]
             actions = ["firefox"]
             if chromium_browsers:
-                chromium_description = "Import from a signed-in Chrome, Brave or Chromium profile." if _wizard_chromium_dependency_available() else "Setup can install the required pycookiecheat package now."
+                chromium_description = _wizard_chromium_group_note(chromium_browsers)
+                if not _wizard_chromium_dependency_available():
+                    chromium_description = f"{chromium_description} Setup can install the required pycookiecheat package now."
                 options.append(("Import from Chrome, Brave or Chromium", chromium_description))
                 actions.append("chromium")
             options.extend((("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")))
@@ -11161,8 +11223,29 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     return True
 
 
+# Offers the other import browsers after a failed attempt
+def _wizard_switch_import_browser(method: str, current: str) -> Optional[str]:
+    # A login missing from one browser is very often present in another, so declining a retry must not end the import
+    others = [browser for browser in _wizard_import_browsers(method) if browser != current]
+    if not others:
+        return None
+    options = [(browser_label(browser), _wizard_browser_description(browser)) for browser in others]
+    options.append((f"Keep trying {browser_label(current)}", "Returns to the import with the browser unchanged."))
+    choice = _wizard_ask_choice("Which browser should setup import from instead?", options)
+    if choice == len(others):
+        return None
+    selected = others[choice]
+    if selected in CHROMIUM_IMPORT_BROWSERS and not _wizard_chromium_dependency_available():
+        print()
+        if not _wizard_ask_yes_no("Chromium browser import requires pycookiecheat. Install it now?", default=True):
+            return None
+        if not _wizard_install_chromium_dependency(method):
+            return None
+    return selected
+
+
 # Completes a deferred browser import with retry, private entry or incomplete recovery choices
-def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path, target: str, saved_target: str) -> dict:
+def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path, target: str, saved_target: str, method: str = "manual") -> dict:
     browser = auth.get("browser")
     if not browser:
         return auth
@@ -11173,10 +11256,27 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path,
             return auth
         except BrowserCookieImportError as exc:
             print(render_recovery_error(exc, "browser_import"))
-        recovery = _wizard_ask_choice("Browser import did not complete. What next?", [("Retry browser import", "Try discovery, extraction and validation again."), ("Enter sp_dc privately", "Validate and save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and authenticate later.")])
-        if recovery == 0:
+        # The counts shown by the switch menu are taken fresh, since the user may have signed in while this prompt waited
+        _WIZARD_BROWSER_LOGIN_COUNTS.clear()
+        label = browser_label(browser)
+        others = [candidate for candidate in _wizard_import_browsers(method) if candidate != browser]
+        options = [(f"Retry the {label} import", "Pick another profile, or sign in to Spotify in that browser first.")]
+        actions = ["retry"]
+        if others:
+            options.append(("Import from a different browser", f"Setup can import from {' or '.join(browser_label(candidate) for candidate in others)} instead."))
+            actions.append("switch")
+        options.extend((("Enter sp_dc privately", "Validate and save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and authenticate later.")))
+        actions.extend(("manual", "finish"))
+        recovery = actions[_wizard_ask_choice(f"The {label} import did not complete. What next?", options)]
+        if recovery == "retry":
             continue
-        if recovery == 1:
+        if recovery == "switch":
+            selected = _wizard_switch_import_browser(method, browser)
+            if selected:
+                browser = selected
+                auth.update({"browser": selected, "source": f"browser import ({browser_label(selected)})"})
+            continue
+        if recovery == "manual":
             cookie = _wizard_ask_secret("Existing sp_dc value")
             # Checked before the write, so this recovery path reports a stale cookie the way the import it replaces does
             print("  Checking the cookie with Spotify ...")
@@ -11786,7 +11886,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if auth.get("browser") and method not in ("docker", "compose"):
         print(colorize('header', "\nBrowser cookie import\n"))
         try:
-            auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "")
+            auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "", method)
         except (EOFError, KeyboardInterrupt):
             # The config is already written, so an interrupt here leaves authentication to the printed commands
             checks_skipped = True
@@ -11837,7 +11937,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, config_path=config_path))
             print("Run setup again to select a host-specific Firefox import command.\n")
         elif config_values["TOKEN_SOURCE"] == "cookie":
-            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path))
+            chosen_browser = auth.get("browser") or "firefox"
+            chosen_label = browser_label(chosen_browser)
+            recommended = " (recommended locally)" if chosen_browser == "firefox" else ""
+            _wizard_print_command(f"Import Spotify login from {chosen_label}{recommended}:", _wizard_firefox_import_cmd(method, env_path, browser=chosen_browser))
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, config_path=config_path))
         else:
             print("Complete advanced client authentication before running Doctor.")
