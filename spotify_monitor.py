@@ -1361,6 +1361,16 @@ CONTAINER_FIREFOX_HOSTS = {
     "windows-cmd": ("Windows Command Prompt", '"%APPDATA%\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'),
 }
 
+# Names the directory each documented mount reads, shown beside the host label when setup asks which host runs Docker
+CONTAINER_FIREFOX_HOST_HINTS = {
+    "macos": "Use the Firefox profile under Library/Application Support.",
+    "linux": "Use the profile under ~/.mozilla/firefox.",
+    "linux-snap": "Use the profile under ~/snap/firefox.",
+    "linux-flatpak": "Use the profile under ~/.var/app/org.mozilla.firefox.",
+    "windows-powershell": "Use the Firefox profile under $env:APPDATA.",
+    "windows-cmd": "Use the Firefox profile under %APPDATA%.",
+}
+
 
 # Returns whether Spotify Monitor is running in a Docker or Docker Compose container
 def is_container_environment() -> bool:
@@ -10978,22 +10988,17 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
 
 # Selects one supported Docker host and Firefox profile layout for deferred import
 def _wizard_select_container_firefox_host() -> Optional[str]:
-    options = [
-        ("macOS", "Use the Firefox profile under Library/Application Support."),
-        ("Linux with a standard Firefox package", "Use the profile under ~/.mozilla/firefox."),
-        ("Linux with Firefox from Snap", "Use the profile under ~/snap/firefox."),
-        ("Linux with Firefox from Flatpak", "Use the profile under ~/.var/app/org.mozilla.firefox."),
-        ("Windows PowerShell", "Use the Firefox profile under $env:APPDATA."),
-        ("Windows Command Prompt", "Use the Firefox profile under %APPDATA%."),
-        ("Another system", "Firefox import after Docker setup is not currently available for this host."),
-    ]
+    # Derived from the mount table so a host added there is offered here and maps back to the key that names its mount
+    hosts = list(CONTAINER_FIREFOX_HOSTS)
+    options = [(CONTAINER_FIREFOX_HOSTS[host][0], CONTAINER_FIREFOX_HOST_HINTS[host]) for host in hosts]
+    options.append(("Another system", "Firefox import after Docker setup is not currently available for this host."))
     selected = _wizard_ask_choice("Which host environment runs Docker?", options)
-    if selected == len(options) - 1:
+    if selected >= len(hosts):
         print()
         print("  Firefox import after Docker setup is not currently available for this host.")
         print("  Choose private sp_dc entry or finish without credentials.")
         return None
-    return ("macos", "linux", "linux-snap", "linux-flatpak", "windows-powershell", "windows-cmd")[selected]
+    return hosts[selected]
 
 
 # Collects cookie-mode choices while keeping all secret values out of output
