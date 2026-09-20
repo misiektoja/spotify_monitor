@@ -319,6 +319,8 @@ spotify_monitor --import-browser-cookie --browser chrome
 
 Select a Chromium browser profile by its directory name, such as `Default` or `Profile 1`. Friendly names are also accepted.
 
+On Linux, Brave and Chromium installed natively, through Snap or through Flatpak are discovered automatically. A native install is preferred when both are present. Google Chrome is only packaged natively.
+
 Chromium-based import does not work inside Docker because the container cannot use the host password service needed to decrypt the cookies. Use Firefox as shown under [Container Operation](usage.md#import-firefox-into-container-authentication). You can also perform a Chromium import with a local PyPI or manual installation.
 
 <a id="manual-cookie-extraction"></a>
