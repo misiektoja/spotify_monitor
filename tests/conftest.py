@@ -39,6 +39,25 @@ def _restore(current, saved):
     return saved
 
 
+# Enumerators that read whichever browsers are installed on the machine running the suite
+_BROWSER_PROFILE_ENUMERATORS = ("discover_firefox_profiles", "discover_chromium_profiles")
+_REAL_BROWSER_PROFILE_ENUMERATORS = {name: getattr(monitor, name) for name in _BROWSER_PROFILE_ENUMERATORS}
+
+
+@pytest.fixture(autouse=True)
+# Keeps the suite away from the real browser profiles of whoever runs it, which are slow to reach and differ per machine
+def stub_browser_profile_discovery(monkeypatch):
+    for name in _BROWSER_PROFILE_ENUMERATORS:
+        monkeypatch.setattr(monitor, name, lambda *arguments, **keywords: [])
+
+
+@pytest.fixture
+# Restores the real enumerators for the tests that exercise them against their own synthetic browser roots
+def real_browser_profiles(monkeypatch):
+    for name, enumerator in _REAL_BROWSER_PROFILE_ENUMERATORS.items():
+        monkeypatch.setattr(monitor, name, enumerator)
+
+
 @pytest.fixture(autouse=True)
 # Resets the shared dotenv and secret state after every test, since these are mutated rather than reassigned
 def reset_shared_monitor_state():

@@ -47,7 +47,7 @@ def sample_profiles(tmp_path):
 
 
 # Verifies profiles.ini metadata supplies the friendly Firefox profile name
-def test_firefox_profiles_ini_discovery(tmp_path):
+def test_firefox_profiles_ini_discovery(tmp_path, real_browser_profiles):
     root = tmp_path / ".mozilla/firefox"
     profile_dir = root / "Profiles/abc.default-release"
     create_firefox_database(profile_dir / "cookies.sqlite", [(".spotify.com", "sp_dc", "cookie", 4102444800, 10)])
@@ -62,7 +62,7 @@ def test_firefox_profiles_ini_discovery(tmp_path):
 
 
 # Verifies Firefox scanning finds a profile when profiles.ini is absent
-def test_firefox_fallback_directory_discovery(tmp_path):
+def test_firefox_fallback_directory_discovery(tmp_path, real_browser_profiles):
     cookie_file = tmp_path / ".mozilla/firefox/scan.default-release/cookies.sqlite"
     create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "cookie", 4102444800, 10)])
 
@@ -72,7 +72,7 @@ def test_firefox_fallback_directory_discovery(tmp_path):
 
 
 # Verifies Linux standard, Snap and Flatpak Firefox locations are scanned
-def test_firefox_linux_location_discovery(tmp_path):
+def test_firefox_linux_location_discovery(tmp_path, real_browser_profiles):
     relative_roots = [".mozilla/firefox", "snap/firefox/common/.mozilla/firefox", ".var/app/org.mozilla.firefox/.mozilla/firefox"]
     for index, relative_root in enumerate(relative_roots):
         create_firefox_database(tmp_path / relative_root / f"p{index}.default/cookies.sqlite", [("spotify.com", "sp_dc", f"cookie-{index}", 4102444800, index)])
@@ -149,6 +149,107 @@ def test_firefox_immutable_access_bypasses_exclusive_lock(tmp_path):
         locking_connection.execute("BEGIN EXCLUSIVE")
 
         assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-cookie"
+
+
+# Returns two synthetic Firefox profile records naming the given cookie database as the selected one
+def firefox_profile_records(selected_cookie_file):
+    return [
+        {"dir": "aaaa1111.default-release", "name": "default-release", "path": str(Path(selected_cookie_file).parent), "cookie_file": str(selected_cookie_file)},
+        {"dir": "bbbb2222.work", "name": "Work", "path": "/elsewhere/bbbb2222.work", "cookie_file": "/elsewhere/bbbb2222.work/cookies.sqlite"},
+    ]
+
+
+# Verifies the expiry ranking works on current Firefox, which records cookie expiry in milliseconds
+@pytest.mark.parametrize("unit", [1, 1000], ids=["seconds", "milliseconds"])
+def test_firefox_prefers_the_unexpired_cookie_in_either_expiry_unit(tmp_path, unit):
+    now = 1_700_000_000
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [
+        ("spotify.com", "sp_dc", "expired-but-touched-recently", (now - 365 * 86400) * unit, 200),
+        ("open.spotify.com", "sp_dc", "still-valid", (now + 365 * 86400) * unit, 100),
+    ])
+
+    assert monitor.read_firefox_sp_dc(cookie_file, now=now) == "still-valid"
+
+
+# Verifies a millisecond expiry is not mistaken for a date far in the future
+def test_firefox_expiry_unit_is_taken_from_the_magnitude():
+    assert monitor._cookie_expiry_seconds(1_819_314_035_557) == 1_819_314_035.557
+    assert monitor._cookie_expiry_seconds(1_715_811_780) == 1_715_811_780
+    assert monitor._cookie_expiry_seconds(5000) == 5000
+    assert monitor._cookie_expiry_seconds(0) == 0
+
+
+# Verifies a profile whose every sp_dc has lapsed is reported from the database without a Spotify request
+def test_firefox_reports_a_wholly_expired_profile_without_a_request(tmp_path, monkeypatch):
+    now = 1_700_000_000
+    expired_at = now - 400 * 86400
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "lapsed-secret", expired_at * 1000, 200)])
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="expired on") as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=now)
+    message = str(error.value)
+    assert monitor.get_date_from_ts(expired_at) in message
+    assert "aaaa1111.default-release" in message
+    assert "lapsed-secret" not in message
+
+
+# Verifies the whole import stops at the expired cookie rather than asking Spotify about it
+def test_an_expired_firefox_cookie_never_reaches_validation(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "lapsed-secret", 1_600_000_000 * 1000, 200)])
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(side_effect=AssertionError("Spotify was asked about an expired cookie")))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="expired on"):
+        monitor.run_browser_cookie_import(browser="firefox", cookie_file=str(cookie_file), env_file=str(tmp_path / ".env"), interactive=False)
+    assert not (tmp_path / ".env").exists()
+
+
+# Verifies a failure names the profile that failed and the other profiles a session could be in
+def test_firefox_failures_name_the_profile_and_the_alternatives(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "other", "not-secret", 5000, 20)])
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="No sp_dc cookie") as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=1000)
+    message = str(error.value)
+    assert "Firefox profile aaaa1111.default-release (default-release)" in message
+    assert "Other Firefox profiles found: bbbb2222.work (Work)." in message
+
+
+# Verifies a machine carrying many profiles gets a bounded list rather than all of them
+def test_firefox_alternatives_are_capped(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "other", "not-secret", 5000, 20)])
+    extras = [{"dir": f"p{index}.profile{index}", "name": f"profile{index}", "path": f"/x/p{index}", "cookie_file": f"/x/p{index}/cookies.sqlite"} for index in range(12)]
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file)[:1] + extras)
+
+    with pytest.raises(monitor.BrowserCookieImportError) as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=1000)
+    message = str(error.value)
+    assert message.count("cookies.sqlite") == 0
+    assert "and 6 more." in message
+    assert "p6.profile6" not in message
+
+
+# Verifies an unreadable database also names the profile and the alternatives
+def test_firefox_unreadable_database_names_the_alternatives(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    cookie_file.write_text("not a SQLite database", encoding="utf-8")
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="Close Firefox") as error:
+        monitor.read_firefox_sp_dc(cookie_file)
+    assert "Other Firefox profiles found: bbbb2222.work (Work)." in str(error.value)
+
+
+# Verifies the suite never reaches the browser profiles of the machine running it
+def test_browser_profile_discovery_is_stubbed_by_default():
+    assert monitor.discover_firefox_profiles() == []
+    assert monitor.discover_chromium_profiles("chrome") == []
 
 
 # Verifies a cookie a running Firefox has written only to its write-ahead log is still found
@@ -316,7 +417,7 @@ def test_chromium_user_data_path_resolution(tmp_path):
 
 
 # Verifies Chromium discovery uses supported directories and Local State names
-def test_chromium_profile_discovery_and_local_state_names(tmp_path):
+def test_chromium_profile_discovery_and_local_state_names(tmp_path, real_browser_profiles):
     base_path = tmp_path / "user-data"
     (base_path / "Default/Network").mkdir(parents=True)
     (base_path / "Default/Network/Cookies").touch()
