@@ -151,6 +151,100 @@ def test_firefox_immutable_access_bypasses_exclusive_lock(tmp_path):
         assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-cookie"
 
 
+# Verifies a cookie a running Firefox has written only to its write-ahead log is still found
+def test_firefox_reads_a_cookie_left_in_the_write_ahead_log(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "checkpointed-cookie", 5000, 10)])
+    with sqlite3.connect(cookie_file) as setup_connection:
+        setup_connection.execute("PRAGMA journal_mode=WAL")
+        setup_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    writer = sqlite3.connect(cookie_file)
+    try:
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO moz_cookies VALUES (?, ?, ?, ?, ?)", ("spotify.com", "sp_dc", "log-only-cookie", 5000, 20))
+        writer.commit()
+        assert (tmp_path / "cookies.sqlite-wal").stat().st_size > 0
+
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "log-only-cookie"
+    finally:
+        writer.close()
+
+
+# Verifies a cookie database on read-only media stays readable, which is how the container mounts a Firefox profile
+def test_firefox_reads_a_database_on_read_only_media(tmp_path):
+    profile_dir = tmp_path / "readonly"
+    cookie_file = profile_dir / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "mounted-cookie", 5000, 10)])
+    # Firefox keeps its cookie database in write-ahead logging mode, and opening one of those read-only needs to
+    # create a shared-memory file, which is exactly what a read-only mount refuses
+    with sqlite3.connect(cookie_file) as journal_connection:
+        journal_connection.execute("PRAGMA journal_mode=WAL")
+        journal_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    (profile_dir / "cookies.sqlite-wal").unlink(missing_ok=True)
+    (profile_dir / "cookies.sqlite-shm").unlink(missing_ok=True)
+    cookie_file.chmod(0o444)
+    profile_dir.chmod(0o555)
+    try:
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "mounted-cookie"
+    finally:
+        profile_dir.chmod(0o755)
+        cookie_file.chmod(0o644)
+
+
+# Verifies a profile with a write-ahead log that a browser holds locked falls back to the immutable open
+def test_firefox_falls_back_when_a_logged_database_is_locked(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "locked-log-cookie", 5000, 10)])
+    (tmp_path / "cookies.sqlite-wal").write_bytes(b"")
+    attempted = []
+
+    real_connect = sqlite3.connect
+
+    # Refuses the read-only open the way a browser holding the database does, leaving the immutable open to answer
+    def refuse_read_only(database, *arguments, **keywords):
+        attempted.append(database)
+        if isinstance(database, str) and database.endswith("?mode=ro"):
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(database, *arguments, **keywords)
+
+    with patch.object(monitor.sqlite3, "connect", refuse_read_only):
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-log-cookie"
+    assert any(database.endswith("?mode=ro") for database in attempted)
+    assert any(database.endswith("?immutable=1") for database in attempted)
+
+
+# Verifies a profile path holding URI punctuation cannot displace the SQLite access parameters
+def test_firefox_path_punctuation_cannot_displace_uri_parameters(tmp_path):
+    cookie_file = tmp_path / "we?ird#profile" / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "punctuated-cookie", 5000, 10)])
+
+    assert monitor._sqlite_cookie_uri(cookie_file.resolve(), "immutable=1").endswith("we%3Fird%23profile/cookies.sqlite?immutable=1")
+    assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "punctuated-cookie"
+
+
+# Verifies the cookie database connection is closed rather than left to the garbage collector
+def test_firefox_closes_the_cookie_database_connection(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "closed-cookie", 5000, 10)])
+    opened = []
+
+    real_connect = sqlite3.connect
+
+    # Records every connection the reader opens so the test can assert each one was closed
+    def record_connect(*arguments, **keywords):
+        connection = real_connect(*arguments, **keywords)
+        opened.append(connection)
+        return connection
+
+    with patch.object(monitor.sqlite3, "connect", record_connect):
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "closed-cookie"
+    assert opened
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
+
+
 # Verifies reduced Firefox schemas using baseDomain remain supported
 def test_firefox_reduced_schema_is_supported(tmp_path):
     cookie_file = tmp_path / "cookies.sqlite"
