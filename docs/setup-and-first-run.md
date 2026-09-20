@@ -60,7 +60,7 @@ After saving, follow the offered Doctor checks and monitoring steps.
 
 In friend activity mode, a **target** is the Spotify user whose activity you want to monitor. The **monitoring account** is the Spotify account represented by your saved login cookie or client credentials. The target must share listening activity with the monitoring account, either with all followers, which requires the monitoring account to follow the target, or with selected people that include it. They are normally different accounts.
 
-The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation.
+The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional `pycookiecheat` package. If it is missing, the wizard can install it in a local Python installation. The login menu reports how many profiles of each browser hold a current Spotify login, so the choice is not blind. If an import does not complete, the wizard offers to retry it, to import from a different browser or to enter the cookie privately.
 
 Container setup destinations must stay inside `/data`, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.
 
