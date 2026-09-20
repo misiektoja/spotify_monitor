@@ -5,7 +5,8 @@ import pytest
 import spotify_monitor as monitor
 
 
-# Module globals the dotenv and secret-precedence code mutates in place, so one test cannot bias the next
+# Module globals the dotenv, secret-precedence and setup code mutate in place, so one test cannot bias the next.
+# A cache left populated here changes what a later test sees and fails only in a full run, never on its own
 _SHARED_STATE_NAMES = (
     "SECRET_SOURCES",
     "DOTENV_MANAGED_KEYS",
@@ -14,6 +15,7 @@ _SHARED_STATE_NAMES = (
     "EXPORTED_SECRET_KEYS",
     "EXPORTED_ENVIRONMENT_KEYS",
     "COMMAND_LINE_SECRET_KEYS",
+    "_WIZARD_BROWSER_LOGIN_COUNTS",
 )
 
 
