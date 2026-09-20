@@ -402,18 +402,89 @@ def test_firefox_unreadable_sqlite_database(tmp_path, monkeypatch):
     assert "database is locked" not in str(error.value)
 
 
-# Verifies Chrome, Brave and Chromium paths on macOS and Linux
-def test_chromium_user_data_path_resolution(tmp_path):
-    expected = {
-        ("Darwin", "chrome"): "Library/Application Support/Google/Chrome",
-        ("Darwin", "brave"): "Library/Application Support/BraveSoftware/Brave-Browser",
-        ("Darwin", "chromium"): "Library/Application Support/Chromium",
-        ("Linux", "chrome"): ".config/google-chrome",
-        ("Linux", "brave"): ".config/BraveSoftware/Brave-Browser",
-        ("Linux", "chromium"): ".config/chromium",
-    }
-    for (system_name, browser), relative_path in expected.items():
-        assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=tmp_path) == tmp_path / relative_path
+# Verifies every configured Chromium root is a usable relative path under the home directory
+def test_chromium_roots_are_relative_and_named_per_platform(tmp_path, real_browser_profiles):
+    assert set(monitor.CHROMIUM_USER_DATA_DIRS) == {"Darwin", "Linux"}
+    for system_name, browsers in monitor.CHROMIUM_USER_DATA_DIRS.items():
+        assert set(browsers) == set(monitor.CHROMIUM_IMPORT_BROWSERS)
+        for browser, relative_paths in browsers.items():
+            assert relative_paths, f"{system_name}/{browser} names no root"
+            assert len(set(relative_paths)) == len(relative_paths), f"{system_name}/{browser} repeats a root"
+            for relative_path in relative_paths:
+                assert not Path(relative_path).is_absolute()
+            # With nothing installed the conventional root is still named, so a failure can say where it looked
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=tmp_path) == tmp_path / relative_paths[0]
+
+
+# Verifies a packaged install is found and a distribution install still wins when both are present
+def test_chromium_packaged_roots_are_searched_in_order(tmp_path, real_browser_profiles):
+    for system_name, browsers in monitor.CHROMIUM_USER_DATA_DIRS.items():
+        for browser, relative_paths in browsers.items():
+            home = tmp_path / f"{system_name}-{browser}"
+            packaged = home / relative_paths[-1]
+            packaged.mkdir(parents=True)
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=home) == packaged
+            distribution = home / relative_paths[0]
+            distribution.mkdir(parents=True, exist_ok=True)
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=home) == distribution
+
+
+# Verifies Snap and Flatpak Chromium trees are reachable, which a single configured root per browser is not
+def test_chromium_linux_reaches_snap_and_flatpak_trees(real_browser_profiles):
+    linux_roots = monitor.CHROMIUM_USER_DATA_DIRS["Linux"]
+    assert any("snap/" in root for root in linux_roots["chromium"])
+    assert any(".var/app/" in root for root in linux_roots["chromium"])
+    assert any("snap/" in root for root in linux_roots["brave"])
+    assert any(".var/app/" in root for root in linux_roots["brave"])
+
+
+# Verifies an unsupported platform is reported as having no known location rather than as a missing directory
+def test_chromium_unknown_platform_has_no_root(real_browser_profiles, tmp_path):
+    assert monitor.get_chromium_user_data_dir("chrome", system_name="Plan9", home=tmp_path) is None
+    assert "no known Chrome profile location" in monitor.chromium_no_profiles_message("chrome", system_name="Plan9", home=tmp_path)
+
+
+# Verifies each reason a Chromium listing can be empty gets its own fix, since they need different actions
+def test_chromium_empty_listing_separates_its_causes(tmp_path, real_browser_profiles):
+    (tmp_path / "EmptyRoot").mkdir()
+    (tmp_path / "NewProfile" / "Default").mkdir(parents=True)
+
+    not_installed = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "missing")
+    assert "Install Chrome" in not_installed and "Looked in" in not_installed
+
+    no_profiles = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "EmptyRoot")
+    assert "Open Chrome once to create a profile" in no_profiles
+    assert "Install Chrome" not in no_profiles
+
+    no_cookies = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "NewProfile")
+    assert "Chrome is installed but none of its profiles (Default) holds a cookie database yet" in no_cookies
+    assert "Install Chrome" not in no_cookies
+
+
+# Verifies the import surfaces the specific reason rather than the generic one
+def test_chromium_import_reports_the_specific_empty_reason(tmp_path, monkeypatch, real_browser_profiles):
+    user_data_dir = tmp_path / "NewProfile"
+    (user_data_dir / "Default").mkdir(parents=True)
+    monkeypatch.setattr(monitor, "get_chromium_user_data_dir", lambda *arguments, **keywords: user_data_dir)
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="holds a cookie database yet") as error:
+        monitor.run_browser_cookie_import(browser="chrome", env_file=str(tmp_path / ".env"), interactive=False)
+    assert "No usable Chrome profiles found" not in str(error.value)
+
+
+# Verifies each keyring failure the supported backends actually raise gets the fix that matches its cause
+@pytest.mark.parametrize("error_text, expected", [
+    ("Can't get password from keychain: Keychain Access Denied", "Unlock the keyring"),
+    ("Could not find a password for the pair (Chrome Safe Storage, Chrome).", "Unlock the keyring"),
+    ("Failed to unlock the collection!", "Unlock the keyring"),
+    ("Failed to unlock the item!", "Unlock the keyring"),
+    ("Failed to unlock the keyring!", "Unlock the keyring"),
+    ("No recommended backend was available. Install a recommended 3rd party backend package", "Install one such as gnome-keyring"),
+])
+def test_chromium_keyring_failures_name_the_real_fix(error_text, expected):
+    message = monitor._safe_chromium_cookie_error("chrome", Exception(error_text))
+    assert expected in message
+    assert "Confirm Spotify is signed in" not in message
 
 
 # Verifies Chromium discovery uses supported directories and Local State names
