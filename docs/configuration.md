@@ -294,7 +294,7 @@ On Windows, Chrome 127 and newer prevent external programs from reading these co
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:
+On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice, marking each profile that holds a current Spotify login with `*`. When exactly one profile is marked it becomes the default and Enter accepts it. For scripts or other noninteractive runs select one by its friendly name or directory basename:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox --browser-profile "default-release"
@@ -319,7 +319,7 @@ spotify_monitor --import-browser-cookie --browser chrome
 
 Select a Chromium browser profile by its directory name, such as `Default` or `Profile 1`. Friendly names are also accepted.
 
-On Linux, Brave and Chromium installed natively, through Snap or through Flatpak are discovered automatically. A native install is preferred when both are present. Google Chrome is only packaged natively.
+On Linux, Brave and Chromium installed natively, through Snap or through Flatpak are discovered automatically. A native install is preferred when both are present. Google Chrome is only packaged natively. The profile choice marks a current Spotify login the same way the Firefox one does.
 
 Chromium-based import does not work inside Docker because the container cannot use the host password service needed to decrypt the cookies. Use Firefox as shown under [Container Operation](usage.md#import-firefox-into-container-authentication). You can also perform a Chromium import with a local PyPI or manual installation.
 
