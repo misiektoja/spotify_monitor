@@ -2669,6 +2669,42 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
     return profiles[choice - 1]
 
 
+# A running browser holds its cookie database locked, so a plain read-only open waits out the busy timeout before it
+# fails, and that wait is paid once for every profile that has a write-ahead log
+COOKIE_DATABASE_BUSY_TIMEOUT = 0.25
+
+
+# Builds one read-only SQLite URI for a cookie database
+def _sqlite_cookie_uri(cookie_path, parameters):
+    # as_uri percent-encodes the path, so a '?' or '#' inside it cannot displace the parameters appended here
+    return cookie_path.as_uri() + "?" + parameters
+
+
+# Opens one browser cookie database read-only, preferring the access mode that can see uncommitted log entries
+def open_cookie_database(cookie_file):
+    # Firefox keeps recently saved cookies in a write-ahead log until it checks them in and an immutable open ignores
+    # that log, so a session saved moments ago looks absent. The read-only open that does see the log is attempted
+    # only when a log is present, since it is the slower of the two and fails outright on read-only media such as the
+    # container's mounted Firefox profile
+    cookie_path = Path(cookie_file).expanduser().resolve()
+    uris = [_sqlite_cookie_uri(cookie_path, "immutable=1")]
+    if cookie_path.with_name(cookie_path.name + "-wal").exists():
+        uris.insert(0, _sqlite_cookie_uri(cookie_path, "mode=ro"))
+
+    first_error = None
+    for uri in uris:
+        connection = None
+        try:
+            connection = sqlite3.connect(uri, uri=True, timeout=COOKIE_DATABASE_BUSY_TIMEOUT)
+            connection.execute("PRAGMA schema_version").fetchone()
+            return connection
+        except sqlite3.DatabaseError as error:
+            if connection is not None:
+                connection.close()
+            first_error = first_error or error
+    raise first_error if first_error is not None else sqlite3.DatabaseError(f"could not open '{cookie_path}'")
+
+
 # Quotes a SQLite identifier obtained from database schema metadata
 def _sqlite_identifier(identifier):
     return '"' + identifier.replace('"', '""') + '"'
@@ -2689,7 +2725,9 @@ def read_firefox_sp_dc(cookie_file, now=None):
         raise BrowserCookieImportError(f"Firefox cookie database '{cookie_path}' was not found. Pass a valid cookies.sqlite path with --cookie-file.")
 
     try:
-        with sqlite3.connect(cookie_path.resolve().as_uri() + "?immutable=1", uri=True) as connection:
+        # sqlite3's context manager wraps a transaction rather than the connection, so it is closed explicitly below
+        connection = open_cookie_database(cookie_path)
+        try:
             columns = connection.execute("PRAGMA table_info(moz_cookies)").fetchall()
             column_names = {str(row[1]).lower(): str(row[1]) for row in columns}
             if "name" not in column_names or "value" not in column_names:
@@ -2712,7 +2750,9 @@ def read_firefox_sp_dc(cookie_file, now=None):
             domain_column = _sqlite_identifier(column_names[domain_key])
             query = f"SELECT {selected_columns} FROM moz_cookies WHERE {name_column} = ? AND {value_column} IS NOT NULL AND {value_column} != '' AND (lower(ltrim({domain_column}, '.')) = ? OR lower(ltrim({domain_column}, '.')) LIKE ?)"
             rows = connection.execute(query, ("sp_dc", "spotify.com", "%.spotify.com")).fetchall()
-    except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
+        finally:
+            connection.close()
+    except (sqlite3.DatabaseError, OSError):
         raise BrowserCookieImportError("Could not read the Firefox cookie database. Close Firefox then retry or pass --cookie-file with a readable cookies.sqlite copy.") from None
 
     if not rows:
