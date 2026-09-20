@@ -262,7 +262,7 @@ WEBHOOK_TRANSFORMS = []
 # The -c, -k, -o and -m flags set the timers of the selected backend
 
 # ============================
-# Live backend timers
+# Live friend activity backend timers
 # ============================
 # Used when FRIEND_ACTIVITY_BACKEND = "listening_activity" (the default)
 
@@ -291,7 +291,7 @@ SPOTIFY_LIVE_DISAPPEARED_COUNTER = 2
 SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = 30  # 30 seconds
 
 # ============================
-# Legacy backend timers
+# Legacy friend activity backend timers
 # ============================
 # Used when FRIEND_ACTIVITY_BACKEND = "buddylist"
 
@@ -306,6 +306,11 @@ SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 # Can also be set using the -o flag
 # Songs longer than this value can cause the user to appear inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
+
+# The legacy endpoint occasionally drops a user from the list of friends for a few checks
+# To avoid false alarms, the legacy backend reports a disappearance only after this many checks in a row
+# The live backend uses SPOTIFY_LIVE_DISAPPEARED_COUNTER instead
+REMOVED_DISAPPEARED_COUNTER = 4
 
 # Time between checks while the user is not visible; in seconds
 # A user leaves the list after turning off activity sharing, unfollowing or blocking the monitoring account,
@@ -452,11 +457,6 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Delay before pausing the offline track in seconds
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
-
-# The legacy endpoint occasionally drops a user from the list of friends for a few checks
-# To avoid false alarms, the legacy backend reports a disappearance only after this many checks in a row
-# The live backend uses SPOTIFY_LIVE_DISAPPEARED_COUNTER instead
-REMOVED_DISAPPEARED_COUNTER = 4
 
 # ----------------------------
 # Network Settings
