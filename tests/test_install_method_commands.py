@@ -369,7 +369,9 @@ def test_the_cookie_recovery_command_skips_a_dotenv_switched_off(monkeypatch):
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
 
-    assert monitor.cookie_auth_recovery_fix().endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox"))
+    fix = monitor.cookie_auth_recovery_fix()
+    assert fix.endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox") + monitor.cookie_auth_recovery_browser_hint())
+    assert "--env-file" not in fix
 
 
 # Verifies the config sentinel is carried, since the import it suggests reads the config rather than writing it
@@ -380,4 +382,5 @@ def test_the_cookie_recovery_command_carries_the_config_sentinel(monkeypatch):
     monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", True)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
 
-    assert monitor.cookie_auth_recovery_fix().endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file none"))
+    fix = monitor.cookie_auth_recovery_fix()
+    assert fix.endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file none") + monitor.cookie_auth_recovery_browser_hint())

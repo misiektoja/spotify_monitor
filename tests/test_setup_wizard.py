@@ -217,11 +217,12 @@ def test_local_cookie_setup_recommends_browser_import(monkeypatch):
 
 
 # Verifies supported local environments present Firefox and Chromium as separate paths
-@pytest.mark.parametrize("dependency_available,description", [(True, "signed-in Chrome"), (False, "install the required pycookiecheat")])
+@pytest.mark.parametrize("dependency_available,description", [(True, "Signed in to Spotify in Chrome"), (False, "install the required pycookiecheat")])
 def test_local_cookie_setup_splits_firefox_and_chromium(monkeypatch, dependency_available, description):
     captured = {}
     monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox", "chrome", "brave", "chromium"])
     monkeypatch.setattr(monitor, "_wizard_chromium_dependency_available", lambda: dependency_available)
+    monkeypatch.setattr(monitor, "_wizard_browser_login_counts", lambda browser: (1, 2) if browser == "chrome" else (0, 0))
     monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: (captured.update({"options": options}) or 0))
     result = monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), {})
     assert result["browser"] == "firefox"
@@ -548,7 +549,7 @@ def test_browser_import_receives_the_persisted_target_decision(monkeypatch, pers
 def test_browser_import_failure_allows_incomplete_recovery(monkeypatch, capsys):
     with make_test_directory() as directory_name:
         directory = Path(directory_name)
-        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "3", "n"])
+        install_inputs(monkeypatch, ["target.user", "y", "1", "", "1", "", "n", "y", "", "", "4", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(monitor, "run_browser_cookie_import", Mock(side_effect=monitor.BrowserCookieImportError("safe import failure")))
@@ -1901,3 +1902,121 @@ def test_a_rejected_duration_keeps_the_default(monkeypatch, capsys):
     assert "Keeping 60s - 1m." in capsys.readouterr().out
     # The hint the question carries belongs in the prompt, not in the offer that repeats it
     assert any("Try entering the Spotify polling interval again? [Y/n]: " in prompt for prompt in prompts), prompts
+
+
+# Verifies the login menu reports what setup can see rather than asserting a login it never checked
+@pytest.mark.parametrize("counts, expected", [
+    (None, ""),
+    ((0, 0), "No Chrome profiles were found on this machine."),
+    ((0, 3), "No Chrome profile here holds a current Spotify login yet."),
+    ((2, 5), "2 of 5 profiles here hold a current Spotify login."),
+    ((1, 1), "This profile holds a current Spotify login."),
+])
+def test_the_browser_note_reports_what_setup_can_see(monkeypatch, counts, expected):
+    monkeypatch.setattr(monitor, "_wizard_browser_login_counts", lambda browser: counts)
+
+    assert monitor._wizard_browser_login_note("chrome") == expected
+
+
+# Verifies the grouped Chromium entry names the browser holding a login, or says none was found
+@pytest.mark.parametrize("counted, expected", [
+    ({"chrome": (1, 2), "brave": (0, 0), "chromium": (0, 0)}, "Signed in to Spotify in Chrome."),
+    ({"chrome": (0, 2), "brave": (0, 1), "chromium": (0, 0)}, "No current Spotify login found in Chrome or Brave."),
+    ({"chrome": (0, 0), "brave": (0, 0), "chromium": (0, 0)}, "No Chrome, Brave or Chromium profiles were found on this machine."),
+])
+def test_the_chromium_group_note_names_the_browser_with_a_login(monkeypatch, counted, expected):
+    monkeypatch.setattr(monitor, "_wizard_browser_login_counts", lambda browser: counted[browser])
+
+    assert monitor._wizard_chromium_group_note(["chrome", "brave", "chromium"]) == expected
+
+
+# Verifies a browser with no profile at all is never described as signed in
+def test_an_absent_browser_is_not_called_signed_in(monkeypatch):
+    monkeypatch.setattr(monitor, "discover_chromium_profiles", lambda *arguments, **keywords: [])
+    monitor._WIZARD_BROWSER_LOGIN_COUNTS.clear()
+
+    description = monitor._wizard_browser_description("brave")
+
+    monitor._WIZARD_BROWSER_LOGIN_COUNTS.clear()
+    assert description == "No Brave profiles were found on this machine."
+    assert "signed-in" not in description
+
+
+# Verifies the counts are taken fresh, so a login made while a prompt was waiting is seen
+def test_the_browser_counts_are_dropped_before_the_menu(monkeypatch):
+    calls = []
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox", "chrome"])
+    monkeypatch.setattr(monitor, "_wizard_chromium_dependency_available", lambda: True)
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: (calls.append("firefox"), [])[1])
+    monkeypatch.setattr(monitor, "discover_chromium_profiles", lambda *arguments, **keywords: (calls.append("chrome"), [])[1])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: 0)
+    monitor._WIZARD_BROWSER_LOGIN_COUNTS["firefox"] = (9, 9)
+
+    monitor._wizard_collect_cookie_auth("manual", Path("unused.env"), {})
+
+    monitor._WIZARD_BROWSER_LOGIN_COUNTS.clear()
+    assert "firefox" in calls
+
+
+# Verifies a failed import can move to another browser instead of only retrying the same one
+def test_a_failed_import_can_switch_browser(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox", "chrome"])
+    monkeypatch.setattr(monitor, "_wizard_browser_login_counts", lambda browser: (1, 1) if browser == "firefox" else (0, 1))
+    monkeypatch.setattr(monitor, "render_recovery_error", lambda *arguments, **keywords: "import failed")
+    attempted = []
+
+    # Fails for Chrome then succeeds once the retry has moved to Firefox
+    def import_cookie(browser, **keywords):
+        attempted.append(browser)
+        if browser != "firefox":
+            raise monitor.BrowserCookieImportError("keyring locked")
+
+    monkeypatch.setattr(monitor, "run_browser_cookie_import", import_cookie)
+    answers = iter([1, 0])
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: next(answers))
+
+    auth = monitor._wizard_finish_browser_import({"browser": "chrome", "complete": False, "validated": False, "source": ""}, Path("x.env"), Path("x.conf"), "", "", "manual")
+
+    assert attempted == ["chrome", "firefox"]
+    assert auth["complete"] is True
+    assert auth["browser"] == "firefox"
+    assert auth["source"] == "browser import (Firefox)"
+
+
+# Verifies the retry menu offers no browser switch when only one browser can be imported from
+def test_the_retry_menu_hides_the_switch_when_only_one_browser_is_available(monkeypatch):
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+    monkeypatch.setattr(monitor, "render_recovery_error", lambda *arguments, **keywords: "import failed")
+    monkeypatch.setattr(monitor, "run_browser_cookie_import", Mock(side_effect=monitor.BrowserCookieImportError("no profiles")))
+    offered = []
+    monkeypatch.setattr(monitor, "_wizard_ask_choice", lambda question, options, default_index=0: (offered.extend(label for label, _ in options), len(options) - 1)[1])
+
+    monitor._wizard_finish_browser_import({"browser": "firefox", "complete": False, "validated": False, "source": ""}, Path("x.env"), Path("x.conf"), "", "", "manual")
+
+    assert "Import from a different browser" not in offered
+    assert offered == ["Retry the Firefox import", "Enter sp_dc privately", "Finish without authentication"]
+
+
+# Verifies a recovery message names the other browsers rather than sending every user to Firefox
+def test_the_recovery_hint_names_the_other_browsers(monkeypatch):
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox", "chrome", "brave", "chromium"])
+    assert monitor.cookie_auth_recovery_browser_hint("manual") == " (use --browser chrome, brave or chromium to import from one of those instead)"
+
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox", "chrome"])
+    assert monitor.cookie_auth_recovery_browser_hint("manual") == " (use --browser chrome to import from one of those instead)"
+
+
+# Verifies the hint stays out of the way where Firefox is the only supported browser
+def test_the_recovery_hint_is_empty_when_firefox_is_the_only_option(monkeypatch):
+    monkeypatch.setattr(monitor, "_wizard_import_browsers", lambda method: ["firefox"])
+
+    assert monitor.cookie_auth_recovery_browser_hint("docker") == ""
+    assert "--browser" not in monitor.cookie_auth_recovery_browser_hint("docker")
+
+
+# Verifies the printed import command names the browser the user actually chose
+@pytest.mark.parametrize("browser", ["firefox", "chrome", "brave", "chromium"])
+def test_the_import_command_names_the_chosen_browser(browser):
+    command = monitor._wizard_firefox_import_cmd("manual", browser=browser)
+
+    assert f"--browser {browser}" in command
