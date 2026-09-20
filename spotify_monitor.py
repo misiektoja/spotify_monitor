@@ -1367,17 +1367,18 @@ def is_container_environment() -> bool:
     return os.path.exists("/.dockerenv") or bool(os.environ.get("SPOTIFY_MONITOR_DOCKER"))
 
 
-# Chromium user-data directories
+# Chromium user-data directories, ordered per browser with the distribution install first. Snap and Flatpak builds keep
+# separate profile trees, so each is listed and the first root that exists on the machine is the one used
 CHROMIUM_USER_DATA_DIRS = {
     "Darwin": {
-        "chrome": "Library/Application Support/Google/Chrome",
-        "brave": "Library/Application Support/BraveSoftware/Brave-Browser",
-        "chromium": "Library/Application Support/Chromium",
+        "chrome": ("Library/Application Support/Google/Chrome",),
+        "brave": ("Library/Application Support/BraveSoftware/Brave-Browser",),
+        "chromium": ("Library/Application Support/Chromium",),
     },
     "Linux": {
-        "chrome": ".config/google-chrome",
-        "brave": ".config/BraveSoftware/Brave-Browser",
-        "chromium": ".config/chromium",
+        "chrome": (".config/google-chrome",),
+        "brave": (".config/BraveSoftware/Brave-Browser", "snap/brave/current/.config/BraveSoftware/Brave-Browser", ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"),
+        "chromium": (".config/chromium", "snap/chromium/common/chromium", ".var/app/org.chromium.Chromium/config/chromium"),
     },
 }
 
@@ -2633,10 +2634,10 @@ def _format_profile_choices(profiles):
 
 
 # Selects one browser profile explicitly, automatically or through a terminal prompt
-def select_browser_profile(profiles, browser, requested_profile=None, interactive=None, input_func=None):
+def select_browser_profile(profiles, browser, requested_profile=None, interactive=None, input_func=None, empty_reason=None):
     label = browser_label(browser)
     if not profiles:
-        raise BrowserCookieImportError(f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
+        raise BrowserCookieImportError(empty_reason or f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
 
     if requested_profile:
         requested = requested_profile.casefold()
@@ -2833,14 +2834,16 @@ def read_firefox_sp_dc(cookie_file, now=None):
     return str(max(rows, key=cookie_rank)[0])
 
 
-# Returns the standard Chromium user-data directory for one browser and platform
+# Returns the Chromium user-data directory in use for one browser and platform
 def get_chromium_user_data_dir(browser, system_name=None, home=None):
     selected_system = platform.system() if system_name is None else system_name
-    relative_path = CHROMIUM_USER_DATA_DIRS.get(selected_system, {}).get(browser)
-    if relative_path is None:
+    relative_paths = CHROMIUM_USER_DATA_DIRS.get(selected_system, {}).get(browser)
+    if not relative_paths:
         return None
     home_path = Path.home() if home is None else Path(home)
-    return home_path / relative_path
+    candidates = [home_path / relative_path for relative_path in relative_paths]
+    # Naming the conventional root when none of them exists keeps a failure able to say where it looked
+    return next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
 
 
 # Resolves a Chromium profile cookie database with modern layout preference
@@ -2851,6 +2854,31 @@ def resolve_chromium_cookie_file(user_data_dir, profile_dir):
         if candidate.is_file():
             return candidate
     return None
+
+
+# Lists the profile directories inside a Chromium user-data root, including any that hold no cookie database yet
+def _chromium_profile_dirs(base_path):
+    try:
+        entries = sorted(base_path.iterdir(), key=lambda entry: entry.name.lower())
+    except OSError:
+        return []
+    return [entry.name for entry in entries if entry.is_dir() and (entry.name == "Default" or entry.name.startswith("Profile "))]
+
+
+# Explains why no profile can be offered for one Chromium browser
+def chromium_no_profiles_message(browser, system_name=None, home=None, user_data_dir=None):
+    # A profile that has never stored a cookie is dropped from the listing, so an installed browser holding only new
+    # profiles must not be reported as a browser that is not installed. Each cause needs a different fix
+    label = browser_label(browser)
+    base_path = Path(user_data_dir) if user_data_dir is not None else get_chromium_user_data_dir(browser, system_name=system_name, home=home)
+    if base_path is None:
+        return f"No {label} profiles found. This system has no known {label} profile location. Import from Firefox instead or pass --cookie-file PATH."
+    if not base_path.is_dir():
+        return f"No {label} profiles found. Looked in '{base_path}'. Install {label} and sign in to Spotify in it, import from Firefox instead or pass --cookie-file PATH."
+    new_profiles = _chromium_profile_dirs(base_path)
+    if new_profiles:
+        return f"{label} is installed but none of its profiles ({', '.join(new_profiles)}) holds a cookie database yet. Open {SPOTIFY_WEB_LOGIN_URL} in {label}, sign in then retry."
+    return f"No {label} profiles found in '{base_path}'. Open {label} once to create a profile, sign in to Spotify then retry."
 
 
 # Discovers usable Chrome, Brave or Chromium profiles and Local State names
@@ -2868,16 +2896,10 @@ def discover_chromium_profiles(browser, system_name=None, home=None, user_data_d
         pass
 
     profiles = []
-    try:
-        entries = sorted(base_path.iterdir(), key=lambda entry: entry.name.lower())
-    except OSError:
-        return []
-    for entry in entries:
-        if not entry.is_dir() or (entry.name != "Default" and not entry.name.startswith("Profile ")):
-            continue
-        cookie_file = resolve_chromium_cookie_file(base_path, entry.name)
+    for profile_dir in _chromium_profile_dirs(base_path):
+        cookie_file = resolve_chromium_cookie_file(base_path, profile_dir)
         if cookie_file is not None:
-            profiles.append({"dir": entry.name, "name": friendly_names.get(entry.name, entry.name), "path": str(entry), "cookie_file": str(cookie_file)})
+            profiles.append({"dir": profile_dir, "name": friendly_names.get(profile_dir, profile_dir), "path": str(base_path / profile_dir), "cookie_file": str(cookie_file)})
     return profiles
 
 
@@ -2892,12 +2914,22 @@ def _pycookiecheat_spotify_cookies(browser, cookie_file):
     return get_cookies("https://open.spotify.com", browser=browser_type, cookie_file=str(cookie_file))
 
 
+# Text the keyring libraries use when no backend is installed at all, which needs a different fix from a locked one
+KEYRING_MISSING_TERMS = ("no recommended backend", "no such keyring backend", "no backend available")
+
+# Text the keyring libraries use when a backend exists but will not release the key. Several of these name neither the
+# keyring nor the service, so matching on the wording they do use is what keeps the advice correct
+KEYRING_LOCKED_TERMS = ("keyring", "keychain", "safe storage", "secretservice", "secret service", "libsecret", "kwallet", "failed to unlock", "collection", "password")
+
+
 # Converts a pycookiecheat failure into a secret-safe actionable message
 def _safe_chromium_cookie_error(browser, error):
     label = browser_label(browser)
     error_text = str(error).lower()
-    if any(term in error_text for term in ("keyring", "secretservice", "secret service", "password")):
-        return f"Could not access the OS keyring needed to decrypt {label} cookies. Unlock the keyring then retry or use Firefox."
+    if any(term in error_text for term in KEYRING_MISSING_TERMS):
+        return f"No OS keyring backend is available to decrypt {label} cookies. Install one such as gnome-keyring or kwallet then retry, or import from Firefox which needs none."
+    if any(term in error_text for term in KEYRING_LOCKED_TERMS):
+        return f"Could not access the OS keyring needed to decrypt {label} cookies. Unlock the keyring, allow the access prompt then retry or use Firefox."
     if any(term in error_text for term in ("decrypt", "invalidtag", "encryption")):
         return f"Could not decrypt {label} cookies. Close {label} then retry or import from Firefox."
     if any(term in error_text for term in ("permission", "denied", "locked", "readonly", "unable to open")):
@@ -3027,7 +3059,9 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
         selected_profile = select_browser_profile(discover_firefox_profiles(), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
         selected_cookie_file = Path(selected_profile["cookie_file"])
     else:
-        selected_profile = select_browser_profile(discover_chromium_profiles(browser), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        chromium_profiles = discover_chromium_profiles(browser)
+        empty_reason = None if chromium_profiles else chromium_no_profiles_message(browser)
+        selected_profile = select_browser_profile(chromium_profiles, browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func, empty_reason=empty_reason)
         selected_cookie_file = Path(selected_profile["cookie_file"])
 
     if selected_profile is not None:
