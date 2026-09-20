@@ -2574,9 +2574,19 @@ def _firefox_profile_roots(system_name=None, home=None, environ=None):
     return []
 
 
+# Names the packaging one profile tree belongs to, since Snap, Flatpak and distribution builds keep separate trees
+def packaging_label(profile_path):
+    lowered = str(profile_path).replace(os.sep, "/").lower()
+    if "/snap/" in lowered:
+        return "Snap"
+    if "/.var/app/" in lowered:
+        return "Flatpak"
+    return ""
+
+
 # Builds one normalized browser profile record
 def _browser_profile_record(profile_dir, friendly_name, cookie_file):
-    return {"dir": profile_dir.name, "name": friendly_name or profile_dir.name, "path": str(profile_dir), "cookie_file": str(cookie_file)}
+    return {"dir": profile_dir.name, "name": friendly_name or profile_dir.name, "path": str(profile_dir), "cookie_file": str(cookie_file), "install": packaging_label(profile_dir)}
 
 
 # Adds one usable profile record without duplicating its cookie database
@@ -2625,7 +2635,8 @@ def discover_firefox_profiles(system_name=None, home=None, environ=None):
 
 # Formats one profile choice without exposing any cookie values
 def _format_profile_choice(profile):
-    return f"{profile['dir']} ({profile['name']})" if profile["name"] != profile["dir"] else profile["dir"]
+    described = f"{profile['dir']} ({profile['name']})" if profile["name"] != profile["dir"] else profile["dir"]
+    return f"{described} [{profile['install']}]" if profile.get("install") else described
 
 
 # Formats profile choices without exposing any cookie values
@@ -2639,6 +2650,7 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
     if not profiles:
         raise BrowserCookieImportError(empty_reason or f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
 
+    is_firefox = browser == "firefox"
     if requested_profile:
         requested = requested_profile.casefold()
         directory_matches = [profile for profile in profiles if profile["dir"].casefold() == requested]
@@ -2648,10 +2660,17 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
             return matches[0]
         choices = _format_profile_choices(profiles)
         if len(matches) > 1:
+            # Two installs can hold the same profile directory name, and then no --browser-profile value can separate
+            # them, so the only advice that works is to name the database itself
+            if directory_matches:
+                raise BrowserCookieImportError(f"{label} profile directory '{requested_profile}' exists in {len(matches)} separate {label} installs. Pass --cookie-file PATH to choose one. Choices: {choices}")
             raise BrowserCookieImportError(f"{label} profile name '{requested_profile}' is ambiguous. Pass one profile directory with --browser-profile. Choices: {choices}")
         raise BrowserCookieImportError(f"Unknown {label} profile '{requested_profile}'. Choices: {choices}")
 
     if len(profiles) == 1:
+        # There is no other profile to offer instead, so the import goes ahead and only warns
+        if profile_has_live_spotify_cookie(profiles[0]["cookie_file"], firefox=is_firefox) is False:
+            print(f"* Warning: the only {label} profile, {_format_profile_choice(profiles[0])}, holds no current Spotify login, so the import will most likely fail. Sign in to Spotify in {label} then retry.")
         return profiles[0]
 
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
@@ -2659,20 +2678,36 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
     if not terminal_is_interactive:
         raise BrowserCookieImportError(f"Multiple {label} profiles found: {choices}. Pass --browser-profile PROFILE to select one in a noninteractive environment.")
 
+    live = [index for index, profile in enumerate(profiles) if profile_has_live_spotify_cookie(profile["cookie_file"], firefox=is_firefox)]
+    default_index = live[0] if len(live) == 1 else None
+    width = len(str(len(profiles)))
     print()
     print(f"Multiple {label} profiles found:")
+    # Only the profiles worth choosing are marked. Labelling the rest as well buries the few that matter, and a
+    # database that could not be read is left unmarked rather than called signed out
+    if live:
+        print("  * marks a profile holding a current Spotify login")
     for index, profile in enumerate(profiles, start=1):
-        print(f"  {index}) {profile['name']} [{profile['dir']}] - {profile['cookie_file']}")
+        marker = "* " if index - 1 in live else ("  " if live else "")
+        install = f" ({profile['install']})" if profile.get("install") else ""
+        default_note = "  (default)" if index - 1 == default_index else ""
+        print(f"  {str(index).rjust(width)}) {marker}{profile['name']}{install} [{profile['dir']}] - {profile['cookie_file']}{default_note}")
+
     prompt = input if input_func is None else input_func
-    try:
-        choice = int(prompt("Select profile number (0 to cancel): "))
-    except (EOFError, ValueError):
-        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.") from None
-    if choice == 0:
-        raise BrowserCookieImportError("Browser cookie import cancelled.")
-    if choice < 1 or choice > len(profiles):
-        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.")
-    return profiles[choice - 1]
+    prompt_text = f"Select profile number (0 to cancel{', Enter for default' if default_index is not None else ''}): "
+    while True:
+        try:
+            answer = prompt(prompt_text).strip()
+        except (EOFError, KeyboardInterrupt):
+            raise BrowserCookieImportError("Browser cookie import cancelled.") from None
+        if not answer and default_index is not None:
+            return profiles[default_index]
+        if answer == "0":
+            raise BrowserCookieImportError("Browser cookie import cancelled.")
+        # isdigit also rejects a negative number, which int would accept and then index backwards from the end
+        if answer.isdigit() and 1 <= int(answer) <= len(profiles):
+            return profiles[int(answer) - 1]
+        print(f"  Enter a number between 1 and {len(profiles)}, or 0 to cancel.")
 
 
 # A running browser holds its cookie database locked, so a plain read-only open waits out the busy timeout before it
@@ -2738,6 +2773,68 @@ def _cookie_expiry_seconds(value):
 # Enough alternatives to show where else to look without burying the failure itself, which a machine carrying a
 # dozen Firefox profiles otherwise does
 PROFILE_ALTERNATIVES_LISTED = 6
+
+
+# Chromium records cookie expiry as microseconds since 1601, the epoch its own storage layer uses
+CHROMIUM_EPOCH_OFFSET_SECONDS = 11644473600
+
+# Cookie hosts a Spotify session is stored under, matched so a lookalike domain cannot satisfy the check
+SPOTIFY_COOKIE_HOST_PATTERNS = ("spotify.com", "%.spotify.com")
+
+
+# Converts one Chromium cookie expiry field into epoch seconds, treating a session cookie as never expiring
+def _chromium_expiry_seconds(value):
+    expiry = _numeric_cookie_field(value)
+    return 0.0 if expiry <= 0 else expiry / 1_000_000 - CHROMIUM_EPOCH_OFFSET_SECONDS
+
+
+# Reports whether one cookie database holds an unexpired Spotify login, or None when it cannot be answered
+def profile_has_live_spotify_cookie(cookie_file, firefox=False, now=None):
+    # Only the cookie name, host and expiry are read, and those are stored in the clear on both schemas, so a Chromium
+    # profile answers this without its encryption key and without any value leaving the database
+    if not cookie_file or not Path(cookie_file).expanduser().is_file():
+        return None
+    try:
+        connection = open_cookie_database(cookie_file)
+    except (sqlite3.DatabaseError, OSError):
+        return None
+
+    table = "moz_cookies" if firefox else "cookies"
+    host_keys = ("host", "basedomain") if firefox else ("host_key",)
+    expiry_keys = ("expiry", "expires", "expirationdate") if firefox else ("expires_utc",)
+    try:
+        column_names = {str(row[1]).lower(): str(row[1]) for row in connection.execute(f"PRAGMA table_info({_sqlite_identifier(table)})").fetchall()}
+        host_key = next((key for key in host_keys if key in column_names), None)
+        expiry_key = next((key for key in expiry_keys if key in column_names), None)
+        if "name" not in column_names or host_key is None:
+            return None
+        host_column = _sqlite_identifier(column_names[host_key])
+        expiry_column = _sqlite_identifier(column_names[expiry_key]) if expiry_key else "0"
+        query = f"SELECT {expiry_column} FROM {_sqlite_identifier(table)} WHERE {_sqlite_identifier(column_names['name'])} = ? AND (lower(ltrim({host_column}, '.')) = ? OR lower(ltrim({host_column}, '.')) LIKE ?)"
+        rows = connection.execute(query, ("sp_dc", *SPOTIFY_COOKIE_HOST_PATTERNS)).fetchall()
+    except sqlite3.DatabaseError:
+        return None
+    finally:
+        connection.close()
+
+    if not rows:
+        return False
+    now_value = time.time() if now is None else now
+    to_seconds = _cookie_expiry_seconds if firefox else _chromium_expiry_seconds
+    return any(to_seconds(row[0]) <= 0 or to_seconds(row[0]) > now_value for row in rows)
+
+
+# Explains why no Firefox profile can be offered
+def firefox_no_profiles_message(system_name=None, home=None, environ=None):
+    # A profile that has never stored a cookie is dropped from the listing, so the three causes need separating the
+    # same way the Chromium listing separates its own
+    roots = _firefox_profile_roots(system_name=system_name, home=home, environ=environ)
+    if not roots:
+        return "No Firefox profiles found. This system has no known Firefox profile location. Pass --cookie-file PATH with a readable cookies.sqlite."
+    existing = [root for root in roots if root.is_dir()]
+    if not existing:
+        return f"No Firefox profiles found. Looked in {', '.join(repr(str(root)) for root in roots)}. Install Firefox and sign in to Spotify in it, or pass --cookie-file PATH."
+    return f"Firefox is installed but none of its profiles in {', '.join(repr(str(root)) for root in existing)} holds a cookie database yet. Open {SPOTIFY_WEB_LOGIN_URL} in Firefox, sign in then retry."
 
 
 # Names the Firefox profile holding one cookie database and the other profiles a session could be in
@@ -2899,7 +2996,7 @@ def discover_chromium_profiles(browser, system_name=None, home=None, user_data_d
     for profile_dir in _chromium_profile_dirs(base_path):
         cookie_file = resolve_chromium_cookie_file(base_path, profile_dir)
         if cookie_file is not None:
-            profiles.append({"dir": profile_dir, "name": friendly_names.get(profile_dir, profile_dir), "path": str(base_path / profile_dir), "cookie_file": str(cookie_file)})
+            profiles.append({"dir": profile_dir, "name": friendly_names.get(profile_dir, profile_dir), "path": str(base_path / profile_dir), "cookie_file": str(cookie_file), "install": packaging_label(base_path)})
     return profiles
 
 
@@ -3056,7 +3153,8 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
         if browser_profile:
             print("* Note: --cookie-file takes precedence over --browser-profile")
     elif browser == "firefox":
-        selected_profile = select_browser_profile(discover_firefox_profiles(), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        firefox_profiles = discover_firefox_profiles()
+        selected_profile = select_browser_profile(firefox_profiles, browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func, empty_reason=None if firefox_profiles else firefox_no_profiles_message())
         selected_cookie_file = Path(selected_profile["cookie_file"])
     else:
         chromium_profiles = discover_chromium_profiles(browser)
