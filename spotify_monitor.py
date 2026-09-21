@@ -9695,7 +9695,13 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
     elif followed is False:
         detail += ". The monitoring account does not follow the target"
-    advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
+    other_backend = other_activity_backend()
+    if target_visible_in_other_backend(report.access_token, target_id):
+        # Each source can list users the other omits, so a switch is the fix rather than a follow or sharing change
+        detail += f". The target is visible through the {other_backend} backend"
+        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_hint(other_backend), BACKEND_GUIDE_URL), False, detail)
+    else:
+        advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
 
 
