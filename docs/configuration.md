@@ -213,7 +213,7 @@ The default alert requires five consecutive unmatched completed plays with the o
 
 **Idle** means no completed Spotify plays were returned within the comparison period. **Waiting** means missing plays have not reached the alert threshold. **Scrobbles matched** means recent Spotify plays were found on Last.fm.
 
-A failed Spotify or Last.fm request produces **Check failed**, not a missing-scrobble alert. The monitor keeps earlier alert history and sends an operational email or webhook after three consecutive failed comparisons. After a brief retry for temporary connection or server failures, it waits for `SPOTIFY_ERROR_INTERVAL`, which defaults to three minutes. For rate-limit or `QUOTA_EXCEEDED` errors, see [Troubleshooting](troubleshooting.md#doctor-preflight).
+A failed Spotify or Last.fm request produces **Check failed**, not a missing-scrobble alert. The monitor keeps earlier alert history and sends a failure alert once the same failure has lasted five minutes, the rule Friend Activity uses. After a brief retry for temporary connection or server failures, it waits for `SPOTIFY_ERROR_INTERVAL`, which defaults to three minutes. For rate-limit or `QUOTA_EXCEEDED` errors, see [Troubleshooting](troubleshooting.md#doctor-preflight).
 
 <a id="spotify-recent-play-authorization"></a>
 ### Spotify Recent-play Authorization
