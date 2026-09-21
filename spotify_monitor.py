@@ -2027,17 +2027,20 @@ def print_outage_recovery(target: str, lasted: int, error_alert: Optional[ErrorA
     print_cur_ts("Timestamp:\t\t\t")
 
 
-# Carries the two shapes a target is written in, since a subject that already brackets it cannot nest another pair
+# Carries the shapes a target is written in, since a subject that already brackets it cannot nest another pair
+# and an HTML body marks the name rather than the words around it
 class AlertTarget(str):
     inline: str
+    html: str
 
-    # Builds the running text form and keeps the flat form beside it
+    # Builds the running text form and keeps the flat and HTML forms beside it
     def __new__(cls, identifier: str, name: str = "") -> "AlertTarget":
         identifier = str(identifier)
         display = sanitize_terminal_text(str(name or "")).strip()
         display = display if display and display != identifier else ""
         target = super().__new__(cls, f"{display} ({identifier})" if display else identifier)
         target.inline = f"{display}, {identifier}" if display else identifier
+        target.html = f"<b>{escape(display)} ({escape(identifier)})</b>" if display else f"<b>{escape(identifier)}</b>"
         return target
 
 
@@ -2046,18 +2049,27 @@ def alert_target_inline(target) -> str:
     return getattr(target, "inline", None) or str(target)
 
 
+# Returns the HTML form of a target, falling back to marking the whole of one that carries no shape of its own
+def alert_target_html(target) -> str:
+    return getattr(target, "html", None) or f"<b>{escape(str(target))}</b>"
+
+
 # Names both sides of the scrobble comparison, since a failure on the Spotify side reported against a Last.fm
 # profile alone reads as if that profile were at fault
 class ScrobbleTarget(str):
     inline: str
+    html: str
 
-    # Builds the running text form and keeps the flat form beside it, dropping the Spotify side when it is unknown
+    # Builds the running text form and keeps the flat and HTML forms beside it, dropping the Spotify side when unknown
     def __new__(cls, lastfm_user: str, spotify_id: str = "", spotify_name: str = "") -> "ScrobbleTarget":
         lastfm_user = sanitize_terminal_text(str(lastfm_user or "")).strip()
         spotify = AlertTarget(spotify_id, spotify_name) if spotify_id else None
         prose = f"{spotify} on Spotify and {lastfm_user} on Last.fm" if spotify else f"{lastfm_user} on Last.fm"
         target = super().__new__(cls, prose)
         target.inline = f"spotify: {spotify.inline}, last.fm: {lastfm_user}" if spotify else f"last.fm: {lastfm_user}"
+        # Only the accounts are marked, so the words joining them do not read as part of a name
+        lastfm_html = f"<b>{escape(lastfm_user)}</b> on Last.fm"
+        target.html = f"{spotify.html} on Spotify and {lastfm_html}" if spotify else lastfm_html
         return target
 
 
@@ -2144,7 +2156,7 @@ def outage_recovery_body(advice: RecoveryAdvice, target: str, lasted: int, times
 
 # Builds the HTML body of the recovery alert, matching the plain text
 def outage_recovery_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
-    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for <b>{escape(target)}</b> after <b>{escape(display_time(max(1, lasted)))}</b>.<br><br>The failure was: {html_text(advice.summary)}"
+    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for {alert_target_html(target)} after <b>{escape(display_time(max(1, lasted)))}</b>.<br><br>The failure was: {html_text(advice.summary)}"
     return f"<html><head></head><body>{body}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>"
 
 
@@ -2159,7 +2171,7 @@ def outage_missed_body(advice: RecoveryAdvice, target: str, lasted: int, timesta
 # Builds the HTML body of the combined failure and recovery alert, matching the plain text
 def outage_missed_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
     lasted = max(1, lasted)
-    body = f"{mode + ' m' if mode else 'M'}onitoring failed for <b>{escape(target)}</b> at <b>{escape(get_date_from_ts(int(time.time()) - lasted))}</b> and recovered after <b>{escape(display_time(lasted))}</b>.<br><br>The failure was: {html_text(advice.summary)}<br><br>The failure alert could not be delivered here while the failure lasted."
+    body = f"{mode + ' m' if mode else 'M'}onitoring failed for {alert_target_html(target)} at <b>{escape(get_date_from_ts(int(time.time()) - lasted))}</b> and recovered after <b>{escape(display_time(lasted))}</b>.<br><br>The failure was: {html_text(advice.summary)}<br><br>The failure alert could not be delivered here while the failure lasted."
     return f"<html><head></head><body>{body}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>"
 
 
