@@ -406,7 +406,7 @@ def error_channel_alerts_for(loop_environment, monkeypatch, responses, outcomes,
 
 # Keeps the failure alerts of one run, so a test about them is not disturbed by the recovery alert that closes one
 def error_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after):
-    return [call for call in error_channel_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after) if call["subject"].startswith("Spotify Monitor error:")]
+    return [call for call in error_channel_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after) if call["subject"].startswith("Spotify Monitor") and " error: " in call["subject"]]
 
 
 # An outage used to be printed and never delivered, since only a rejected token earned an alert
@@ -414,7 +414,7 @@ def test_any_failure_alerts_both_channels_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "Spotify Monitor error: Friend Activity: Spotify is temporarily unavailable (user: watched-user)"
+    assert errors[0]["subject"] == "Spotify Monitor (Friend Activity) error: Spotify is temporarily unavailable (user: watched-user)"
     assert errors[0]["body"].startswith("Spotify is temporarily unavailable\n\nTo fix: ")
     assert f"Next retry in: {monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}" in errors[0]["body"]
 
@@ -435,7 +435,7 @@ def test_a_changed_failure_category_does_not_earn_a_second_alert(loop_environmen
     responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [http_error(401)] * 3
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
-    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Friend Activity: Spotify is temporarily unavailable (user: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor (Friend Activity) error: Spotify is temporarily unavailable (user: watched-user)"]
 
 
 # Alternating categories used to forget the delivered alert on every transition, so one outage sent one per check
@@ -452,7 +452,7 @@ def test_a_stalled_request_earns_the_same_single_alert(loop_environment, monkeyp
     checks = 2 * (monitor.ERROR_ALERT_AFTER_SECONDS // monitor.ALARM_RETRY)
     errors = error_alerts_for(loop_environment, monkeypatch, [monitor.TimeoutException("stalled")] * checks, [(True, True)], checks)
 
-    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Friend Activity: Spotify did not answer in time (user: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor (Friend Activity) error: Spotify did not answer in time (user: watched-user)"]
 
 
 # Each channel is tracked on its own, so the one that failed is retried while the one that landed is left alone
@@ -469,7 +469,7 @@ def test_a_new_outage_after_a_recovery_alerts_again(loop_environment, monkeypatc
     alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 7)
 
     assert [(call["email"], call["webhook"]) for call in alerts] == [(True, True)] * 3
-    assert [call["subject"].split(":")[0] for call in alerts] == ["Spotify Monitor error", "Spotify Monitor recovered", "Spotify Monitor error"]
+    assert [call["subject"].split(":")[0] for call in alerts] == ["Spotify Monitor (Friend Activity) error", "Spotify Monitor (Friend Activity) recovered", "Spotify Monitor (Friend Activity) error"]
 
 
 # A channel whose failure alert never landed hears about the outage and its end together, while the channel that
@@ -478,11 +478,11 @@ def test_a_channel_that_missed_the_failure_alert_is_told_about_the_whole_outage(
     failure = Exception("503 Server Error: Service Unavailable")
     responses = [failure, failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000)]
     alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(False, True)], 5)
-    recoveries = [call for call in alerts if call["subject"].startswith("Spotify Monitor recovered:")]
+    recoveries = [call for call in alerts if call["subject"].startswith("Spotify Monitor") and " recovered: " in call["subject"]]
 
     assert len(recoveries) == 1
     assert (recoveries[0]["email"], recoveries[0]["webhook"]) == (True, True)
-    assert recoveries[0]["subject"].startswith("Spotify Monitor recovered: Friend Activity monitoring watched-user resumed after ")
+    assert recoveries[0]["subject"].startswith("Spotify Monitor (Friend Activity) recovered: monitoring watched-user resumed after ")
     assert recoveries[0]["body"].startswith("Friend Activity monitoring failed for watched-user at ")
     assert "The failure was: Spotify is temporarily unavailable" in recoveries[0]["body"]
     assert "The failure alert could not be delivered here while the failure lasted." in recoveries[0]["body"]
@@ -508,7 +508,7 @@ def test_the_failure_alert_subject_names_the_tool_and_the_target():
 
 
 # Both modes report the same failures, so the subject says which one failed rather than leaving the reader to infer it
-@pytest.mark.parametrize("mode,target,expected", [(monitor.MONITOR_MODE_LABEL, monitor.AlertTarget("31nnv6eq", "martus"), "Spotify Monitor error: Friend Activity: Spotify did not answer in time (user: martus, 31nnv6eq)"), (monitor.SCROBBLE_HEALTH_MODE_LABEL, monitor.ScrobbleTarget("NeonCipher", "31nnv6eq", "martus"), "Spotify Monitor error: Spotify-to-Last.fm scrobble health: Spotify did not answer in time (spotify: martus, 31nnv6eq, last.fm: NeonCipher)")])
+@pytest.mark.parametrize("mode,target,expected", [(monitor.MONITOR_MODE_LABEL, monitor.AlertTarget("31nnv6eq", "martus"), "Spotify Monitor (Friend Activity) error: Spotify did not answer in time (user: martus, 31nnv6eq)"), (monitor.SCROBBLE_HEALTH_MODE_LABEL, monitor.ScrobbleTarget("NeonCipher", "31nnv6eq", "martus"), "Spotify Monitor (Spotify-to-Last.fm scrobble health) error: Spotify did not answer in time (spotify: martus, 31nnv6eq, last.fm: NeonCipher)")])
 def test_the_failure_alert_subject_names_the_mode(mode, target, expected):
     advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True)
 
@@ -597,7 +597,7 @@ def test_a_retryable_failure_is_alerted_once_the_outage_has_lasted(loop_environm
 def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [http_error(401)], [(True, True)], 1)
 
-    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Friend Activity: Spotify rejected the sp_dc cookie (user: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor (Friend Activity) error: Spotify rejected the sp_dc cookie (user: watched-user)"]
 
 
 # The loop that follows an active listener reports its failures through the same alert as the outer one
@@ -606,7 +606,7 @@ def test_a_failure_while_active_alerts_both_channels_too(loop_environment, monke
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "Spotify Monitor error: Friend Activity: Spotify is temporarily unavailable (user: Watched Friend, watched-user)"
+    assert errors[0]["subject"] == "Spotify Monitor (Friend Activity) error: Spotify is temporarily unavailable (user: Watched Friend, watched-user)"
 
 
 # Verifies a retry that reaches the screen on a quiet check still ends with a timestamp

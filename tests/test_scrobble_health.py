@@ -862,7 +862,7 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
     output = capsys.readouterr().out
     assert delivery_mock.call_args.args[2].endswith("\n\nTimestamp: ALERT-TIMESTAMP")
     # Both sides of the comparison are named, so a Spotify failure is not read against the Last.fm profile
-    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health: An unexpected error occurred (last.fm: lastfm-user)"
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor (Spotify-to-Last.fm scrobble health) error: An unexpected error occurred (last.fm: lastfm-user)"
     assert "Timestamp: " not in delivery_mock.call_args.kwargs["webhook_body"]
     # One report per outage, the cadence Friend Activity uses, so a lasting failure does not repeat every check
     assert output.count("* Error: ") == 1
@@ -919,7 +919,7 @@ def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monke
     assert "Monitoring recovered for lastfm-user on Last.fm after" in capsys.readouterr().out
     assert delivery_mock.call_count == 2
     recovery = delivery_mock.call_args_list[1]
-    assert recovery.args[1].startswith("Spotify Monitor recovered: Spotify-to-Last.fm scrobble health monitoring lastfm-user on Last.fm resumed after ")
+    assert recovery.args[1].startswith("Spotify Monitor (Spotify-to-Last.fm scrobble health) recovered: monitoring lastfm-user on Last.fm resumed after ")
     assert "The failure was: " in recovery.args[2]
     # Only the channel that carried the failure alert is told it is over
     assert recovery.args[4] is False
@@ -967,7 +967,7 @@ def test_scrobble_health_monitor_starts_a_new_outage_after_success(monkeypatch, 
     assert output.count("* Error: ") == 2
     # The failure alert, the recovery that closed it and the failure alert the second outage earned on its own
     assert delivery_mock.call_count == 3
-    assert delivery_mock.call_args.args[1].startswith("Spotify Monitor error: ")
+    assert delivery_mock.call_args.args[1].startswith("Spotify Monitor (Spotify-to-Last.fm scrobble health) error: ")
     # A new outage counts from its own first failure rather than carrying the run the recovery closed
     assert "Failed checks in a row: " not in delivery_mock.call_args.args[2]
 
@@ -1514,7 +1514,7 @@ def test_scrobble_health_alert_names_both_sides_of_the_comparison(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
-    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor (Spotify-to-Last.fm scrobble health) error: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
 
 
 # Confirms an account lookup that fails costs only the Spotify name, leaving the comparison and its alerts working
@@ -1533,7 +1533,7 @@ def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
-    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health: An unexpected error occurred (last.fm: lastfm-user)"
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor (Spotify-to-Last.fm scrobble health) error: An unexpected error occurred (last.fm: lastfm-user)"
 
 
 # Confirms the account resolved for the startup summary is reused, so one run does not look the same account up twice
@@ -1554,7 +1554,7 @@ def test_scrobble_health_monitor_reuses_the_account_from_the_summary(monkeypatch
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"), ("31nnv6eq", "martus"))
 
     account_mock.assert_not_called()
-    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor (Spotify-to-Last.fm scrobble health) error: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
 
 
 # Confirms a failed account lookup is swallowed, since the comparison does not need to know who the token belongs to
