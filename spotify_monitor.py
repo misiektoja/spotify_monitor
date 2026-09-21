@@ -7117,6 +7117,8 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
 def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
     state = load_scrobble_health_state(state_path)
     operational_error_alert = ErrorAlertState()
+    # Throttles a lasting failure to one report plus the liveness reminder, the cadence Friend Activity uses
+    operational_outage = OutageReporter()
     operational_error_failures = 0
     operational_error_since = 0
     first_successful_check = True
@@ -7138,10 +7140,11 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
             # Announced before the comparison result, since a closed outage is its own report and the alert
             # goes to the channels that carried the failure so a reader is not left waiting for an all clear
-            if operational_error_failures:
+            outage_lasted = operational_outage.recovered()
+            if outage_lasted is not None:
                 debug_print("Scrobble health recovered", user=username, streak=operational_error_failures, alerted=operational_error_alert.advice is not None)
-                if operational_error_alert.advice is not None:
-                    print_outage_recovery(username, int(time.time()) - operational_error_since, operational_error_alert)
+                print_outage_recovery(username, outage_lasted, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
+            if operational_error_failures:
                 operational_error_alert.reset()
                 operational_error_failures = 0
                 operational_error_since = 0
@@ -7198,12 +7201,18 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if operational_error_failures == 1:
                 operational_error_since = int(time.time())
             recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed: {sanitize_error_text(exc)}")
-            print(render_recovery_error(RecoveryError(recovery_advice, exc)))
-            failure_word = "failure" if operational_error_failures == 1 else "failures"
-            print(f"* Scrobble health result: Check failed. {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
+            # A failure that has not changed is left to the liveness cadence rather than repeated every check
+            outage_outcome = operational_outage.failed(recovery_advice)
             notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
-            if operational_error_failures < SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
+            delivery_reported = False
+            if outage_outcome == "full":
+                print(render_recovery_error(RecoveryError(recovery_advice, exc), retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}"))
+                if notifications_enabled and SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES > 1:
+                    print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
+            elif outage_outcome == "changed":
+                print_outage_change(username, recovery_advice)
+            elif outage_outcome == "reminder":
+                print_outage_liveness(username, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
             if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
                 subject = f"Spotify Monitor error: Spotify-to-Last.fm scrobble health check failed (user: {username})"
                 body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
@@ -7219,7 +7228,15 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                     operational_error_alert.record("webhook", webhook_pending, webhook_succeeded, now)
                     if email_succeeded or webhook_succeeded:
                         operational_error_alert.note(recovery_advice, operational_error_since)
-            print_cur_ts("Timestamp:\t\t\t")
+                    # A retried alert can reach the screen on a check the outage reporter keeps quiet, and a
+                    # delivery line with nothing under it reads as a run that stopped there
+                    delivery_reported = True
+            # The reminder closes last so the delivery lines it carries stay inside the report rather than
+            # landing under the separator that ended it
+            if outage_outcome == "reminder":
+                print_cur_ts("Liveness check, timestamp:\t")
+            elif outage_outcome in ("full", "changed") or delivery_reported:
+                print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
 
 
