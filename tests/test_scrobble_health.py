@@ -1437,3 +1437,54 @@ def test_scrobble_event_without_notification_channels(monkeypatch, capsys):
     assert output.count("completed Spotify play was not found on Last.fm") == 1
     assert "Scrobble health result:" not in output
     assert "Next check in " in output
+
+
+# Confirms the one-run options turn the scrobble alert off for email while switching it on for the webhook
+def test_scrobble_health_alert_channels_follow_the_command_line(monkeypatch):
+    url = "https://ntfy.example.test/private-topic"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--no-scrobble-health-notify", "--webhook-scrobble-health", "--webhook-url", url, "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", Mock(return_value=0))
+
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+
+    assert error.value.code == 0
+    assert monitor.SCROBBLE_HEALTH_NOTIFICATION is False
+    assert monitor.WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION is True
+    assert monitor.WEBHOOK_ENABLED is True
+
+
+# Confirms the opposite pair restores the email alert and silences the webhook without enabling webhook delivery
+def test_scrobble_health_alert_channels_can_be_reversed_for_one_run(monkeypatch):
+    url = "https://ntfy.example.test/private-topic"
+    monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--notify-scrobble-health", "--no-webhook-scrobble-health-notify", "--webhook-url", url, "--send-test-webhook", "--env-file", "none"])
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "SCROBBLE_HEALTH_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "clear_screen", Mock())
+    monkeypatch.setattr(monitor, "find_config_file", lambda path=None: None)
+    monkeypatch.setattr(monitor, "send_webhook", Mock(return_value=0))
+
+    with pytest.raises(SystemExit) as error:
+        monitor.main()
+
+    assert error.value.code == 0
+    assert monitor.SCROBBLE_HEALTH_NOTIFICATION is True
+    assert monitor.WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION is False
+
+
+# Confirms each scrobble alert channel rejects its own contradictory pair
+@pytest.mark.parametrize(("first", "second"), [("--notify-scrobble-health", "--no-scrobble-health-notify"), ("--webhook-scrobble-health", "--no-webhook-scrobble-health-notify")])
+def test_contradictory_scrobble_health_alert_options_are_rejected(first, second):
+    result = run_cli(first, second, "--env-file", "none")
+
+    assert result.returncode == 2
+    assert f"argument {second}: not allowed with argument {first}" in result.stderr
