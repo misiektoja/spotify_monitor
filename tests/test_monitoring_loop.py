@@ -481,8 +481,8 @@ def test_the_recovery_alert_follows_the_channels_the_failure_alert_reached(loop_
 
     assert len(recoveries) == 1
     assert (recoveries[0]["email"], recoveries[0]["webhook"]) == (False, True)
-    assert recoveries[0]["subject"].startswith("Spotify Monitor recovered: monitoring watched-user resumed after ")
-    assert recoveries[0]["body"].startswith("Monitoring recovered for watched-user after ")
+    assert recoveries[0]["subject"].startswith("Spotify Monitor recovered: Friend Activity monitoring watched-user resumed after ")
+    assert recoveries[0]["body"].startswith("Friend Activity monitoring recovered for watched-user after ")
     assert "The failure was: Spotify is temporarily unavailable" in recoveries[0]["body"]
     assert "Timestamp: " not in recoveries[0]["webhook_body"]
 
