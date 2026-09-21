@@ -109,7 +109,7 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users.
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. Doctor points at the other backend when only that one lists the target.
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
 
@@ -139,7 +139,7 @@ Polling can miss short tracks and quick changes between checks.
 <a id="legacy-backend"></a>
 ### Legacy Backend
 
-The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed.
+The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed. The reverse also happens: a friend from an older approval, followed in both directions with sharing set to all followers, can keep appearing here with live updates after disappearing from the Spotify desktop client and the live feed. Such users can be monitored only through this backend.
 
 To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` in the configuration file or pass `--friend-activity-backend buddylist` for one run:
 
