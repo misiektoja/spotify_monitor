@@ -2080,9 +2080,9 @@ def spotify_user_html(user_uri_id: str, username: str = "") -> str:
 
 
 # Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
-def recovery_alert_subject(advice: RecoveryAdvice, target: str) -> str:
+def recovery_alert_subject(advice: RecoveryAdvice, target: str, mode: str = "") -> str:
     label = "" if isinstance(target, ScrobbleTarget) else "user: "
-    return f"Spotify Monitor error: {advice.summary} ({label}{alert_target_inline(target)})"
+    return f"Spotify Monitor error: {mode + ': ' if mode else ''}{advice.summary} ({label}{alert_target_inline(target)})"
 
 
 # Lists the paragraphs of a failure alert in reading order, so the plain text, HTML and webhook bodies agree
@@ -2122,7 +2122,7 @@ def recovery_alert_body_html(advice: RecoveryAdvice, retry_seconds: int, failed_
 
 
 # Sends the failure alert to each channel that still owes it and records the outcome, returning whether any was tried
-def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, outage: "OutageReporter", error_alert: ErrorAlertState) -> bool:
+def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, outage: "OutageReporter", error_alert: ErrorAlertState, mode: str = MONITOR_MODE_LABEL) -> bool:
     error_alert.note(advice, outage.since)
     # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
     # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
@@ -2132,7 +2132,7 @@ def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, 
     webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
     if not (email_pending or webhook_pending):
         return False
-    subject = recovery_alert_subject(advice, target)
+    subject = recovery_alert_subject(advice, target, mode)
     body = recovery_alert_body(advice, retry_seconds, outage.failures, outage.since)
     body_html = recovery_alert_body_html(advice, retry_seconds, outage.failures, outage.since)
     webhook_body = recovery_alert_body(advice, retry_seconds, outage.failures, outage.since, timestamp=False)
@@ -7303,7 +7303,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path],
                 print_outage_liveness(alert_target, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
             # A retried alert can reach the screen on a check the outage reporter keeps quiet, and a delivery
             # line with nothing under it reads as a run that stopped there
-            delivery_reported = send_failure_alert(recovery_advice, alert_target, SPOTIFY_ERROR_INTERVAL, operational_outage, operational_error_alert)
+            delivery_reported = send_failure_alert(recovery_advice, alert_target, SPOTIFY_ERROR_INTERVAL, operational_outage, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
             # The reminder closes last so the delivery lines it carries stay inside the report rather than
             # landing under the separator that ended it
             if outage_outcome == "reminder":
