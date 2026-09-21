@@ -2025,9 +2025,34 @@ def print_outage_recovery(target: str, lasted: int, error_alert: Optional[ErrorA
     print_cur_ts("Timestamp:\t\t\t")
 
 
+# Carries the two shapes a target is written in, since a subject that already brackets it cannot nest another pair
+class AlertTarget(str):
+    inline: str
+
+    # Builds the running text form and keeps the flat form beside it
+    def __new__(cls, identifier: str, name: str = "") -> "AlertTarget":
+        identifier = str(identifier)
+        display = sanitize_terminal_text(str(name or "")).strip()
+        display = display if display and display != identifier else ""
+        target = super().__new__(cls, f"{display} ({identifier})" if display else identifier)
+        target.inline = f"{display}, {identifier}" if display else identifier
+        return target
+
+
+# Returns the form of a target that fits inside text already wrapped in brackets, where another pair would nest
+def alert_target_inline(target) -> str:
+    return getattr(target, "inline", None) or str(target)
+
+
+# Renders the monitored user for an HTML alert with the display name in bold, falling back to the URI id alone
+def spotify_user_html(user_uri_id: str, username: str = "") -> str:
+    name = str(username or "").strip()
+    return f"<b>{escape(name)}</b> ({escape(str(user_uri_id))})" if name and name != str(user_uri_id) else f"<b>{escape(str(user_uri_id))}</b>"
+
+
 # Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
 def recovery_alert_subject(advice: RecoveryAdvice, target: str) -> str:
-    return f"Spotify Monitor error: {advice.summary} (user: {target})"
+    return f"Spotify Monitor error: {advice.summary} (user: {alert_target_inline(target)})"
 
 
 # Lists the paragraphs of a failure alert in reading order, so the plain text, HTML and webhook bodies agree
@@ -12468,6 +12493,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     webhook_sent = False
     # The error alert is tracked apart from the event alerts, once per channel and per outage
     error_alert = ErrorAlertState()
+    # The display name last seen, so a check that fails before the next successful lookup still names the target
+    sp_username = ""
 
     mark_monitoring_started()
     out = f"Monitoring user {user_uri_id}"
@@ -12496,7 +12523,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             recovery_hint_tracker.reset()
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
-                print_outage_recovery(user_uri_id, outage_lasted, error_alert)
+                print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
@@ -12522,14 +12549,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             if outage_outcome == "full":
                 print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
             elif outage_outcome == "changed":
-                print_outage_change(user_uri_id, advice)
+                print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
             elif outage_outcome == "reminder":
-                print_outage_liveness(user_uri_id, advice, outage.since, outage.failures, close=False)
+                print_outage_liveness(AlertTarget(user_uri_id, sp_username), advice, outage.since, outage.failures, close=False)
 
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
 
-            delivery_reported = send_failure_alert(advice, user_uri_id, retry_seconds, outage, error_alert)
+            delivery_reported = send_failure_alert(advice, AlertTarget(user_uri_id, sp_username), retry_seconds, outage, error_alert)
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
             # with nothing under it reads as a run that stopped there. The reminder closes last so the lines it
@@ -12760,7 +12787,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
-                            print_outage_recovery(user_uri_id, outage_lasted, error_alert)
+                            print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
@@ -12788,11 +12815,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if outage_outcome == "full":
                             print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
                         elif outage_outcome == "changed":
-                            print_outage_change(user_uri_id, advice)
+                            print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
                         elif outage_outcome == "reminder":
-                            print_outage_liveness(user_uri_id, advice, outage.since, outage.failures, close=False)
+                            print_outage_liveness(AlertTarget(user_uri_id, sp_username), advice, outage.since, outage.failures, close=False)
 
-                        delivery_reported = send_failure_alert(advice, user_uri_id, retry_seconds, outage, error_alert)
+                        delivery_reported = send_failure_alert(advice, AlertTarget(user_uri_id, sp_username), retry_seconds, outage, error_alert)
 
                         # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
                         # with nothing under it reads as a run that stopped there. The reminder closes last so the
@@ -12817,14 +12844,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         invisible_since = visible_last_at or now
                         absence_advice_shown = False
                         if is_user_removed(sp_accessToken, user_uri_id):
-                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
+                            print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                                m_subject = f"Spotify Monitor error: Spotify user {user_uri_id} ({sp_username}) was probably removed"
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(activity_disappeared_interval())} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) was probably removed<br>Retrying in <b>{display_time(activity_disappeared_interval())}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                m_subject = f"Spotify Monitor error: Spotify user {alert_target_inline(AlertTarget(user_uri_id, sp_username))} was probably removed"
+                                m_body = f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed\nRetrying in {display_time(activity_disappeared_interval())} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {spotify_user_html(user_uri_id, sp_username)} was probably removed<br>Retrying in <b>{display_time(activity_disappeared_interval())}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
                             profile_url = spotify_user_profile_url(user_uri_id)
@@ -12832,14 +12859,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             if live_activity:
                                 # The live feed hides a user during a private session, so the follow advice waits until the absence outlasts one
                                 reason_text = "private session, sharing turned off, unfollowed or blocked"
-                                status_text = f"Spotify user {user_uri_id} ({sp_username}) is no longer visible in listening activity"
-                                status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) is no longer visible in listening activity"
-                                print(f"Spotify user '{user_uri_id}' ({sp_username}) is no longer visible in listening activity ({reason_text}). {retry_text}")
+                                status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is no longer visible in listening activity"
+                                status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is no longer visible in listening activity"
+                                print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} is no longer visible in listening activity ({reason_text}). {retry_text}")
                             else:
                                 reason_text = "sharing turned off, unfollowed or blocked"
-                                status_text = f"Spotify user {user_uri_id} ({sp_username}) has disappeared from Friend Activity"
-                                status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has disappeared from Friend Activity"
-                                print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared from Friend Activity ({reason_text}). {retry_text}")
+                                status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} has disappeared from Friend Activity"
+                                status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} has disappeared from Friend Activity"
+                                print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has disappeared from Friend Activity ({reason_text}). {retry_text}")
                                 not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                                 if recovery_hint_tracker.should_render(not_visible_advice):
                                     print(f"To fix: {not_visible_advice.fix}")
@@ -12853,7 +12880,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
                         # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
                         absence_advice_shown = True
-                        print(f"Spotify user '{user_uri_id}' ({sp_username}) has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
+                        print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
                         not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                         print(f"To fix: {not_visible_advice.fix}")
                         print_cur_ts("Timestamp:\t\t\t")
@@ -12873,11 +12900,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             invisible_periods += 1
                         invisible_for = calculate_timespan(now, invisible_since)
                         if live_activity:
-                            status_text = f"Spotify user {user_uri_id} ({sp_username}) is visible again after {invisible_for}"
-                            status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) is visible again after <b>{invisible_for}</b>"
+                            status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is visible again after {invisible_for}"
+                            status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is visible again after <b>{invisible_for}</b>"
                         else:
-                            status_text = f"Spotify user {user_uri_id} ({sp_username}) has reappeared after {invisible_for}"
-                            status_html = f"Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has reappeared after <b>{invisible_for}</b>"
+                            status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} has reappeared after {invisible_for}"
+                            status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} has reappeared after <b>{invisible_for}</b>"
                         print(status_text)
                         if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
                             m_subject = f"{status_text}!"
@@ -13409,7 +13436,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if REPORTS_PRINTED != reports_before_check:
                         alive_since = int(time.time())
                     elif LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
-                        print_liveness_banner(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
+                        print_liveness_banner(f"Monitoring healthy for {AlertTarget(user_uri_id, sp_username)}. The target is visible with no activity change since the last check")
                         alive_since = int(time.time())
 
                 live_last_sample = sp_data
