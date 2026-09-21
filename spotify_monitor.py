@@ -1950,10 +1950,12 @@ def print_liveness_banner(message: str) -> None:
 
 
 # Reminds about a lasting failure once an hour, so a broken run still says it is alive without repeating itself
-def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int, failures: int = 0) -> None:
+def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int, failures: int = 0, close: bool = True) -> None:
     count = f", {failures} failed {'check' if failures == 1 else 'checks'}" if failures else ""
     print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}{count}")
-    print_cur_ts("Liveness check, timestamp:\t")
+    # A caller with an alert still to deliver closes the report itself, so the delivery lines stay inside it
+    if close:
+        print_cur_ts("Liveness check, timestamp:\t")
 
 
 # Notes that a reported outage now fails differently, in one line rather than a second full report
@@ -12243,7 +12245,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             elif outage_outcome == "changed":
                 print_outage_change(user_uri_id, advice)
             elif outage_outcome == "reminder":
-                print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
+                print_outage_liveness(user_uri_id, advice, outage.since, outage.failures, close=False)
 
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
@@ -12269,8 +12271,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                 delivery_reported = True
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
-            # with nothing under it reads as a run that stopped there
-            if outage_outcome in ("full", "changed") or delivery_reported:
+            # with nothing under it reads as a run that stopped there. The reminder closes last so the lines it
+            # carries stay inside the report rather than landing under the separator that ended it
+            if outage_outcome == "reminder":
+                print_cur_ts("Liveness check, timestamp:\t")
+            elif outage_outcome in ("full", "changed") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
             debug_print("Retry wait", due_in=display_time(retry_seconds), reason="a Spotify request timed out" if timed_out else "waiting the error interval after a failed check")
             time.sleep(retry_seconds)
@@ -12536,7 +12541,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         elif outage_outcome == "changed":
                             print_outage_change(user_uri_id, advice)
                         elif outage_outcome == "reminder":
-                            print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
+                            print_outage_liveness(user_uri_id, advice, outage.since, outage.failures, close=False)
 
                         delivery_reported = False
                         if advice.code == "auth.client_invalid":
@@ -12560,8 +12565,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             delivery_reported = True
 
                         # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
-                        # with nothing under it reads as a run that stopped there
-                        if outage_outcome in ("full", "changed") or delivery_reported:
+                        # with nothing under it reads as a run that stopped there. The reminder closes last so the
+                        # lines it carries stay inside the report rather than landing under the separator that ended it
+                        if outage_outcome == "reminder":
+                            print_cur_ts("Liveness check, timestamp:\t")
+                        elif outage_outcome in ("full", "changed") or delivery_reported:
                             print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(retry_seconds)
 
