@@ -6357,6 +6357,8 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     }
 
     last_err = ""
+    # Kept so the raised failure carries its cause, otherwise a timed-out token request reads as a rejected cookie
+    last_exc: Optional[BaseException] = None
 
     alarm_state = None
     try:
@@ -6375,6 +6377,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
             raise SystemExit(1)
         transport = False
         last_err = str(e)
+        last_exc = e
         debug_print("HTTP GET", url=TOKEN_URL, context="sp_dc transport", outcome="failed", error=f"{type(e).__name__}: {e}")
     finally:
         _restore_timeout_alarm(alarm_state)
@@ -6399,12 +6402,13 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
                 raise SystemExit(1)
             init = False
             last_err = str(e)
+            last_exc = e
             debug_print("HTTP GET", url=TOKEN_URL, context="sp_dc init", outcome="failed", error=f"{type(e).__name__}: {e}")
         finally:
             _restore_timeout_alarm(alarm_state)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
+        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}") from last_exc
 
     # The live activity endpoint also accepts anonymous tokens, so its HTTP status cannot validate a cookie
     if sp_dc and data.get("isAnonymous") is True:
@@ -6436,6 +6440,8 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
     retry = 0
 
     last_error = ""
+    # Kept so the raised failure carries its cause, otherwise a blocked network reads as a rejected cookie
+    last_exc: Optional[BaseException] = None
 
     while retry < max_retries:
         try:
@@ -6458,6 +6464,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 break
         except Exception as e:
             last_error = str(e)
+            last_exc = e
             debug_print("Token refresh attempt", outcome="failed", error=f"{type(e).__name__}: {e}")
             retry += 1
             if retry < max_retries:
@@ -6468,7 +6475,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
         error_msg = f"Failed to obtain a valid Spotify access token after {max_retries} attempts"
         if last_error:
             error_msg += f": {last_error}"
-        raise RuntimeError(error_msg)
+        raise RuntimeError(error_msg) from last_exc
 
     return SP_CACHED_ACCESS_TOKEN
 
