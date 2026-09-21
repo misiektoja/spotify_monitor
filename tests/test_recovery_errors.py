@@ -180,9 +180,23 @@ def test_recovery_guides_target_relevant_documentation():
         (monitor.classify_recovery_error(context="target_not_visible"), monitor.FOLLOWING_GUIDE_URL),
         (monitor.classify_recovery_error(context="smtp_config"), monitor.SMTP_GUIDE_URL),
         (monitor.classify_recovery_error(make_http_error(429)), monitor.INTERVALS_GUIDE_URL),
+        (monitor.classify_recovery_error(requests.Timeout("request timed out")), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(requests.ConnectionError("connection refused")), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(make_http_error(503)), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(PermissionError("denied"), "file_read"), monitor.CONFIG_GUIDE_URL),
+        (monitor.classify_recovery_error(OSError(24, "Too many open files")), monitor.DESCRIPTOR_LIMIT_GUIDE_URL),
     )
     for advice, guide_url in cases:
         assert f"\nGuide: {guide_url}" in advice.fix
+
+
+# A check the monitor retries on its own must not send the reader to Doctor or debug output for a passing network blip
+@pytest.mark.parametrize("error", [requests.Timeout("request timed out"), requests.ConnectionError("connection refused"), make_http_error(503)])
+def test_transient_spotify_failures_do_not_prescribe_diagnostics(error):
+    advice = monitor.classify_recovery_error(error)
+    assert advice.retryable is True
+    assert "--doctor" not in advice.fix
+    assert "--debug" not in advice.fix
 
 
 # Verifies manual cookie entry failures link directly to extraction steps

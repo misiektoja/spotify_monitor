@@ -252,6 +252,12 @@ def test_runtime_guide_urls_match_documentation_anchors():
             assert fragment in markdown_anchors(document), f"{name} references missing anchor #{fragment} in {document_path}"
 
 
+# The Debugging Tools page covers token utilities, so a failure pointed there finds nothing about its own cause
+def test_runtime_guide_urls_stay_off_the_debugging_tools_page():
+    for name in (name for name in vars(monitor) if name.endswith("_GUIDE_URL")):
+        assert not getattr(monitor, name).startswith(monitor.DOCS_BASE_URL + "/debugging/"), name
+
+
 # Verifies debugging downloads retain the supported curl commands
 def test_debugging_docs_use_curl_downloads():
     commands = fenced_code_lines(read_asset("docs/debugging.md"))
