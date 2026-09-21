@@ -61,6 +61,10 @@ def configure_summary(monkeypatch):
         "SMTP_PASSWORD": "known-smtp-secret",
         "SP_CACHED_ACCESS_TOKEN": "known-access-secret",
         "SP_CACHED_CLIENT_TOKEN": "known-client-secret",
+        # The email rollup reports a channel with no mail server as off, whatever its alert types are
+        "SMTP_HOST": "smtp.example.com",
+        "SMTP_PORT": 587,
+        "RECEIVER_EMAIL": "michal.k@example.com",
     }
     for name, value in values.items():
         monkeypatch.setattr(monitor, name, value)
