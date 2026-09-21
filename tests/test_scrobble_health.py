@@ -863,12 +863,15 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
     assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health check failed (user: lastfm-user)"
     assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
     assert "Timestamp: " not in delivery_mock.call_args.kwargs["webhook_body"]
-    assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
+    # One report per outage, the cadence Friend Activity uses, so a lasting failure does not repeat every check
+    assert output.count("* Error: ") == 1
     assert "outage" not in delivery_mock.call_args.args[2].lower()
-    assert output.count("Operational alert deferred until 3 consecutive check failures.") == 2
+    # Printed once under the report that opens the outage, not on every check the outage stays quiet for
+    assert output.count("Operational alert deferred until 3 consecutive check failures.") == 1
     assert delivery_mock.call_count == 1
     assert output.rindex("Sending webhook notification") < output.rindex("CONSOLE-TIMESTAMP")
-    assert timestamp_mock.call_count == 4
+    # The startup banner, the report that opens the outage and the check whose alert went out. The quiet check between them closes nothing
+    assert timestamp_mock.call_count == 3
 
 
 # Confirms partial operational-alert success retries only the channel that failed
@@ -915,14 +918,14 @@ def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monke
     assert "Monitoring recovered for lastfm-user after" in capsys.readouterr().out
     assert delivery_mock.call_count == 2
     recovery = delivery_mock.call_args_list[1]
-    assert recovery.args[1].startswith("Spotify Monitor recovered: monitoring lastfm-user resumed after ")
+    assert recovery.args[1].startswith("Spotify Monitor recovered: Spotify-to-Last.fm scrobble health monitoring lastfm-user resumed after ")
     assert "The failure was: " in recovery.args[2]
     # Only the channel that carried the failure alert is told it is over
     assert recovery.args[4] is False
     assert recovery.args[5] is True
 
 
-# Confirms a failure nobody was alerted about ends quietly, since nothing reported it as broken
+# Confirms a failure that reached the screen but no alert channel closes on screen and nowhere else
 def test_scrobble_health_monitor_stays_quiet_when_a_deferred_failure_clears(monkeypatch, capsys):
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], KeyboardInterrupt])
     delivery_mock = Mock(return_value=(False, True))
@@ -938,7 +941,7 @@ def test_scrobble_health_monitor_stays_quiet_when_a_deferred_failure_clears(monk
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
-    assert "Monitoring recovered" not in capsys.readouterr().out
+    assert "* Monitoring recovered for lastfm-user after" in capsys.readouterr().out
     assert delivery_mock.call_count == 0
 
 
@@ -958,8 +961,8 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
-    assert output.count("Scrobble health result: Check failed. 1 consecutive check failure.") == 2
-    assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
+    # One report opens each outage, so the run that failed, recovered and failed again reported twice
+    assert output.count("* Error: ") == 2
     assert delivery_mock.call_count == 1
     assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
 

@@ -392,7 +392,6 @@ CLASSIFIER_EXEMPTIONS = {
     "or higher required": "runs at import on an interpreter too old to load the rest of the file",
     "Cannot clear the screen contents": "a cosmetic notice with nothing for the operator to recover from",
     "Operational alert deferred": "a note about when the alert fires, printed under the classified failure above it",
-    "Scrobble health result: Check failed.": "the failure count and retry interval printed below the classified error",
     "Installation could not start": "a wizard result printed above the question that offers another option",
     "could not be installed": "a wizard result printed above the question that offers another option",
     "need the optional Pillow package": "a wizard hint above the question that offers to switch the feature off",
