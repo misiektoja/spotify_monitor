@@ -97,6 +97,8 @@ The setup wizard walks you through the whole process. With complete local authen
 
 This mode compares the authorized Spotify account's completed plays with Last.fm recent tracks. It matches artist and track names within a configurable time window. Last.fm's currently playing track is excluded.
 
+The startup summary names both compared accounts: `Target` is the Last.fm profile and `Spotify account` is the account the recent-play authorization belongs to. That row reads `Unknown` when the account lookup does not succeed, which is also when alerts drop the Spotify side.
+
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
 To authorize again after the Spotify refresh token expires or is revoked, run:
