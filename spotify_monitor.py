@@ -1590,6 +1590,16 @@ def html_text(text: str) -> str:
     return escape(text).replace("\n", "<br>")
 
 
+# Wraps one rendered fragment in the document every HTML alert body shares
+def html_email_body(content: str) -> str:
+    return f"<html><head></head><body>{content}</body></html>"
+
+
+# Turns a bare URL inside already escaped HTML text into a link, so an alert that prints a guide link is clickable
+def html_autolink_urls(content: str) -> str:
+    return re.sub(r"(?<![\"'=])(https?://[^\s<>\"']+[^\s<>\"'.,;:!?)\]])", r'<a href="\1">\1</a>', str(content))
+
+
 # Returns the advice an optional package that is missing carries, naming what the run loses and how to install it
 def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice:
     return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
@@ -2033,16 +2043,18 @@ def recovery_alert_body(advice: RecoveryAdvice, retry_seconds: int, failed_check
     return body + get_cur_ts("\n\nTimestamp: ") if timestamp else body
 
 
-# Bolds the moment an outage started, the field a reader looks for first in a failure alert
-def html_bold_failing_since(content):
-    return re.sub(r"(Failing since: )([^<]+)", r"\1<b>\2</b>", content, count=1)
+# Bolds the values a reader scans a failure alert for: how often it has failed and since when
+def html_bold_outage_fields(content):
+    for label in ("Failed checks in a row: ", "Failing since: "):
+        content = re.sub(f"({re.escape(label)})([^<]+)", r"\1<b>\2</b>", content, count=1)
+    return content
 
 
 # Builds the HTML body of a failure alert with the summary in bold and the same paragraphs as the plain text
 def recovery_alert_body_html(advice: RecoveryAdvice, retry_seconds: int, failed_checks: int = 0, failing_since: int = 0, timestamp: bool = True) -> str:
     summary, *rest = recovery_alert_paragraphs(advice, retry_seconds, failed_checks, failing_since)
-    content = "<br><br>".join([f"<b>{html_text(summary)}</b>", *(html_text(paragraph) for paragraph in rest)])
-    return html_bold_failing_since(f"<html><head></head><body>{content}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>")
+    content = "<br><br>".join([f"<b>{html_text(summary)}</b>", *(html_autolink_urls(html_text(paragraph)) for paragraph in rest)])
+    return html_bold_outage_fields(html_email_body(f"{content}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}"))
 
 
 # Sends the failure alert to each channel that still owes it and records the outcome, returning whether any was tried
@@ -7055,26 +7067,30 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
     if action == "recovery":
         subject = f"Spotify scrobbles are appearing on Last.fm again for {username}"
         message = f"Spotify scrobbles are appearing on Last.fm again for {username}.\n\nProfile: {profile_url}"
+        message_html = f"Spotify scrobbles are appearing on Last.fm again for <b>{html_text(username)}</b>.<br><br>Profile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
         count = len(evaluation.unmatched)
         oldest = get_date_from_ts(evaluation.unmatched[0].played_at) if evaluation.unmatched else "unknown"
         recent_missing = evaluation.unmatched[-5:]
         examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in recent_missing)
+        examples_html = "<br>".join(f"- {html_text(get_date_from_ts(play.played_at))} | <b>{html_text(play.artist)} - {html_text(play.track)}</b>" for play in recent_missing)
         examples_heading = f"{len(recent_missing)} most recent missing plays:" if count > len(recent_missing) else "Missing plays:"
         reminder = "Reminder: " if action == "outage_reminder" else ""
         subject = f"Spotify plays missing from Last.fm for {username}"
         play_description = "completed Spotify play was" if count == 1 else "consecutive completed Spotify plays were"
         message = f"{reminder}{count} {play_description} not found on Last.fm for {username}. Earliest missing play in this comparison: {oldest}.\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
+        message_html = f"{html_text(reminder)}<b>{count}</b> {html_text(play_description)} not found on Last.fm for <b>{html_text(username)}</b>. Earliest missing play in this comparison: <b>{html_text(oldest)}</b>.<br><br><b>{html_text(examples_heading)}</b><br>{examples_html}<br><br>Scrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}<br>Last.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
     body = f"{message}\n\nTimestamp: {notification_timestamp}"
+    body_html = html_email_body(f"{html_autolink_urls(message_html)}<br><br>Timestamp: {html_text(notification_timestamp)}")
     email_selected, webhook_selected = selected_channels if selected_channels is not None else (bool(SCROBBLE_HEALTH_NOTIFICATION), webhook_event_enabled("scrobble_health"))
     if report_event:
         print(f"* {message}")
     elif email_selected or webhook_selected:
         channels = [name for selected, name in ((email_selected, "email"), (webhook_selected, webhook_provider_display_name())) if selected]
         print(f"* Retrying the pending scrobble alert via {' and '.join(channels)}.")
-    successful_channels = send_notification_channels("scrobble_health", subject, body, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
+    successful_channels = send_notification_channels("scrobble_health", subject, body, body_html, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
     if report_event or email_selected or webhook_selected:
         print(f"Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}.")
         print_cur_ts("\nTimestamp:\t\t\t")
