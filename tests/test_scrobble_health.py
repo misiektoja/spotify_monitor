@@ -855,23 +855,22 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, KeyboardInterrupt]))
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
     assert delivery_mock.call_args.args[2].endswith("\n\nTimestamp: ALERT-TIMESTAMP")
-    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health check failed (user: lastfm-user)"
-    assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
+    # Both sides of the comparison are named, so a Spotify failure is not read against the Last.fm profile
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: An unexpected error occurred (last.fm: lastfm-user)"
     assert "Timestamp: " not in delivery_mock.call_args.kwargs["webhook_body"]
     # One report per outage, the cadence Friend Activity uses, so a lasting failure does not repeat every check
     assert output.count("* Error: ") == 1
     assert "outage" not in delivery_mock.call_args.args[2].lower()
-    # Printed once under the report that opens the outage, not on every check the outage stays quiet for
-    assert output.count("Operational alert deferred until 3 consecutive check failures.") == 1
+    # The count gate Friend Activity does not have is gone, so nothing announces a deferred alert
+    assert "deferred" not in output
     assert delivery_mock.call_count == 1
     assert output.rindex("Sending webhook notification") < output.rindex("CONSOLE-TIMESTAMP")
-    # The startup banner, the report that opens the outage and the check whose alert went out. The quiet check between them closes nothing
-    assert timestamp_mock.call_count == 3
 
 
 # Confirms partial operational-alert success retries only the channel that failed
@@ -886,16 +885,17 @@ def test_scrobble_health_operational_alert_retries_failed_channel(monkeypatch, f
     monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
     # The hold a failed channel earns is removed so the retry lands on the next check rather than on the wall clock
     monkeypatch.setattr(monitor, "ERROR_ALERT_RETRY_SECONDS", 0)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, None, KeyboardInterrupt]))
 
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
     assert delivery_mock.call_count == 2
-    assert delivery_mock.call_args_list[0].kwargs["email_enabled"] is True
-    assert delivery_mock.call_args_list[0].kwargs["webhook_enabled"] is True
-    assert delivery_mock.call_args_list[1].kwargs["email_enabled"] is retry_email
-    assert delivery_mock.call_args_list[1].kwargs["webhook_enabled"] is retry_webhook
+    assert delivery_mock.call_args_list[0].args[4] is True
+    assert delivery_mock.call_args_list[0].args[5] is True
+    assert delivery_mock.call_args_list[1].args[4] is retry_email
+    assert delivery_mock.call_args_list[1].args[5] is retry_webhook
 
 
 # Confirms a cleared operational failure is announced and closed on the channel that carried its alert
@@ -910,23 +910,24 @@ def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monke
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
     monkeypatch.setattr(monitor.time, "sleep", Mock(return_value=None))
 
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
-    assert "Monitoring recovered for lastfm-user after" in capsys.readouterr().out
+    assert "Monitoring recovered for lastfm-user on Last.fm after" in capsys.readouterr().out
     assert delivery_mock.call_count == 2
     recovery = delivery_mock.call_args_list[1]
-    assert recovery.args[1].startswith("Spotify Monitor recovered: Spotify-to-Last.fm scrobble health monitoring lastfm-user resumed after ")
+    assert recovery.args[1].startswith("Spotify Monitor recovered: Spotify-to-Last.fm scrobble health monitoring lastfm-user on Last.fm resumed after ")
     assert "The failure was: " in recovery.args[2]
     # Only the channel that carried the failure alert is told it is over
     assert recovery.args[4] is False
     assert recovery.args[5] is True
 
 
-# Confirms a failure that reached the screen but no alert channel closes on screen and nowhere else
-def test_scrobble_health_monitor_stays_quiet_when_a_deferred_failure_clears(monkeypatch, capsys):
+# Confirms a failure that reached the screen before the alert was due closes on screen and nowhere else
+def test_scrobble_health_monitor_stays_quiet_when_an_unalerted_failure_clears(monkeypatch, capsys):
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], KeyboardInterrupt])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
@@ -941,12 +942,12 @@ def test_scrobble_health_monitor_stays_quiet_when_a_deferred_failure_clears(monk
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
 
-    assert "* Monitoring recovered for lastfm-user after" in capsys.readouterr().out
+    assert "* Monitoring recovered for lastfm-user on Last.fm after" in capsys.readouterr().out
     assert delivery_mock.call_count == 0
 
 
-# Confirms a successful comparison resets the operational alert failure counter
-def test_scrobble_health_monitor_resets_operational_error_failures_after_success(monkeypatch, capsys):
+# Confirms a successful comparison closes the outage so the next failure opens a new one
+def test_scrobble_health_monitor_starts_a_new_outage_after_success(monkeypatch, capsys):
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], RuntimeError("failure 2"), RuntimeError("failure 3"), RuntimeError("failure 4")])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
@@ -957,14 +958,18 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
     monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
     monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, None, None, None, KeyboardInterrupt]))
     with pytest.raises(KeyboardInterrupt):
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
     # One report opens each outage, so the run that failed, recovered and failed again reported twice
     assert output.count("* Error: ") == 2
-    assert delivery_mock.call_count == 1
-    assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
+    # The failure alert, the recovery that closed it and the failure alert the second outage earned on its own
+    assert delivery_mock.call_count == 3
+    assert delivery_mock.call_args.args[1].startswith("Spotify Monitor error: ")
+    # A new outage counts from its own first failure rather than carrying the run the recovery closed
+    assert "Failed checks in a row: " not in delivery_mock.call_args.args[2]
 
 
 # Confirms scrobble health uses a smaller capped retry budget than Friend Activity
@@ -1491,3 +1496,50 @@ def test_contradictory_scrobble_health_alert_options_are_rejected(first, second)
 
     assert result.returncode == 2
     assert f"argument {second}: not allowed with argument {first}" in result.stderr
+
+
+# Confirms an alert names the Spotify account the token belongs to next to the Last.fm profile it compares against
+def test_scrobble_health_alert_names_both_sides_of_the_comparison(monkeypatch):
+    delivery_mock = Mock(return_value=(False, True))
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("31nnv6eq", "martus"))
+    monkeypatch.setattr(monitor, "print_cur_ts", Mock())
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
+
+
+# Confirms an account lookup that fails costs only the Spotify name, leaving the comparison and its alerts working
+def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch):
+    delivery_mock = Mock(return_value=(False, True))
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
+    monkeypatch.setattr(monitor, "print_cur_ts", Mock())
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
+
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: An unexpected error occurred (last.fm: lastfm-user)"
+
+
+# Confirms a failed account lookup is swallowed, since the comparison does not need to know who the token belongs to
+def test_scrobble_account_lookup_failure_costs_only_the_name(monkeypatch):
+    session = Mock()
+    session.get = Mock(side_effect=monitor.req.ConnectionError("offline"))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_access_token", lambda *args, **kwargs: "token")
+
+    assert monitor.spotify_get_scrobble_account(session=session) == ("", "")
