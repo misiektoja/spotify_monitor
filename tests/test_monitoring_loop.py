@@ -281,8 +281,8 @@ def test_a_legacy_disappearance_names_its_causes_and_times_the_return(loop_envir
     run_one_iteration(loop_environment)
 
     output = capsys.readouterr().out
-    assert "Spotify user 'watched-user' (Watched Friend) has disappeared from Friend Activity (sharing turned off, unfollowed or blocked). Checking every 3 minutes\nTo fix:" in output
-    assert "Spotify user watched-user (Watched Friend) has reappeared after 4 minutes\nTimestamp:" in output
+    assert "Spotify user Watched Friend (watched-user) has disappeared from Friend Activity (sharing turned off, unfollowed or blocked). Checking every 3 minutes\nTo fix:" in output
+    assert "Spotify user Watched Friend (watched-user) has reappeared after 4 minutes\nTimestamp:" in output
     assert "no longer visible" not in output
 
 
@@ -472,18 +472,22 @@ def test_a_new_outage_after_a_recovery_alerts_again(loop_environment, monkeypatc
     assert [call["subject"].split(":")[0] for call in alerts] == ["Spotify Monitor error", "Spotify Monitor recovered", "Spotify Monitor error"]
 
 
-# The recovery alert closes the failure alert on the channels it reached, so a channel that never heard stays quiet
-def test_the_recovery_alert_follows_the_channels_the_failure_alert_reached(loop_environment, monkeypatch):
+# A channel whose failure alert never landed hears about the outage and its end together, while the channel that
+# received the failure alert gets the plain recovery
+def test_a_channel_that_missed_the_failure_alert_is_told_about_the_whole_outage(loop_environment, monkeypatch):
     failure = Exception("503 Server Error: Service Unavailable")
     responses = [failure, failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000)]
     alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(False, True)], 5)
     recoveries = [call for call in alerts if call["subject"].startswith("Spotify Monitor recovered:")]
 
     assert len(recoveries) == 1
-    assert (recoveries[0]["email"], recoveries[0]["webhook"]) == (False, True)
+    assert (recoveries[0]["email"], recoveries[0]["webhook"]) == (True, True)
     assert recoveries[0]["subject"].startswith("Spotify Monitor recovered: Friend Activity monitoring watched-user resumed after ")
-    assert recoveries[0]["body"].startswith("Friend Activity monitoring recovered for watched-user after ")
+    assert recoveries[0]["body"].startswith("Friend Activity monitoring failed for watched-user at ")
     assert "The failure was: Spotify is temporarily unavailable" in recoveries[0]["body"]
+    assert "The failure alert could not be delivered here while the failure lasted." in recoveries[0]["body"]
+    assert recoveries[0]["webhook_body"].startswith("Friend Activity monitoring recovered for watched-user after ")
+    assert "could not be delivered" not in recoveries[0]["webhook_body"]
     assert "Timestamp: " not in recoveries[0]["webhook_body"]
 
 
@@ -576,7 +580,7 @@ def test_a_failure_while_active_alerts_both_channels_too(loop_environment, monke
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "Spotify Monitor error: Spotify is temporarily unavailable (user: watched-user)"
+    assert errors[0]["subject"] == "Spotify Monitor error: Spotify is temporarily unavailable (user: Watched Friend, watched-user)"
 
 
 # Verifies a retry that reaches the screen on a quiet check still ends with a timestamp
@@ -679,7 +683,7 @@ def test_a_check_that_reported_a_recovery_does_not_claim_it_was_quiet(loop_envir
     run_one_iteration(loop_environment)
 
     output = capsys.readouterr().out
-    assert "* Monitoring recovered for watched-user after " in output, "the check under test reported no recovery"
+    assert "* Monitoring recovered for Watched Friend (watched-user) after " in output, "the check under test reported no recovery"
     assert "Monitoring healthy for" not in output
 
 
@@ -714,7 +718,7 @@ def test_the_liveness_banner_explains_itself_without_diagnostics(loop_environmen
     run_one_iteration(loop_environment)
 
     output = capsys.readouterr().out
-    assert "* Monitoring healthy for watched-user. The target is visible with no activity change since the last check" in output
+    assert "* Monitoring healthy for Watched Friend (watched-user). The target is visible with no activity change since the last check" in output
     assert "Liveness check, timestamp:" in output
 
 

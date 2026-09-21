@@ -21,6 +21,9 @@ SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get
 # Helpers that only wrap markup around HTML that was already escaped, so their argument decides the verdict
 PASSTHROUGH_HELPERS = frozenset({"html_autolink_urls", "html_bold_outage_fields", "html_email_body"})
 
+# Helpers that build a whole HTML fragment and escape every value they are given, so their output is already safe
+FRAGMENT_HELPERS = frozenset({"spotify_user_html"})
+
 
 # Collects every HTML notification body the module builds, as (function, source line, expression) triples
 def html_body_interpolations():
@@ -55,7 +58,7 @@ def interpolation_is_safe(expression):
         name = function.id if isinstance(function, ast.Name) else getattr(function, "attr", "")
         if name in PASSTHROUGH_HELPERS:
             return bool(parsed.args) and interpolation_is_safe(ast.unparse(parsed.args[0]))
-        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS}
+        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS, *FRAGMENT_HELPERS}
 
     return False
 
