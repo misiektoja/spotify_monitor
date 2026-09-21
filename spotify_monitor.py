@@ -2011,12 +2011,17 @@ def print_outage_change(target: str, advice: RecoveryAdvice) -> None:
     print(f"* Monitoring failure changed for {target}. {advice.summary}")
 
 
+# Names the mode a recovery alert belongs to, since one inbox can receive both Friend Activity and scrobble health
+MONITOR_MODE_LABEL = "Friend Activity"
+SCROBBLE_HEALTH_MODE_LABEL = "Spotify-to-Last.fm scrobble health"
+
+
 # Reports that a failure cleared, since a throttled failure no longer stops printing when it is over, and sends the
 # recovery alert inside the same report so its delivery lines sit under the line they belong to
-def print_outage_recovery(target: str, lasted: int, error_alert: Optional[ErrorAlertState] = None) -> None:
+def print_outage_recovery(target: str, lasted: int, error_alert: Optional[ErrorAlertState] = None, mode: str = MONITOR_MODE_LABEL) -> None:
     print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
     if error_alert is not None:
-        send_outage_recovery_alert(target, lasted, error_alert)
+        send_outage_recovery_alert(target, lasted, error_alert, mode)
     print_cur_ts("Timestamp:\t\t\t")
 
 
@@ -2084,30 +2089,30 @@ def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, 
 
 
 # Builds the subject of the alert that ends a failure alert, so it sorts next to the failure it closes
-def outage_recovery_subject(target: str, lasted: int) -> str:
-    return f"Spotify Monitor recovered: monitoring {target} resumed after {display_time(max(1, lasted))}"
+def outage_recovery_subject(target: str, lasted: int, mode: str = "") -> str:
+    return f"Spotify Monitor recovered: {mode + ' ' if mode else ''}monitoring {target} resumed after {display_time(max(1, lasted))}"
 
 
 # Builds the plain text body of the recovery alert, naming the failure it ends
-def outage_recovery_body(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True) -> str:
-    body = f"Monitoring recovered for {target} after {display_time(max(1, lasted))}.\n\nThe failure was: {advice.summary}"
+def outage_recovery_body(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for {target} after {display_time(max(1, lasted))}.\n\nThe failure was: {advice.summary}"
     return body + get_cur_ts("\n\nTimestamp: ") if timestamp else body
 
 
 # Builds the HTML body of the recovery alert, matching the plain text
-def outage_recovery_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True) -> str:
-    body = f"Monitoring recovered for <b>{escape(target)}</b> after <b>{escape(display_time(max(1, lasted)))}</b>.<br><br>The failure was: {html_text(advice.summary)}"
+def outage_recovery_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for <b>{escape(target)}</b> after <b>{escape(display_time(max(1, lasted)))}</b>.<br><br>The failure was: {html_text(advice.summary)}"
     return f"<html><head></head><body>{body}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>"
 
 
 # Sends the recovery alert on each channel whose failure alert was delivered, returning whether any channel was tried
-def send_outage_recovery_alert(target: str, lasted: int, error_alert: ErrorAlertState) -> bool:
+def send_outage_recovery_alert(target: str, lasted: int, error_alert: ErrorAlertState, mode: str = MONITOR_MODE_LABEL) -> bool:
     advice = error_alert.advice
     email_enabled = error_alert.email_sent and bool(ERROR_NOTIFICATION)
     webhook_enabled = error_alert.webhook_sent and webhook_event_enabled("error")
     if advice is None or not (email_enabled or webhook_enabled):
         return False
-    send_notification_channels("error", outage_recovery_subject(target, lasted), outage_recovery_body(advice, target, lasted), outage_recovery_body_html(advice, target, lasted), email_enabled, webhook_enabled, webhook_body=outage_recovery_body(advice, target, lasted, timestamp=False), webhook_body_html=outage_recovery_body_html(advice, target, lasted, timestamp=False))
+    send_notification_channels("error", outage_recovery_subject(target, lasted, mode), outage_recovery_body(advice, target, lasted, mode=mode), outage_recovery_body_html(advice, target, lasted, mode=mode), email_enabled, webhook_enabled, webhook_body=outage_recovery_body(advice, target, lasted, timestamp=False, mode=mode), webhook_body_html=outage_recovery_body_html(advice, target, lasted, timestamp=False, mode=mode))
     return True
 
 
