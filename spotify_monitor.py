@@ -2079,10 +2079,15 @@ def spotify_user_html(user_uri_id: str, username: str = "") -> str:
     return f"<b>{escape(name)}</b> ({escape(str(user_uri_id))})" if name and name != str(user_uri_id) else f"<b>{escape(str(user_uri_id))}</b>"
 
 
+# Qualifies the tool with the mode that failed, since a mode announced after the colon would need a second one
+def monitor_subject_prefix(mode: str = "") -> str:
+    return f"Spotify Monitor ({mode})" if mode else "Spotify Monitor"
+
+
 # Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
 def recovery_alert_subject(advice: RecoveryAdvice, target: str, mode: str = "") -> str:
     label = "" if isinstance(target, ScrobbleTarget) else "user: "
-    return f"Spotify Monitor error: {mode + ': ' if mode else ''}{advice.summary} ({label}{alert_target_inline(target)})"
+    return f"{monitor_subject_prefix(mode)} error: {advice.summary} ({label}{alert_target_inline(target)})"
 
 
 # Lists the paragraphs of a failure alert in reading order, so the plain text, HTML and webhook bodies agree
@@ -2145,7 +2150,7 @@ def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, 
 
 # Builds the subject of the alert that ends a failure alert, so it sorts next to the failure it closes
 def outage_recovery_subject(target: str, lasted: int, mode: str = "") -> str:
-    return f"Spotify Monitor recovered: {mode + ' ' if mode else ''}monitoring {target} resumed after {display_time(max(1, lasted))}"
+    return f"{monitor_subject_prefix(mode)} recovered: monitoring {target} resumed after {display_time(max(1, lasted))}"
 
 
 # Builds the plain text body of the recovery alert, naming the failure it ends
