@@ -1536,6 +1536,27 @@ def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch):
     assert delivery_mock.call_args.args[1] == "Spotify Monitor error: An unexpected error occurred (last.fm: lastfm-user)"
 
 
+# Confirms the account resolved for the startup summary is reused, so one run does not look the same account up twice
+def test_scrobble_health_monitor_reuses_the_account_from_the_summary(monkeypatch):
+    delivery_mock = Mock(return_value=(False, True))
+    account_mock = Mock(return_value=("", ""))
+    monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", account_mock)
+    monkeypatch.setattr(monitor, "print_cur_ts", Mock())
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
+    monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", False)
+    monkeypatch.setattr(monitor, "webhook_event_enabled", lambda event: True)
+    monkeypatch.setattr(monitor, "ERROR_ALERT_AFTER_SECONDS", 0)
+    monkeypatch.setattr(monitor.time, "sleep", Mock(side_effect=[None, KeyboardInterrupt]))
+
+    with pytest.raises(KeyboardInterrupt):
+        monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"), ("31nnv6eq", "martus"))
+
+    account_mock.assert_not_called()
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: An unexpected error occurred (spotify: martus, 31nnv6eq, last.fm: lastfm-user)"
+
+
 # Confirms a failed account lookup is swallowed, since the comparison does not need to know who the token belongs to
 def test_scrobble_account_lookup_failure_costs_only_the_name(monkeypatch):
     session = Mock()
