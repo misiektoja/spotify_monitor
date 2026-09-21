@@ -764,3 +764,35 @@ def test_the_early_output_config_carries_the_help_theme(monkeypatch, tmp_path):
     monitor.apply_early_output_config()
 
     assert monitor.COLOR_THEME == {"help_heading": "bright_red"}
+
+
+# Verifies a settings row is never painted as a log line, since a label or a value can read like an error keyword
+@pytest.mark.parametrize("label,value", [("Error retry timer", "3 minutes"), ("Polling interval", "5 minutes, longer after a failure")])
+def test_a_summary_row_is_not_painted_by_a_log_keyword(monkeypatch, label, value):
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {name: f"<{name}>" for name in monitor.DEFAULT_COLOR_THEME})
+    line = monitor._format_startup_summary_row(monitor.StartupSummaryRow(label, value)).rstrip("\n")
+
+    # The value highlights still apply, so only the whole-row block styles have to be absent
+    coloured = monitor._colorize_line(line)
+
+    assert "<error>" not in coloured and "<warning>" not in coloured
+
+
+# Verifies an ordinary error line still carries the block colour the summary rows opt out of
+def test_an_error_line_is_still_painted(monkeypatch):
+    monkeypatch.setattr(monitor, "COLOR_ENABLED", True)
+    monkeypatch.setattr(monitor, "_COLOR_STYLES", {"error": "<error>"})
+
+    assert "<error>" in monitor._colorize_line("* Error: the request failed")
+
+
+# Verifies the row shape the colouriser matches is the one the summary emitter prints, so the two cannot drift
+def test_every_summary_row_is_recognised_by_its_value_column():
+    for row in (monitor.StartupSummaryRow("Target", "someone"), monitor.StartupSummaryRow("Email transport", "Not configured")):
+        line = monitor._format_startup_summary_row(row).rstrip("\n")
+        assert monitor.is_startup_summary_row(line)
+        assert line.index(row.value.split(" ")[0]) == monitor.STARTUP_SUMMARY_VALUE_COLUMN
+
+    assert not monitor.is_startup_summary_row("* Error: something failed")
+    assert not monitor.is_startup_summary_row("* Warning: a timeout was hit")
