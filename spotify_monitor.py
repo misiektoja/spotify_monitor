@@ -1170,6 +1170,7 @@ SPOTIFY_QUOTA_GUIDE_URL = "https://developer.spotify.com/documentation/web-api/c
 SPOTIFY_SCROBBLE_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_SCROBBLE_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_SCROBBLE_RECENT_URL = "https://api.spotify.com/v1/me/player/recently-played"
+SPOTIFY_SCROBBLE_ME_URL = "https://api.spotify.com/v1/me"
 SPOTIFY_SCROBBLE_SCOPE = "user-read-recently-played"
 LASTFM_API_ACCOUNTS_URL = "https://www.last.fm/api/accounts"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
@@ -2048,6 +2049,21 @@ def alert_target_inline(target) -> str:
     return getattr(target, "inline", None) or str(target)
 
 
+# Names both sides of the scrobble comparison, since a failure on the Spotify side reported against a Last.fm
+# profile alone reads as if that profile were at fault
+class ScrobbleTarget(str):
+    inline: str
+
+    # Builds the running text form and keeps the flat form beside it, dropping the Spotify side when it is unknown
+    def __new__(cls, lastfm_user: str, spotify_id: str = "", spotify_name: str = "") -> "ScrobbleTarget":
+        lastfm_user = sanitize_terminal_text(str(lastfm_user or "")).strip()
+        spotify = AlertTarget(spotify_id, spotify_name) if spotify_id else None
+        prose = f"{spotify} on Spotify and {lastfm_user} on Last.fm" if spotify else f"{lastfm_user} on Last.fm"
+        target = super().__new__(cls, prose)
+        target.inline = f"spotify: {spotify.inline}, last.fm: {lastfm_user}" if spotify else f"last.fm: {lastfm_user}"
+        return target
+
+
 # Renders the monitored user for an HTML alert with the display name in bold, falling back to the URI id alone
 def spotify_user_html(user_uri_id: str, username: str = "") -> str:
     name = str(username or "").strip()
@@ -2056,7 +2072,8 @@ def spotify_user_html(user_uri_id: str, username: str = "") -> str:
 
 # Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
 def recovery_alert_subject(advice: RecoveryAdvice, target: str) -> str:
-    return f"Spotify Monitor error: {advice.summary} (user: {alert_target_inline(target)})"
+    label = "" if isinstance(target, ScrobbleTarget) else "user: "
+    return f"Spotify Monitor error: {advice.summary} ({label}{alert_target_inline(target)})"
 
 
 # Lists the paragraphs of a failure alert in reading order, so the plain text, HTML and webhook bodies agree
@@ -6807,6 +6824,27 @@ def spotify_get_recent_plays(client_id: Optional[str] = None, refresh_token: Opt
     raise SpotifyScrobbleAuthorizationError("Spotify recent-play request remained unauthorized after token refresh")
 
 
+# Returns the Spotify account the scrobble health token belongs to as (id, display name), empty when it cannot be read
+def spotify_get_scrobble_account(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> Tuple[str, str]:
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
+    try:
+        access_token = spotify_get_scrobble_access_token(client_id, refresh_token, request_session)
+        headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
+        debug_print("HTTP GET", url=SPOTIFY_SCROBBLE_ME_URL, context="scrobble health account lookup")
+        response = request_session.get(SPOTIFY_SCROBBLE_ME_URL, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        # The comparison works without knowing who the token belongs to, so a failed lookup only costs the name
+        debug_print("Scrobble health account lookup", outcome="failed", error=f"{type(exc).__name__}: {exc}")
+        return "", ""
+    if not isinstance(payload, dict):
+        return "", ""
+    account_id = payload.get("id")
+    display_name = payload.get("display_name")
+    return (account_id if isinstance(account_id, str) else ""), (display_name if isinstance(display_name, str) else "")
+
+
 # Fetches completed recent scrobbles from one public Last.fm profile
 def lastfm_get_recent_scrobbles(username: str, api_key: str, session: Optional[req.Session] = None) -> List[LastfmScrobble]:
     request_session = SCROBBLE_HEALTH_SESSION if session is None else session
@@ -7171,6 +7209,9 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
     operational_outage = OutageReporter()
     operational_error_failures = 0
     operational_error_since = 0
+    # Both sides of the comparison are named in an alert, so a Spotify failure is not read against the Last.fm profile
+    spotify_account_id, spotify_account_name = spotify_get_scrobble_account()
+    alert_target = ScrobbleTarget(username, spotify_account_id, spotify_account_name)
     first_successful_check = True
     previous_status = None
     alive_counter = 0
@@ -7193,7 +7234,7 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             outage_lasted = operational_outage.recovered()
             if outage_lasted is not None:
                 debug_print("Scrobble health recovered", user=username, streak=operational_error_failures, alerted=operational_error_alert.advice is not None)
-                print_outage_recovery(username, outage_lasted, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
+                print_outage_recovery(alert_target, outage_lasted, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
             if operational_error_failures:
                 operational_error_alert.reset()
                 operational_error_failures = 0
@@ -7260,11 +7301,11 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 if notifications_enabled and SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES > 1:
                     print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
             elif outage_outcome == "changed":
-                print_outage_change(username, recovery_advice)
+                print_outage_change(alert_target, recovery_advice)
             elif outage_outcome == "reminder":
-                print_outage_liveness(username, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
+                print_outage_liveness(alert_target, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
             if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                subject = f"Spotify Monitor error: Spotify-to-Last.fm scrobble health check failed (user: {username})"
+                subject = recovery_alert_subject(recovery_advice, alert_target)
                 body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
                 body_html = recovery_alert_body_html(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
                 webhook_body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since, timestamp=False)
