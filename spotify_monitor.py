@@ -1261,9 +1261,6 @@ SCROBBLE_HEALTH_HTTP_RETRIES = 1
 # Pause briefly before the immediate Spotify refresh-token retry
 SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY = 1
 
-# Require three consecutive failed comparisons before sending an operational alert
-SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES = 3
-
 # Keep webhook delivery independent from Spotify API retries and long server timers
 WEBHOOK_MAX_ATTEMPTS = 2
 WEBHOOK_MAX_RETRY_AFTER_SECONDS = 5.0
@@ -7207,8 +7204,6 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
     operational_error_alert = ErrorAlertState()
     # Throttles a lasting failure to one report plus the liveness reminder, the cadence Friend Activity uses
     operational_outage = OutageReporter()
-    operational_error_failures = 0
-    operational_error_since = 0
     # Both sides of the comparison are named in an alert, so a Spotify failure is not read against the Last.fm profile
     spotify_account_id, spotify_account_name = spotify_get_scrobble_account()
     alert_target = ScrobbleTarget(username, spotify_account_id, spotify_account_name)
@@ -7233,12 +7228,9 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             # goes to the channels that carried the failure so a reader is not left waiting for an all clear
             outage_lasted = operational_outage.recovered()
             if outage_lasted is not None:
-                debug_print("Scrobble health recovered", user=username, streak=operational_error_failures, alerted=operational_error_alert.advice is not None)
+                debug_print("Scrobble health recovered", user=username, streak=operational_outage.failures, alerted=operational_error_alert.advice is not None)
                 print_outage_recovery(alert_target, outage_lasted, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
-            if operational_error_failures:
                 operational_error_alert.reset()
-                operational_error_failures = 0
-                operational_error_since = 0
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
             next_state, action = transition_scrobble_health_state(state, evaluation)
             event_reported = False
@@ -7288,40 +7280,18 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             first_successful_check = False
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
-            operational_error_failures += 1
-            if operational_error_failures == 1:
-                operational_error_since = int(time.time())
             recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed: {sanitize_error_text(exc)}")
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = operational_outage.failed(recovery_advice)
-            notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
-            delivery_reported = False
             if outage_outcome == "full":
                 print(render_recovery_error(RecoveryError(recovery_advice, exc), retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}"))
-                if notifications_enabled and SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES > 1:
-                    print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
             elif outage_outcome == "changed":
                 print_outage_change(alert_target, recovery_advice)
             elif outage_outcome == "reminder":
                 print_outage_liveness(alert_target, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
-            if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                subject = recovery_alert_subject(recovery_advice, alert_target)
-                body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
-                body_html = recovery_alert_body_html(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
-                webhook_body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since, timestamp=False)
-                webhook_body_html = recovery_alert_body_html(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since, timestamp=False)
-                now = int(time.time())
-                email_pending = operational_error_alert.pending("email", ERROR_NOTIFICATION, now)
-                webhook_pending = operational_error_alert.pending("webhook", webhook_event_enabled("error"), now)
-                if email_pending or webhook_pending:
-                    email_succeeded, webhook_succeeded = send_notification_channels("error", subject, body, body_html, email_enabled=email_pending, webhook_enabled=webhook_pending, webhook_body=webhook_body, webhook_body_html=webhook_body_html)
-                    operational_error_alert.record("email", email_pending, email_succeeded, now)
-                    operational_error_alert.record("webhook", webhook_pending, webhook_succeeded, now)
-                    if email_succeeded or webhook_succeeded:
-                        operational_error_alert.note(recovery_advice, operational_error_since)
-                    # A retried alert can reach the screen on a check the outage reporter keeps quiet, and a
-                    # delivery line with nothing under it reads as a run that stopped there
-                    delivery_reported = True
+            # A retried alert can reach the screen on a check the outage reporter keeps quiet, and a delivery
+            # line with nothing under it reads as a run that stopped there
+            delivery_reported = send_failure_alert(recovery_advice, alert_target, SPOTIFY_ERROR_INTERVAL, operational_outage, operational_error_alert)
             # The reminder closes last so the delivery lines it carries stay inside the report rather than
             # landing under the separator that ended it
             if outage_outcome == "reminder":
