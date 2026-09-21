@@ -125,6 +125,8 @@ To run Friend Activity with a scrobble health config, select Friend Activity and
 spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
 
+The scrobble health alert goes out by email and webhook by default. Turn either channel off for one run with `--no-scrobble-health-notify` or `--no-webhook-scrobble-health-notify`, or back on with `--notify-scrobble-health` or `--webhook-scrobble-health`.
+
 Scrobble-specific settings have one-run options, so every comparison control can be changed without a config file:
 
 ```sh
@@ -416,6 +418,12 @@ An error alert goes out once the same failure has lasted **5 minutes**, so a sho
 
 Every failure alert uses the subject `Spotify Monitor error: <what went wrong> (user: <target>)` and lists the fix, the guide link, how many checks failed in a row, since when and when the next retry happens. When the failure clears, a **recovery alert** with the subject `Spotify Monitor recovered: monitoring <target> resumed after <duration>` follows on each channel that delivered the failure alert. The `-e` flag switches off the error email and the recovery email together. `--no-webhook-error-notify` does the same for the webhook.
 
+In scrobble health mode, the alert for missing and resumed scrobbles is sent by email when `SCROBBLE_HEALTH_NOTIFICATION` is `True`, which is the default. Use `--notify-scrobble-health` or `--no-scrobble-health-notify` to change it for one run:
+
+```sh
+spotify_monitor --monitor-mode scrobble_health --no-scrobble-health-notify
+```
+
 All email alerts require valid [SMTP settings](configuration.md#smtp-settings).
 
 Example email:
@@ -439,6 +447,7 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
 | Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Enable with `--webhook-errors` or disable with `--no-webhook-error-notify` |
+| Missing or resumed scrobbles (scrobble health mode) | `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` | Enable with `--webhook-scrobble-health` or disable with `--no-webhook-scrobble-health-notify` |
 
 A monitoring error webhook carries the same title and text as the error email, without the timestamp the provider adds itself. The recovery alert follows on the same channel when the failure clears.
 
