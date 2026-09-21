@@ -425,7 +425,8 @@ def test_the_guide_link_keeps_its_own_line_in_the_html_body(loop_environment, mo
 
     parts = errors[0]["body_html"].split("<br>")
     fix_index = next(index for index, part in enumerate(parts) if part.startswith("To fix: "))
-    assert parts[fix_index + 1].startswith("Guide: https://")
+    # The HTML body links the guide it prints, so the line carries the address as an anchor
+    assert parts[fix_index + 1].startswith('Guide: <a href="https://')
     assert "\n" not in parts[fix_index]
 
 
@@ -540,7 +541,7 @@ def test_the_html_failure_alert_matches_the_plain_body(monkeypatch):
 
     body_html = monitor.recovery_alert_body_html(advice, 180, 4, 1000, timestamp=False)
 
-    assert body_html == "<html><head></head><body><b>Spotify did not answer in time</b><br><br>To fix: a fix<br><br>Failed checks in a row: 4<br>Failing since: FAILING-SINCE<br>Next retry in: 3 minutes</body></html>"
+    assert body_html == "<html><head></head><body><b>Spotify did not answer in time</b><br><br>To fix: a fix<br><br>Failed checks in a row: <b>4</b><br>Failing since: <b>FAILING-SINCE</b><br>Next retry in: 3 minutes</body></html>"
 
 
 # A webhook provider stamps its own time, so the timestamp line belongs to the email alone
