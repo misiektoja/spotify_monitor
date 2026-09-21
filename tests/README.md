@@ -59,6 +59,7 @@ same absent-dependency behavior a user would see.
 | `test_listening_activity.py` | Activity source selection, live feed normalization, metadata enrichment and pause, resume and inactivity behavior |
 | `test_scrobble_health.py` | Spotify to Last.fm authorization, token retries, play matching and missing-scrobble alerts |
 | `test_webhook_notifications.py` | Webhook URL validation, provider detection, ntfy normalization and `SIGHUP` reload |
+| `test_email_html.py` | HTML notification bodies: escaping, the Discord markdown form and the plain-text match |
 | `test_notification_escaping.py` | Source-level sweep proving every HTML email body and attribute escapes Spotify-supplied text |
 | `test_local_transports.py` | Real loopback HTTP and SMTP delivery, marked `integration` |
 | `test_runtime_security.py` | Request deadlines and watchdog nesting, playback argument lists, cookie polling and terminal-safe Spotify output |

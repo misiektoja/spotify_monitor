@@ -440,6 +440,8 @@ If `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` are in `.env`, a running proces
 
 Email notifications need SMTP server details for the sending account. Add them to `spotify_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `spotify_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
 
+Every alert is sent as both HTML and plain text in one message, including the error and scrobble health alerts. Mail clients that render HTML show the friend name, the track, the session times and the values that changed in bold, with the track, album and playlist names linked to their Spotify pages. Clients that do not fall back to the plain text, which is unchanged.
+
 Send one test message to verify the settings:
 
 ```sh
