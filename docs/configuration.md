@@ -208,6 +208,8 @@ The default alert requires five consecutive unmatched completed plays with the o
 | `SCROBBLE_HEALTH_LOOKBACK` | `--scrobble-lookback` | 21600 seconds | Recent history included in each comparison |
 | `SCROBBLE_HEALTH_REPEAT_INTERVAL` | `--scrobble-repeat-interval` | 86400 seconds | Minimum reminder interval while recent missing plays meet the alert threshold, use 0 to disable |
 | `SCROBBLE_HEALTH_STATE_FILE` | `--scrobble-state-file` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
+| `SCROBBLE_HEALTH_NOTIFICATION` | `--notify-scrobble-health` / `--no-scrobble-health-notify` | `True` | Email alerts for missing and resumed scrobbles |
+| `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` | `--webhook-scrobble-health` / `--no-webhook-scrobble-health-notify` | `True` | Webhook alerts for missing and resumed scrobbles |
 
 **Idle** means no completed Spotify plays were returned within the comparison period. **Waiting** means missing plays have not reached the alert threshold. **Scrobbles matched** means recent Spotify plays were found on Last.fm.
 
