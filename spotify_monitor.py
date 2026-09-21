@@ -1024,7 +1024,7 @@ SP_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
 
 # Fixed Spotify activity endpoints keep backend selection separate from credentials
-SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"
+SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"  # unofficial endpoint behind Spotify's Listening Activity feature, found by @JoaoGabriel-Lima (issue #60)
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
