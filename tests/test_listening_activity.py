@@ -298,6 +298,39 @@ def test_optional_profile_resource_exhaustion_stops(monkeypatch):
     assert error.value.code == 1
 
 
+# An explicit backend reaches its own endpoint and skips the live normalization while the other backend stays selected
+def test_friends_can_be_fetched_from_the_other_backend(monkeypatch):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only", "name": "Legacy"}, "track": {}, "timestamp": 1}]}
+    get = Mock(return_value=response_for(legacy))
+    monkeypatch.setattr(monitor.SESSION, "get", get)
+    monkeypatch.setattr(monitor.SESSION, "post", Mock(side_effect=AssertionError("the live feed must not be requested")))
+    assert monitor.spotify_activity_endpoint("buddylist") == (monitor.SPOTIFY_BUDDYLIST_URL, "GET")
+    assert monitor.spotify_get_friends_json("token", backend="buddylist") == legacy
+    assert get.call_args.args[0] == monitor.SPOTIFY_BUDDYLIST_URL
+    assert monitor.other_activity_backend() == "buddylist"
+
+
+# Friend listing names the users only one backend shows and how to switch, or confirms both agree
+def test_list_friends_compares_both_backends(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only"}}, {"user": {"uri": USER_URI}}]}
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
+    feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-only")]})
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert output == '* 1 user visible only through the buddylist backend: legacy-only\n* Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file to monitor them\n* 1 user visible only through the listening_activity backend: live-only\n'
+    monitor.print_other_backend_friends(monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:legacy-only")]}), "token")
+    assert capsys.readouterr().out == "* The buddylist backend lists the same users\n"
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=RuntimeError("HTTP 500")))
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert "* Warning: The buddylist backend could not be checked: " in output
+    assert "To fix:" in output
+    assert "visible only" not in output
+
+
 # Listing resolves live metadata and reports playback state without relying on the legacy feed
 def test_list_live_friends_resolves_names_and_now_playing(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "spotify_get_track_info", live_track_info)

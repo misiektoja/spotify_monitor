@@ -286,6 +286,36 @@ def test_a_legacy_disappearance_names_its_causes_and_times_the_return(loop_envir
     assert "no longer visible" not in output
 
 
+# Verifies a target missing at startup but listed by the other backend gets the switch hint instead of the follow advice
+def test_startup_names_the_other_backend_when_it_lists_the_target(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("watched-user") if backend == "buddylist" else buddy_list("someone-else"))
+
+    run_one_iteration(loop_environment, user_uri_id="watched-user")
+
+    output = capsys.readouterr().out
+    assert "User 'watched-user' not found" in output
+    assert 'The target is visible through the buddylist backend. Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nTimestamp:' in output
+    assert "To fix:" not in output
+
+
+# Verifies a target missing at startup keeps the follow advice when the other backend does not list it either
+def test_startup_keeps_the_follow_advice_when_no_backend_lists_the_target(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("someone-else"))
+
+    run_one_iteration(loop_environment, user_uri_id="watched-user")
+
+    output = capsys.readouterr().out
+    assert "visible through" not in output
+    assert "To fix: Follow this profile" in output
+
+
 # Verifies a target missing from the buddy list does not raise the activity flag
 def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypatch, tmp_path):
     flag_path = tmp_path / "active.flag"
