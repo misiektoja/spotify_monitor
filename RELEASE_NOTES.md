@@ -15,6 +15,7 @@ Version **3.5** reports when a monitored user **stops being visible** in listeni
 
 **Bug fixes**:
 
+- **BUGFIX:** **Alert deliveries stay inside their report** - The hourly **`Monitoring degraded`** reminder closed its report before the error alert was sent, so **`Sending email notification to ...`** and its webhook equivalent landed under the separator and started a second, headless block. The reminder now closes below its delivery lines, keeping one check's report in one block
 - **BUGFIX:** **Import reads the profile your browser is using** - A cookie your browser had not yet written out looked missing, so signing in to Spotify and importing right away reported **no cookie found**. The import now reads the pending entries too. Profiles on read-only media, such as one mounted into the container, still work. A locked database no longer holds up the whole profile list
 - **BUGFIX:** **Firefox imports the profile you are signed in to** - Current Firefox records cookie expiry in milliseconds, which always compared as far in the future, so **every profile looked equally current** and an old one could win. Expiry is now read in either unit. A profile whose cookie has expired says so and gives the date, instead of spending a Spotify request to fail
 - **BUGFIX:** **Chrome, Brave and Chromium from Snap or Flatpak are found** - Only the distribution package locations were searched, so users of the **Snap or Flatpak builds had no profiles listed at all** and could not import
