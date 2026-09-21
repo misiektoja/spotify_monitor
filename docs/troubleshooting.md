@@ -102,8 +102,28 @@ Every failure is reported in the same three-part shape: what went wrong, a `To f
 | Webhook alerts never arrive | Provider mismatch or a stale destination | [Webhook Settings](configuration.md#webhook-settings) then run `spotify_monitor --send-test-webhook` |
 | `spotify_monitor` is not found after installation | The shell has not picked up the new command | [Installation and Command Problems](#installation-and-command-problems) |
 | Escape sequences such as `[36m` printed as text or no colour at all | The terminal cannot display ANSI colour or colour was switched off | [Terminal Colours Look Wrong](#terminal-colours-look-wrong) |
+| `The Spotify request timed out`, `Spotify could not be reached` or `Spotify is temporarily unavailable` | A network problem between this machine and Spotify or a Spotify outage | [Connection Problems](#connection-problems) |
+| `This process ran out of file descriptors` | The operating system limit on open files was reached | [Too Many Open Files](#too-many-open-files) |
 
 A continuing outage produces a `* Monitoring degraded` reminder once an hour, even when the [liveness reminder](usage.md#liveness-reminder) is switched off. `* Monitoring recovered` marks recovery. Use `--verbose` to see the first failed check.
+
+<a id="connection-problems"></a>
+## Connection Problems
+
+`The Spotify request timed out` and `Spotify could not be reached` mean a check got no answer from Spotify. `Spotify is temporarily unavailable` means Spotify answered with a server error. The report names the interval after which the check is retried, so a short outage needs no action. A failure that lasts produces the hourly `Monitoring degraded` reminder and `Monitoring recovered` when it clears.
+
+If the failure continues, check the internet connection, DNS and any firewall or proxy between this machine and Spotify. `A secure connection to Spotify could not be established` is a TLS problem, see [TLS Verification](configuration.md#tls-verification). A server error that lasts is a Spotify outage, so wait for it to end.
+
+To confirm that Spotify is reachable from this machine, run:
+
+```sh
+spotify_monitor --doctor
+```
+
+<a id="too-many-open-files"></a>
+## Too Many Open Files
+
+`This process ran out of file descriptors` means the operating system limit on open files was reached. It is a local limit and not a Spotify problem. Raise it with `ulimit -n 4096` in the shell that starts the tool or set `LimitNOFILE=` in the systemd unit, then restart the tool.
 
 <a id="terminal-colours-look-wrong"></a>
 ## Terminal Colours Look Wrong
