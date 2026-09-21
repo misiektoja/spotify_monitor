@@ -655,7 +655,8 @@ def test_a_delivery_or_a_reset_clears_the_hold(capsys):
 # Verifies every alert site in the loop asks the state before sending and records the outcome, so no channel is tracked by a loose flag
 def test_the_loop_tracks_the_error_alert_through_the_state():
     source = inspect.getsource(monitor)
-    assert source.count("error_alert = ErrorAlertState()") == 1
+    # One state per loop, Friend Activity and scrobble health
+    assert source.count("error_alert = ErrorAlertState()") == 2
     assert source.count("error_alert.reset()") >= 1
     assert source.count('error_alert.pending("email"') == source.count('error_alert.record("email"') >= 1
     assert source.count('error_alert.pending("webhook"') == source.count('error_alert.record("webhook"') >= 1
