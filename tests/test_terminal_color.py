@@ -796,3 +796,12 @@ def test_every_summary_row_is_recognised_by_its_value_column():
 
     assert not monitor.is_startup_summary_row("* Error: something failed")
     assert not monitor.is_startup_summary_row("* Warning: a timeout was hit")
+
+
+# Verifies a date does not reach back over a padded gap and read the word in front of it as a weekday
+def test_a_wide_gap_before_a_date_is_not_read_as_a_weekday():
+    padded = monitor._LONG_DATE_RE.search("A padded column end     07 Feb 26, 00:05:42")
+    weekday = monitor._LONG_DATE_RE.search("Sun 06 Apr 2025, 21:21:46")
+
+    assert padded is not None and padded.group(0) == "07 Feb 26, 00:05:42"
+    assert weekday is not None and weekday.group(0) == "Sun 06 Apr 2025, 21:21:46"
