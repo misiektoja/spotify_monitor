@@ -7199,13 +7199,13 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
 
 
 # Runs the continuous Spotify-to-Last.fm scrobble health comparison
-def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
+def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path], spotify_account: Optional[Tuple[str, str]] = None) -> None:
     state = load_scrobble_health_state(state_path)
     operational_error_alert = ErrorAlertState()
     # Throttles a lasting failure to one report plus the liveness reminder, the cadence Friend Activity uses
     operational_outage = OutageReporter()
     # Both sides of the comparison are named in an alert, so a Spotify failure is not read against the Last.fm profile
-    spotify_account_id, spotify_account_name = spotify_get_scrobble_account()
+    spotify_account_id, spotify_account_name = spotify_get_scrobble_account() if spotify_account is None else spotify_account
     alert_target = ScrobbleTarget(username, spotify_account_id, spotify_account_name)
     first_successful_check = True
     previous_status = None
@@ -8548,8 +8548,14 @@ def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
     ]
 
 
+# Names the Spotify account the scrobble health authorization belongs to, so the summary shows both compared sides
+def scrobble_health_account_summary(account: Optional[Tuple[str, str]]) -> str:
+    account_id, account_name = account if account else ("", "")
+    return str(AlertTarget(account_id, account_name)) if account_id else "Unknown, the account lookup did not succeed"
+
+
 # Builds the concise and complete non-secret startup summary rows
-def build_startup_summary(target: str, config_path, env_path, output_path) -> List[StartupSummaryRow]:
+def build_startup_summary(target: str, config_path, env_path, output_path, scrobble_account: Optional[Tuple[str, str]] = None) -> List[StartupSummaryRow]:
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
@@ -8560,6 +8566,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         return [
             StartupSummaryRow("Mode", "Spotify-to-Last.fm scrobble health", concise=True),
             StartupSummaryRow("Target", str(target), concise=True),
+            StartupSummaryRow("Spotify account", scrobble_health_account_summary(scrobble_account), concise=True),
             StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
             StartupSummaryRow("Alert threshold", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
@@ -15111,7 +15118,9 @@ def main():
         verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
         WEBHOOK_ENABLED = False
 
-    startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH)
+    # Resolved before the summary so it can name both compared accounts, and passed on so the monitor reuses one lookup
+    scrobble_account = spotify_get_scrobble_account() if scrobble_health_mode else None
+    startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH, scrobble_account)
     emit_startup_summary(startup_rows, show_full=bool(VERBOSE_MODE or DEBUG_MODE))
     playback_warning = container_playback_warning()
     if playback_warning is not None:
@@ -15136,7 +15145,7 @@ def main():
         signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
     if scrobble_health_mode:
-        spotify_monitor_scrobble_health(scrobble_health_username, SCROBBLE_HEALTH_STATE_FILE)
+        spotify_monitor_scrobble_health(scrobble_health_username, SCROBBLE_HEALTH_STATE_FILE, scrobble_account)
     else:
         spotify_monitor_friend_uri(target_user_id, sp_tracks, CSV_FILE)
 
