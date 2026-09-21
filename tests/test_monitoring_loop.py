@@ -371,7 +371,7 @@ def recording_channels(monkeypatch, outcomes):
     calls = []
 
     def record(notification_type, subject, body, body_html="", email_enabled=False, webhook_enabled=None, **kwargs):
-        calls.append({"type": notification_type, "subject": subject, "body": body, "body_html": body_html, "email": bool(email_enabled), "webhook": bool(webhook_enabled)})
+        calls.append({"type": notification_type, "subject": subject, "body": body, "body_html": body_html, "email": bool(email_enabled), "webhook": bool(webhook_enabled), "webhook_body": kwargs.get("webhook_body", ""), "webhook_body_html": kwargs.get("webhook_body_html", "")})
         return outcomes[min(len(calls), len(outcomes)) - 1]
 
     monkeypatch.setattr(monitor, "ERROR_NOTIFICATION", True)
@@ -381,8 +381,8 @@ def recording_channels(monkeypatch, outcomes):
     return calls
 
 
-# Drives the loop with a cookie token and the given buddy-list outcomes, returning the error alerts it handed out
-def error_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after):
+# Drives the loop with a cookie token and the given buddy-list outcomes, returning every alert on the error channel
+def error_channel_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after):
     calls = recording_channels(monkeypatch, outcomes)
     monkeypatch.setattr(monitor, "LIVENESS_REMINDER_SECONDS", 100 * monitor.SPOTIFY_ERROR_INTERVAL)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
@@ -404,15 +404,19 @@ def error_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_af
     return [call for call in calls if call["type"] == "error"]
 
 
+# Keeps the failure alerts of one run, so a test about them is not disturbed by the recovery alert that closes one
+def error_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after):
+    return [call for call in error_channel_alerts_for(loop_environment, monkeypatch, responses, outcomes, stop_after) if call["subject"].startswith("Spotify Monitor error:")]
+
+
 # An outage used to be printed and never delivered, since only a rejected token earned an alert
 def test_any_failure_alerts_both_channels_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "Spotify monitoring error (uri: watched-user)"
-    assert "Spotify is temporarily unavailable" in errors[0]["body"]
-    assert "To fix:" in errors[0]["body"]
-    assert f"retry in {monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}" in errors[0]["body"]
+    assert errors[0]["subject"] == "Spotify Monitor error: Spotify is temporarily unavailable (user: watched-user)"
+    assert errors[0]["body"].startswith("Spotify is temporarily unavailable\n\nTo fix: ")
+    assert f"Next retry in: {monitor.display_time(monitor.SPOTIFY_ERROR_INTERVAL)}" in errors[0]["body"]
 
 
 # The guide link sits under the fix in the HTML body too, since HTML renders the newline the fix carries as a space
@@ -430,7 +434,7 @@ def test_a_changed_failure_category_does_not_earn_a_second_alert(loop_environmen
     responses = [Exception("503 Server Error: Service Unavailable")] * 3 + [http_error(401)] * 3
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
-    assert [call["subject"] for call in errors] == ["Spotify monitoring error (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Spotify is temporarily unavailable (user: watched-user)"]
 
 
 # Alternating categories used to forget the delivered alert on every transition, so one outage sent one per check
@@ -447,7 +451,7 @@ def test_a_stalled_request_earns_the_same_single_alert(loop_environment, monkeyp
     checks = 2 * (monitor.ERROR_ALERT_AFTER_SECONDS // monitor.ALARM_RETRY)
     errors = error_alerts_for(loop_environment, monkeypatch, [monitor.TimeoutException("stalled")] * checks, [(True, True)], checks)
 
-    assert [call["subject"] for call in errors] == ["Spotify monitoring error (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Spotify did not answer in time (user: watched-user)"]
 
 
 # Each channel is tracked on its own, so the one that failed is retried while the one that landed is left alone
@@ -461,9 +465,92 @@ def test_a_failed_channel_is_retried_and_a_delivered_one_is_not(loop_environment
 def test_a_new_outage_after_a_recovery_alerts_again(loop_environment, monkeypatch):
     failure = Exception("503 Server Error: Service Unavailable")
     responses = [failure, failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000), failure, failure, failure]
-    errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 7)
+    alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 7)
 
-    assert [(call["email"], call["webhook"]) for call in errors] == [(True, True), (True, True)]
+    assert [(call["email"], call["webhook"]) for call in alerts] == [(True, True)] * 3
+    assert [call["subject"].split(":")[0] for call in alerts] == ["Spotify Monitor error", "Spotify Monitor recovered", "Spotify Monitor error"]
+
+
+# The recovery alert closes the failure alert on the channels it reached, so a channel that never heard stays quiet
+def test_the_recovery_alert_follows_the_channels_the_failure_alert_reached(loop_environment, monkeypatch):
+    failure = Exception("503 Server Error: Service Unavailable")
+    responses = [failure, failure, failure, buddy_list(timestamp_ms=int(time.time()) * 1000)]
+    alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(False, True)], 5)
+    recoveries = [call for call in alerts if call["subject"].startswith("Spotify Monitor recovered:")]
+
+    assert len(recoveries) == 1
+    assert (recoveries[0]["email"], recoveries[0]["webhook"]) == (False, True)
+    assert recoveries[0]["subject"].startswith("Spotify Monitor recovered: monitoring watched-user resumed after ")
+    assert recoveries[0]["body"].startswith("Monitoring recovered for watched-user after ")
+    assert "The failure was: Spotify is temporarily unavailable" in recoveries[0]["body"]
+    assert "Timestamp: " not in recoveries[0]["webhook_body"]
+
+
+# A failure too short to earn an alert has nothing to close, so its recovery stays on the console
+def test_a_recovery_without_a_delivered_failure_alert_sends_nothing(loop_environment, monkeypatch, capsys):
+    responses = [Exception("503 Server Error: Service Unavailable"), buddy_list(timestamp_ms=int(time.time()) * 1000)]
+    alerts = error_channel_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 3)
+
+    assert alerts == []
+    assert "* Monitoring recovered for watched-user after " in capsys.readouterr().out
+
+
+# The subject names the tool, the failure and the target, so an inbox fed by several monitors sorts them by tool
+def test_the_failure_alert_subject_names_the_tool_and_the_target():
+    advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True)
+
+    assert monitor.recovery_alert_subject(advice, "watched-user") == "Spotify Monitor error: Spotify did not answer in time (user: watched-user)"
+
+
+# A first failure has no run to count, so the alert leaves out the count and the outage start
+def test_the_failure_alert_body_leaves_out_a_run_of_one(monkeypatch):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True)
+
+    body = monitor.recovery_alert_body(advice, 180, 1, 0, timestamp=False)
+
+    assert body == "Spotify did not answer in time\n\nTo fix: a fix\n\nNext retry in: 3 minutes"
+
+
+# A lasting outage says how many checks failed and since when, so the reader sees how bad it is
+def test_the_failure_alert_body_counts_a_lasting_outage(monkeypatch):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monkeypatch.setattr(monitor, "get_date_from_ts", lambda timestamp: "FAILING-SINCE")
+    advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True)
+
+    body = monitor.recovery_alert_body(advice, 180, 4, 1000, timestamp=False)
+
+    assert body == "Spotify did not answer in time\n\nTo fix: a fix\n\nFailed checks in a row: 4\nFailing since: FAILING-SINCE\nNext retry in: 3 minutes"
+
+
+# The technical detail is a debug aid, so it reaches the alert only when the run asked for diagnostics
+@pytest.mark.parametrize("debug,carried", [(False, False), (True, True)])
+def test_the_failure_alert_body_carries_the_detail_only_in_debug(monkeypatch, debug, carried):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", debug)
+    advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True, "the raw error")
+
+    assert ("Technical detail: the raw error" in monitor.recovery_alert_body(advice, 180, 1, 0, timestamp=False)) is carried
+
+
+# The HTML alert repeats the plain text with the summary in bold, so both formats say the same thing
+def test_the_html_failure_alert_matches_the_plain_body(monkeypatch):
+    monkeypatch.setattr(monitor, "DEBUG_MODE", False)
+    monkeypatch.setattr(monitor, "get_date_from_ts", lambda timestamp: "FAILING-SINCE")
+    advice = monitor.make_recovery_advice("network.timeout", "Spotify did not answer in time", "a fix", True)
+
+    body_html = monitor.recovery_alert_body_html(advice, 180, 4, 1000, timestamp=False)
+
+    assert body_html == "<html><head></head><body><b>Spotify did not answer in time</b><br><br>To fix: a fix<br><br>Failed checks in a row: 4<br>Failing since: FAILING-SINCE<br>Next retry in: 3 minutes</body></html>"
+
+
+# A webhook provider stamps its own time, so the timestamp line belongs to the email alone
+def test_the_webhook_body_leaves_the_timestamp_to_the_provider(loop_environment, monkeypatch):
+    errors = error_alerts_for(loop_environment, monkeypatch, [Exception("503 Server Error: Service Unavailable")] * 6, [(True, True)], 6)
+
+    assert "\n\nTimestamp: " in errors[0]["body"]
+    assert "Timestamp: " not in errors[0]["webhook_body"]
+    assert "Timestamp: " not in errors[0]["webhook_body_html"]
+    assert errors[0]["body"].startswith(errors[0]["webhook_body"])
 
 
 # A failure the loop can retry away is alerted only once the outage has lasted the alert delay, so a blip of a
@@ -479,7 +566,7 @@ def test_a_retryable_failure_is_alerted_once_the_outage_has_lasted(loop_environm
 def test_a_failure_that_cannot_clear_itself_is_alerted_at_once(loop_environment, monkeypatch):
     errors = error_alerts_for(loop_environment, monkeypatch, [http_error(401)], [(True, True)], 1)
 
-    assert [call["subject"] for call in errors] == ["Spotify sp_dc may be invalid or expired! (uri: watched-user)"]
+    assert [call["subject"] for call in errors] == ["Spotify Monitor error: Spotify rejected the sp_dc cookie (user: watched-user)"]
 
 
 # The loop that follows an active listener reports its failures through the same alert as the outer one
@@ -488,7 +575,7 @@ def test_a_failure_while_active_alerts_both_channels_too(loop_environment, monke
     errors = error_alerts_for(loop_environment, monkeypatch, responses, [(True, True)], 6)
 
     assert [(call["email"], call["webhook"]) for call in errors] == [(True, True)]
-    assert errors[0]["subject"] == "Spotify monitoring error (uri: watched-user)"
+    assert errors[0]["subject"] == "Spotify Monitor error: Spotify is temporarily unavailable (user: watched-user)"
 
 
 # Verifies a retry that reaches the screen on a quiet check still ends with a timestamp
@@ -653,7 +740,7 @@ def test_a_second_failure_category_is_noted_in_one_line(loop_environment, monkey
     reports = [line for line in lines if line.startswith("* Error:")]
     changes = [number for number, line in enumerate(lines) if line.startswith("* Monitoring failure changed for watched-user. ")]
     assert len(reports) == 1 and "temporarily unavailable" in reports[0]
-    assert len(changes) == 1 and lines[changes[0]].endswith("The Spotify request timed out")
+    assert len(changes) == 1 and lines[changes[0]].endswith("Spotify did not answer in time")
     assert lines[changes[0] + 1].startswith("Timestamp:")
     assert "\n".join(lines).count("To fix: ") == 1
 

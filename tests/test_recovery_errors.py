@@ -199,6 +199,19 @@ def test_transient_spotify_failures_do_not_prescribe_diagnostics(error):
     assert "--debug" not in advice.fix
 
 
+# A transient failure names the service and says the run handles it, and the troubleshooting page quotes that wording
+@pytest.mark.parametrize("error,summary,fix", [
+    (requests.Timeout("request timed out"), "Spotify did not answer in time", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"),
+    (requests.ConnectionError("connection refused"), "Spotify could not be reached", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"),
+    (make_http_error(503), "Spotify is temporarily unavailable", "Usually nothing to do, the tool retries on its own. If it continues, wait for Spotify to recover"),
+])
+def test_transient_spotify_failures_keep_their_wording(error, summary, fix):
+    advice = monitor.classify_recovery_error(error)
+
+    assert advice.summary == summary
+    assert advice.fix == f"{fix}\nGuide: {monitor.CONNECTION_GUIDE_URL}"
+
+
 # Verifies manual cookie entry failures link directly to extraction steps
 def test_manual_cookie_recovery_uses_extraction_guide():
     advice = monitor.classify_recovery_error(RuntimeError("invalid or expired"), "set_sp_dc")

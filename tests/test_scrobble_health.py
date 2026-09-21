@@ -860,7 +860,9 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
         monitor.spotify_monitor_scrobble_health("lastfm-user", Path("state.json"))
     output = capsys.readouterr().out
     assert delivery_mock.call_args.args[2].endswith("\n\nTimestamp: ALERT-TIMESTAMP")
-    assert "check failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert delivery_mock.call_args.args[1] == "Spotify Monitor error: Spotify-to-Last.fm scrobble health check failed (user: lastfm-user)"
+    assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
+    assert "Timestamp: " not in delivery_mock.call_args.kwargs["webhook_body"]
     assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
     assert "outage" not in delivery_mock.call_args.args[2].lower()
     assert output.count("Operational alert deferred until 3 consecutive check failures.") == 2
@@ -910,7 +912,7 @@ def test_scrobble_health_monitor_resets_operational_error_failures_after_success
     assert output.count("Scrobble health result: Check failed. 1 consecutive check failure.") == 2
     assert "Scrobble health result: Check failed. 3 consecutive check failures." in output
     assert delivery_mock.call_count == 1
-    assert "check failed 3 consecutive times" in delivery_mock.call_args.args[2]
+    assert "Failed checks in a row: 3" in delivery_mock.call_args.args[2]
 
 
 # Confirms scrobble health uses a smaller capped retry budget than Friend Activity

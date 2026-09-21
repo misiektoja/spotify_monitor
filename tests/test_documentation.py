@@ -258,6 +258,15 @@ def test_runtime_guide_urls_stay_off_the_debugging_tools_page():
         assert not getattr(monitor, name).startswith(monitor.DOCS_BASE_URL + "/debugging/"), name
 
 
+# Connection Problems is reached by searching for the line on screen, so it has to quote the failure summaries
+def test_the_connection_problems_page_quotes_the_failure_summaries():
+    text = read_asset("docs/troubleshooting.md")
+    failures = (Exception("Connection timed out"), monitor.req.exceptions.ConnectionError("connection refused"), Exception("503 Server Error: Service Unavailable"))
+
+    for advice in (monitor.classify_recovery_error(failure) for failure in failures):
+        assert f"`{advice.summary}`" in text, f"the troubleshooting page does not quote {advice.summary}"
+
+
 # Verifies debugging downloads retain the supported curl commands
 def test_debugging_docs_use_curl_downloads():
     commands = fenced_code_lines(read_asset("docs/debugging.md"))

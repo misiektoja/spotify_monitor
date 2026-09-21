@@ -628,6 +628,21 @@ def test_notification_channels_are_independent(monkeypatch):
     webhook.assert_called_once_with("Title", "Body", "song", force=True, image_url="", ntfy_priority=0, ntfy_tags="", discord_description="")
 
 
+# A webhook provider stamps its own time, so a body meant for the webhook replaces the one the email carries
+def test_a_webhook_body_of_its_own_replaces_the_email_body(monkeypatch):
+    configure_webhook(monkeypatch)
+    email = Mock(return_value=0)
+    webhook = Mock(return_value=0)
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", webhook)
+
+    assert monitor.send_notification_channels("error", "Title", "Body\n\nTimestamp: now", "<html><body>Body<br><br>Timestamp: now</body></html>", email_enabled=True, webhook_enabled=True, webhook_body="Body", webhook_body_html="<html><body>Body</body></html>") == (True, True)
+
+    assert email.call_args.args[1] == "Body\n\nTimestamp: now"
+    assert webhook.call_args.args[1] == "Body"
+    assert "Timestamp" not in webhook.call_args.kwargs["discord_description"]
+
+
 # Verifies channel results report delivery success instead of attempted sends
 def test_notification_channels_report_transport_failures(monkeypatch):
     monkeypatch.setattr(monitor, "send_email", Mock(return_value=1))
