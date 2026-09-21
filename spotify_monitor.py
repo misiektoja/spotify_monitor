@@ -8159,18 +8159,40 @@ def mask_email_address(address) -> str:
     return f"{masked}@{domain}"
 
 
+# Returns whether a mail server is set rather than left empty or still holding the placeholder the sample configuration ships
+def smtp_server_configured() -> bool:
+    return doctor_secret_is_set(SMTP_HOST) and bool(SMTP_PORT)
+
+
+# Returns whether an email alert has both a server to send through and an address to reach
+def email_channel_configured() -> bool:
+    return smtp_server_configured() and doctor_secret_is_set(RECEIVER_EMAIL)
+
+
+# Returns whether a webhook alert has a destination to post to
+def webhook_channel_configured() -> bool:
+    return bool(normalized_webhook_provider()) and doctor_secret_is_set(WEBHOOK_URL)
+
+
+# Rolls one channel's enabled alerts into the state its summary row reports, which is off while the channel has no destination
+def _startup_notification_state(categories: Sequence[str], configured: bool) -> str:
+    if not categories:
+        return "Off"
+    return "On (" + ", ".join(categories) + ")" if configured else "Off (not configured)"
+
+
 # Reports the mail server and the recipient an alert would reach, without the account that signs in to the server
 def _startup_email_detail_rows() -> List[StartupSummaryRow]:
-    transport = f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})" if SMTP_HOST and SMTP_PORT else "Not configured"
+    transport = f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})" if smtp_server_configured() else "Not configured"
     return [
         StartupSummaryRow("Email transport", transport),
-        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if RECEIVER_EMAIL else "Not configured"),
+        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if doctor_secret_is_set(RECEIVER_EMAIL) else "Not configured"),
     ]
 
 
 # Reports the webhook service alerts would reach and whether the delivery lines are printed at all
 def _startup_webhook_detail_rows() -> List[StartupSummaryRow]:
-    if not normalized_webhook_provider() or not str(WEBHOOK_URL or "").strip():
+    if not webhook_channel_configured():
         provider = "Not configured"
     else:
         provider = f"{webhook_provider_display_name()} ({'enabled' if WEBHOOK_ENABLED else 'disabled'})"
@@ -8206,8 +8228,8 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
-    notification_state_email = "On (" + ", ".join(enabled_notifications) + ")" if enabled_notifications else "Off"
-    notification_state_webhook = "On (" + ", ".join(enabled_webhooks) + ")" if enabled_webhooks else "Off"
+    notification_state_email = _startup_notification_state(enabled_notifications, email_channel_configured())
+    notification_state_webhook = _startup_notification_state(enabled_webhooks, webhook_channel_configured())
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     if MONITOR_MODE == "scrobble_health":
         return [
