@@ -7084,8 +7084,7 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
 # Runs the continuous Spotify-to-Last.fm scrobble health comparison
 def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
     state = load_scrobble_health_state(state_path)
-    operational_error_email_notified = False
-    operational_error_webhook_notified = False
+    operational_error_alert = ErrorAlertState()
     operational_error_failures = 0
     operational_error_since = 0
     first_successful_check = True
@@ -7105,6 +7104,15 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 debug_print("Starting scrobble health check", user=username, interval=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
             spotify_plays = spotify_get_recent_plays()
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
+            # Announced before the comparison result, since a closed outage is its own report and the alert
+            # goes to the channels that carried the failure so a reader is not left waiting for an all clear
+            if operational_error_failures:
+                debug_print("Scrobble health recovered", user=username, streak=operational_error_failures, alerted=operational_error_alert.advice is not None)
+                if operational_error_alert.advice is not None:
+                    print_outage_recovery(username, int(time.time()) - operational_error_since, operational_error_alert)
+                operational_error_alert.reset()
+                operational_error_failures = 0
+                operational_error_since = 0
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
             next_state, action = transition_scrobble_health_state(state, evaluation)
             event_reported = False
@@ -7152,10 +7160,6 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if evaluation.status != "suspect":
                 previous_status = evaluation.status
             first_successful_check = False
-            operational_error_email_notified = False
-            operational_error_webhook_notified = False
-            operational_error_failures = 0
-            operational_error_since = 0
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
             operational_error_failures += 1
@@ -7174,12 +7178,15 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 body_html = recovery_alert_body_html(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since)
                 webhook_body = recovery_alert_body(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since, timestamp=False)
                 webhook_body_html = recovery_alert_body_html(recovery_advice, SPOTIFY_ERROR_INTERVAL, operational_error_failures, operational_error_since, timestamp=False)
-                email_pending = ERROR_NOTIFICATION and not operational_error_email_notified
-                webhook_pending = webhook_event_enabled("error") and not operational_error_webhook_notified
+                now = int(time.time())
+                email_pending = operational_error_alert.pending("email", ERROR_NOTIFICATION, now)
+                webhook_pending = operational_error_alert.pending("webhook", webhook_event_enabled("error"), now)
                 if email_pending or webhook_pending:
                     email_succeeded, webhook_succeeded = send_notification_channels("error", subject, body, body_html, email_enabled=email_pending, webhook_enabled=webhook_pending, webhook_body=webhook_body, webhook_body_html=webhook_body_html)
-                    operational_error_email_notified = operational_error_email_notified or email_succeeded
-                    operational_error_webhook_notified = operational_error_webhook_notified or webhook_succeeded
+                    operational_error_alert.record("email", email_pending, email_succeeded, now)
+                    operational_error_alert.record("webhook", webhook_pending, webhook_succeeded, now)
+                    if email_succeeded or webhook_succeeded:
+                        operational_error_alert.note(recovery_advice, operational_error_since)
             print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
 
