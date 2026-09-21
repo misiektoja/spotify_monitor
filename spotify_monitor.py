@@ -1147,7 +1147,8 @@ TLS_GUIDE_URL = DOCS_BASE_URL + "/configuration/#tls-verification"
 INTERVALS_GUIDE_URL = DOCS_BASE_URL + "/usage/#check-intervals"
 TERMINAL_GUIDE_URL = DOCS_BASE_URL + "/usage/#terminal-output"
 DOCTOR_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#doctor-preflight"
-DIAGNOSTICS_GUIDE_URL = DOCS_BASE_URL + "/debugging/#cli-output-modes"
+CONNECTION_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#connection-problems"
+DESCRIPTOR_LIMIT_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#too-many-open-files"
 
 # Labels of the two Doctor checks that gate the optional delivery tests, matched by prefix so each can name its channel
 SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
@@ -1684,7 +1685,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     # Checked ahead of every context, since a local descriptor limit is not a failure of whatever call hit it
     if error is not None and is_too_many_open_files(error):
-        return make_recovery_advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Spotify problem", recovery_fix_with_guide("Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Spotify problem", recovery_fix_with_guide("Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", DESCRIPTOR_LIMIT_GUIDE_URL), False, safe_detail)
 
     if isinstance(error, SpotifyQuotaExceededError):
         wait_text = f" Spotify requested a wait of {display_time(error.retry_after)}." if error.retry_after is not None else ""
@@ -1771,7 +1772,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             fix += "\nA private session hides the target until it ends"
         return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
-        return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "file_write":
         return make_recovery_advice("file.unwritable", "An output destination is not writable", recovery_fix_with_guide("Choose a writable path and verify its parent directory permissions then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "setup.destination":
@@ -1816,7 +1817,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
         code = "smtp.connection" if context.startswith("smtp") else "network.timeout"
         summary = "The SMTP connection timed out" if context.startswith("smtp") else "The Spotify request timed out"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check connectivity and retry. If timeouts continue run --doctor --debug", DIAGNOSTICS_GUIDE_URL)
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check network access, DNS, firewall and proxy settings then retry", CONNECTION_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
     if isinstance(error, req.exceptions.SSLError) or any(term in message for term in ("certificate verify failed", "tls", "ssl error")):
         if context.startswith("smtp"):
@@ -1825,7 +1826,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if isinstance(error, (req.ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
         code = "smtp.connection" if context.startswith("smtp") else "network.unavailable"
         summary = "The SMTP server could not be reached" if context.startswith("smtp") else "Spotify could not be reached"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check DNS, internet access, firewall and proxy settings then retry", DIAGNOSTICS_GUIDE_URL)
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check network access, DNS, firewall and proxy settings then retry", CONNECTION_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or mentions_status_code("429", message) or any(term in message for term in ("too many requests", "rate limit")):
@@ -1834,7 +1835,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
         return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide(rate_limit_fix, INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
-        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Wait and retry later. Run --doctor if the failure continues", DOCTOR_GUIDE_URL), True, safe_detail)
+        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Wait for Spotify to recover then retry", CONNECTION_GUIDE_URL), True, safe_detail)
     if status == 404 and context.startswith("target"):
         return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
