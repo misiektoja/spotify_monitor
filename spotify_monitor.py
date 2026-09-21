@@ -139,6 +139,8 @@ SONG_ON_LOOP_NOTIFICATION = False
 ERROR_NOTIFICATION = True
 
 # Whether to send email alerts when Spotify scrobbles are missing or start appearing again
+# Applies only in scrobble health mode
+# Can also be enabled via --notify-scrobble-health or disabled via --no-scrobble-health-notify
 SCROBBLE_HEALTH_NOTIFICATION = True
 
 # ----------------------------
@@ -195,6 +197,8 @@ WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 WEBHOOK_ERROR_NOTIFICATION = True
 
 # Whether to send webhook alerts when Spotify scrobbles are missing or start appearing again
+# Applies only in scrobble health mode
+# Can also be enabled via --webhook-scrobble-health or disabled via --no-webhook-scrobble-health-notify
 WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = True
 
 # Optional request headers for advanced webhook integrations
@@ -13473,7 +13477,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
 # Applies validated one-run webhook command-line overrides to runtime settings
 def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION
+    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION
     if args.webhook_provider is not None:
         WEBHOOK_PROVIDER = str(args.webhook_provider)
     if args.webhook_url is not None:
@@ -13502,6 +13506,10 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
     if args.webhook_errors is not None:
         WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
         if args.webhook_errors:
+            WEBHOOK_ENABLED = True
+    if args.webhook_scrobble_health is not None:
+        WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = args.webhook_scrobble_health
+        if args.webhook_scrobble_health:
             WEBHOOK_ENABLED = True
     if args.webhook_provider is None:
         detected_provider = detect_webhook_provider(WEBHOOK_URL)
@@ -13849,6 +13857,21 @@ def main():
         default=None,
         help="Disable email on errors and the recovery alert that follows"
     )
+    scrobble_health_toggle = notify.add_mutually_exclusive_group()
+    scrobble_health_toggle.add_argument(
+        "--notify-scrobble-health",
+        dest="notify_scrobble_health",
+        action="store_true",
+        default=None,
+        help="Email when scrobbles are missing or start appearing again (scrobble health mode)"
+    )
+    scrobble_health_toggle.add_argument(
+        "--no-scrobble-health-notify",
+        dest="notify_scrobble_health",
+        action="store_false",
+        default=None,
+        help="Disable email when scrobbles are missing or start appearing again (scrobble health mode)"
+    )
     notify.add_argument(
         "--send-test-email",
         dest="send_test_email",
@@ -13934,6 +13957,21 @@ def main():
         action="store_false",
         default=None,
         help="Disable webhook alerts when monitoring has a problem and the recovery alert that follows"
+    )
+    webhook_scrobble_health_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_scrobble_health_toggle.add_argument(
+        "--webhook-scrobble-health",
+        dest="webhook_scrobble_health",
+        action="store_true",
+        default=None,
+        help="Send a webhook alert when scrobbles are missing or start appearing again (scrobble health mode)"
+    )
+    webhook_scrobble_health_toggle.add_argument(
+        "--no-webhook-scrobble-health-notify",
+        dest="webhook_scrobble_health",
+        action="store_false",
+        default=None,
+        help="Disable webhook alerts when scrobbles are missing or start appearing again (scrobble health mode)"
     )
     webhook_notify.add_argument(
         "--send-test-webhook",
@@ -14239,7 +14277,7 @@ def main():
             (args.force, "--force"),
         )
         set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_sp_dc_conflicts:
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
@@ -14305,7 +14343,7 @@ def main():
             (args.force, "--force"),
         )
         set_webhook_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_webhook_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_webhook_conflicts:
             parser.error("--set-webhook-url cannot be combined with " + ", ".join(set_webhook_conflicts))
@@ -14364,7 +14402,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -14683,6 +14721,8 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+    if args.notify_scrobble_health is not None:
+        SCROBBLE_HEALTH_NOTIFICATION = args.notify_scrobble_health
     apply_webhook_cli_overrides(args, parser)
     trace_unresolved_secrets()
     if args.track_in_spotify is True:
@@ -15016,6 +15056,9 @@ def main():
 
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+
+    if args.notify_scrobble_health is not None:
+        SCROBBLE_HEALTH_NOTIFICATION = args.notify_scrobble_health
 
     apply_webhook_cli_overrides(args, parser)
     trace_unresolved_secrets()
