@@ -134,7 +134,7 @@ SONG_NOTIFICATION = False
 # Can also be enabled via the -x flag
 SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send an email on monitoring errors
+# Whether to send an email on errors and the recovery alert that follows once the failure clears
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
@@ -190,7 +190,7 @@ WEBHOOK_SONG_NOTIFICATION = False
 # Can also be enabled via the --webhook-loop flag
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send a webhook notification on monitoring errors
+# Whether to send a webhook notification on monitoring errors and the recovery alert that follows once the failure clears
 # Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
@@ -13799,7 +13799,7 @@ def main():
         dest="notify_errors",
         action="store_false",
         default=None,
-        help="Disable emails on errors and the recovery alert that follows"
+        help="Disable email on errors and the recovery alert that follows"
     )
     notify.add_argument(
         "--send-test-email",
@@ -13878,7 +13878,7 @@ def main():
         dest="webhook_errors",
         action="store_true",
         default=None,
-        help="Send webhook alerts when monitoring has a problem"
+        help="Send webhook alerts when monitoring has a problem and the recovery alert that follows"
     )
     webhook_error_toggle.add_argument(
         "--no-webhook-error-notify",
