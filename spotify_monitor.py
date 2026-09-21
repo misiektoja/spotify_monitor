@@ -1719,7 +1719,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "browser_import":
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", CONNECTION_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
             return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
@@ -1730,9 +1730,9 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "set_sp_dc":
         if "interactive terminal" in message:
-            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", recovery_fix_with_guide("Run --set-sp-dc from an interactive shell so getpass can hide the cookie", COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", recovery_fix_with_guide("Run --set-sp-dc from an interactive shell so getpass can hide the cookie", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", CONNECTION_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no nonempty", "rejected")):
             return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
