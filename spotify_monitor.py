@@ -1139,6 +1139,7 @@ CONTAINER_FIREFOX_GUIDE_URL = DOCS_BASE_URL + "/usage/#import-firefox-into-conta
 CLIENT_GUIDE_URL = DOCS_BASE_URL + "/configuration/#spotify-desktop-client"
 TARGET_GUIDE_URL = DOCS_BASE_URL + "/configuration/#how-to-find-a-friends-spotify-profile-url"
 FOLLOWING_GUIDE_URL = DOCS_BASE_URL + "/configuration/#following-the-monitored-user"
+BACKEND_GUIDE_URL = DOCS_BASE_URL + "/configuration/#friend-activity-backend"
 SMTP_GUIDE_URL = DOCS_BASE_URL + "/configuration/#smtp-settings"
 WEBHOOK_GUIDE_URL = DOCS_BASE_URL + "/configuration/#webhook-settings"
 SECRETS_GUIDE_URL = DOCS_BASE_URL + "/configuration/#storing-secrets"
@@ -5971,29 +5972,31 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_musi
 
 
 # Selects the configured Friend Activity endpoint and HTTP method
-def spotify_activity_endpoint():
-    if FRIEND_ACTIVITY_BACKEND == "listening_activity":
+def spotify_activity_endpoint(backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    if backend == "listening_activity":
         return SPOTIFY_LISTENING_ACTIVITY_URL, "POST"
-    if FRIEND_ACTIVITY_BACKEND == "buddylist":
+    if backend == "buddylist":
         return SPOTIFY_BUDDYLIST_URL, "GET"
     raise ValueError('FRIEND_ACTIVITY_BACKEND must be "listening_activity" or "buddylist"')
 
 
-# Requests the configured activity source without following redirects
-def spotify_request_activity(access_token, transport, client_id=None, user_agent=None):
-    url, method = spotify_activity_endpoint()
+# Requests the configured activity source, or the given backend, without following redirects
+def spotify_request_activity(access_token, transport, client_id=None, user_agent=None, backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    url, method = spotify_activity_endpoint(backend)
     headers = {"Authorization": f"Bearer {access_token}"}
     if user_agent:
         headers["User-Agent"] = user_agent
     if TOKEN_SOURCE == "cookie" and client_id:
         headers["Client-Id"] = client_id
     options = {"headers": headers, "timeout": FUNCTION_TIMEOUT, "verify": VERIFY_SSL, "allow_redirects": False}
-    debug_print(f"HTTP {method}", url=url, context=FRIEND_ACTIVITY_BACKEND, headers=sanitize_debug_headers(headers))
+    debug_print(f"HTTP {method}", url=url, context=backend, headers=sanitize_debug_headers(headers))
     if method == "POST":
         response = transport.post(url, json={"unused": True, "resultLimit": SPOTIFY_ACTIVITY_RESULT_LIMIT}, **options)
     else:
         response = transport.get(url, **options)
-    debug_print(f"HTTP {method}", url=url, context=FRIEND_ACTIVITY_BACKEND, status=response.status_code)
+    debug_print(f"HTTP {method}", url=url, context=backend, status=response.status_code)
     return response
 
 
@@ -7683,11 +7686,12 @@ def spotify_normalize_listening_activity(payload):
     return {"friends": list(friends.values())}
 
 
-# Fetches friends through the configured activity source
-def spotify_get_friends_json(access_token):
-    response = spotify_request_activity(access_token, SESSION, SP_CACHED_CLIENT_ID, USER_AGENT)
+# Fetches friends through the configured activity source, or through the given backend
+def spotify_get_friends_json(access_token, backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    response = spotify_request_activity(access_token, SESSION, SP_CACHED_CLIENT_ID, USER_AGENT, backend)
     if response.status_code == 401:
-        raise Exception("401 Unauthorized for url: " + spotify_activity_endpoint()[0])
+        raise Exception("401 Unauthorized for url: " + spotify_activity_endpoint(backend)[0])
     response.raise_for_status()
     if response.status_code != 200:
         raise ValueError(f"Spotify activity returned unexpected HTTP {response.status_code}")
@@ -7697,9 +7701,70 @@ def spotify_get_friends_json(access_token):
     error_str = friends_json.get("error")
     if error_str:
         raise ValueError(error_str)
-    if FRIEND_ACTIVITY_BACKEND == "listening_activity":
+    if backend == "listening_activity":
         return spotify_normalize_listening_activity(friends_json)
     return friends_json
+
+
+# Returns the name of the Friend Activity backend that is not selected
+def other_activity_backend() -> str:
+    return "buddylist" if live_activity_backend() else "listening_activity"
+
+
+# Fetches the friends listed by the other Friend Activity backend, or None when that request fails
+def spotify_get_other_backend_friends(access_token) -> Optional[dict]:
+    try:
+        return spotify_get_friends_json(access_token, backend=other_activity_backend())
+    except Exception as exc:
+        debug_print("Other backend lookup", outcome="failed", error=f"{type(exc).__name__}: {sanitize_error_text(exc)}")
+        return None
+
+
+# Reports whether the target appears in the other Friend Activity backend, or None when it could not be checked
+def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]:
+    if not access_token or not user_uri_id:
+        return None
+    friends = spotify_get_other_backend_friends(access_token)
+    if friends is None:
+        return None
+    try:
+        found, _ = spotify_get_friend_info(friends, user_uri_id)
+    except Exception:
+        return None
+    return bool(found)
+
+
+# Returns the instruction that switches monitoring to the given backend
+def backend_switch_hint(backend: str) -> str:
+    return f"Run with --friend-activity-backend {backend} or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in the configuration file"
+
+
+# Returns the user IDs named in one activity response
+def activity_user_ids(friend_activity) -> set:
+    return {str(friend["user"]["uri"]).split("spotify:user:", 1)[-1] for friend in friend_activity.get("friends", []) if isinstance(friend, dict) and isinstance(friend.get("user"), dict) and friend["user"].get("uri")}
+
+
+# Prints the users that only one of the two Friend Activity backends lists, since each can show users the other omits
+def print_other_backend_friends(friend_activity, access_token) -> None:
+    other_backend = other_activity_backend()
+    try:
+        other_friends = spotify_get_friends_json(access_token, backend=other_backend)
+    except Exception as exc:
+        # The comparison is optional, so the failure is a warning that still names the backend and the usual next step
+        advice = classify_recovery_error(exc, "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth")
+        print_recovery_advice(RecoveryAdvice(advice.code, f"The {other_backend} backend could not be checked: {advice.summary}", advice.fix, advice.retryable, advice.detail), label="Warning")
+        return
+    selected_ids = activity_user_ids(friend_activity)
+    only_other = sorted(activity_user_ids(other_friends) - selected_ids)
+    only_selected = sorted(selected_ids - activity_user_ids(other_friends))
+    if not only_other and not only_selected:
+        print(f"* The {other_backend} backend lists the same users")
+        return
+    if only_other:
+        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {', '.join(only_other)}")
+        print(f"* {backend_switch_hint(other_backend)} to monitor them")
+    if only_selected:
+        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {', '.join(only_selected)}")
 
 
 # Fetches and briefly caches optional names omitted from the live activity feed
@@ -13264,9 +13329,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
                     print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
-                    not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
-                    if recovery_hint_tracker.should_render(not_visible_advice):
-                        print(f"To fix: {not_visible_advice.fix}")
+                    other_backend = other_activity_backend()
+                    if target_visible_in_other_backend(sp_accessToken, user_uri_id):
+                        print(f"The target is visible through the {other_backend} backend. {backend_switch_hint(other_backend)}")
+                    else:
+                        not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                        if recovery_hint_tracker.should_render(not_visible_advice):
+                            print(f"To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
             debug_monitor_wait_timing(user_uri_id, activity_disappeared_interval(), "the target profile is not visible")
@@ -14726,6 +14795,7 @@ def main():
             sp_friends = spotify_get_friends_json(sp_accessToken)
             spotify_list_friends(sp_friends, sp_accessToken)
             print("─" * HORIZONTAL_LINE)
+            print_other_backend_friends(sp_friends, sp_accessToken)
         except Exception as e:
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
             print_recovery_error(e, auth_context)
