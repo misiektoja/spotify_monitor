@@ -590,7 +590,7 @@ WEBHOOK_ERROR_NOTIFICATION = True
 
 A `WEBHOOK_URL` that is unset or still at its `your_webhook_url` placeholder switches webhook alerts off at startup instead of failing at the first alert. `--verbose` reports why.
 
-This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
+This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. A monitoring problem also sends a recovery alert once it clears. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
 
 Send one test webhook without starting monitoring:
 

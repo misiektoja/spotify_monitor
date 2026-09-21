@@ -111,7 +111,7 @@ For the manual single-file method, optional extras and upgrade commands, see [In
 - **Multi-Channel**: Instant alerts via **Email** and **Webhooks** (**Discord**, **ntfy** etc.).
 - **Detailed Alerts**: Choose activity, tracked-song, every-song, loop and error alerts.
 - **Session Summaries**: Receive detailed reports when a friend finishes a session.
-- **Error Reporting**: Be notified if the monitoring process hits a snag.
+- **Error Reporting**: Be notified if the monitoring process hits a snag, with a **recovery alert** once it clears.
 
 ### ⚙️ Power Features
 - **Auth Flexibility**: Sign in with a browser **cookie** or the **Spotify Desktop Client**, no developer app required.

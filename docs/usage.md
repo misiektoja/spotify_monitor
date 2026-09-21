@@ -414,6 +414,8 @@ spotify_monitor <spotify_target> -e
 
 An error alert goes out once the same failure has lasted **5 minutes**, so a short outage or one lost request reaches nobody, while a failure that cannot clear on its own, such as an expired sp_dc cookie, is alerted at once. Each kind of failure alerts once per channel. A channel that could not deliver is tried again on a later failing check, after **5 minutes** at first and then after twice the previous wait, up to an hour. A run that recovered alerts again when it fails later. The same rule governs the webhook error alert.
 
+Every failure alert uses the subject `Spotify Monitor error: <what went wrong> (user: <target>)` and lists the fix, the guide link, how many checks failed in a row, since when and when the next retry happens. When the failure clears, a **recovery alert** with the subject `Spotify Monitor recovered: monitoring <target> resumed after <duration>` follows on each channel that delivered the failure alert. The `-e` flag switches off the error email and the recovery email together. `--no-webhook-error-notify` does the same for the webhook.
+
 All email alerts require valid [SMTP settings](configuration.md#smtp-settings).
 
 Example email:
@@ -437,6 +439,8 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
 | Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Enable with `--webhook-errors` or disable with `--no-webhook-error-notify` |
+
+A monitoring error webhook carries the same title and text as the error email, without the timestamp the provider adds itself. The recovery alert follows on the same channel when the failure clears.
 
 For example, this sends a webhook alert for every song change during one run:
 
