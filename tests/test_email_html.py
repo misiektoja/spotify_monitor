@@ -204,6 +204,24 @@ def test_the_timeline_covers_several_alert_types(timeline_alerts):
     assert {"active", "song", "inactive"} <= {alert["type"] for alert in timeline_alerts}
 
 
+# Verifies the music service links and the lyrics links stay two blocks, as they are in lastfm_monitor
+def test_the_link_blocks_are_separated(timeline_alerts):
+    for alert in timeline_alerts:
+        paragraphs = [paragraph for paragraph in alert["body"].split("\n\n") if "URL: " in paragraph]
+
+        assert paragraphs
+        for paragraph in paragraphs:
+            assert not ("Music URL: " in paragraph and "lyrics URL: " in paragraph)
+
+
+# Verifies the session song count is left out of the alert that opens a session, where it is always the first song
+def test_the_active_alert_leaves_out_the_song_count(timeline_alerts):
+    counted = {alert["type"] for alert in timeline_alerts if "Songs played: " in alert["body"]}
+
+    assert "active" not in counted
+    assert "song" in counted
+
+
 # Verifies every alert carries an HTML body next to its plain one
 def test_every_alert_has_an_html_body(timeline_alerts):
     assert [alert["subject"] for alert in timeline_alerts if not alert["body_html"]] == []
