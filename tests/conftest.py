@@ -67,3 +67,11 @@ def reset_shared_monitor_state():
     yield
     for name, value in saved.items():
         setattr(monitor, name, _restore(getattr(monitor, name, None), value))
+
+
+@pytest.fixture(autouse=True)
+# Runs every test from a private directory, so a relative path a test passes to the monitor cannot write into the checkout
+def isolate_working_directory(monkeypatch, tmp_path):
+    working = tmp_path / "cwd"
+    working.mkdir()
+    monkeypatch.chdir(working)
