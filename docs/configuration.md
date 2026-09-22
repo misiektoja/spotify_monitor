@@ -444,6 +444,8 @@ If `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` are in `.env`, a running proces
 
 Email notifications need SMTP server details for the sending account. Add them to `spotify_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `spotify_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
 
+If email alerts are selected but local SMTP settings are missing or invalid, the startup summary shows `Unavailable` with the reason. Automatic email sends are skipped silently until the settings are fixed. `Off` means no email alert types are selected. An activity alert queued after a real delivery failure waits quietly while its channel is unavailable.
+
 Every alert is sent as both HTML and plain text in one message, including the error and scrobble health alerts. Mail clients that render HTML show the friend name, the track, the session times and the values that changed in bold, with the track, album and playlist names linked to their Spotify pages. Clients that do not fall back to the plain text, which is unchanged.
 
 Send one test message to verify the settings:
@@ -594,7 +596,7 @@ WEBHOOK_INACTIVE_NOTIFICATION = True
 WEBHOOK_ERROR_NOTIFICATION = True
 ```
 
-A `WEBHOOK_URL` that is unset or still at its `your_webhook_url` placeholder switches webhook alerts off at startup instead of failing at the first alert. `--verbose` reports why.
+If webhook alerts are selected but the URL, provider or other local settings are invalid, the startup summary shows `Unavailable` with the reason. Automatic webhook sends are skipped silently until the settings are fixed. `Off` means the master switch or all webhook alert types are off.
 
 This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. A monitoring problem also sends a recovery alert once it clears. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
 
