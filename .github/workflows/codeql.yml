@@ -39,3 +39,14 @@ jobs:
         uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           category: "/language:python"
+          output: sarif-results
+          upload: failure-only
+
+      - name: Apply source suppressions
+        run: python .github/scripts/filter_codeql_sarif.py sarif-results/python.sarif sarif-results/python-filtered.sarif
+
+      - name: Upload CodeQL results
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+        with:
+          sarif_file: sarif-results/python-filtered.sarif
+          category: "/language:python"
