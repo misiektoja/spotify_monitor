@@ -700,6 +700,7 @@ def test_scrobble_health_monitor_prints_first_check_and_hides_normal_repeats(mon
     state = {"status": "healthy", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1000, latest_spotify_at=1000, latest_lastfm_at=1000)
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1000)])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
@@ -729,6 +730,7 @@ def test_scrobble_health_monitor_stays_quiet_while_the_result_is_unchanged(monke
     state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluation = monitor.ScrobbleHealthEvaluation("idle")
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
@@ -753,6 +755,7 @@ def test_scrobble_health_monitor_reports_a_changed_result(monkeypatch, capsys):
     state = {"status": "idle", "last_notification_at": 0.0, "broken_since": 0.0, "broken_latest_spotify_at": 0.0}
     evaluations = [monitor.ScrobbleHealthEvaluation("idle"), monitor.ScrobbleHealthEvaluation("healthy")]
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", Mock(side_effect=evaluations))
@@ -777,6 +780,7 @@ def test_scrobble_health_monitor_prints_the_liveness_banner(monkeypatch, capsys,
     state = {"status": "broken", "last_notification_at": 1000.0, "broken_since": 900.0, "broken_latest_spotify_at": 850.0}
     evaluation = monitor.ScrobbleHealthEvaluation(status)
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: evaluation)
@@ -849,6 +853,7 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
     timestamp_mock = Mock(side_effect=lambda prefix: print(f"{prefix}CONSOLE-TIMESTAMP"))
     delivery_mock = Mock(side_effect=lambda *args, **kwargs: (print("Sending webhook notification") or False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
     monkeypatch.setattr(monitor, "get_cur_ts", lambda prefix="": f"{prefix}ALERT-TIMESTAMP")
     monkeypatch.setattr(monitor, "print_cur_ts", timestamp_mock)
@@ -878,6 +883,7 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
 def test_scrobble_health_operational_alert_retries_failed_channel(monkeypatch, first_result, second_result, retry_email, retry_webhook):
     delivery_mock = Mock(side_effect=[first_result, second_result])
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
     monkeypatch.setattr(monitor, "print_cur_ts", Mock())
     monkeypatch.setattr(monitor, "send_notification_channels", delivery_mock)
@@ -903,6 +909,7 @@ def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monke
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), RuntimeError("failure 2"), RuntimeError("failure 3"), [], KeyboardInterrupt])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", spotify_mock)
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "get_cur_ts", lambda prefix="": f"{prefix}ALERT-TIMESTAMP")
@@ -931,6 +938,7 @@ def test_scrobble_health_monitor_stays_quiet_when_an_unalerted_failure_clears(mo
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], KeyboardInterrupt])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", spotify_mock)
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "print_cur_ts", Mock())
@@ -951,6 +959,7 @@ def test_scrobble_health_monitor_starts_a_new_outage_after_success(monkeypatch, 
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], RuntimeError("failure 2"), RuntimeError("failure 3"), RuntimeError("failure 4")])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", spotify_mock)
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
     monkeypatch.setattr(monitor, "get_cur_ts", lambda prefix="": f"{prefix}ALERT-TIMESTAMP")
@@ -1341,6 +1350,7 @@ def test_scrobble_health_monitor_does_not_report_a_late_scrobble_as_a_change(mon
         monitor.ScrobbleHealthEvaluation("healthy", latest_match_at=1200, latest_spotify_at=1200, latest_lastfm_at=1200),
     ])
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1000)])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: next(evaluations))
@@ -1369,6 +1379,7 @@ def test_scrobble_health_monitor_does_not_repeat_an_outage_after_a_waiting_check
         outage,
     ])
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [spotify_play(1200)])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [lastfm_scrobble(1000)])
     monkeypatch.setattr(monitor, "evaluate_scrobble_health", lambda spotify_plays, lastfm_scrobbles: next(evaluations))
@@ -1397,6 +1408,7 @@ def test_scrobble_event_is_not_replayed_by_delivery_retries(monkeypatch, capsys,
     delivery = Mock(side_effect=[first_result, (True, True)])
     saved = Mock()
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: dict(state))
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "save_scrobble_health_state", saved)
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
@@ -1428,6 +1440,7 @@ def test_scrobble_event_is_not_replayed_by_delivery_retries(monkeypatch, capsys,
 # Keeps a console-only scrobble event visible without a second result block
 def test_scrobble_event_without_notification_channels(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
+    monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
     monkeypatch.setattr(monitor, "save_scrobble_health_state", Mock())
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", lambda: [])
     monkeypatch.setattr(monitor, "lastfm_get_recent_scrobbles", lambda username, api_key: [])
