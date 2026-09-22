@@ -2,6 +2,14 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.5.2 (TBD)
+
+Version **3.5.2** fixes webhook alerts that were dropped when a custom header used a placeholder such as `{title}` and the alert text held emoji or non-Latin letters.
+
+**Bug fixes**:
+
+- **BUGFIX:** **Custom headers with emoji no longer drop webhook alerts** - A **`WEBHOOK_HEADERS`** value built from a placeholder such as `{title}` failed the whole alert with `'latin-1' codec can't encode character` when the expanded text held emoji or letters outside Latin-1. Such values are now sent RFC 2047 encoded (`=?UTF-8?B?...?=`) and the alert is delivered. ntfy decodes them back to the original text. Other receivers see the encoded form. ASCII values, including ones you already encoded, are sent unchanged
+
 # Changes in 3.5.1 (22 Sep 2026)
 
 Version **3.5.1** finds Firefox installed from the Microsoft Store when importing the browser cookie on Windows. Selected notification channels with unusable local settings are shown as unavailable and automatic sends stay quiet until the settings are fixed.
