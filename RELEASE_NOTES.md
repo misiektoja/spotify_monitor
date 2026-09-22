@@ -2,6 +2,14 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.5.1 (TBD)
+
+Version **3.5.1** finds Firefox installed from the Microsoft Store when importing the browser cookie on Windows.
+
+**Bug fixes**:
+
+- **BUGFIX:** **Firefox from the Microsoft Store is found on Windows** - Only `%APPDATA%\Mozilla\Firefox` was searched, so a machine whose only Firefox came from the Store was told to **install Firefox** when it already had it. The Store package's own profile folder under `%LOCALAPPDATA%\Packages` is now searched too, its profiles are tagged **`[Microsoft Store]`** so the `default-release` that both installs create can be told apart, and a redirected `APPDATA` or `LOCALAPPDATA` no longer hides the profiles under your home directory. Container imports mount a single fixed path and still cover the regular installer only
+
 # Changes in 3.5 (22 Sep 2026)
 
 Version **3.5** sends the **scrobble health** alert as HTML like every other alert. It also reports when a monitored user **stops being visible** in listening activity, for example during a **private session**, and how long the user stayed away. Setup and Doctor accept targets who **share listening activity with selected people**, so following is no longer required in that case. **Browser cookie import** now finds Snap and Flatpak installs, marks which profile is signed in to Spotify and says what to fix when an import fails. Alert delivery messages stay within the correct check report and alert channels that still use placeholder configuration values are shown as not configured.
