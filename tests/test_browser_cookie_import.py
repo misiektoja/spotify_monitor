@@ -88,7 +88,48 @@ def test_firefox_macos_and_windows_roots(tmp_path):
     windows_roots = monitor._firefox_profile_roots(system_name="Windows", home=tmp_path, environ={"APPDATA": str(tmp_path / "Roaming")})
 
     assert mac_roots == [tmp_path / "Library/Application Support/Firefox"]
-    assert windows_roots == [tmp_path / "Roaming/Mozilla/Firefox"]
+    assert windows_roots == [tmp_path / "Roaming/Mozilla/Firefox", tmp_path / "AppData/Roaming/Mozilla/Firefox"]
+
+
+# Verifies a redirected application-data directory does not hide the home-relative root, and that the two
+# collapse into one entry when they name the same directory
+@pytest.mark.parametrize("appdata,expected_roots", [(None, ["AppData/Roaming/Mozilla/Firefox"]), ("AppData/Roaming", ["AppData/Roaming/Mozilla/Firefox"]), ("Redirected", ["Redirected/Mozilla/Firefox", "AppData/Roaming/Mozilla/Firefox"])])
+def test_the_windows_roaming_root_covers_a_redirection(tmp_path, appdata, expected_roots):
+    environ = {"APPDATA": str(tmp_path / appdata)} if appdata else {}
+
+    roots = monitor._firefox_profile_roots(system_name="Windows", home=tmp_path, environ=environ)
+
+    assert roots == [tmp_path / relative for relative in expected_roots]
+
+
+# Verifies the Microsoft Store package is searched, since its profiles never appear under the roaming root
+def test_the_windows_store_package_is_searched(tmp_path, real_browser_profiles):
+    store_root = tmp_path / "AppData/Local/Packages/Mozilla.Firefox_n80bbvh6b1yt2/LocalCache/Roaming/Mozilla/Firefox"
+    create_firefox_database(store_root / "Profiles/store.default-release/cookies.sqlite", [("spotify.com", "sp_dc", "cookie", 4102444800, 10)])
+
+    profiles = monitor.discover_firefox_profiles(system_name="Windows", home=tmp_path, environ={})
+
+    assert [(profile["dir"], profile["install"]) for profile in profiles] == [("store.default-release", "Microsoft Store")]
+
+
+# Verifies a Store profile is told apart from a regular one, since both installs create a default-release
+def test_a_store_profile_is_told_apart_from_a_regular_one(tmp_path, real_browser_profiles):
+    create_firefox_database(tmp_path / "AppData/Roaming/Mozilla/Firefox/Profiles/abcd1234.default-release/cookies.sqlite", [])
+    create_firefox_database(tmp_path / "AppData/Local/Packages/Mozilla.Firefox_n80bbvh6b1yt2/LocalCache/Roaming/Mozilla/Firefox/Profiles/abcd1234.default-release/cookies.sqlite", [])
+
+    # The listing is ordered by name, directory then cookie file, so the package under AppData/Local sorts first
+    profiles = monitor.discover_firefox_profiles(system_name="Windows", home=tmp_path, environ={})
+    assert [profile["install"] for profile in profiles] == ["Microsoft Store", ""]
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="separate Firefox installs") as error:
+        monitor.select_browser_profile(profiles, "firefox", requested_profile="abcd1234.default-release")
+    assert "abcd1234.default-release (default-release) [Microsoft Store]" in str(error.value)
+
+
+# Verifies the packaging is read from the path itself, so a Windows path is classified from any host
+@pytest.mark.parametrize("path,expected", [("/home/u/.mozilla/firefox/a.default", ""), ("/home/u/snap/firefox/common/.mozilla/firefox/a.default", "Snap"), ("/home/u/.var/app/org.mozilla.firefox/.mozilla/firefox/a.default", "Flatpak"), (r"C:\Users\u\AppData\Roaming\Mozilla\Firefox\Profiles\a.default", ""), (r"C:\Users\u\AppData\Local\Packages\Mozilla.Firefox_n80bbvh6b1yt2\LocalCache\Roaming\Mozilla\Firefox\Profiles\a.default", "Microsoft Store")])
+def test_the_packaging_is_read_from_the_path(path, expected):
+    assert monitor.packaging_label(path) == expected
 
 
 # Verifies a Firefox friendly name selects the intended profile
