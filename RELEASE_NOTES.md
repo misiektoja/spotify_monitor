@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 3.5.1 (TBD)
+# Changes in 3.5.1 (22 Sep 2026)
 
 Version **3.5.1** finds Firefox installed from the Microsoft Store when importing the browser cookie on Windows. Selected notification channels with unusable local settings are shown as unavailable and automatic sends stay quiet until the settings are fixed.
 
