@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.4
+v3.5
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.4"
+VERSION = "3.5"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -134,11 +134,13 @@ SONG_NOTIFICATION = False
 # Can also be enabled via the -x flag
 SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send an email on monitoring errors
+# Whether to send an email on errors and the recovery alert that follows once the failure clears
 # Can also be disabled via the -e flag
 ERROR_NOTIFICATION = True
 
 # Whether to send email alerts when Spotify scrobbles are missing or start appearing again
+# Applies only in scrobble health mode
+# Can also be enabled via --notify-scrobble-health or disabled via --no-scrobble-health-notify
 SCROBBLE_HEALTH_NOTIFICATION = True
 
 # ----------------------------
@@ -190,11 +192,13 @@ WEBHOOK_SONG_NOTIFICATION = False
 # Can also be enabled via the --webhook-loop flag
 WEBHOOK_SONG_ON_LOOP_NOTIFICATION = False
 
-# Whether to send a webhook notification on monitoring errors
+# Whether to send a webhook notification on monitoring errors and the recovery alert that follows once the failure clears
 # Can also be enabled via --webhook-errors or disabled via --no-webhook-error-notify
 WEBHOOK_ERROR_NOTIFICATION = True
 
 # Whether to send webhook alerts when Spotify scrobbles are missing or start appearing again
+# Applies only in scrobble health mode
+# Can also be enabled via --webhook-scrobble-health or disabled via --no-webhook-scrobble-health-notify
 WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = True
 
 # Optional request headers for advanced webhook integrations
@@ -259,10 +263,10 @@ WEBHOOK_TRANSFORMS = []
 
 # Each Friend Activity backend has its own group of timers below
 # Only the group matching FRIEND_ACTIVITY_BACKEND is used, the other group is ignored
-# The -c, -k and -o flags set the timers of the selected backend
+# The -c, -k, -o and -m flags set the timers of the selected backend
 
 # ============================
-# Live backend timers
+# Live friend activity backend timers
 # ============================
 # Used when FRIEND_ACTIVITY_BACKEND = "listening_activity" (the default)
 
@@ -281,8 +285,17 @@ SPOTIFY_LIVE_ERROR_INTERVAL = 60  # 1 minute
 # Can also be set using the -o flag
 SPOTIFY_LIVE_INACTIVITY_CHECK = 180  # 3 minutes
 
+# How many checks in a row without the user in the feed confirm that the user is no longer visible
+# The feed drops a user who starts a private session, so a low value reports it within seconds
+SPOTIFY_LIVE_DISAPPEARED_COUNTER = 2
+
+# Time between checks while the user is not visible; in seconds
+# A shorter interval times the user's return more closely
+# Can also be set using the -m flag
+SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = 30  # 30 seconds
+
 # ============================
-# Legacy backend timers
+# Legacy friend activity backend timers
 # ============================
 # Used when FRIEND_ACTIVITY_BACKEND = "buddylist"
 
@@ -297,6 +310,17 @@ SPOTIFY_ERROR_INTERVAL = 180  # 3 minutes
 # Can also be set using the -o flag
 # Songs longer than this value can cause the user to appear inactive
 SPOTIFY_INACTIVITY_CHECK = 660  # 11 minutes
+
+# The legacy endpoint occasionally drops a user from the list of friends for a few checks
+# To avoid false alarms, the legacy backend reports a disappearance only after this many checks in a row
+# The live backend uses SPOTIFY_LIVE_DISAPPEARED_COUNTER instead
+REMOVED_DISAPPEARED_COUNTER = 4
+
+# Time between checks while the user is not visible; in seconds
+# A user leaves the list after turning off activity sharing, unfollowing or blocking the monitoring account,
+# or during a Spotify glitch
+# Can also be set using the -m flag
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 
 # ============================
 # Settings for both backends
@@ -321,16 +345,6 @@ DETECT_CROSSFADED_SONGS = True
 # as crossfaded if DETECT_CROSSFADED_SONGS is enabled
 CROSSFADE_DETECTION_MIN = 0.96  # 96% - minimum percentage to consider crossfade
 CROSSFADE_DETECTION_MAX = 0.99  # 99% - maximum percentage to consider crossfade
-
-# Interval for checking whether a missing user has reappeared in seconds
-# Can happen due to:
-#   - unfollowing the user
-#   - Spotify service issues
-#   - private session bugs
-#   - user inactivity for over a week
-# The tool continues checking for the user's reappearance at this interval
-# Can also be set using the -m flag
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 180  # 3 minutes
 
 # ----------------------------
 # Last.fm Scrobble Health Mode
@@ -447,10 +461,6 @@ SP_USER_GOT_OFFLINE_TRACK_ID = ""
 # Delay before pausing the offline track in seconds
 # Set to 0 to keep playing indefinitely until manually paused
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 5  # 5 seconds
-
-# Occasionally, the Spotify API glitches and reports that the user has disappeared from the list of friends
-# To avoid false alarms, we delay alerts until this happens REMOVED_DISAPPEARED_COUNTER times in a row
-REMOVED_DISAPPEARED_COUNTER = 4
 
 # ----------------------------
 # Network Settings
@@ -877,15 +887,18 @@ SPOTIFY_LIVE_CHECK_INTERVAL = 0
 SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL = 0
 SPOTIFY_LIVE_ERROR_INTERVAL = 0
 SPOTIFY_LIVE_INACTIVITY_CHECK = 0
+SPOTIFY_LIVE_DISAPPEARED_COUNTER = 0
+SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = 0
 SPOTIFY_CHECK_INTERVAL = 0
 SPOTIFY_ERROR_INTERVAL = 0
 SPOTIFY_INACTIVITY_CHECK = 0
+REMOVED_DISAPPEARED_COUNTER = 0
+SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 INACTIVE_EMAIL_RECENT_SONGS_COUNT = 0
 PLAYED_FOR_DURATION_TOLERANCE = 0
 DETECT_CROSSFADED_SONGS = False
 CROSSFADE_DETECTION_MIN = 0.0
 CROSSFADE_DETECTION_MAX = 0.0
-SPOTIFY_DISAPPEARED_CHECK_INTERVAL = 0
 LASTFM_USERNAME = ""
 LASTFM_API_KEY = ""
 SPOTIFY_SCROBBLE_CLIENT_ID = ""
@@ -906,7 +919,6 @@ SONG_ON_LOOP_VALUE = 0
 SKIPPED_SONG_THRESHOLD = 0
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE = 0
-REMOVED_DISAPPEARED_COUNTER = 0
 USER_AGENT = ""
 LIVENESS_CHECK_INTERVAL = 0
 CHECK_INTERNET_URL = ""
@@ -1016,7 +1028,7 @@ SP_ACCESS_TOKEN_EXPIRES_AT = 0
 SP_CACHED_CLIENT_ID = ""
 
 # Fixed Spotify activity endpoints keep backend selection separate from credentials
-SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"
+SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"  # unofficial endpoint behind Spotify's Listening Activity feature, found by @JoaoGabriel-Lima (issue #60)
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
@@ -1029,6 +1041,8 @@ LIVE_REPEAT_TOLERANCE = 5
 
 # A finish this close to one track length after a position change proves that the change restarted the track, since a move landing further into it ends sooner
 LIVE_RESTART_TOLERANCE = 3
+# Absence after which the live backend prints the follow and sharing advice, long enough to outlast a private session
+LIVE_ABSENCE_ADVICE_AFTER = 6 * 3600
 
 # Short-lived profile and context metadata avoids extra requests on every track change
 SP_ACTIVITY_METADATA_CACHE: dict = {}
@@ -1129,6 +1143,7 @@ CONTAINER_FIREFOX_GUIDE_URL = DOCS_BASE_URL + "/usage/#import-firefox-into-conta
 CLIENT_GUIDE_URL = DOCS_BASE_URL + "/configuration/#spotify-desktop-client"
 TARGET_GUIDE_URL = DOCS_BASE_URL + "/configuration/#how-to-find-a-friends-spotify-profile-url"
 FOLLOWING_GUIDE_URL = DOCS_BASE_URL + "/configuration/#following-the-monitored-user"
+BACKEND_GUIDE_URL = DOCS_BASE_URL + "/configuration/#friend-activity-backend"
 SMTP_GUIDE_URL = DOCS_BASE_URL + "/configuration/#smtp-settings"
 WEBHOOK_GUIDE_URL = DOCS_BASE_URL + "/configuration/#webhook-settings"
 SECRETS_GUIDE_URL = DOCS_BASE_URL + "/configuration/#storing-secrets"
@@ -1136,7 +1151,8 @@ TLS_GUIDE_URL = DOCS_BASE_URL + "/configuration/#tls-verification"
 INTERVALS_GUIDE_URL = DOCS_BASE_URL + "/usage/#check-intervals"
 TERMINAL_GUIDE_URL = DOCS_BASE_URL + "/usage/#terminal-output"
 DOCTOR_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#doctor-preflight"
-DIAGNOSTICS_GUIDE_URL = DOCS_BASE_URL + "/debugging/#cli-output-modes"
+CONNECTION_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#connection-problems"
+DESCRIPTOR_LIMIT_GUIDE_URL = DOCS_BASE_URL + "/troubleshooting/#too-many-open-files"
 
 # Labels of the two Doctor checks that gate the optional delivery tests, matched by prefix so each can name its channel
 SMTP_READY_CHECK_LABEL = "SMTP connection and login succeeded"
@@ -1154,6 +1170,7 @@ SPOTIFY_QUOTA_GUIDE_URL = "https://developer.spotify.com/documentation/web-api/c
 SPOTIFY_SCROBBLE_AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 SPOTIFY_SCROBBLE_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_SCROBBLE_RECENT_URL = "https://api.spotify.com/v1/me/player/recently-played"
+SPOTIFY_SCROBBLE_ME_URL = "https://api.spotify.com/v1/me"
 SPOTIFY_SCROBBLE_SCOPE = "user-read-recently-played"
 LASTFM_API_ACCOUNTS_URL = "https://www.last.fm/api/accounts"
 CONTAINER_PLAYBACK_WARNING = "Host Spotify auto-play is unavailable by default inside the container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need TRACK_SONGS or --track-in-spotify."
@@ -1244,9 +1261,6 @@ SCROBBLE_HEALTH_HTTP_RETRIES = 1
 # Pause briefly before the immediate Spotify refresh-token retry
 SCROBBLE_HEALTH_IMMEDIATE_RETRY_DELAY = 1
 
-# Require three consecutive failed comparisons before sending an operational alert
-SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES = 3
-
 # Keep webhook delivery independent from Spotify API retries and long server timers
 WEBHOOK_MAX_ATTEMPTS = 2
 WEBHOOK_MAX_RETRY_AFTER_SECONDS = 5.0
@@ -1276,9 +1290,10 @@ except ImportError:
     colorama_init = None
 
 
-# Tracks the error alert per channel: what was delivered, and how long a channel that failed waits before the next attempt
+# Tracks the error alert per channel: what was delivered, how long a channel that failed waits before the next attempt
+# and which failure the alert named, so the recovery alert that ends it can name the same failure
 class ErrorAlertState:
-    # Starts with nothing delivered and no channel on hold
+    # Starts with nothing delivered, no channel on hold and no failure noted
     def __init__(self) -> None:
         self.email_sent = False
         self.webhook_sent = False
@@ -1286,14 +1301,25 @@ class ErrorAlertState:
         self.webhook_failures = 0
         self.email_retry_at = 0
         self.webhook_retry_at = 0
+        self.advice: Optional["RecoveryAdvice"] = None
+        self.since = 0
 
-    # Forgets the delivered alert and any hold, so the next failure earns each channel a new one
+    # Forgets the delivered alert, any hold and the noted failure, so the next failure earns each channel a new one
     def reset(self) -> None:
         self.__init__()
+
+    # Remembers the latest failure and when the outage began, so the recovery alert can say what ended
+    def note(self, advice: "RecoveryAdvice", since: int) -> None:
+        self.advice = advice
+        self.since = since
 
     # Tells whether a channel still owes the alert and its wait after a failed attempt, if any, has passed
     def pending(self, channel: str, enabled, now: int) -> bool:
         return bool(enabled) and not getattr(self, f"{channel}_sent") and now >= getattr(self, f"{channel}_retry_at")
+
+    # Tells whether a channel was owed the failure alert but never received it, so the recovery can tell it the whole story
+    def missed(self, channel: str, enabled) -> bool:
+        return bool(enabled) and not getattr(self, f"{channel}_sent") and getattr(self, f"{channel}_failures") > 0
 
     # Records one attempt, holding a channel that failed for a growing wait so a broken server is not dialled on every check
     def record(self, channel: str, attempted: bool, delivered: bool, now: int) -> None:
@@ -1351,23 +1377,34 @@ CONTAINER_FIREFOX_HOSTS = {
     "windows-cmd": ("Windows Command Prompt", '"%APPDATA%\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'),
 }
 
+# Names the directory each documented mount reads, shown beside the host label when setup asks which host runs Docker
+CONTAINER_FIREFOX_HOST_HINTS = {
+    "macos": "Use the Firefox profile under Library/Application Support.",
+    "linux": "Use the profile under ~/.mozilla/firefox.",
+    "linux-snap": "Use the profile under ~/snap/firefox.",
+    "linux-flatpak": "Use the profile under ~/.var/app/org.mozilla.firefox.",
+    "windows-powershell": "Use the Firefox profile under $env:APPDATA.",
+    "windows-cmd": "Use the Firefox profile under %APPDATA%.",
+}
+
 
 # Returns whether Spotify Monitor is running in a Docker or Docker Compose container
 def is_container_environment() -> bool:
     return os.path.exists("/.dockerenv") or bool(os.environ.get("SPOTIFY_MONITOR_DOCKER"))
 
 
-# Chromium user-data directories
+# Chromium user-data directories, ordered per browser with the distribution install first. Snap and Flatpak builds keep
+# separate profile trees, so each is listed and the first root that exists on the machine is the one used
 CHROMIUM_USER_DATA_DIRS = {
     "Darwin": {
-        "chrome": "Library/Application Support/Google/Chrome",
-        "brave": "Library/Application Support/BraveSoftware/Brave-Browser",
-        "chromium": "Library/Application Support/Chromium",
+        "chrome": ("Library/Application Support/Google/Chrome",),
+        "brave": ("Library/Application Support/BraveSoftware/Brave-Browser",),
+        "chromium": ("Library/Application Support/Chromium",),
     },
     "Linux": {
-        "chrome": ".config/google-chrome",
-        "brave": ".config/BraveSoftware/Brave-Browser",
-        "chromium": ".config/chromium",
+        "chrome": (".config/google-chrome",),
+        "brave": (".config/BraveSoftware/Brave-Browser", "snap/brave/current/.config/BraveSoftware/Brave-Browser", ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser"),
+        "chromium": (".config/chromium", "snap/chromium/common/chromium", ".var/app/org.chromium.Chromium/config/chromium"),
     },
 }
 
@@ -1559,6 +1596,16 @@ def html_text(text: str) -> str:
     return escape(text).replace("\n", "<br>")
 
 
+# Wraps one rendered fragment in the document every HTML alert body shares
+def html_email_body(content: str) -> str:
+    return f"<html><head></head><body>{content}</body></html>"
+
+
+# Turns a bare URL inside already escaped HTML text into a link, so an alert that prints a guide link is clickable
+def html_autolink_urls(content: str) -> str:
+    return re.sub(r"(?<![\"'=])(https?://[^\s<>\"']+[^\s<>\"'.,;:!?)\]])", r'<a href="\1">\1</a>', str(content))
+
+
 # Returns the advice an optional package that is missing carries, naming what the run loses and how to install it
 def missing_dependency_advice(package: str, effect: str, install_command: str, alternative: str = "") -> RecoveryAdvice:
     return make_recovery_advice("dependency.missing", f"{effect} because the optional '{package}' package is missing", recovery_fix_with_guide((f"Install it with: {install_command}" if install_command else "Use a published Docker image or add it to your own image build") + (f". {alternative}" if alternative else ""), INSTALLATION_GUIDE_URL), False)
@@ -1585,12 +1632,23 @@ def active_config_path():
     return CLI_CONFIG_PATH or ("none" if CONFIG_DISCOVERY_DISABLED else None)
 
 
+# Names the other browsers the import accepts
+def cookie_auth_recovery_browser_hint(method: Optional[str] = None) -> str:
+    # Nothing records which browser a cookie came from, so a message built around the Firefox command names the
+    # alternatives rather than sending a Chrome or Brave user to a browser they may not even have
+    others = [browser for browser in _wizard_import_browsers(method or _wizard_install_method()) if browser != "firefox"]
+    if not others:
+        return ""
+    listed = f"{', '.join(others[:-1])} or {others[-1]}" if len(others) > 1 else others[0]
+    return f" (use --browser {listed} to import from one of those instead)"
+
+
 # Returns install-aware cookie recovery guidance with host-specific container instructions
 def cookie_auth_recovery_fix() -> str:
     method = _wizard_install_method()
     if not is_container_environment():
         firefox_command = _wizard_firefox_import_cmd(method, active_dotenv_path(), config_path=active_config_path())
-        return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}"
+        return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox. Sign in to the Spotify account used for monitoring then run: {firefox_command}{cookie_auth_recovery_browser_hint(method)}"
     private_command = _wizard_set_sp_dc_cmd(method, Path.cwd() / ".env")
     return f"Open {SPOTIFY_WEB_LOGIN_URL} in Firefox on the host and sign in. Then use the host-specific read-only profile import command in the guide below.\nManual fallback with hidden entry: {private_command}"
 
@@ -1615,6 +1673,24 @@ def iter_exc_chain(error, max_depth=8):
         current = getattr(current, "__cause__", None) or getattr(current, "__context__", None)
 
 
+# Names the transport failure behind an exception chain, since a timeout raised with no message leaves the text rules nothing to read
+def network_failure_code(error):
+    timed_out = False
+    unreachable = False
+    for current in iter_exc_chain(error):
+        name = type(current).__name__
+        # A TLS failure has its own advice, so a chain that names one is left to the rules that recognize it
+        if "SSL" in name or "Certificate" in name:
+            return ""
+        if isinstance(current, TimeoutError) or "Timeout" in name:
+            timed_out = True
+        elif isinstance(current, ConnectionError) or name in ("gaierror", "herror") or any(term in name for term in ("Connect", "ProxyError", "NameResolution", "Unreachable")):
+            unreachable = True
+    if timed_out:
+        return "network.timeout"
+    return "network.unavailable" if unreachable else ""
+
+
 # Reports whether this process hit the local file descriptor limit rather than a remote failure
 def is_too_many_open_files(error):
     for current in iter_exc_chain(error):
@@ -1634,6 +1710,10 @@ def unknown_failure_fix():
     return "Run --doctor and review the technical detail below, then open an issue with this output if the failure continues" if DEBUG_MODE else "Run --doctor. If the issue continues retry with --debug and review the sanitized technical detail"
 
 
+# What to do about a network failure the monitor retries on its own, shared by the timeout and unreachable advices
+TRANSIENT_NETWORK_FIX = "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"
+
+
 # Tells whether a status code appears in a message as a whole number, so 4290 or a path segment such as /429 does not read as 429
 def mentions_status_code(code, message):
     return re.search(rf"(?<![\w/]){code}(?!\w)", message) is not None
@@ -1651,7 +1731,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     # Checked ahead of every context, since a local descriptor limit is not a failure of whatever call hit it
     if error is not None and is_too_many_open_files(error):
-        return make_recovery_advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Spotify problem", recovery_fix_with_guide("Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("resource.exhausted", "This process ran out of file descriptors, which is a local limit and not a Spotify problem", recovery_fix_with_guide("Raise the file descriptor limit, for example with 'ulimit -n 4096', or set LimitNOFILE= if you run under systemd, then restart the tool", DESCRIPTOR_LIMIT_GUIDE_URL), False, safe_detail)
 
     if isinstance(error, SpotifyQuotaExceededError):
         wait_text = f" Spotify requested a wait of {display_time(error.retry_after)}." if error.retry_after is not None else ""
@@ -1673,7 +1753,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "browser_import":
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", safe_detail or "Browser cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then retry the selected authentication command", CONNECTION_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no sp_dc", "nonempty sp_dc")):
             return make_recovery_advice("auth.cookie_invalid", safe_detail or "No valid sp_dc cookie was found", recovery_fix_with_guide(cookie_auth_recovery_fix(), cookie_auth_recovery_guide_url()), False, safe_detail)
         if any(term in message for term in ("database", "cookie file", "cookies.sqlite", "could not read dotenv")):
@@ -1684,9 +1764,9 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if context == "set_sp_dc":
         if "interactive terminal" in message:
-            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", recovery_fix_with_guide("Run --set-sp-dc from an interactive shell so getpass can hide the cookie", COOKIE_GUIDE_URL), False, safe_detail)
+            return make_recovery_advice("unknown", "--set-sp-dc requires an interactive terminal", recovery_fix_with_guide("Run --set-sp-dc from an interactive shell so getpass can hide the cookie", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("network", "connectivity", "timed out", "name resolution")):
-            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), True, safe_detail)
+            return make_recovery_advice("network.unavailable", "Spotify cookie validation could not reach Spotify", recovery_fix_with_guide("Check connectivity then run the private entry command again", CONNECTION_GUIDE_URL), True, safe_detail)
         if any(term in message for term in ("invalid or expired", "authentication rejected", "no nonempty", "rejected")):
             return make_recovery_advice("auth.cookie_invalid", "Spotify rejected the entered sp_dc cookie", recovery_fix_with_guide("Sign in at https://open.spotify.com/ then run the private entry command again", MANUAL_COOKIE_GUIDE_URL), False, safe_detail)
         if any(term in message for term in ("dotenv", "file permissions", "writable path")):
@@ -1730,12 +1810,15 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
     if context == "target_invalid":
         return make_recovery_advice("target.invalid", "Invalid Spotify target", recovery_fix_with_guide("Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", TARGET_GUIDE_URL), False, safe_detail)
     if context == "target_not_visible":
-        fix = "Confirm the account appears in Spotify Friend Activity for the account represented by these credentials. The target may need to share listening activity"
+        sharing = "The target must share listening activity with all followers or with selected people that include that account"
+        fix = f"Confirm the target appears in Spotify Friend Activity for the account represented by these credentials. {sharing}"
         if target_user_id:
-            fix = f"Open or copy this profile and follow it from the Spotify account represented by these credentials:\nProfile: {spotify_user_profile_url(target_user_id)}\nThe target also needs to share listening activity"
+            fix = f"Follow this profile from the Spotify account represented by these credentials, unless the target shares listening activity with that account directly:\nProfile: {spotify_user_profile_url(target_user_id)}\n{sharing}"
+        if live_activity_backend():
+            fix += "\nA private session hides the target until it ends"
         return make_recovery_advice("target.not_visible", "The target is not visible in Spotify Friend Activity", recovery_fix_with_guide(fix, FOLLOWING_GUIDE_URL), False, safe_detail)
     if context == "file_read":
-        return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", DIAGNOSTICS_GUIDE_URL), False, safe_detail)
+        return make_recovery_advice("file.unreadable", "A required file could not be read", recovery_fix_with_guide("Verify the path, file format and read permissions then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "file_write":
         return make_recovery_advice("file.unwritable", "An output destination is not writable", recovery_fix_with_guide("Choose a writable path and verify its parent directory permissions then retry", CONFIG_GUIDE_URL), False, safe_detail)
     if context == "setup.destination":
@@ -1777,19 +1860,21 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice("smtp.authentication", "SMTP authentication was rejected", recovery_fix_with_guide("Verify SMTP_USER and SMTP_PASSWORD. Providers such as Gmail may require an app password then run --send-test-email", SMTP_GUIDE_URL), False, safe_detail)
     if isinstance(error, (smtplib.SMTPException, ConnectionError)) and context.startswith("smtp"):
         return make_recovery_advice("smtp.connection", "The SMTP server connection failed", recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and SMTP_SSL then run --send-test-email", SMTP_GUIDE_URL), True, safe_detail)
-    if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or "timed out" in message or " timeout" in message:
+    # The chain is read alongside the text, since a transport error can arrive with an empty message
+    transport_code = network_failure_code(error)
+    if isinstance(error, (req.Timeout, TimeoutException, socket.timeout)) or transport_code == "network.timeout" or "timed out" in message or " timeout" in message:
         code = "smtp.connection" if context.startswith("smtp") else "network.timeout"
-        summary = "The SMTP connection timed out" if context.startswith("smtp") else "The Spotify request timed out"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check connectivity and retry. If timeouts continue run --doctor --debug", DIAGNOSTICS_GUIDE_URL)
+        summary = "The SMTP connection timed out" if context.startswith("smtp") else "Spotify did not answer in time"
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide(TRANSIENT_NETWORK_FIX, CONNECTION_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
     if isinstance(error, req.exceptions.SSLError) or any(term in message for term in ("certificate verify failed", "tls", "ssl error")):
         if context.startswith("smtp"):
             return make_recovery_advice("smtp.connection", "A secure SMTP connection could not be established", recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and SMTP_SSL plus the system CA certificates then run --send-test-email", SMTP_GUIDE_URL), True, safe_detail)
         return make_recovery_advice("network.unavailable", "A secure connection to Spotify could not be established", recovery_fix_with_guide("Check the system clock, CA certificates, firewall and TLS-inspecting proxy settings then retry", TLS_GUIDE_URL), True, safe_detail)
-    if isinstance(error, (req.ConnectionError, socket.gaierror)) or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
+    if isinstance(error, (req.ConnectionError, socket.gaierror)) or transport_code == "network.unavailable" or any(term in message for term in ("name resolution", "failed to resolve", "network is unreachable", "connection refused", "connection aborted", "max retries exceeded")):
         code = "smtp.connection" if context.startswith("smtp") else "network.unavailable"
         summary = "The SMTP server could not be reached" if context.startswith("smtp") else "Spotify could not be reached"
-        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide("Check DNS, internet access, firewall and proxy settings then retry", DIAGNOSTICS_GUIDE_URL)
+        fix = recovery_fix_with_guide("Verify SMTP_HOST, SMTP_PORT and network access then run --send-test-email", SMTP_GUIDE_URL) if context.startswith("smtp") else recovery_fix_with_guide(TRANSIENT_NETWORK_FIX, CONNECTION_GUIDE_URL)
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or mentions_status_code("429", message) or any(term in message for term in ("too many requests", "rate limit")):
@@ -1798,7 +1883,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
         return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide(rate_limit_fix, INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
-        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Wait and retry later. Run --doctor if the failure continues", DOCTOR_GUIDE_URL), True, safe_detail)
+        return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Usually nothing to do, the tool retries on its own. If it continues, wait for Spotify to recover", CONNECTION_GUIDE_URL), True, safe_detail)
     if status == 404 and context.startswith("target"):
         return make_recovery_advice("target.not_found", "The Spotify target was not found", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False, safe_detail)
     if status == 401 or "401 unauthorized" in message or "unauthorized" in message:
@@ -1915,10 +2000,12 @@ def print_liveness_banner(message: str) -> None:
 
 
 # Reminds about a lasting failure once an hour, so a broken run still says it is alive without repeating itself
-def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int, failures: int = 0) -> None:
+def print_outage_liveness(target: str, advice: RecoveryAdvice, since: int, failures: int = 0, close: bool = True) -> None:
     count = f", {failures} failed {'check' if failures == 1 else 'checks'}" if failures else ""
     print(f"* Monitoring degraded for {target}. {advice.summary} since {get_date_from_ts(since)}{count}")
-    print_cur_ts("Liveness check, timestamp:\t")
+    # A caller with an alert still to deliver closes the report itself, so the delivery lines stay inside it
+    if close:
+        print_cur_ts("Liveness check, timestamp:\t")
 
 
 # Notes that a reported outage now fails differently, in one line rather than a second full report
@@ -1926,10 +2013,188 @@ def print_outage_change(target: str, advice: RecoveryAdvice) -> None:
     print(f"* Monitoring failure changed for {target}. {advice.summary}")
 
 
-# Reports that a failure cleared, since a throttled failure no longer stops printing when it is over
-def print_outage_recovery(target: str, lasted: int) -> None:
+# Names the mode a recovery alert belongs to, since one inbox can receive both Friend Activity and scrobble health
+MONITOR_MODE_LABEL = "Friend Activity"
+SCROBBLE_HEALTH_MODE_LABEL = "Spotify-to-Last.fm scrobble health"
+
+
+# Reports that a failure cleared, since a throttled failure no longer stops printing when it is over, and sends the
+# recovery alert inside the same report so its delivery lines sit under the line they belong to
+def print_outage_recovery(target: str, lasted: int, error_alert: Optional[ErrorAlertState] = None, mode: str = MONITOR_MODE_LABEL) -> None:
     print(f"* Monitoring recovered for {target} after {display_time(max(1, lasted))}")
+    if error_alert is not None:
+        send_outage_recovery_alert(target, lasted, error_alert, mode)
     print_cur_ts("Timestamp:\t\t\t")
+
+
+# Carries the shapes a target is written in, since a subject that already brackets it cannot nest another pair
+# and an HTML body marks the name rather than the words around it
+class AlertTarget(str):
+    inline: str
+    html: str
+
+    # Builds the running text form and keeps the flat and HTML forms beside it
+    def __new__(cls, identifier: str, name: str = "") -> "AlertTarget":
+        identifier = str(identifier)
+        display = sanitize_terminal_text(str(name or "")).strip()
+        display = display if display and display != identifier else ""
+        target = super().__new__(cls, f"{display} ({identifier})" if display else identifier)
+        target.inline = f"{display}, {identifier}" if display else identifier
+        target.html = f"<b>{escape(display)} ({escape(identifier)})</b>" if display else f"<b>{escape(identifier)}</b>"
+        return target
+
+
+# Returns the form of a target that fits inside text already wrapped in brackets, where another pair would nest
+def alert_target_inline(target) -> str:
+    return getattr(target, "inline", None) or str(target)
+
+
+# Returns the HTML form of a target, falling back to marking the whole of one that carries no shape of its own
+def alert_target_html(target) -> str:
+    return getattr(target, "html", None) or f"<b>{escape(str(target))}</b>"
+
+
+# Names both sides of the scrobble comparison, since a failure on the Spotify side reported against a Last.fm
+# profile alone reads as if that profile were at fault
+class ScrobbleTarget(str):
+    inline: str
+    html: str
+
+    # Builds the running text form and keeps the flat and HTML forms beside it, dropping the Spotify side when unknown
+    def __new__(cls, lastfm_user: str, spotify_id: str = "", spotify_name: str = "") -> "ScrobbleTarget":
+        lastfm_user = sanitize_terminal_text(str(lastfm_user or "")).strip()
+        spotify = AlertTarget(spotify_id, spotify_name) if spotify_id else None
+        prose = f"{spotify} on Spotify and {lastfm_user} on Last.fm" if spotify else f"{lastfm_user} on Last.fm"
+        target = super().__new__(cls, prose)
+        target.inline = f"spotify: {spotify.inline}, last.fm: {lastfm_user}" if spotify else f"last.fm: {lastfm_user}"
+        # Only the accounts are marked, so the words joining them do not read as part of a name
+        lastfm_html = f"<b>{escape(lastfm_user)}</b> on Last.fm"
+        target.html = f"{spotify.html} on Spotify and {lastfm_html}" if spotify else lastfm_html
+        return target
+
+
+# Renders the monitored user for an HTML alert with the display name in bold, falling back to the URI id alone
+def spotify_user_html(user_uri_id: str, username: str = "") -> str:
+    name = str(username or "").strip()
+    return f"<b>{escape(name)}</b> ({escape(str(user_uri_id))})" if name and name != str(user_uri_id) else f"<b>{escape(str(user_uri_id))}</b>"
+
+
+# Qualifies the tool with the mode that failed, since a mode announced after the colon would need a second one
+def monitor_subject_prefix(mode: str = "") -> str:
+    return f"Spotify Monitor ({mode})" if mode else "Spotify Monitor"
+
+
+# Builds the subject every failure alert shares, so an inbox fed by several monitors sorts them by tool
+def recovery_alert_subject(advice: RecoveryAdvice, target: str, mode: str = "") -> str:
+    label = "" if isinstance(target, ScrobbleTarget) else "user: "
+    return f"{monitor_subject_prefix(mode)} error: {advice.summary} ({label}{alert_target_inline(target)})"
+
+
+# Lists the paragraphs of a failure alert in reading order, so the plain text, HTML and webhook bodies agree
+def recovery_alert_paragraphs(advice: RecoveryAdvice, retry_seconds: int, failed_checks: int = 0, failing_since: int = 0) -> list[str]:
+    retry_lines = []
+    # A first failure has no run to count, so the count and its start appear once a check has failed again
+    if failed_checks > 1:
+        retry_lines.append(f"Failed checks in a row: {failed_checks}")
+        if failing_since:
+            retry_lines.append(f"Failing since: {get_date_from_ts(int(failing_since))}")
+    retry_lines.append(f"Next retry in: {display_time(retry_seconds)}")
+    paragraphs = [advice.summary, f"To fix: {advice.fix}", "\n".join(retry_lines)]
+    # A detail that only repeats the summary spends a line saying nothing
+    if DEBUG_MODE and advice.detail and advice.detail != advice.summary:
+        paragraphs.append(f"Technical detail: {sanitize_error_text(advice.detail)}")
+    return paragraphs
+
+
+# Builds the plain text body every failure alert shares, ending with the timestamp unless the webhook asks without
+def recovery_alert_body(advice: RecoveryAdvice, retry_seconds: int, failed_checks: int = 0, failing_since: int = 0, timestamp: bool = True) -> str:
+    body = "\n\n".join(recovery_alert_paragraphs(advice, retry_seconds, failed_checks, failing_since))
+    return body + get_cur_ts("\n\nTimestamp: ") if timestamp else body
+
+
+# Bolds the values a reader scans a failure alert for: how often it has failed and since when
+def html_bold_outage_fields(content):
+    for label in ("Failed checks in a row: ", "Failing since: "):
+        content = re.sub(f"({re.escape(label)})([^<]+)", r"\1<b>\2</b>", content, count=1)
+    return content
+
+
+# Builds the HTML body of a failure alert with the summary in bold and the same paragraphs as the plain text
+def recovery_alert_body_html(advice: RecoveryAdvice, retry_seconds: int, failed_checks: int = 0, failing_since: int = 0, timestamp: bool = True) -> str:
+    summary, *rest = recovery_alert_paragraphs(advice, retry_seconds, failed_checks, failing_since)
+    content = "<br><br>".join([f"<b>{html_text(summary)}</b>", *(html_autolink_urls(html_text(paragraph)) for paragraph in rest)])
+    return html_bold_outage_fields(html_email_body(f"{content}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}"))
+
+
+# Sends the failure alert to each channel that still owes it and records the outcome, returning whether any was tried
+def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, outage: "OutageReporter", error_alert: ErrorAlertState, mode: str = MONITOR_MODE_LABEL) -> bool:
+    error_alert.note(advice, outage.since)
+    # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
+    # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
+    now = int(time.time())
+    alert_due = not advice.retryable or now - outage.since >= ERROR_ALERT_AFTER_SECONDS
+    email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
+    webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
+    if not (email_pending or webhook_pending):
+        return False
+    subject = recovery_alert_subject(advice, target, mode)
+    body = recovery_alert_body(advice, retry_seconds, outage.failures, outage.since)
+    body_html = recovery_alert_body_html(advice, retry_seconds, outage.failures, outage.since)
+    webhook_body = recovery_alert_body(advice, retry_seconds, outage.failures, outage.since, timestamp=False)
+    webhook_body_html = recovery_alert_body_html(advice, retry_seconds, outage.failures, outage.since, timestamp=False)
+    email_succeeded, webhook_succeeded = send_notification_channels("error", subject, body, body_html, email_pending, webhook_pending, webhook_body=webhook_body, webhook_body_html=webhook_body_html)
+    error_alert.record("email", email_pending, email_succeeded, now)
+    error_alert.record("webhook", webhook_pending, webhook_succeeded, now)
+    return True
+
+
+# Builds the subject of the alert that ends a failure alert, so it sorts next to the failure it closes
+def outage_recovery_subject(target: str, lasted: int, mode: str = "") -> str:
+    return f"{monitor_subject_prefix(mode)} recovered: monitoring {target} resumed after {display_time(max(1, lasted))}"
+
+
+# Builds the plain text body of the recovery alert, naming the failure it ends
+def outage_recovery_body(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for {target} after {display_time(max(1, lasted))}.\n\nThe failure was: {advice.summary}"
+    return body + get_cur_ts("\n\nTimestamp: ") if timestamp else body
+
+
+# Builds the HTML body of the recovery alert, matching the plain text
+def outage_recovery_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    body = f"{mode + ' m' if mode else 'M'}onitoring recovered for {alert_target_html(target)} after <b>{escape(display_time(max(1, lasted)))}</b>.<br><br>The failure was: {html_text(advice.summary)}"
+    return f"<html><head></head><body>{body}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>"
+
+
+# Tells a channel that never received the failure alert about the whole outage, since a bare recovery would close
+# a failure it was never told about
+def outage_missed_body(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    lasted = max(1, lasted)
+    body = f"{mode + ' m' if mode else 'M'}onitoring failed for {target} at {get_date_from_ts(int(time.time()) - lasted)} and recovered after {display_time(lasted)}.\n\nThe failure was: {advice.summary}\n\nThe failure alert could not be delivered here while the failure lasted."
+    return body + get_cur_ts("\n\nTimestamp: ") if timestamp else body
+
+
+# Builds the HTML body of the combined failure and recovery alert, matching the plain text
+def outage_missed_body_html(advice: RecoveryAdvice, target: str, lasted: int, timestamp: bool = True, mode: str = "") -> str:
+    lasted = max(1, lasted)
+    body = f"{mode + ' m' if mode else 'M'}onitoring failed for {alert_target_html(target)} at <b>{escape(get_date_from_ts(int(time.time()) - lasted))}</b> and recovered after <b>{escape(display_time(lasted))}</b>.<br><br>The failure was: {html_text(advice.summary)}<br><br>The failure alert could not be delivered here while the failure lasted."
+    return f"<html><head></head><body>{body}{get_cur_ts('<br><br>Timestamp: ') if timestamp else ''}</body></html>"
+
+
+# Sends the recovery alert on each channel whose failure alert was delivered, returning whether any channel was tried
+def send_outage_recovery_alert(target: str, lasted: int, error_alert: ErrorAlertState, mode: str = MONITOR_MODE_LABEL) -> bool:
+    advice = error_alert.advice
+    email_enabled = error_alert.email_sent and bool(ERROR_NOTIFICATION)
+    webhook_enabled = error_alert.webhook_sent and webhook_event_enabled("error")
+    # A channel whose failure alert never got through hears about the outage and its end together, rather than
+    # nothing at all, which is what a channel blocked for the length of the outage would otherwise receive
+    email_missed = error_alert.missed("email", ERROR_NOTIFICATION)
+    webhook_missed = error_alert.missed("webhook", webhook_event_enabled("error"))
+    if advice is None or not (email_enabled or webhook_enabled or email_missed or webhook_missed):
+        return False
+    email_text, email_html = (outage_missed_body, outage_missed_body_html) if email_missed else (outage_recovery_body, outage_recovery_body_html)
+    webhook_text, webhook_html = (outage_missed_body, outage_missed_body_html) if webhook_missed else (outage_recovery_body, outage_recovery_body_html)
+    send_notification_channels("error", outage_recovery_subject(target, lasted, mode), email_text(advice, target, lasted, mode=mode), email_html(advice, target, lasted, mode=mode), email_enabled or email_missed, webhook_enabled or webhook_missed, webhook_body=webhook_text(advice, target, lasted, timestamp=False, mode=mode), webhook_body_html=webhook_html(advice, target, lasted, timestamp=False, mode=mode))
+    return True
 
 
 # Tracks the last uninterrupted recovery category to suppress duplicate hints
@@ -2560,9 +2825,19 @@ def _firefox_profile_roots(system_name=None, home=None, environ=None):
     return []
 
 
+# Names the packaging one profile tree belongs to, since Snap, Flatpak and distribution builds keep separate trees
+def packaging_label(profile_path):
+    lowered = str(profile_path).replace(os.sep, "/").lower()
+    if "/snap/" in lowered:
+        return "Snap"
+    if "/.var/app/" in lowered:
+        return "Flatpak"
+    return ""
+
+
 # Builds one normalized browser profile record
 def _browser_profile_record(profile_dir, friendly_name, cookie_file):
-    return {"dir": profile_dir.name, "name": friendly_name or profile_dir.name, "path": str(profile_dir), "cookie_file": str(cookie_file)}
+    return {"dir": profile_dir.name, "name": friendly_name or profile_dir.name, "path": str(profile_dir), "cookie_file": str(cookie_file), "install": packaging_label(profile_dir)}
 
 
 # Adds one usable profile record without duplicating its cookie database
@@ -2609,17 +2884,24 @@ def discover_firefox_profiles(system_name=None, home=None, environ=None):
     return sorted(profiles_by_cookie.values(), key=lambda profile: (profile["name"].lower(), profile["dir"].lower(), profile["cookie_file"]))
 
 
+# Formats one profile choice without exposing any cookie values
+def _format_profile_choice(profile):
+    described = f"{profile['dir']} ({profile['name']})" if profile["name"] != profile["dir"] else profile["dir"]
+    return f"{described} [{profile['install']}]" if profile.get("install") else described
+
+
 # Formats profile choices without exposing any cookie values
 def _format_profile_choices(profiles):
-    return ", ".join(f"{profile['dir']} ({profile['name']})" if profile["name"] != profile["dir"] else profile["dir"] for profile in profiles)
+    return ", ".join(_format_profile_choice(profile) for profile in profiles)
 
 
 # Selects one browser profile explicitly, automatically or through a terminal prompt
-def select_browser_profile(profiles, browser, requested_profile=None, interactive=None, input_func=None):
+def select_browser_profile(profiles, browser, requested_profile=None, interactive=None, input_func=None, empty_reason=None):
     label = browser_label(browser)
     if not profiles:
-        raise BrowserCookieImportError(f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
+        raise BrowserCookieImportError(empty_reason or f"No usable {label} profiles found. Sign in to Spotify in {label} or pass --cookie-file PATH.")
 
+    is_firefox = browser == "firefox"
     if requested_profile:
         requested = requested_profile.casefold()
         directory_matches = [profile for profile in profiles if profile["dir"].casefold() == requested]
@@ -2629,10 +2911,17 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
             return matches[0]
         choices = _format_profile_choices(profiles)
         if len(matches) > 1:
+            # Two installs can hold the same profile directory name, and then no --browser-profile value can separate
+            # them, so the only advice that works is to name the database itself
+            if directory_matches:
+                raise BrowserCookieImportError(f"{label} profile directory '{requested_profile}' exists in {len(matches)} separate {label} installs. Pass --cookie-file PATH to choose one. Choices: {choices}")
             raise BrowserCookieImportError(f"{label} profile name '{requested_profile}' is ambiguous. Pass one profile directory with --browser-profile. Choices: {choices}")
         raise BrowserCookieImportError(f"Unknown {label} profile '{requested_profile}'. Choices: {choices}")
 
     if len(profiles) == 1:
+        # There is no other profile to offer instead, so the import goes ahead and only warns
+        if profile_has_live_spotify_cookie(profiles[0]["cookie_file"], firefox=is_firefox) is False:
+            print(f"* Warning: the only {label} profile, {_format_profile_choice(profiles[0])}, holds no current Spotify login, so the import will most likely fail. Sign in to Spotify in {label} then retry.")
         return profiles[0]
 
     terminal_is_interactive = sys.stdin.isatty() if interactive is None else interactive
@@ -2640,20 +2929,72 @@ def select_browser_profile(profiles, browser, requested_profile=None, interactiv
     if not terminal_is_interactive:
         raise BrowserCookieImportError(f"Multiple {label} profiles found: {choices}. Pass --browser-profile PROFILE to select one in a noninteractive environment.")
 
+    live = [index for index, profile in enumerate(profiles) if profile_has_live_spotify_cookie(profile["cookie_file"], firefox=is_firefox)]
+    default_index = live[0] if len(live) == 1 else None
+    width = len(str(len(profiles)))
     print()
     print(f"Multiple {label} profiles found:")
+    # Only the profiles worth choosing are marked. Labelling the rest as well buries the few that matter, and a
+    # database that could not be read is left unmarked rather than called signed out
+    if live:
+        print("  * marks a profile holding a current Spotify login")
     for index, profile in enumerate(profiles, start=1):
-        print(f"  {index}) {profile['name']} [{profile['dir']}] - {profile['cookie_file']}")
+        marker = "* " if index - 1 in live else ("  " if live else "")
+        install = f" ({profile['install']})" if profile.get("install") else ""
+        default_note = "  (default)" if index - 1 == default_index else ""
+        print(f"  {str(index).rjust(width)}) {marker}{profile['name']}{install} [{profile['dir']}] - {profile['cookie_file']}{default_note}")
+
     prompt = input if input_func is None else input_func
-    try:
-        choice = int(prompt("Select profile number (0 to cancel): "))
-    except (EOFError, ValueError):
-        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.") from None
-    if choice == 0:
-        raise BrowserCookieImportError("Browser cookie import cancelled.")
-    if choice < 1 or choice > len(profiles):
-        raise BrowserCookieImportError("Browser cookie import cancelled because the profile selection was invalid.")
-    return profiles[choice - 1]
+    prompt_text = f"Select profile number (0 to cancel{', Enter for default' if default_index is not None else ''}): "
+    while True:
+        try:
+            answer = prompt(prompt_text).strip()
+        except (EOFError, KeyboardInterrupt):
+            raise BrowserCookieImportError("Browser cookie import cancelled.") from None
+        if not answer and default_index is not None:
+            return profiles[default_index]
+        if answer == "0":
+            raise BrowserCookieImportError("Browser cookie import cancelled.")
+        # isdigit also rejects a negative number, which int would accept and then index backwards from the end
+        if answer.isdigit() and 1 <= int(answer) <= len(profiles):
+            return profiles[int(answer) - 1]
+        print(f"  Enter a number between 1 and {len(profiles)}, or 0 to cancel.")
+
+
+# A running browser holds its cookie database locked, so a plain read-only open waits out the busy timeout before it
+# fails, and that wait is paid once for every profile that has a write-ahead log
+COOKIE_DATABASE_BUSY_TIMEOUT = 0.25
+
+
+# Builds one read-only SQLite URI for a cookie database
+def _sqlite_cookie_uri(cookie_path, parameters):
+    # as_uri percent-encodes the path, so a '?' or '#' inside it cannot displace the parameters appended here
+    return cookie_path.as_uri() + "?" + parameters
+
+
+# Opens one browser cookie database read-only, preferring the access mode that can see uncommitted log entries
+def open_cookie_database(cookie_file):
+    # Firefox keeps recently saved cookies in a write-ahead log until it checks them in and an immutable open ignores
+    # that log, so a session saved moments ago looks absent. The read-only open that does see the log is attempted
+    # only when a log is present, since it is the slower of the two and fails outright on read-only media such as the
+    # container's mounted Firefox profile
+    cookie_path = Path(cookie_file).expanduser().resolve()
+    uris = [_sqlite_cookie_uri(cookie_path, "immutable=1")]
+    if cookie_path.with_name(cookie_path.name + "-wal").exists():
+        uris.insert(0, _sqlite_cookie_uri(cookie_path, "mode=ro"))
+
+    first_error = None
+    for uri in uris:
+        connection = None
+        try:
+            connection = sqlite3.connect(uri, uri=True, timeout=COOKIE_DATABASE_BUSY_TIMEOUT)
+            connection.execute("PRAGMA schema_version").fetchone()
+            return connection
+        except sqlite3.DatabaseError as error:
+            if connection is not None:
+                connection.close()
+            first_error = first_error or error
+    raise first_error if first_error is not None else sqlite3.DatabaseError(f"could not open '{cookie_path}'")
 
 
 # Quotes a SQLite identifier obtained from database schema metadata
@@ -2669,6 +3010,113 @@ def _numeric_cookie_field(value):
         return 0.0
 
 
+# Current Firefox stores cookie expiry in milliseconds while older releases store it in seconds, and the schema does
+# not track which, so the unit is taken from the magnitude. Any plausible epoch-seconds expiry stays far below this
+COOKIE_EXPIRY_MILLISECOND_THRESHOLD = 1e11
+
+
+# Converts one cookie expiry field into epoch seconds whichever unit the profile stores it in
+def _cookie_expiry_seconds(value):
+    expiry = _numeric_cookie_field(value)
+    return expiry / 1000.0 if expiry >= COOKIE_EXPIRY_MILLISECOND_THRESHOLD else expiry
+
+
+# Enough alternatives to show where else to look without burying the failure itself, which a machine carrying a
+# dozen Firefox profiles otherwise does
+PROFILE_ALTERNATIVES_LISTED = 6
+
+
+# Chromium records cookie expiry as microseconds since 1601, the epoch its own storage layer uses
+CHROMIUM_EPOCH_OFFSET_SECONDS = 11644473600
+
+# Cookie hosts a Spotify session is stored under, matched so a lookalike domain cannot satisfy the check
+SPOTIFY_COOKIE_HOST_PATTERNS = ("spotify.com", "%.spotify.com")
+
+
+# Converts one Chromium cookie expiry field into epoch seconds, treating a session cookie as never expiring
+def _chromium_expiry_seconds(value):
+    expiry = _numeric_cookie_field(value)
+    return 0.0 if expiry <= 0 else expiry / 1_000_000 - CHROMIUM_EPOCH_OFFSET_SECONDS
+
+
+# Reports whether one cookie database holds an unexpired Spotify login, or None when it cannot be answered
+def profile_has_live_spotify_cookie(cookie_file, firefox=False, now=None):
+    # Only the cookie name, host and expiry are read, and those are stored in the clear on both schemas, so a Chromium
+    # profile answers this without its encryption key and without any value leaving the database
+    if not cookie_file or not Path(cookie_file).expanduser().is_file():
+        return None
+    try:
+        connection = open_cookie_database(cookie_file)
+    except (sqlite3.DatabaseError, OSError):
+        return None
+
+    table = "moz_cookies" if firefox else "cookies"
+    host_keys = ("host", "basedomain") if firefox else ("host_key",)
+    expiry_keys = ("expiry", "expires", "expirationdate") if firefox else ("expires_utc",)
+    try:
+        column_names = {str(row[1]).lower(): str(row[1]) for row in connection.execute(f"PRAGMA table_info({_sqlite_identifier(table)})").fetchall()}
+        host_key = next((key for key in host_keys if key in column_names), None)
+        expiry_key = next((key for key in expiry_keys if key in column_names), None)
+        if "name" not in column_names or host_key is None:
+            return None
+        host_column = _sqlite_identifier(column_names[host_key])
+        expiry_column = _sqlite_identifier(column_names[expiry_key]) if expiry_key else "0"
+        query = f"SELECT {expiry_column} FROM {_sqlite_identifier(table)} WHERE {_sqlite_identifier(column_names['name'])} = ? AND (lower(ltrim({host_column}, '.')) = ? OR lower(ltrim({host_column}, '.')) LIKE ?)"
+        rows = connection.execute(query, ("sp_dc", *SPOTIFY_COOKIE_HOST_PATTERNS)).fetchall()
+    except sqlite3.DatabaseError:
+        return None
+    finally:
+        connection.close()
+
+    if not rows:
+        return False
+    now_value = time.time() if now is None else now
+    to_seconds = _cookie_expiry_seconds if firefox else _chromium_expiry_seconds
+    return any(to_seconds(row[0]) <= 0 or to_seconds(row[0]) > now_value for row in rows)
+
+
+# Explains why no Firefox profile can be offered
+def firefox_no_profiles_message(system_name=None, home=None, environ=None):
+    # A profile that has never stored a cookie is dropped from the listing, so the three causes need separating the
+    # same way the Chromium listing separates its own
+    roots = _firefox_profile_roots(system_name=system_name, home=home, environ=environ)
+    if not roots:
+        return "No Firefox profiles found. This system has no known Firefox profile location. Pass --cookie-file PATH with a readable cookies.sqlite."
+    existing = [root for root in roots if root.is_dir()]
+    if not existing:
+        return f"No Firefox profiles found. Looked in {', '.join(repr(str(root)) for root in roots)}. Install Firefox and sign in to Spotify in it, or pass --cookie-file PATH."
+    return f"Firefox is installed but none of its profiles in {', '.join(repr(str(root)) for root in existing)} holds a cookie database yet. Open {SPOTIFY_WEB_LOGIN_URL} in Firefox, sign in then retry."
+
+
+# Names the Firefox profile holding one cookie database and the other profiles a session could be in
+def _firefox_profile_context(cookie_file):
+    fallback = f"the Firefox cookie database '{cookie_file}'", ""
+    try:
+        selected_path = Path(cookie_file).expanduser().resolve()
+        profiles = discover_firefox_profiles()
+    except OSError:
+        return fallback
+
+    selected = None
+    others = []
+    for profile in profiles:
+        try:
+            is_selected = Path(profile["cookie_file"]).resolve() == selected_path
+        except OSError:
+            is_selected = False
+        if is_selected and selected is None:
+            selected = profile
+        else:
+            others.append(_format_profile_choice(profile))
+
+    description = f"Firefox profile {_format_profile_choice(selected)}" if selected is not None else fallback[0]
+    if not others:
+        return description, ""
+    listed = ", ".join(others[:PROFILE_ALTERNATIVES_LISTED])
+    remaining = len(others) - PROFILE_ALTERNATIVES_LISTED
+    return description, f" Other Firefox profiles found: {listed}{f' and {remaining} more' if remaining > 0 else ''}."
+
+
 # Reads the best Spotify sp_dc cookie from a Firefox SQLite database
 def read_firefox_sp_dc(cookie_file, now=None):
     cookie_path = Path(cookie_file).expanduser()
@@ -2676,7 +3124,9 @@ def read_firefox_sp_dc(cookie_file, now=None):
         raise BrowserCookieImportError(f"Firefox cookie database '{cookie_path}' was not found. Pass a valid cookies.sqlite path with --cookie-file.")
 
     try:
-        with sqlite3.connect(cookie_path.resolve().as_uri() + "?immutable=1", uri=True) as connection:
+        # sqlite3's context manager wraps a transaction rather than the connection, so it is closed explicitly below
+        connection = open_cookie_database(cookie_path)
+        try:
             columns = connection.execute("PRAGMA table_info(moz_cookies)").fetchall()
             column_names = {str(row[1]).lower(): str(row[1]) for row in columns}
             if "name" not in column_names or "value" not in column_names:
@@ -2699,11 +3149,15 @@ def read_firefox_sp_dc(cookie_file, now=None):
             domain_column = _sqlite_identifier(column_names[domain_key])
             query = f"SELECT {selected_columns} FROM moz_cookies WHERE {name_column} = ? AND {value_column} IS NOT NULL AND {value_column} != '' AND (lower(ltrim({domain_column}, '.')) = ? OR lower(ltrim({domain_column}, '.')) LIKE ?)"
             rows = connection.execute(query, ("sp_dc", "spotify.com", "%.spotify.com")).fetchall()
-    except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
-        raise BrowserCookieImportError("Could not read the Firefox cookie database. Close Firefox then retry or pass --cookie-file with a readable cookies.sqlite copy.") from None
+        finally:
+            connection.close()
+    except (sqlite3.DatabaseError, OSError):
+        description, alternatives = _firefox_profile_context(cookie_path)
+        raise BrowserCookieImportError(f"Could not read {description}. Close Firefox then retry or pass --cookie-file with a readable cookies.sqlite copy.{alternatives}") from None
 
     if not rows:
-        raise BrowserCookieImportError("No sp_dc cookie for spotify.com was found in the selected Firefox profile. Sign in to Spotify in Firefox then retry.")
+        description, alternatives = _firefox_profile_context(cookie_path)
+        raise BrowserCookieImportError(f"No sp_dc cookie for spotify.com was found in {description}. Sign in to Spotify in Firefox then retry.{alternatives}")
 
     now_value = time.time() if now is None else now
     last_access_index = selected_keys.index(last_access_key) if last_access_key else None
@@ -2712,21 +3166,32 @@ def read_firefox_sp_dc(cookie_file, now=None):
     # Ranks nonexpired cookies first then uses last access and stable fields for deterministic selection
     def cookie_rank(row):
         last_accessed = _numeric_cookie_field(row[last_access_index]) if last_access_index is not None else 0.0
-        expiry = _numeric_cookie_field(row[expiry_index]) if expiry_index is not None else 0.0
+        expiry = _cookie_expiry_seconds(row[expiry_index]) if expiry_index is not None else 0.0
         nonexpired = 1 if expiry <= 0 or expiry > now_value else 0
         return nonexpired, last_accessed, expiry, str(row[1]).lower(), str(row[0])
+
+    # Firefox records when each cookie expires, so a profile whose every sp_dc has already lapsed is reported from the
+    # database rather than through a Spotify request that can only answer the same thing less precisely
+    if expiry_index is not None:
+        expiries = [_cookie_expiry_seconds(row[expiry_index]) for row in rows]
+        if all(0 < expiry <= now_value for expiry in expiries):
+            description, alternatives = _firefox_profile_context(cookie_path)
+            latest = get_date_from_ts(max(expiries))
+            raise BrowserCookieImportError(f"The Spotify sp_dc cookie in {description} expired on {latest}. Sign in to Spotify in Firefox again then retry.{alternatives}")
 
     return str(max(rows, key=cookie_rank)[0])
 
 
-# Returns the standard Chromium user-data directory for one browser and platform
+# Returns the Chromium user-data directory in use for one browser and platform
 def get_chromium_user_data_dir(browser, system_name=None, home=None):
     selected_system = platform.system() if system_name is None else system_name
-    relative_path = CHROMIUM_USER_DATA_DIRS.get(selected_system, {}).get(browser)
-    if relative_path is None:
+    relative_paths = CHROMIUM_USER_DATA_DIRS.get(selected_system, {}).get(browser)
+    if not relative_paths:
         return None
     home_path = Path.home() if home is None else Path(home)
-    return home_path / relative_path
+    candidates = [home_path / relative_path for relative_path in relative_paths]
+    # Naming the conventional root when none of them exists keeps a failure able to say where it looked
+    return next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
 
 
 # Resolves a Chromium profile cookie database with modern layout preference
@@ -2737,6 +3202,31 @@ def resolve_chromium_cookie_file(user_data_dir, profile_dir):
         if candidate.is_file():
             return candidate
     return None
+
+
+# Lists the profile directories inside a Chromium user-data root, including any that hold no cookie database yet
+def _chromium_profile_dirs(base_path):
+    try:
+        entries = sorted(base_path.iterdir(), key=lambda entry: entry.name.lower())
+    except OSError:
+        return []
+    return [entry.name for entry in entries if entry.is_dir() and (entry.name == "Default" or entry.name.startswith("Profile "))]
+
+
+# Explains why no profile can be offered for one Chromium browser
+def chromium_no_profiles_message(browser, system_name=None, home=None, user_data_dir=None):
+    # A profile that has never stored a cookie is dropped from the listing, so an installed browser holding only new
+    # profiles must not be reported as a browser that is not installed. Each cause needs a different fix
+    label = browser_label(browser)
+    base_path = Path(user_data_dir) if user_data_dir is not None else get_chromium_user_data_dir(browser, system_name=system_name, home=home)
+    if base_path is None:
+        return f"No {label} profiles found. This system has no known {label} profile location. Import from Firefox instead or pass --cookie-file PATH."
+    if not base_path.is_dir():
+        return f"No {label} profiles found. Looked in '{base_path}'. Install {label} and sign in to Spotify in it, import from Firefox instead or pass --cookie-file PATH."
+    new_profiles = _chromium_profile_dirs(base_path)
+    if new_profiles:
+        return f"{label} is installed but none of its profiles ({', '.join(new_profiles)}) holds a cookie database yet. Open {SPOTIFY_WEB_LOGIN_URL} in {label}, sign in then retry."
+    return f"No {label} profiles found in '{base_path}'. Open {label} once to create a profile, sign in to Spotify then retry."
 
 
 # Discovers usable Chrome, Brave or Chromium profiles and Local State names
@@ -2754,16 +3244,10 @@ def discover_chromium_profiles(browser, system_name=None, home=None, user_data_d
         pass
 
     profiles = []
-    try:
-        entries = sorted(base_path.iterdir(), key=lambda entry: entry.name.lower())
-    except OSError:
-        return []
-    for entry in entries:
-        if not entry.is_dir() or (entry.name != "Default" and not entry.name.startswith("Profile ")):
-            continue
-        cookie_file = resolve_chromium_cookie_file(base_path, entry.name)
+    for profile_dir in _chromium_profile_dirs(base_path):
+        cookie_file = resolve_chromium_cookie_file(base_path, profile_dir)
         if cookie_file is not None:
-            profiles.append({"dir": entry.name, "name": friendly_names.get(entry.name, entry.name), "path": str(entry), "cookie_file": str(cookie_file)})
+            profiles.append({"dir": profile_dir, "name": friendly_names.get(profile_dir, profile_dir), "path": str(base_path / profile_dir), "cookie_file": str(cookie_file), "install": packaging_label(base_path)})
     return profiles
 
 
@@ -2778,12 +3262,22 @@ def _pycookiecheat_spotify_cookies(browser, cookie_file):
     return get_cookies("https://open.spotify.com", browser=browser_type, cookie_file=str(cookie_file))
 
 
+# Text the keyring libraries use when no backend is installed at all, which needs a different fix from a locked one
+KEYRING_MISSING_TERMS = ("no recommended backend", "no such keyring backend", "no backend available")
+
+# Text the keyring libraries use when a backend exists but will not release the key. Several of these name neither the
+# keyring nor the service, so matching on the wording they do use is what keeps the advice correct
+KEYRING_LOCKED_TERMS = ("keyring", "keychain", "safe storage", "secretservice", "secret service", "libsecret", "kwallet", "failed to unlock", "collection", "password")
+
+
 # Converts a pycookiecheat failure into a secret-safe actionable message
 def _safe_chromium_cookie_error(browser, error):
     label = browser_label(browser)
     error_text = str(error).lower()
-    if any(term in error_text for term in ("keyring", "secretservice", "secret service", "password")):
-        return f"Could not access the OS keyring needed to decrypt {label} cookies. Unlock the keyring then retry or use Firefox."
+    if any(term in error_text for term in KEYRING_MISSING_TERMS):
+        return f"No OS keyring backend is available to decrypt {label} cookies. Install one such as gnome-keyring or kwallet then retry, or import from Firefox which needs none."
+    if any(term in error_text for term in KEYRING_LOCKED_TERMS):
+        return f"Could not access the OS keyring needed to decrypt {label} cookies. Unlock the keyring, allow the access prompt then retry or use Firefox."
     if any(term in error_text for term in ("decrypt", "invalidtag", "encryption")):
         return f"Could not decrypt {label} cookies. Close {label} then retry or import from Firefox."
     if any(term in error_text for term in ("permission", "denied", "locked", "readonly", "unable to open")):
@@ -2910,10 +3404,13 @@ def run_browser_cookie_import(browser="firefox", browser_profile=None, cookie_fi
         if browser_profile:
             print("* Note: --cookie-file takes precedence over --browser-profile")
     elif browser == "firefox":
-        selected_profile = select_browser_profile(discover_firefox_profiles(), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        firefox_profiles = discover_firefox_profiles()
+        selected_profile = select_browser_profile(firefox_profiles, browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func, empty_reason=None if firefox_profiles else firefox_no_profiles_message())
         selected_cookie_file = Path(selected_profile["cookie_file"])
     else:
-        selected_profile = select_browser_profile(discover_chromium_profiles(browser), browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func)
+        chromium_profiles = discover_chromium_profiles(browser)
+        empty_reason = None if chromium_profiles else chromium_no_profiles_message(browser)
+        selected_profile = select_browser_profile(chromium_profiles, browser, requested_profile=browser_profile, interactive=interactive, input_func=input_func, empty_reason=empty_reason)
         selected_cookie_file = Path(selected_profile["cookie_file"])
 
     if selected_profile is not None:
@@ -3553,10 +4050,14 @@ _USER_FIELD_RE = re.compile(r"(\buser)(:[\t ]+|=)((?!ID\b)[\w.:-]+)")
 # A quoted value right after "user" is the monitored URI ID, the same value the "User URI ID:" row reports
 _QUOTED_USER_ID_CONTEXT_RE = re.compile(r"\buser(?:\s+id)?\s+$", re.IGNORECASE)
 _DURATION_RE = re.compile(r"~?\b[0-9]{1,20}[ \t]{1,20}(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b", re.IGNORECASE)
-_LONG_DATE_RE = re.compile(r"\b(?:\w{3}\s+)?\d{1,2}\s+\w{3}(?:\s+\d{2,4})?[\s,]*\d{2}:\d{2}(:\d{2})?(\s*[AP]M)?\b", re.IGNORECASE)
+# The weekday in front of a date, taken from the abbreviations the running locale prints. A date is separated
+# from its weekday by one space, so the wide gap of a padded listing column cannot pull the word before it,
+# such as the last word of a line, into the date
+_WEEKDAY_ABBR_PATTERN = "|".join(re.escape(day_abbr) for day_abbr in calendar.day_abbr)
+_LONG_DATE_RE = re.compile(r"\b(?:(?:" + _WEEKDAY_ABBR_PATTERN + r")[\t ])?\d{1,2}\s+\w{3}(?:\s+\d{2,4})?[\s,]*\d{2}:\d{2}(:\d{2})?(\s*[AP]M)?\b", re.IGNORECASE)
 _TIME_ONLY_RE = re.compile(r"(?<![\w:])(~?(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?:\s*[AP]M)?)(?![\w:])", re.IGNORECASE)
-_SHORT_RANGE_DATE_RE = re.compile(r"\(\w{3}\s+\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\)", re.IGNORECASE)
-_DATE_RANGE_RE = re.compile(r"\b\w{3}\s+\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\b", re.IGNORECASE)
+_SHORT_RANGE_DATE_RE = re.compile(r"\((?:" + _WEEKDAY_ABBR_PATTERN + r")[\t ]\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\)", re.IGNORECASE)
+_DATE_RANGE_RE = re.compile(r"\b(?:" + _WEEKDAY_ABBR_PATTERN + r")[\t ]\d{1,2}\s+\w{3}\s+\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\b", re.IGNORECASE)
 _HOUR_RANGE_RE = re.compile(r"\b\d{2}:\d{2}(\s*[AP]M)?\s*-\s*\d{2}:\d{2}(\s*[AP]M)?\b", re.IGNORECASE)
 # Sentence punctuation, a closing bracket or a closing quote right after a link is not part of it
 _URL_RE = re.compile(r"(https?://[^\s\]]+?)(?=[.,;:!?'\")>]*(?:[\s\]]|$))")
@@ -3569,7 +4070,6 @@ _TLS_STATE_RE = re.compile(r"^(\* TLS verification:\s+)(On|Off)(.*)$")
 _NOTIFICATION_SUMMARY_STATE_RE = re.compile(r"^(\* Notifications \((?:email|webhook)\):\s+)(On|Off)(.*)$")
 # Startup summary rows whose label happens to contain a problem word. They report a configured setting, not a
 # failure, so the whole-line error style must skip them and leave their value coloured like any other row
-_STARTUP_SUMMARY_TIMER_ROW_RE = re.compile(r"^\* (?:disappeared|error retry) timer:")
 # Words that report a problem. The same word used as a key in a 'key=value' diagnostic detail names a setting
 # such as 'timeout=15' or a counter such as 'failures=3', so it leaves its line unpainted
 _ERROR_KEYWORD_RE = re.compile(r"\b(?:failures?|failed|forbidden|timeout|disappeared)\b(?!\s*=)")
@@ -3776,6 +4276,8 @@ def _colorize_count_change(match):
 # Applies colour rules to a single output line
 def _colorize_line(line):
     lowered = line.lower()
+    # Read before any highlight is inserted, since the label column has to be measured on the plain text
+    is_settings_row = is_startup_summary_row(line)
 
     # Notification summary rows carry their own On/Off state word
     notification_match = _NOTIFICATION_SUMMARY_STATE_RE.match(line)
@@ -3876,12 +4378,15 @@ def _colorize_line(line):
     line = _sub_outside_color(_ACTIVE_WORD_RE, lambda mo: colorize("status_active", mo.group(0)), line)
     line = _sub_outside_color(_INACTIVE_WORD_RE, lambda mo: colorize("status_inactive", mo.group(0)), line)
 
+    # A summary row reports a setting, so a value that happens to read like a log keyword must not paint the whole row
+    if is_settings_row:
+        return line
+
     # Block highlighting (activity headers, errors, warnings, signals)
     # Applied last so the internal colours above are preserved through the nesting logic
-    is_summary_timer_row = bool(_STARTUP_SUMMARY_TIMER_ROW_RE.match(lowered))
     is_recovery_notice = bool(_RECOVERY_NOTICE_RE.search(lowered))
     is_debug_line = bool(_DEBUG_LINE_RE.match(lowered))
-    is_error = not is_summary_timer_row and not is_recovery_notice and not is_debug_line and (
+    is_error = not is_recovery_notice and not is_debug_line and (
         bool(_ERROR_KEYWORD_RE.search(lowered)) or "critical:" in lowered or (
             "* error" in lowered and "[errors =" not in lowered
         )
@@ -5138,7 +5643,7 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
 
 
 # Sends one alert through the enabled email and webhook channels
-def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "", subject_short: str = "", body_short: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", retain_failures: bool = True) -> tuple[bool, bool]:
+def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "", subject_short: str = "", body_short: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", retain_failures: bool = True, webhook_body: str = "", webhook_body_html: str = "") -> tuple[bool, bool]:
     email_selected = bool(email_enabled)
     webhook_selected = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
     email_succeeded = False
@@ -5150,8 +5655,9 @@ def send_notification_channels(notification_type: str, subject: str, body: str, 
         print(f"Sending webhook notification via {webhook_provider_display_name()}")
         use_short_content = NTFY_SHORT is True and normalized_webhook_provider() == "ntfy"
         webhook_subject = (subject_short or subject) if use_short_content else subject
-        webhook_body = (body_short or body) if use_short_content else body
-        webhook_succeeded = send_webhook(webhook_subject, webhook_body, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(body_html)) == 0
+        # A webhook body of its own leaves out what only the email carries, such as the timestamp the service adds itself
+        webhook_text = (body_short or webhook_body or body) if use_short_content else (webhook_body or body)
+        webhook_succeeded = send_webhook(webhook_subject, webhook_text, notification_type, force=True, image_url=image_url, ntfy_priority=ntfy_priority, ntfy_tags=ntfy_tags, discord_description=html_body_to_discord_markdown(webhook_body_html or body_html)) == 0
     if retain_failures and notification_type in ("active", "inactive") and ((email_selected and not email_succeeded) or (webhook_selected and not webhook_succeeded)):
         pending = {"notification_type": notification_type, "subject": subject, "body": body, "body_html": body_html, "email_enabled": email_selected and not email_succeeded, "webhook_enabled": webhook_selected and not webhook_succeeded, "image_url": image_url, "subject_short": subject_short, "body_short": body_short, "ntfy_priority": ntfy_priority, "ntfy_tags": ntfy_tags}
         if not any(item["notification_type"] == notification_type and item["subject"] == subject for item in PENDING_ACTIVITY_NOTIFICATIONS):
@@ -5425,6 +5931,16 @@ def activity_inactivity_check() -> int:
     return SPOTIFY_LIVE_INACTIVITY_CHECK if live_activity_backend() else SPOTIFY_INACTIVITY_CHECK
 
 
+# Returns how many checks in a row without the target confirm a disappearance with the selected backend
+def activity_disappeared_counter() -> int:
+    return SPOTIFY_LIVE_DISAPPEARED_COUNTER if live_activity_backend() else REMOVED_DISAPPEARED_COUNTER
+
+
+# Returns the time between checks while the target is not visible with the selected backend
+def activity_disappeared_interval() -> int:
+    return SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL if live_activity_backend() else SPOTIFY_DISAPPEARED_CHECK_INTERVAL
+
+
 # Changes the inactivity timer of the selected backend by the given number of seconds when the result stays positive
 def adjust_inactivity_check(delta: int) -> None:
     global SPOTIFY_INACTIVITY_CHECK, SPOTIFY_LIVE_INACTIVITY_CHECK
@@ -5688,29 +6204,31 @@ def format_music_urls_email_html(apple_music_url, youtube_music_url, amazon_musi
 
 
 # Selects the configured Friend Activity endpoint and HTTP method
-def spotify_activity_endpoint():
-    if FRIEND_ACTIVITY_BACKEND == "listening_activity":
+def spotify_activity_endpoint(backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    if backend == "listening_activity":
         return SPOTIFY_LISTENING_ACTIVITY_URL, "POST"
-    if FRIEND_ACTIVITY_BACKEND == "buddylist":
+    if backend == "buddylist":
         return SPOTIFY_BUDDYLIST_URL, "GET"
     raise ValueError('FRIEND_ACTIVITY_BACKEND must be "listening_activity" or "buddylist"')
 
 
-# Requests the configured activity source without following redirects
-def spotify_request_activity(access_token, transport, client_id=None, user_agent=None):
-    url, method = spotify_activity_endpoint()
+# Requests the configured activity source, or the given backend, without following redirects
+def spotify_request_activity(access_token, transport, client_id=None, user_agent=None, backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    url, method = spotify_activity_endpoint(backend)
     headers = {"Authorization": f"Bearer {access_token}"}
     if user_agent:
         headers["User-Agent"] = user_agent
     if TOKEN_SOURCE == "cookie" and client_id:
         headers["Client-Id"] = client_id
     options = {"headers": headers, "timeout": FUNCTION_TIMEOUT, "verify": VERIFY_SSL, "allow_redirects": False}
-    debug_print(f"HTTP {method}", url=url, context=FRIEND_ACTIVITY_BACKEND, headers=sanitize_debug_headers(headers))
+    debug_print(f"HTTP {method}", url=url, context=backend, headers=sanitize_debug_headers(headers))
     if method == "POST":
         response = transport.post(url, json={"unused": True, "resultLimit": SPOTIFY_ACTIVITY_RESULT_LIMIT}, **options)
     else:
         response = transport.get(url, **options)
-    debug_print(f"HTTP {method}", url=url, context=FRIEND_ACTIVITY_BACKEND, status=response.status_code)
+    debug_print(f"HTTP {method}", url=url, context=backend, status=response.status_code)
     return response
 
 
@@ -5920,6 +6438,8 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
     }
 
     last_err = ""
+    # Kept so the raised failure carries its cause, otherwise a timed-out token request reads as a rejected cookie
+    last_exc: Optional[BaseException] = None
 
     alarm_state = None
     try:
@@ -5938,6 +6458,7 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
             raise SystemExit(1)
         transport = False
         last_err = str(e)
+        last_exc = e
         debug_print("HTTP GET", url=TOKEN_URL, context="sp_dc transport", outcome="failed", error=f"{type(e).__name__}: {e}")
     finally:
         _restore_timeout_alarm(alarm_state)
@@ -5962,12 +6483,13 @@ def refresh_access_token_from_sp_dc(sp_dc: str) -> dict:
                 raise SystemExit(1)
             init = False
             last_err = str(e)
+            last_exc = e
             debug_print("HTTP GET", url=TOKEN_URL, context="sp_dc init", outcome="failed", error=f"{type(e).__name__}: {e}")
         finally:
             _restore_timeout_alarm(alarm_state)
 
     if not init or not data or "accessToken" not in data:
-        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}")
+        raise Exception(f"refresh_access_token_from_sp_dc(): Unsuccessful token request{': ' + last_err if last_err else ''}") from last_exc
 
     # The live activity endpoint also accepts anonymous tokens, so its HTTP status cannot validate a cookie
     if sp_dc and data.get("isAnonymous") is True:
@@ -5999,6 +6521,8 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
     retry = 0
 
     last_error = ""
+    # Kept so the raised failure carries its cause, otherwise a blocked network reads as a rejected cookie
+    last_exc: Optional[BaseException] = None
 
     while retry < max_retries:
         try:
@@ -6021,6 +6545,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
                 break
         except Exception as e:
             last_error = str(e)
+            last_exc = e
             debug_print("Token refresh attempt", outcome="failed", error=f"{type(e).__name__}: {e}")
             retry += 1
             if retry < max_retries:
@@ -6031,7 +6556,7 @@ def spotify_get_access_token_from_sp_dc(sp_dc: str):
         error_msg = f"Failed to obtain a valid Spotify access token after {max_retries} attempts"
         if last_error:
             error_msg += f": {last_error}"
-        raise RuntimeError(error_msg)
+        raise RuntimeError(error_msg) from last_exc
 
     return SP_CACHED_ACCESS_TOKEN
 
@@ -6311,6 +6836,27 @@ def spotify_get_recent_plays(client_id: Optional[str] = None, refresh_token: Opt
             plays.append(SpotifyPlay(played_at, artist_name, track_name, duration_ms, uri))
         return sorted(plays, key=lambda play: play.played_at)
     raise SpotifyScrobbleAuthorizationError("Spotify recent-play request remained unauthorized after token refresh")
+
+
+# Returns the Spotify account the scrobble health token belongs to as (id, display name), empty when it cannot be read
+def spotify_get_scrobble_account(client_id: Optional[str] = None, refresh_token: Optional[str] = None, session: Optional[req.Session] = None) -> Tuple[str, str]:
+    request_session = SCROBBLE_HEALTH_SESSION if session is None else session
+    try:
+        access_token = spotify_get_scrobble_access_token(client_id, refresh_token, request_session)
+        headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT}
+        debug_print("HTTP GET", url=SPOTIFY_SCROBBLE_ME_URL, context="scrobble health account lookup")
+        response = request_session.get(SPOTIFY_SCROBBLE_ME_URL, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        # The comparison works without knowing who the token belongs to, so a failed lookup only costs the name
+        debug_print("Scrobble health account lookup", outcome="failed", error=f"{type(exc).__name__}: {exc}")
+        return "", ""
+    if not isinstance(payload, dict):
+        return "", ""
+    account_id = payload.get("id")
+    display_name = payload.get("display_name")
+    return (account_id if isinstance(account_id, str) else ""), (display_name if isinstance(display_name, str) else "")
 
 
 # Fetches completed recent scrobbles from one public Last.fm profile
@@ -6639,26 +7185,30 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
     if action == "recovery":
         subject = f"Spotify scrobbles are appearing on Last.fm again for {username}"
         message = f"Spotify scrobbles are appearing on Last.fm again for {username}.\n\nProfile: {profile_url}"
+        message_html = f"Spotify scrobbles are appearing on Last.fm again for <b>{html_text(username)}</b>.<br><br>Profile: {profile_url}"
         ntfy_tags = "white_check_mark,musical_note"
     else:
         count = len(evaluation.unmatched)
         oldest = get_date_from_ts(evaluation.unmatched[0].played_at) if evaluation.unmatched else "unknown"
         recent_missing = evaluation.unmatched[-5:]
         examples = "\n".join(f"- {get_date_from_ts(play.played_at)} | {play.artist} - {play.track}" for play in recent_missing)
+        examples_html = "<br>".join(f"- {html_text(get_date_from_ts(play.played_at))} | <b>{html_text(play.artist)} - {html_text(play.track)}</b>" for play in recent_missing)
         examples_heading = f"{len(recent_missing)} most recent missing plays:" if count > len(recent_missing) else "Missing plays:"
         reminder = "Reminder: " if action == "outage_reminder" else ""
         subject = f"Spotify plays missing from Last.fm for {username}"
         play_description = "completed Spotify play was" if count == 1 else "consecutive completed Spotify plays were"
         message = f"{reminder}{count} {play_description} not found on Last.fm for {username}. Earliest missing play in this comparison: {oldest}.\n\n{examples_heading}\n{examples}\n\nScrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}\nLast.fm profile: {profile_url}"
+        message_html = f"{html_text(reminder)}<b>{count}</b> {html_text(play_description)} not found on Last.fm for <b>{html_text(username)}</b>. Earliest missing play in this comparison: <b>{html_text(oldest)}</b>.<br><br><b>{html_text(examples_heading)}</b><br>{examples_html}<br><br>Scrobbles may be delayed or Spotify Scrobbling may be disconnected. Check whether Spotify Scrobbling is connected in your Last.fm settings: {settings_url}<br>Last.fm profile: {profile_url}"
         ntfy_tags = "warning,musical_note"
     body = f"{message}\n\nTimestamp: {notification_timestamp}"
+    body_html = html_email_body(f"{html_autolink_urls(message_html)}<br><br>Timestamp: {html_text(notification_timestamp)}")
     email_selected, webhook_selected = selected_channels if selected_channels is not None else (bool(SCROBBLE_HEALTH_NOTIFICATION), webhook_event_enabled("scrobble_health"))
     if report_event:
         print(f"* {message}")
     elif email_selected or webhook_selected:
         channels = [name for selected, name in ((email_selected, "email"), (webhook_selected, webhook_provider_display_name())) if selected]
         print(f"* Retrying the pending scrobble alert via {' and '.join(channels)}.")
-    successful_channels = send_notification_channels("scrobble_health", subject, body, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
+    successful_channels = send_notification_channels("scrobble_health", subject, body, body_html, email_enabled=email_selected, webhook_enabled=webhook_selected, ntfy_priority=4, ntfy_tags=ntfy_tags)
     if report_event or email_selected or webhook_selected:
         print(f"Next check in {display_time(SCROBBLE_HEALTH_CHECK_INTERVAL)}.")
         print_cur_ts("\nTimestamp:\t\t\t")
@@ -6666,11 +7216,14 @@ def send_scrobble_health_notification(username: str, evaluation: ScrobbleHealthE
 
 
 # Runs the continuous Spotify-to-Last.fm scrobble health comparison
-def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path]) -> None:
+def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path], spotify_account: Optional[Tuple[str, str]] = None) -> None:
     state = load_scrobble_health_state(state_path)
-    operational_error_email_notified = False
-    operational_error_webhook_notified = False
-    operational_error_failures = 0
+    operational_error_alert = ErrorAlertState()
+    # Throttles a lasting failure to one report plus the liveness reminder, the cadence Friend Activity uses
+    operational_outage = OutageReporter()
+    # Both sides of the comparison are named in an alert, so a Spotify failure is not read against the Last.fm profile
+    spotify_account_id, spotify_account_name = spotify_get_scrobble_account() if spotify_account is None else spotify_account
+    alert_target = ScrobbleTarget(username, spotify_account_id, spotify_account_name)
     first_successful_check = True
     previous_status = None
     alive_counter = 0
@@ -6688,6 +7241,13 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
                 debug_print("Starting scrobble health check", user=username, interval=display_time(SCROBBLE_HEALTH_CHECK_INTERVAL))
             spotify_plays = spotify_get_recent_plays()
             lastfm_scrobbles = lastfm_get_recent_scrobbles(username, LASTFM_API_KEY)
+            # Announced before the comparison result, since a closed outage is its own report and the alert
+            # goes to the channels that carried the failure so a reader is not left waiting for an all clear
+            outage_lasted = operational_outage.recovered()
+            if outage_lasted is not None:
+                debug_print("Scrobble health recovered", user=username, streak=operational_outage.failures, alerted=operational_error_alert.advice is not None)
+                print_outage_recovery(alert_target, outage_lasted, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
+                operational_error_alert.reset()
             evaluation = evaluate_scrobble_health(spotify_plays, lastfm_scrobbles)
             next_state, action = transition_scrobble_health_state(state, evaluation)
             event_reported = False
@@ -6735,29 +7295,26 @@ def spotify_monitor_scrobble_health(username: str, state_path: Union[str, Path])
             if evaluation.status != "suspect":
                 previous_status = evaluation.status
             first_successful_check = False
-            operational_error_email_notified = False
-            operational_error_webhook_notified = False
-            operational_error_failures = 0
             time.sleep(SCROBBLE_HEALTH_CHECK_INTERVAL)
         except Exception as exc:
-            operational_error_failures += 1
             recovery_advice = classify_recovery_error(exc, "scrobble_health", detail=f"Scrobble health check failed: {sanitize_error_text(exc)}")
-            print(render_recovery_error(RecoveryError(recovery_advice, exc)))
-            failure_word = "failure" if operational_error_failures == 1 else "failures"
-            print(f"* Scrobble health result: Check failed. {operational_error_failures} consecutive check {failure_word}. Retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}.")
-            notifications_enabled = ERROR_NOTIFICATION or webhook_event_enabled("error")
-            if operational_error_failures < SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                print(f"* Operational alert deferred until {SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES} consecutive check failures.")
-            if operational_error_failures >= SCROBBLE_HEALTH_ERROR_NOTIFICATION_FAILURES and notifications_enabled:
-                subject = "Spotify-to-Last.fm scrobble health check error"
-                body = f"The Spotify-to-Last.fm check failed {operational_error_failures} consecutive times.\n\n{recovery_advice.summary}\nTo fix: {recovery_advice.fix}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                email_pending = ERROR_NOTIFICATION and not operational_error_email_notified
-                webhook_pending = webhook_event_enabled("error") and not operational_error_webhook_notified
-                if email_pending or webhook_pending:
-                    email_succeeded, webhook_succeeded = send_notification_channels("error", subject, body, email_enabled=email_pending, webhook_enabled=webhook_pending)
-                    operational_error_email_notified = operational_error_email_notified or email_succeeded
-                    operational_error_webhook_notified = operational_error_webhook_notified or webhook_succeeded
-            print_cur_ts("Timestamp:\t\t\t")
+            # A failure that has not changed is left to the liveness cadence rather than repeated every check
+            outage_outcome = operational_outage.failed(recovery_advice)
+            if outage_outcome == "full":
+                print(render_recovery_error(RecoveryError(recovery_advice, exc), retry_note=f"retrying in {display_time(SPOTIFY_ERROR_INTERVAL)}"))
+            elif outage_outcome == "changed":
+                print_outage_change(alert_target, recovery_advice)
+            elif outage_outcome == "reminder":
+                print_outage_liveness(alert_target, recovery_advice, operational_outage.since, operational_outage.failures, close=False)
+            # A retried alert can reach the screen on a check the outage reporter keeps quiet, and a delivery
+            # line with nothing under it reads as a run that stopped there
+            delivery_reported = send_failure_alert(recovery_advice, alert_target, SPOTIFY_ERROR_INTERVAL, operational_outage, operational_error_alert, SCROBBLE_HEALTH_MODE_LABEL)
+            # The reminder closes last so the delivery lines it carries stay inside the report rather than
+            # landing under the separator that ended it
+            if outage_outcome == "reminder":
+                print_cur_ts("Liveness check, timestamp:\t")
+            elif outage_outcome in ("full", "changed") or delivery_reported:
+                print_cur_ts("Timestamp:\t\t\t")
             time.sleep(SPOTIFY_ERROR_INTERVAL)
 
 
@@ -7400,11 +7957,12 @@ def spotify_normalize_listening_activity(payload):
     return {"friends": list(friends.values())}
 
 
-# Fetches friends through the configured activity source
-def spotify_get_friends_json(access_token):
-    response = spotify_request_activity(access_token, SESSION, SP_CACHED_CLIENT_ID, USER_AGENT)
+# Fetches friends through the configured activity source, or through the given backend
+def spotify_get_friends_json(access_token, backend: Optional[str] = None):
+    backend = backend or FRIEND_ACTIVITY_BACKEND
+    response = spotify_request_activity(access_token, SESSION, SP_CACHED_CLIENT_ID, USER_AGENT, backend)
     if response.status_code == 401:
-        raise Exception("401 Unauthorized for url: " + spotify_activity_endpoint()[0])
+        raise Exception("401 Unauthorized for url: " + spotify_activity_endpoint(backend)[0])
     response.raise_for_status()
     if response.status_code != 200:
         raise ValueError(f"Spotify activity returned unexpected HTTP {response.status_code}")
@@ -7414,9 +7972,70 @@ def spotify_get_friends_json(access_token):
     error_str = friends_json.get("error")
     if error_str:
         raise ValueError(error_str)
-    if FRIEND_ACTIVITY_BACKEND == "listening_activity":
+    if backend == "listening_activity":
         return spotify_normalize_listening_activity(friends_json)
     return friends_json
+
+
+# Returns the name of the Friend Activity backend that is not selected
+def other_activity_backend() -> str:
+    return "buddylist" if live_activity_backend() else "listening_activity"
+
+
+# Fetches the friends listed by the other Friend Activity backend, or None when that request fails
+def spotify_get_other_backend_friends(access_token) -> Optional[dict]:
+    try:
+        return spotify_get_friends_json(access_token, backend=other_activity_backend())
+    except Exception as exc:
+        debug_print("Other backend lookup", outcome="failed", error=f"{type(exc).__name__}: {sanitize_error_text(exc)}")
+        return None
+
+
+# Reports whether the target appears in the other Friend Activity backend, or None when it could not be checked
+def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]:
+    if not access_token or not user_uri_id:
+        return None
+    friends = spotify_get_other_backend_friends(access_token)
+    if friends is None:
+        return None
+    try:
+        found, _ = spotify_get_friend_info(friends, user_uri_id)
+    except Exception:
+        return None
+    return bool(found)
+
+
+# Returns the instruction that switches monitoring to the given backend
+def backend_switch_hint(backend: str) -> str:
+    return f"Run with --friend-activity-backend {backend} or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in the configuration file"
+
+
+# Returns the user IDs named in one activity response
+def activity_user_ids(friend_activity) -> set:
+    return {str(friend["user"]["uri"]).split("spotify:user:", 1)[-1] for friend in friend_activity.get("friends", []) if isinstance(friend, dict) and isinstance(friend.get("user"), dict) and friend["user"].get("uri")}
+
+
+# Prints the users that only one of the two Friend Activity backends lists, since each can show users the other omits
+def print_other_backend_friends(friend_activity, access_token) -> None:
+    other_backend = other_activity_backend()
+    try:
+        other_friends = spotify_get_friends_json(access_token, backend=other_backend)
+    except Exception as exc:
+        # The comparison is optional, so the failure is a warning that still names the backend and the usual next step
+        advice = classify_recovery_error(exc, "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth")
+        print_recovery_advice(RecoveryAdvice(advice.code, f"The {other_backend} backend could not be checked: {advice.summary}", advice.fix, advice.retryable, advice.detail), label="Warning")
+        return
+    selected_ids = activity_user_ids(friend_activity)
+    only_other = sorted(activity_user_ids(other_friends) - selected_ids)
+    only_selected = sorted(selected_ids - activity_user_ids(other_friends))
+    if not only_other and not only_selected:
+        print(f"* The {other_backend} backend lists the same users")
+        return
+    if only_other:
+        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {', '.join(only_other)}")
+        print(f"* {backend_switch_hint(other_backend)} to monitor them")
+    if only_selected:
+        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {', '.join(only_selected)}")
 
 
 # Fetches and briefly caches optional names omitted from the live activity feed
@@ -7882,18 +8501,40 @@ def mask_email_address(address) -> str:
     return f"{masked}@{domain}"
 
 
+# Returns whether a mail server is set rather than left empty or still holding the placeholder the sample configuration ships
+def smtp_server_configured() -> bool:
+    return doctor_secret_is_set(SMTP_HOST) and bool(SMTP_PORT)
+
+
+# Returns whether an email alert has both a server to send through and an address to reach
+def email_channel_configured() -> bool:
+    return smtp_server_configured() and doctor_secret_is_set(RECEIVER_EMAIL)
+
+
+# Returns whether a webhook alert has a destination to post to
+def webhook_channel_configured() -> bool:
+    return bool(normalized_webhook_provider()) and doctor_secret_is_set(WEBHOOK_URL)
+
+
+# Rolls one channel's enabled alerts into the state its summary row reports, which is off while the channel has no destination
+def _startup_notification_state(categories: Sequence[str], configured: bool) -> str:
+    if not categories:
+        return "Off"
+    return "On (" + ", ".join(categories) + ")" if configured else "Off (not configured)"
+
+
 # Reports the mail server and the recipient an alert would reach, without the account that signs in to the server
 def _startup_email_detail_rows() -> List[StartupSummaryRow]:
-    transport = f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})" if SMTP_HOST and SMTP_PORT else "Not configured"
+    transport = f"{SMTP_HOST}:{SMTP_PORT} ({'STARTTLS' if SMTP_SSL else 'TLS off'})" if smtp_server_configured() else "Not configured"
     return [
         StartupSummaryRow("Email transport", transport),
-        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if RECEIVER_EMAIL else "Not configured"),
+        StartupSummaryRow("Email recipient", mask_email_address(RECEIVER_EMAIL) if doctor_secret_is_set(RECEIVER_EMAIL) else "Not configured"),
     ]
 
 
 # Reports the webhook service alerts would reach and whether the delivery lines are printed at all
 def _startup_webhook_detail_rows() -> List[StartupSummaryRow]:
-    if not normalized_webhook_provider() or not str(WEBHOOK_URL or "").strip():
+    if not webhook_channel_configured():
         provider = "Not configured"
     else:
         provider = f"{webhook_provider_display_name()} ({'enabled' if WEBHOOK_ENABLED else 'disabled'})"
@@ -7924,18 +8565,25 @@ def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
     ]
 
 
+# Names the Spotify account the scrobble health authorization belongs to, so the summary shows both compared sides
+def scrobble_health_account_summary(account: Optional[Tuple[str, str]]) -> str:
+    account_id, account_name = account if account else ("", "")
+    return str(AlertTarget(account_id, account_name)) if account_id else "Unknown, the account lookup did not succeed"
+
+
 # Builds the concise and complete non-secret startup summary rows
-def build_startup_summary(target: str, config_path, env_path, output_path) -> List[StartupSummaryRow]:
+def build_startup_summary(target: str, config_path, env_path, output_path, scrobble_account: Optional[Tuple[str, str]] = None) -> List[StartupSummaryRow]:
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
-    notification_state_email = "On (" + ", ".join(enabled_notifications) + ")" if enabled_notifications else "Off"
-    notification_state_webhook = "On (" + ", ".join(enabled_webhooks) + ")" if enabled_webhooks else "Off"
+    notification_state_email = _startup_notification_state(enabled_notifications, email_channel_configured())
+    notification_state_webhook = _startup_notification_state(enabled_webhooks, webhook_channel_configured())
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     if MONITOR_MODE == "scrobble_health":
         return [
             StartupSummaryRow("Mode", "Spotify-to-Last.fm scrobble health", concise=True),
             StartupSummaryRow("Target", str(target), concise=True),
+            StartupSummaryRow("Spotify account", scrobble_health_account_summary(scrobble_account), concise=True),
             StartupSummaryRow("Authentication", "User-owned Spotify app with PKCE", concise=True),
             StartupSummaryRow("Comparison interval", display_time(SCROBBLE_HEALTH_CHECK_INTERVAL), concise=True),
             StartupSummaryRow("Alert threshold", f"{SCROBBLE_HEALTH_MIN_UNMATCHED} unmatched plays after {display_time(SCROBBLE_HEALTH_DEAD_PERIOD)}", concise=True),
@@ -7965,7 +8613,7 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
         StartupSummaryRow("Authentication", authentication, concise=True),
         StartupSummaryRow("Polling interval", f"[offline: {display_time(SPOTIFY_LIVE_CHECK_INTERVAL)}] [active: {display_time(SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL)}]" if live_activity_backend() else display_time(SPOTIFY_CHECK_INTERVAL), concise=True),
         StartupSummaryRow("Inactivity timer", display_time(activity_inactivity_check()), concise=False),
-        StartupSummaryRow("Disappeared timer", display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL), concise=False),
+        StartupSummaryRow("Disappeared timer", display_time(activity_disappeared_interval()), concise=False),
         StartupSummaryRow("Error retry timer", display_time(activity_error_interval()), concise=False),
         StartupSummaryRow("Notifications (email)", notification_state_email, concise=True),
         *_startup_email_detail_rows(),
@@ -8002,11 +8650,23 @@ def build_startup_summary(target: str, config_path, env_path, output_path) -> Li
 # Rows that detail the channel named right above them, indented so the block reads as one setting with its details
 _STARTUP_SUMMARY_NESTED_LABELS = ("Email transport", "Email recipient", "Email images", "Webhook provider", "ntfy images")
 
+# The column every summary value starts in, which also lets the colouriser recognize a summary row
+STARTUP_SUMMARY_VALUE_COLUMN = 32
+
+# Matches a summary row by that padded label column, since no log line puts a value there
+_STARTUP_SUMMARY_ROW_RE = re.compile(r"^\*(?: {1,3})[^:\s][^:]*: {2,}(?=\S)")
+
+
+# Returns whether a line is a startup summary row rather than ordinary output
+def is_startup_summary_row(line: str) -> bool:
+    match = _STARTUP_SUMMARY_ROW_RE.match(line)
+    return bool(match) and match.end() == STARTUP_SUMMARY_VALUE_COLUMN
+
 
 # Formats one startup summary row with aligned plain ASCII columns
 def _format_startup_summary_row(row: StartupSummaryRow) -> str:
     indent = "  " if row.label in _STARTUP_SUMMARY_NESTED_LABELS else ""
-    prefix = f"* {indent}{(row.label + ':'):<{30 - len(indent)}}"
+    prefix = f"* {indent}{(row.label + ':'):<{STARTUP_SUMMARY_VALUE_COLUMN - 2 - len(indent)}}"
     if row.label in ("Notifications (email)", "Notifications (webhook)"):
         return textwrap.fill(row.value, width=100, initial_indent=prefix, subsequent_indent=" " * len(prefix), break_long_words=False, break_on_hyphens=False) + "\n"
     return f"{prefix}{row.value}\n"
@@ -8929,9 +9589,9 @@ def runtime_boolean_errors() -> List[str]:
 # Returns all type and range errors in settings that control runtime timing or counts
 def runtime_configuration_errors() -> List[str]:
     errors: List[str] = []
-    positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
+    positive_numbers = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ERROR_INTERVAL", SPOTIFY_LIVE_ERROR_INTERVAL), ("SPOTIFY_LIVE_INACTIVITY_CHECK", SPOTIFY_LIVE_INACTIVITY_CHECK), ("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_ERROR_INTERVAL", SPOTIFY_ERROR_INTERVAL), ("SPOTIFY_INACTIVITY_CHECK", SPOTIFY_INACTIVITY_CHECK), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL), ("SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL), ("SCROBBLE_HEALTH_CHECK_INTERVAL", SCROBBLE_HEALTH_CHECK_INTERVAL), ("SCROBBLE_HEALTH_DEAD_PERIOD", SCROBBLE_HEALTH_DEAD_PERIOD), ("SCROBBLE_HEALTH_MATCH_WINDOW", SCROBBLE_HEALTH_MATCH_WINDOW), ("SCROBBLE_HEALTH_LOOKBACK", SCROBBLE_HEALTH_LOOKBACK), ("CHECK_INTERNET_TIMEOUT", CHECK_INTERNET_TIMEOUT), ("TOKEN_RETRY_TIMEOUT", TOKEN_RETRY_TIMEOUT))
     nonnegative_numbers = (("LIVENESS_CHECK_INTERVAL", LIVENESS_CHECK_INTERVAL), ("SCROBBLE_HEALTH_REPEAT_INTERVAL", SCROBBLE_HEALTH_REPEAT_INTERVAL), ("SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE))
-    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES))
+    positive_integers = (("SCROBBLE_HEALTH_MIN_UNMATCHED", SCROBBLE_HEALTH_MIN_UNMATCHED), ("TOKEN_MAX_RETRIES", TOKEN_MAX_RETRIES), ("SPOTIFY_LIVE_DISAPPEARED_COUNTER", SPOTIFY_LIVE_DISAPPEARED_COUNTER))
     for name, value in positive_numbers:
         if not finite_number(value) or value <= 0:
             errors.append(f"{name} must be a number greater than zero, not {value!r}")
@@ -9112,10 +9772,10 @@ def doctor_check_configuration(config_path=None, env_path=None, startup_checks: 
 
     if live_activity_backend():
         interval_floor = DOCTOR_MIN_SAFE_LIVE_CHECK_INTERVAL
-        interval_settings = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL))
+        interval_settings = (("SPOTIFY_LIVE_CHECK_INTERVAL", SPOTIFY_LIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL), ("SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL))
     else:
         interval_floor = DOCTOR_MIN_SAFE_CHECK_INTERVAL
-        interval_settings = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL),)
+        interval_settings = (("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL), ("SPOTIFY_DISAPPEARED_CHECK_INTERVAL", SPOTIFY_DISAPPEARED_CHECK_INTERVAL))
     short_intervals = [(name, value) for name, value in interval_settings if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < interval_floor]
     if short_intervals:
         intervals = ", ".join(f"{display_time(value)} between checks ({name})" for name, value in short_intervals)
@@ -9307,8 +9967,30 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
         return [make_doctor_check("Target", "FAIL", "The activity response could not be inspected", advice.detail, advice)]
     if found:
         return [make_doctor_check("Target", "PASS", f"Target '{target_id}' can be monitored", "The target is visible in the authenticated activity response")]
-    advice = classify_recovery_error(context="target_not_visible", detail=f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response", target_user_id=target_id)
+    detail = f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
+    followed = doctor_target_follow_state(report, target_id)
+    if followed is True:
+        detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
+    elif followed is False:
+        detail += ". The monitoring account does not follow the target"
+    other_backend = other_activity_backend()
+    if target_visible_in_other_backend(report.access_token, target_id):
+        # Each source can list users the other omits, so a switch is the fix rather than a follow or sharing change
+        detail += f". The target is visible through the {other_backend} backend"
+        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_hint(other_backend), BACKEND_GUIDE_URL), False, detail)
+    else:
+        advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+
+
+# Reports whether the monitoring account follows the target, or None when the follow state cannot be checked
+def doctor_target_follow_state(report: DoctorReport, target_id: Optional[str]) -> Optional[bool]:
+    if report.access_token is None or not target_id:
+        return None
+    try:
+        return spotify_user_is_followed(report.access_token, target_id)
+    except Exception:
+        return None
 
 
 # Checks optional OAuth metadata configuration and live access without creating an OAuth cache
@@ -9912,7 +10594,7 @@ def _wizard_secret_command_paths(method: str, config_path, env_path) -> str:
 
 
 # Returns the Firefox import command with a read-only profile mount for the selected host
-def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None) -> str:
+def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str] = None, config_path=None, target: Optional[str] = None, browser: str = "firefox") -> str:
     selected_host = host_os or "linux"
     prefix = _wizard_cmd_prefix(method, host_os=selected_host if method in ("docker", "compose") else host_os)
     if method == "docker":
@@ -9921,7 +10603,7 @@ def _wizard_firefox_import_cmd(method: str, env_path=None, host_os: Optional[str
     elif method == "compose":
         profile_mount = CONTAINER_FIREFOX_HOSTS[selected_host][1]
         prefix = f"docker compose run --rm -v {profile_mount} spotify_monitor"
-    command = f"{prefix} --import-browser-cookie --browser firefox"
+    command = f"{prefix} --import-browser-cookie --browser {browser}"
     if target:
         command += f" {_wizard_quote_argument(target)}"
     command += _wizard_secret_command_paths(method, config_path, env_path)
@@ -9999,8 +10681,55 @@ def _wizard_import_browsers(method: str) -> List[str]:
     return list(IMPORT_BROWSERS)
 
 
+# Per-browser profile counts for the setup menus, dropped before each menu so a login made while a prompt was waiting
+# is picked up rather than answered from a stale count
+_WIZARD_BROWSER_LOGIN_COUNTS: Dict[str, Optional[Tuple[int, int]]] = {}
+
+
+# Counts one browser's profiles and how many hold a current Spotify login, or None when they could not be read
+def _wizard_browser_login_counts(browser: str) -> Optional[Tuple[int, int]]:
+    # The cookie name, host and expiry are stored in the clear, so this answers before pycookiecheat is installed
+    if browser not in _WIZARD_BROWSER_LOGIN_COUNTS:
+        try:
+            is_firefox = browser == "firefox"
+            profiles = discover_firefox_profiles() if is_firefox else discover_chromium_profiles(browser)
+            states = [profile_has_live_spotify_cookie(profile["cookie_file"], firefox=is_firefox) for profile in profiles]
+            _WIZARD_BROWSER_LOGIN_COUNTS[browser] = (len([state for state in states if state]), len(states))
+        except Exception:
+            _WIZARD_BROWSER_LOGIN_COUNTS[browser] = None
+    return _WIZARD_BROWSER_LOGIN_COUNTS[browser]
+
+
+# Describes what setup can see of one browser's profiles, so the login menu is not a blind choice between browsers
+def _wizard_browser_login_note(browser: str) -> str:
+    counts = _wizard_browser_login_counts(browser)
+    if counts is None:
+        return ""
+    with_login, total = counts
+    if not total:
+        return f"No {browser_label(browser)} profiles were found on this machine."
+    if not with_login:
+        return f"No {browser_label(browser)} profile here holds a current Spotify login yet."
+    return f"{with_login} of {total} profiles here hold a current Spotify login." if total > 1 else "This profile holds a current Spotify login."
+
+
+# Summarises where a current Spotify login can be seen across the Chromium browsers offered as one menu entry
+def _wizard_chromium_group_note(browsers: List[str]) -> str:
+    counted = {browser: _wizard_browser_login_counts(browser) or (0, 0) for browser in browsers}
+    with_login = [browser_label(browser) for browser, counts in counted.items() if counts[0]]
+    if with_login:
+        return f"Signed in to Spotify in {' and '.join(with_login)}."
+    installed = [browser_label(browser) for browser, counts in counted.items() if counts[1]]
+    if installed:
+        return f"No current Spotify login found in {' or '.join(installed)}."
+    return "No Chrome, Brave or Chromium profiles were found on this machine."
+
+
 # Describes one browser import choice without exposing browser data
 def _wizard_browser_description(browser: str) -> str:
+    note = _wizard_browser_login_note(browser)
+    if note:
+        return note
     if browser == "firefox":
         return "Built-in reader for macOS, Linux and Windows with no extra package."
     return f"Import from the signed-in {browser_label(browser)} profile."
@@ -10648,22 +11377,17 @@ def _wizard_collect_webhook(config_values: dict, secret_updates: dict, env_path:
 
 # Selects one supported Docker host and Firefox profile layout for deferred import
 def _wizard_select_container_firefox_host() -> Optional[str]:
-    options = [
-        ("macOS", "Use the Firefox profile under Library/Application Support."),
-        ("Linux with a standard Firefox package", "Use the profile under ~/.mozilla/firefox."),
-        ("Linux with Firefox from Snap", "Use the profile under ~/snap/firefox."),
-        ("Linux with Firefox from Flatpak", "Use the profile under ~/.var/app/org.mozilla.firefox."),
-        ("Windows PowerShell", "Use the Firefox profile under $env:APPDATA."),
-        ("Windows Command Prompt", "Use the Firefox profile under %APPDATA%."),
-        ("Another system", "Firefox import after Docker setup is not currently available for this host."),
-    ]
+    # Derived from the mount table so a host added there is offered here and maps back to the key that names its mount
+    hosts = list(CONTAINER_FIREFOX_HOSTS)
+    options = [(CONTAINER_FIREFOX_HOSTS[host][0], CONTAINER_FIREFOX_HOST_HINTS[host]) for host in hosts]
+    options.append(("Another system", "Firefox import after Docker setup is not currently available for this host."))
     selected = _wizard_ask_choice("Which host environment runs Docker?", options)
-    if selected == len(options) - 1:
+    if selected >= len(hosts):
         print()
         print("  Firefox import after Docker setup is not currently available for this host.")
         print("  Choose private sp_dc entry or finish without credentials.")
         return None
-    return ("macos", "linux", "linux-snap", "linux-flatpak", "windows-powershell", "windows-cmd")[selected]
+    return hosts[selected]
 
 
 # Collects cookie-mode choices while keeping all secret values out of output
@@ -10682,10 +11406,14 @@ def _wizard_collect_cookie_auth(method: str, env_path: Path, secret_updates: dic
                 options = [("Import from Firefox after setup, recommended", "Reuses a signed-in host Firefox profile through one read-only import command."), ("Enter sp_dc privately", "Uses a hidden getpass prompt and stores the value only in the selected dotenv file."), ("Finish without credentials", "Save an incomplete setup and configure authentication later.")]
                 actions = ("browser", "manual", "finish")
         else:
-            options = [("Import from Firefox, recommended", "Uses Firefox directly with no additional package.")]
+            # A login may have been made while an earlier prompt was waiting, so the counts are taken fresh each time
+            _WIZARD_BROWSER_LOGIN_COUNTS.clear()
+            options = [("Import from Firefox, recommended", f"Uses Firefox directly with no additional package. {_wizard_browser_login_note('firefox')}".strip())]
             actions = ["firefox"]
             if chromium_browsers:
-                chromium_description = "Import from a signed-in Chrome, Brave or Chromium profile." if _wizard_chromium_dependency_available() else "Setup can install the required pycookiecheat package now."
+                chromium_description = _wizard_chromium_group_note(chromium_browsers)
+                if not _wizard_chromium_dependency_available():
+                    chromium_description = f"{chromium_description} Setup can install the required pycookiecheat package now."
                 options.append(("Import from Chrome, Brave or Chromium", chromium_description))
                 actions.append("chromium")
             options.extend((("Use an existing SP_DC_COOKIE", "Retain a non-placeholder value from the selected dotenv file or environment."), ("Paste an existing sp_dc value privately", "The value is read through getpass and saved only after confirmation."), ("Finish without credentials", "Save an incomplete setup and import later.")))
@@ -10799,6 +11527,17 @@ def _wizard_collect_client_auth(config_values: dict, env_path: Path, secret_upda
     return result
 
 
+# Reports whether the target already appears in the activity response fetched by the authentication check
+def _wizard_target_visible(report: DoctorReport, target_user_id: str) -> bool:
+    if report.buddy_list is None:
+        return False
+    try:
+        found, _ = spotify_get_friend_info(report.buddy_list, normalize_spotify_user_id(target_user_id))
+    except Exception:
+        return False
+    return bool(found)
+
+
 # Checks the target follow state and offers one confirmed follow mutation when needed
 def _wizard_offer_target_follow(target_user_id: str) -> str:
     print(colorize('header', "\nFollowing check\n"))
@@ -10821,6 +11560,11 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         # codeql[py/clear-text-logging-sensitive-data]
         print(f"The monitoring account already follows '{target_user_id}'.")
         return "already_followed"
+    if _wizard_target_visible(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"The monitoring account does not follow '{target_user_id}', but the target already shares listening activity with it, so following is not required.")
+        return "visible"
     # The target user ID is public profile data, the scanner conflates it with the token that fetched it
     # codeql[py/clear-text-logging-sensitive-data]
     print(f"The monitoring account does not follow '{target_user_id}'.")
@@ -10873,8 +11617,29 @@ def _wizard_load_effective_setup(config_path: Path, env_path: Path) -> bool:
     return True
 
 
+# Offers the other import browsers after a failed attempt
+def _wizard_switch_import_browser(method: str, current: str) -> Optional[str]:
+    # A login missing from one browser is very often present in another, so declining a retry must not end the import
+    others = [browser for browser in _wizard_import_browsers(method) if browser != current]
+    if not others:
+        return None
+    options = [(browser_label(browser), _wizard_browser_description(browser)) for browser in others]
+    options.append((f"Keep trying {browser_label(current)}", "Returns to the import with the browser unchanged."))
+    choice = _wizard_ask_choice("Which browser should setup import from instead?", options)
+    if choice == len(others):
+        return None
+    selected = others[choice]
+    if selected in CHROMIUM_IMPORT_BROWSERS and not _wizard_chromium_dependency_available():
+        print()
+        if not _wizard_ask_yes_no("Chromium browser import requires pycookiecheat. Install it now?", default=True):
+            return None
+        if not _wizard_install_chromium_dependency(method):
+            return None
+    return selected
+
+
 # Completes a deferred browser import with retry, private entry or incomplete recovery choices
-def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path, target: str, saved_target: str) -> dict:
+def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path, target: str, saved_target: str, method: str = "manual") -> dict:
     browser = auth.get("browser")
     if not browser:
         return auth
@@ -10885,10 +11650,27 @@ def _wizard_finish_browser_import(auth: dict, env_path: Path, config_path: Path,
             return auth
         except BrowserCookieImportError as exc:
             print(render_recovery_error(exc, "browser_import"))
-        recovery = _wizard_ask_choice("Browser import did not complete. What next?", [("Retry browser import", "Try discovery, extraction and validation again."), ("Enter sp_dc privately", "Validate and save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and authenticate later.")])
-        if recovery == 0:
+        # The counts shown by the switch menu are taken fresh, since the user may have signed in while this prompt waited
+        _WIZARD_BROWSER_LOGIN_COUNTS.clear()
+        label = browser_label(browser)
+        others = [candidate for candidate in _wizard_import_browsers(method) if candidate != browser]
+        options = [(f"Retry the {label} import", "Pick another profile, or sign in to Spotify in that browser first.")]
+        actions = ["retry"]
+        if others:
+            options.append(("Import from a different browser", f"Setup can import from {' or '.join(browser_label(candidate) for candidate in others)} instead."))
+            actions.append("switch")
+        options.extend((("Enter sp_dc privately", "Validate and save a manually extracted value through getpass."), ("Finish without authentication", "Keep the generated config and authenticate later.")))
+        actions.extend(("manual", "finish"))
+        recovery = actions[_wizard_ask_choice(f"The {label} import did not complete. What next?", options)]
+        if recovery == "retry":
             continue
-        if recovery == 1:
+        if recovery == "switch":
+            selected = _wizard_switch_import_browser(method, browser)
+            if selected:
+                browser = selected
+                auth.update({"browser": selected, "source": f"browser import ({browser_label(selected)})"})
+            continue
+        if recovery == "manual":
             cookie = _wizard_ask_secret("Existing sp_dc value")
             # Checked before the write, so this recovery path reports a stale cookie the way the import it replaces does
             print("  Checking the cookie with Spotify ...")
@@ -11498,7 +12280,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     if auth.get("browser") and method not in ("docker", "compose"):
         print(colorize('header', "\nBrowser cookie import\n"))
         try:
-            auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "")
+            auth = _wizard_finish_browser_import(auth, env_path, config_path, target, target if persist_target else "", method)
         except (EOFError, KeyboardInterrupt):
             # The config is already written, so an interrupt here leaves authentication to the printed commands
             checks_skipped = True
@@ -11511,7 +12293,7 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
                 follow_status = _wizard_offer_target_follow(target)
-                if follow_status in ("already_followed", "followed"):
+                if follow_status in ("already_followed", "followed", "visible"):
                     auth["validated"] = True
             else:
                 print(colorize('header', "\nFollowing check\n"))
@@ -11549,7 +12331,10 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
             _wizard_print_command("Enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, config_path=config_path))
             print("Run setup again to select a host-specific Firefox import command.\n")
         elif config_values["TOKEN_SOURCE"] == "cookie":
-            _wizard_print_command("Import Spotify login from Firefox (recommended locally):", _wizard_firefox_import_cmd(method, env_path))
+            chosen_browser = auth.get("browser") or "firefox"
+            chosen_label = browser_label(chosen_browser)
+            recommended = " (recommended locally)" if chosen_browser == "firefox" else ""
+            _wizard_print_command(f"Import Spotify login from {chosen_label}{recommended}:", _wizard_firefox_import_cmd(method, env_path, browser=chosen_browser))
             _wizard_print_command("Or enter sp_dc privately:", _wizard_set_sp_dc_cmd(method, env_path, config_path=config_path))
         else:
             print("Complete advanced client authentication before running Doctor.")
@@ -11747,6 +12532,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     live_last_sample = None
     live_replay = None
     live_restart_ts = None
+    # Check time of the last response listing the target, when a confirmed absence began and whether its long-absence advice was printed
+    visible_last_at = 0
+    invisible_since = 0
+    absence_advice_shown = False
+    # Length and count of confirmed absences during the open session
+    invisible_seconds = 0
+    invisible_periods = 0
     check_interval = activity_check_interval()
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
@@ -11761,6 +12553,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     webhook_sent = False
     # The error alert is tracked apart from the event alerts, once per channel and per outage
     error_alert = ErrorAlertState()
+    # The display name last seen, so a check that fails before the next successful lookup still names the target
+    sp_username = ""
 
     mark_monitoring_started()
     out = f"Monitoring user {user_uri_id}"
@@ -11789,7 +12583,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             recovery_hint_tracker.reset()
             outage_lasted = outage.recovered()
             if outage_lasted is not None:
-                print_outage_recovery(user_uri_id, outage_lasted)
+                print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
             debug_print("Friend lookup", found=sp_found)
             email_sent = False
             webhook_sent = False
@@ -11812,40 +12606,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             # A failure that has not changed is left to the liveness cadence rather than repeated every check
             outage_outcome = outage.failed(advice)
-            delivery_reported = False
             if outage_outcome == "full":
                 print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
             elif outage_outcome == "changed":
-                print_outage_change(user_uri_id, advice)
+                print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
             elif outage_outcome == "reminder":
-                print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
+                print_outage_liveness(AlertTarget(user_uri_id, sp_username), advice, outage.since, outage.failures, close=False)
 
             if advice.code in ("auth.cookie_invalid", "auth.client_invalid", "auth.rejected"):
                 SP_CACHED_ACCESS_TOKEN = None
 
-            if advice.code == "auth.client_invalid":
-                m_subject = f"Spotify client or refresh token may be invalid or expired! (uri: {user_uri_id})"
-            elif advice.code == "auth.cookie_invalid":
-                m_subject = f"Spotify sp_dc may be invalid or expired! (uri: {user_uri_id})"
-            else:
-                m_subject = f"Spotify monitoring error (uri: {user_uri_id})"
-            m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-            m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-            # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
-            # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
-            alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
-            now = int(time.time())
-            error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
-            error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
-            if error_email_pending or error_webhook_pending:
-                email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, error_email_pending, error_webhook_pending)
-                error_alert.record("email", error_email_pending, email_succeeded, now)
-                error_alert.record("webhook", error_webhook_pending, webhook_succeeded, now)
-                delivery_reported = True
+            delivery_reported = send_failure_alert(advice, AlertTarget(user_uri_id, sp_username), retry_seconds, outage, error_alert)
 
             # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
-            # with nothing under it reads as a run that stopped there
-            if outage_outcome in ("full", "changed") or delivery_reported:
+            # with nothing under it reads as a run that stopped there. The reminder closes last so the lines it
+            # carries stay inside the report rather than landing under the separator that ended it
+            if outage_outcome == "reminder":
+                print_cur_ts("Liveness check, timestamp:\t")
+            elif outage_outcome in ("full", "changed") or delivery_reported:
                 print_cur_ts("Timestamp:\t\t\t")
             debug_print("Retry wait", due_in=display_time(retry_seconds), reason="a Spotify request timed out" if timed_out else "waiting the error interval after a failed check")
             time.sleep(retry_seconds)
@@ -11864,6 +12642,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         # User is found in the Spotify's friend list just after starting the tool
         if sp_found:
             user_not_found = False
+            visible_last_at = int(time.time())
 
             sp_track_uri = sp_data["sp_track_uri"]
             sp_track_uri_id = sp_data["sp_track_uri_id"]
@@ -12002,26 +12781,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                     lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                     lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                    if music_urls_text:
-                        music_section_text = f"\n\n{music_urls_text}"
-                        music_section_html = f"<br><br>{music_urls_html}"
-                        lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                        lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                    else:
-                        if lyrics_urls_text:
-                            music_section_text = "\n\n"
-                            music_section_html = "<br><br>"
-                            lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                            lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                        else:
-                            music_section_text = "\n\n"
-                            music_section_html = "<br><br>"
-                            lyrics_section_text = ""
-                            lyrics_section_html = ""
+                    music_section_text = f"\n\n{music_urls_text}" if music_urls_text else ""
+                    music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else ""
+                    lyrics_section_text = f"\n\n{lyrics_urls_text}" if lyrics_urls_text else ""
+                    lyrics_section_html = f"<br><br>{lyrics_urls_html}" if lyrics_urls_html else ""
                     m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}'"
                     m_subject_short = f"{sp_username} is now active"
-                    m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                    m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                    m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}\n\nLast activity: {get_date_from_ts(sp_ts)}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                    m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}<br><br>Last activity: <b>{get_date_from_ts(sp_ts)}</b>{get_cur_ts('<br>Timestamp: ')}</body></html>"
                     m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                     send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
 
@@ -12080,7 +12847,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
-                            print_outage_recovery(user_uri_id, outage_lasted)
+                            print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
                         webhook_sent = False
@@ -12108,87 +12875,104 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if outage_outcome == "full":
                             print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
                         elif outage_outcome == "changed":
-                            print_outage_change(user_uri_id, advice)
+                            print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
                         elif outage_outcome == "reminder":
-                            print_outage_liveness(user_uri_id, advice, outage.since, outage.failures)
+                            print_outage_liveness(AlertTarget(user_uri_id, sp_username), advice, outage.since, outage.failures, close=False)
 
-                        delivery_reported = False
-                        if advice.code == "auth.client_invalid":
-                            m_subject = f"Spotify client or refresh token may be invalid or expired! (uri: {user_uri_id})"
-                        elif advice.code == "auth.cookie_invalid":
-                            m_subject = f"Spotify sp_dc may be invalid or expired! (uri: {user_uri_id})"
-                        else:
-                            m_subject = f"Spotify monitoring error (uri: {user_uri_id})"
-                        m_body = f"{advice.summary}{nl_ch}{nl_ch}To fix: {advice.fix}{nl_ch}{nl_ch}Spotify Monitor will retry in {display_time(retry_seconds)}.{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{html_text(advice.summary)}<br><br>To fix: {html_text(advice.fix)}<br><br>Spotify Monitor will retry in {escape(display_time(retry_seconds))}.{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                        # Attempted on every failing check rather than only on the report, so a channel that failed is tried again
-                        # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
-                        alert_due = not advice.retryable or int(time.time()) - outage.since >= ERROR_ALERT_AFTER_SECONDS
-                        now = int(time.time())
-                        error_email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
-                        error_webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
-                        if error_email_pending or error_webhook_pending:
-                            email_succeeded, webhook_succeeded = send_notification_channels("error", m_subject, m_body, m_body_html, error_email_pending, error_webhook_pending)
-                            error_alert.record("email", error_email_pending, email_succeeded, now)
-                            error_alert.record("webhook", error_webhook_pending, webhook_succeeded, now)
-                            delivery_reported = True
+                        delivery_reported = send_failure_alert(advice, AlertTarget(user_uri_id, sp_username), retry_seconds, outage, error_alert)
 
                         # A retry can reach the screen on a check the outage reporter keeps quiet, and a delivery line
-                        # with nothing under it reads as a run that stopped there
-                        if outage_outcome in ("full", "changed") or delivery_reported:
+                        # with nothing under it reads as a run that stopped there. The reminder closes last so the
+                        # lines it carries stay inside the report rather than landing under the separator that ended it
+                        if outage_outcome == "reminder":
+                            print_cur_ts("Liveness check, timestamp:\t")
+                        elif outage_outcome in ("full", "changed") or delivery_reported:
                             print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(retry_seconds)
 
                 if sp_found is False:
-                    # User has disappeared from the Spotify's friend list or account has been removed
+                    # The target left the activity response, which the live feed does during a private session and both backends do after a sharing or follow change
                     disappeared_counter += 1
                     if disappeared_counter == 1:
                         verbose_notice(f"Target {user_uri_id} was absent from one activity response. Waiting for confirmation before reporting disappearance")
-                    if disappeared_counter < REMOVED_DISAPPEARED_COUNTER:
+                    if disappeared_counter < activity_disappeared_counter():
                         debug_monitor_check_timing(check_count, user_uri_id, check_started_at, check_interval)
                         time.sleep(check_interval)
                         continue
+                    now = int(time.time())
                     if user_not_found is False:
+                        invisible_since = visible_last_at or now
+                        absence_advice_shown = False
                         if is_user_removed(sp_accessToken, user_uri_id):
-                            print(f"Spotify user '{user_uri_id}' ({sp_username}) was probably removed! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                            print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) was probably removed!"
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) was probably removed\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) was probably removed<br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                m_subject = f"Spotify Monitor error: Spotify user {alert_target_inline(AlertTarget(user_uri_id, sp_username))} was probably removed"
+                                m_body = f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed\nRetrying in {display_time(activity_disappeared_interval())} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>Spotify user {spotify_user_html(user_uri_id, sp_username)} was probably removed<br>Retrying in <b>{display_time(activity_disappeared_interval())}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
                                 send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
                         else:
-                            print(f"Spotify user '{user_uri_id}' ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                            not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
-                            if recovery_hint_tracker.should_render(not_visible_advice):
-                                print(f"To fix: {not_visible_advice.fix}")
-                            if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                                m_subject = f"Spotify user {user_uri_id} ({sp_username}) has disappeared!"
-                                profile_url = spotify_user_profile_url(user_uri_id)
-                                m_body = f"Spotify user {user_uri_id} ({sp_username}) has disappeared - make sure your friend is followed and has activity sharing enabled\nProfile: {profile_url}\nRetrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                                m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has disappeared - make sure your friend is followed and has activity sharing enabled<br>Profile: <a href=\"{escape_html_attr(profile_url)}\">{escape(profile_url)}</a><br>Retrying in <b>{display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)}</b> intervals{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                                send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
+                            profile_url = spotify_user_profile_url(user_uri_id)
+                            retry_text = f"Checking every {display_time(activity_disappeared_interval())}"
+                            if live_activity:
+                                # The live feed hides a user during a private session, so the follow advice waits until the absence outlasts one
+                                reason_text = "private session, sharing turned off, unfollowed or blocked"
+                                status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is no longer visible in listening activity"
+                                status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is no longer visible in listening activity"
+                                print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} is no longer visible in listening activity ({reason_text}). {retry_text}")
+                            else:
+                                reason_text = "sharing turned off, unfollowed or blocked"
+                                status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} has disappeared from Friend Activity"
+                                status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} has disappeared from Friend Activity"
+                                print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has disappeared from Friend Activity ({reason_text}). {retry_text}")
+                                not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                                if recovery_hint_tracker.should_render(not_visible_advice):
+                                    print(f"To fix: {not_visible_advice.fix}")
+                            if INACTIVE_NOTIFICATION or webhook_event_enabled("inactive"):
+                                m_subject = f"{status_text}!"
+                                m_body = f"{status_text} ({reason_text})\nLast seen: {get_date_from_ts(invisible_since)}\nProfile: {profile_url}\n{retry_text}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                                m_body_html = f"<html><head></head><body>{status_html} ({escape(reason_text)})<br>Last seen: <b>{get_date_from_ts(invisible_since)}</b><br>Profile: <a href=\"{escape_html_attr(profile_url)}\">{escape(profile_url)}</a><br>{escape(retry_text)}{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                                send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
                         user_not_found = True
-                    debug_monitor_check_timing(check_count, user_uri_id, check_started_at, SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
-                    time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
+                    elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
+                        # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
+                        absence_advice_shown = True
+                        print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
+                        not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                        print(f"To fix: {not_visible_advice.fix}")
+                        print_cur_ts("Timestamp:\t\t\t")
+                    debug_monitor_check_timing(check_count, user_uri_id, check_started_at, activity_disappeared_interval())
+                    time.sleep(activity_disappeared_interval())
                     continue
                 else:
-                    # User reappeared in the Spotify's friend list
+                    # User is back in the activity response
                     transient_visibility_misses = disappeared_counter
                     disappeared_counter = 0
                     if transient_visibility_misses and user_not_found is False:
                         verbose_notice("Target visibility recovered before disappearance was confirmed")
                     if user_not_found is True:
-                        print(f"Spotify user {user_uri_id} ({sp_username}) has reappeared!")
-                        if ERROR_NOTIFICATION or webhook_event_enabled("error"):
-                            m_subject = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!"
-                            m_body = f"Spotify user {user_uri_id} ({sp_username}) has reappeared!{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>Spotify user {escape(user_uri_id)} (<b>{escape(sp_username)}</b>) has reappeared!{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
-                            send_notification_channels("error", m_subject, m_body, m_body_html, ERROR_NOTIFICATION)
+                        now = int(time.time())
+                        if sp_active_ts_start > 0:
+                            invisible_seconds += max(0, now - invisible_since)
+                            invisible_periods += 1
+                        invisible_for = calculate_timespan(now, invisible_since)
+                        if live_activity:
+                            status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is visible again after {invisible_for}"
+                            status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is visible again after <b>{invisible_for}</b>"
+                        else:
+                            status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} has reappeared after {invisible_for}"
+                            status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} has reappeared after <b>{invisible_for}</b>"
+                        print(status_text)
+                        if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
+                            m_subject = f"{status_text}!"
+                            m_body = f"{status_text}\nNot visible since: {get_date_from_ts(invisible_since)}{get_cur_ts(nl_ch + nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{status_html}<br>Not visible since: <b>{get_date_from_ts(invisible_since)}</b>{get_cur_ts('<br><br>Timestamp: ')}</body></html>"
+                            send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION)
                         print_cur_ts("Timestamp:\t\t\t")
+                    visible_last_at = int(time.time())
 
                 user_not_found = False
                 sp_ts = sp_data["sp_ts"]
@@ -12450,6 +13234,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         skipped_songs = 0
                         looped_songs = 0
                         song_on_loop = 1
+                        invisible_seconds = 0
+                        invisible_periods = 0
                         recent_songs_session = [{'artist': sp_artist, 'track': sp_track, 'timestamp': activity_ts, 'skipped': False}]
 
                         if FLAG_FILE:
@@ -12475,24 +13261,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        if music_urls_text:
-                            music_section_text = f"\n\n{music_urls_text}"
-                            music_section_html = f"<br><br>{music_urls_html}"
-                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                        else:
-                            if lyrics_urls_text:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                            else:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = ""
-                                lyrics_section_html = ""
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}{friend_active_m_body}\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}{friend_active_m_body_html}<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else ""
+                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else ""
+                        lyrics_section_text = f"\n\n{lyrics_urls_text}" if lyrics_urls_text else ""
+                        lyrics_section_html = f"<br><br>{lyrics_urls_html}" if lyrics_urls_html else ""
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}\n\n{friend_active_m_body}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}<br><br>{friend_active_m_body_html}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
 
                         if ACTIVE_NOTIFICATION or webhook_event_enabled("active"):
@@ -12511,26 +13285,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        if music_urls_text:
-                            music_section_text = f"\n\n{music_urls_text}"
-                            music_section_html = f"<br><br>{music_urls_html}"
-                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                        else:
-                            if lyrics_urls_text:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                            else:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = ""
-                                lyrics_section_html = ""
+                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else ""
+                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else ""
+                        lyrics_section_text = f"\n\n{lyrics_urls_text}" if lyrics_urls_text else ""
+                        lyrics_section_html = f"<br><br>{lyrics_urls_html}" if lyrics_urls_html else ""
                         m_subject = f"Spotify user {sp_username} plays song on loop: '{sp_artist} - {sp_track}'"
                         m_subject_short = f"{sp_username} looped a song {song_on_loop} times"
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}User plays song on LOOP ({song_on_loop} times)\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}\n\nUser plays song on LOOP ({song_on_loop} times)\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}<br><br>User plays song on LOOP (<b>{song_on_loop}</b> times)<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                         email_succeeded, webhook_succeeded = send_notification_channels("loop", m_subject, m_body, m_body_html, SONG_ON_LOOP_NOTIFICATION and not email_sent, webhook_event_enabled("loop") and not webhook_sent, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                         email_sent = email_sent or email_succeeded
@@ -12543,26 +13305,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                         lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                         lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                        if music_urls_text:
-                            music_section_text = f"\n\n{music_urls_text}"
-                            music_section_html = f"<br><br>{music_urls_html}"
-                            lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                            lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                        else:
-                            if lyrics_urls_text:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                                lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                            else:
-                                music_section_text = "\n\n"
-                                music_section_html = "<br><br>"
-                                lyrics_section_text = ""
-                                lyrics_section_html = ""
+                        music_section_text = f"\n\n{music_urls_text}" if music_urls_text else ""
+                        music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else ""
+                        lyrics_section_text = f"\n\n{lyrics_urls_text}" if lyrics_urls_text else ""
+                        lyrics_section_html = f"<br><br>{lyrics_urls_html}" if lyrics_urls_html else ""
                         m_subject = f"Spotify user {sp_username}: '{sp_artist} - {sp_track}'"
                         m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(activity_ts), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs)
-                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                        m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}\n\nSongs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                        m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}<br><br>Songs played: {songs_played_text(listened_songs, activity_ts, sp_active_ts_start)}{last_activity_m_body_html}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                         m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                         notification_type = "track" if on_the_list and ((TRACK_NOTIFICATION and email_song_enabled) or webhook_event_enabled("track")) else "song"
                         email_succeeded, webhook_succeeded = send_notification_channels(notification_type, m_subject, m_body, m_body_html, email_song_enabled, webhook_song_enabled, image_url=sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
@@ -12608,6 +13358,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         paused_text = ""
                         paused_m_body = ""
                         paused_m_body_html = ""
+                        invisible_text = ""
+                        invisible_m_body = ""
+                        invisible_m_body_html = ""
                         last_track_m_body = ""
                         last_track_m_body_html = ""
                         if live_activity:
@@ -12628,10 +13381,16 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 paused_text = f"User paused music {completed_pauses} times for {display_time(int(live_timing.paused_seconds))} ({paused_percentage}%)"
                                 paused_m_body = f"\n{paused_text}"
                                 paused_m_body_html = f"<br>User paused music <b>{completed_pauses}</b> times for <b>{display_time(int(live_timing.paused_seconds))} ({paused_percentage}%)</b>"
+                            if invisible_periods > 0 and invisible_seconds > 0:
+                                invisible_text = f"User was not visible {invisible_periods} times for {display_time(int(invisible_seconds))}"
+                                invisible_m_body = f"\n{invisible_text}"
+                                invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:
                             print(f"*** {paused_text}")
+                        if invisible_text:
+                            print(f"*** {invisible_text}")
 
                         if FLAG_FILE:
                             flag_file_delete()
@@ -12707,26 +13466,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             music_urls_html = format_music_urls_email_html(apple_search_url, youtube_music_search_url, amazon_music_search_url, deezer_search_url, tidal_search_url, sp_artist, sp_track)
                             lyrics_urls_text = format_lyrics_urls_email_text(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url)
                             lyrics_urls_html = format_lyrics_urls_email_html(genius_search_url, azlyrics_search_url, tekstowo_search_url, musixmatch_search_url, lyrics_com_search_url, sp_artist, sp_track)
-                            if music_urls_text:
-                                music_section_text = f"\n\n{music_urls_text}"
-                                music_section_html = f"<br><br>{music_urls_html}"
-                                lyrics_section_text = f"\n{lyrics_urls_text}\n\n" if lyrics_urls_text else "\n\n"
-                                lyrics_section_html = f"<br>{lyrics_urls_html}<br><br>" if lyrics_urls_html else "<br><br>"
-                            else:
-                                if lyrics_urls_text:
-                                    music_section_text = "\n\n"
-                                    music_section_html = "<br><br>"
-                                    lyrics_section_text = f"{lyrics_urls_text}\n\n"
-                                    lyrics_section_html = f"{lyrics_urls_html}<br><br>"
-                                else:
-                                    music_section_text = "\n\n"
-                                    music_section_html = "<br><br>"
-                                    lyrics_section_text = ""
-                                    lyrics_section_html = ""
+                            music_section_text = f"\n\n{music_urls_text}" if music_urls_text else ""
+                            music_section_html = f"<br><br>{music_urls_html}" if music_urls_html else ""
+                            lyrics_section_text = f"\n\n{lyrics_urls_text}" if lyrics_urls_text else ""
+                            lyrics_section_html = f"<br><br>{lyrics_urls_html}" if lyrics_urls_html else ""
                             m_subject = f"Spotify user {sp_username} is inactive: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False)}: {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True)})"
                             m_subject_short = build_short_ntfy_session_subject(sp_username, calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start), show_seconds=False, short=True), listened_songs, inactive=True)
-                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}Friend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{listened_songs_mbody}{last_track_m_body}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
-                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{listened_songs_mbody_html}{last_track_m_body_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
+                            m_body = f"{activity_label}: {sp_artist} - {sp_track}\nDuration: {display_time(sp_track_duration)}{played_for_m_body}{playlist_m_body}\nAlbum: {sp_album}{context_m_body}{music_section_text}{lyrics_section_text}\n\nFriend got inactive after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}\nFriend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}{paused_m_body}{invisible_m_body}{listened_songs_mbody}{last_track_m_body}{recent_songs_mbody}\n\nLast activity: {get_date_from_ts(sp_active_ts_stop)}\nInactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts(nl_ch + 'Timestamp: ')}"
+                            m_body_html = f"<html><head></head><body>{escape(activity_label)}: <b><a href=\"{escape_html_attr(sp_artist_url)}\">{escape(sp_artist)}</a> - <a href=\"{escape_html_attr(sp_track_url)}\">{escape(sp_track)}</a></b><br>Duration: {display_time(sp_track_duration)}{played_for_m_body_html}{playlist_m_body_html}<br>Album: <a href=\"{escape_html_attr(sp_album_url)}\">{escape(sp_album)}</a>{context_m_body_html}{music_section_html}{lyrics_section_html}<br><br>Friend got inactive after listening to music for <b>{calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}</b><br>Friend played music from <b>{get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep='</b> to <b>')}</b>{paused_m_body_html}{invisible_m_body_html}{listened_songs_mbody_html}{last_track_m_body_html}{recent_songs_mbody_html}<br><br>Last activity: <b>{get_date_from_ts(sp_active_ts_stop)}</b><br>Inactivity timer: {display_time(activity_inactivity_check())}{get_cur_ts('<br>Timestamp: ')}</body></html>"
                             m_body_short = build_short_ntfy_body(sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix)
                             email_succeeded, webhook_succeeded = send_notification_channels("inactive", m_subject, m_body, m_body_html, INACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
@@ -12740,6 +13487,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         looped_songs = 0
                         skipped_songs = 0
                         song_on_loop = 0
+                        invisible_seconds = 0
+                        invisible_periods = 0
                         recent_songs_session = []
                         print_cur_ts("\nTimestamp:\t\t\t")
 
@@ -12747,7 +13496,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if REPORTS_PRINTED != reports_before_check:
                         alive_since = int(time.time())
                     elif LIVENESS_REMINDER_SECONDS and int(time.time()) - alive_since >= LIVENESS_REMINDER_SECONDS:
-                        print_liveness_banner(f"Monitoring healthy for {user_uri_id}. The target is visible with no activity change since the last check")
+                        print_liveness_banner(f"Monitoring healthy for {AlertTarget(user_uri_id, sp_username)}. The target is visible with no activity change since the last check")
                         alive_since = int(time.time())
 
                 live_last_sample = sp_data
@@ -12762,25 +13511,29 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
         else:
             if user_not_found is False:
                 if is_user_removed(sp_accessToken, user_uri_id):
-                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
+                    print(f"User '{user_uri_id}' does not exist! Retrying in {display_time(activity_disappeared_interval())} intervals")
                     not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
-                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)} intervals")
-                    not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
-                    if recovery_hint_tracker.should_render(not_visible_advice):
-                        print(f"To fix: {not_visible_advice.fix}")
+                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
+                    other_backend = other_activity_backend()
+                    if target_visible_in_other_backend(sp_accessToken, user_uri_id):
+                        print(f"The target is visible through the {other_backend} backend. {backend_switch_hint(other_backend)}")
+                    else:
+                        not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
+                        if recovery_hint_tracker.should_render(not_visible_advice):
+                            print(f"To fix: {not_visible_advice.fix}")
                 print_cur_ts("Timestamp:\t\t\t")
                 user_not_found = True
-            debug_monitor_wait_timing(user_uri_id, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, "the target profile is not visible")
-            time.sleep(SPOTIFY_DISAPPEARED_CHECK_INTERVAL)
+            debug_monitor_wait_timing(user_uri_id, activity_disappeared_interval(), "the target profile is not visible")
+            time.sleep(activity_disappeared_interval())
             continue
 
 
 # Applies validated one-run webhook command-line overrides to runtime settings
 def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION
+    global WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_PROVIDER, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION
     if args.webhook_provider is not None:
         WEBHOOK_PROVIDER = str(args.webhook_provider)
     if args.webhook_url is not None:
@@ -12809,6 +13562,10 @@ def apply_webhook_cli_overrides(args: argparse.Namespace, parser: argparse.Argum
     if args.webhook_errors is not None:
         WEBHOOK_ERROR_NOTIFICATION = args.webhook_errors
         if args.webhook_errors:
+            WEBHOOK_ENABLED = True
+    if args.webhook_scrobble_health is not None:
+        WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION = args.webhook_scrobble_health
+        if args.webhook_scrobble_health:
             WEBHOOK_ENABLED = True
     if args.webhook_provider is None:
         detected_provider = detect_webhook_provider(WEBHOOK_URL)
@@ -12843,7 +13600,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -13154,7 +13911,22 @@ def main():
         dest="notify_errors",
         action="store_false",
         default=None,
-        help="Disable emails on errors"
+        help="Disable email on errors and the recovery alert that follows"
+    )
+    scrobble_health_toggle = notify.add_mutually_exclusive_group()
+    scrobble_health_toggle.add_argument(
+        "--notify-scrobble-health",
+        dest="notify_scrobble_health",
+        action="store_true",
+        default=None,
+        help="Email when scrobbles are missing or start appearing again (scrobble health mode)"
+    )
+    scrobble_health_toggle.add_argument(
+        "--no-scrobble-health-notify",
+        dest="notify_scrobble_health",
+        action="store_false",
+        default=None,
+        help="Disable email when scrobbles are missing or start appearing again (scrobble health mode)"
     )
     notify.add_argument(
         "--send-test-email",
@@ -13233,14 +14005,29 @@ def main():
         dest="webhook_errors",
         action="store_true",
         default=None,
-        help="Send webhook alerts when monitoring has a problem"
+        help="Send webhook alerts when monitoring has a problem and the recovery alert that follows"
     )
     webhook_error_toggle.add_argument(
         "--no-webhook-error-notify",
         dest="webhook_errors",
         action="store_false",
         default=None,
-        help="Disable webhook alerts when monitoring has a problem"
+        help="Disable webhook alerts when monitoring has a problem and the recovery alert that follows"
+    )
+    webhook_scrobble_health_toggle = webhook_notify.add_mutually_exclusive_group()
+    webhook_scrobble_health_toggle.add_argument(
+        "--webhook-scrobble-health",
+        dest="webhook_scrobble_health",
+        action="store_true",
+        default=None,
+        help="Send a webhook alert when scrobbles are missing or start appearing again (scrobble health mode)"
+    )
+    webhook_scrobble_health_toggle.add_argument(
+        "--no-webhook-scrobble-health-notify",
+        dest="webhook_scrobble_health",
+        action="store_false",
+        default=None,
+        help="Disable webhook alerts when scrobbles are missing or start appearing again (scrobble health mode)"
     )
     webhook_notify.add_argument(
         "--send-test-webhook",
@@ -13277,7 +14064,7 @@ def main():
         dest="disappeared_timer",
         metavar="SECONDS",
         type=int,
-        help="Wait time between checks once the user disappears from friends list, in seconds"
+        help="Wait time between checks while the user is not visible, in seconds"
     )
     times.add_argument(
         "--scrobble-check-interval",
@@ -13546,7 +14333,7 @@ def main():
             (args.force, "--force"),
         )
         set_sp_dc_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_sp_dc_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_sp_dc_conflicts:
             parser.error("--set-sp-dc cannot be combined with " + ", ".join(set_sp_dc_conflicts))
@@ -13612,7 +14399,7 @@ def main():
             (args.force, "--force"),
         )
         set_webhook_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         set_webhook_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         if set_webhook_conflicts:
             parser.error("--set-webhook-url cannot be combined with " + ", ".join(set_webhook_conflicts))
@@ -13671,7 +14458,7 @@ def main():
             (args.truncate, "--truncate"),
         )
         setup_conflicts.extend(flag for value, flag in conflict_values if value is not None and value is not False)
-        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
+        boolean_conflicts = ((args.notify_active, "--notify-active"), (args.notify_inactive, "--notify-inactive"), (args.notify_track, "--notify-track"), (args.notify_song_changes, "--notify-song-changes"), (args.notify_loop, "--notify-loop"), (args.notify_errors, "--no-error-notify"), (args.notify_scrobble_health, "--notify-scrobble-health/--no-scrobble-health-notify"), (args.webhook_enabled, "--webhook/--no-webhook"), (args.webhook_active, "--webhook-active"), (args.webhook_inactive, "--webhook-inactive"), (args.webhook_track, "--webhook-track"), (args.webhook_song_changes, "--webhook-song-changes"), (args.webhook_loop, "--webhook-loop"), (args.webhook_errors, "--webhook-errors/--no-webhook-error-notify"), (args.webhook_scrobble_health, "--webhook-scrobble-health/--no-webhook-scrobble-health-notify"), (args.track_in_spotify, "--track-in-spotify"), (args.disable_logging, "--disable-logging"), (args.debug_mode, "--debug"), (args.verbose_mode, "--verbose"))
         setup_conflicts.extend(flag for value, flag in boolean_conflicts if value is not None)
         import_conflicts = ((args.browser, "--browser"), (args.browser_profile, "--browser-profile"), (args.cookie_file, "--cookie-file"), (args.force, "--force"))
         setup_conflicts.extend(flag for value, flag in import_conflicts if value is not None and value is not False)
@@ -13938,7 +14725,10 @@ def main():
         else:
             SPOTIFY_INACTIVITY_CHECK = args.offline_timer
     if args.disappeared_timer is not None:
-        SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
+        if live_activity_backend():
+            SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
+        else:
+            SPOTIFY_DISAPPEARED_CHECK_INTERVAL = args.disappeared_timer
     for value, option in ((args.check_interval, "--check-interval"), (args.active_check_interval, "--active-check-interval"), (args.offline_timer, "--offline-timer"), (args.disappeared_timer, "--disappeared-timer"), (args.scrobble_check_interval, "--scrobble-check-interval"), (args.scrobble_dead_period, "--scrobble-dead-period"), (args.scrobble_min_unmatched, "--scrobble-min-unmatched"), (args.scrobble_match_window, "--scrobble-match-window"), (args.scrobble_lookback, "--scrobble-lookback")):
         if value is not None and value <= 0:
             parser.error(f"{option} must be greater than zero")
@@ -13987,6 +14777,8 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = True
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
+    if args.notify_scrobble_health is not None:
+        SCROBBLE_HEALTH_NOTIFICATION = args.notify_scrobble_health
     apply_webhook_cli_overrides(args, parser)
     trace_unresolved_secrets()
     if args.track_in_spotify is True:
@@ -14227,6 +15019,7 @@ def main():
             sp_friends = spotify_get_friends_json(sp_accessToken)
             spotify_list_friends(sp_friends, sp_accessToken)
             print("─" * HORIZONTAL_LINE)
+            print_other_backend_friends(sp_friends, sp_accessToken)
         except Exception as e:
             auth_context = "client_auth" if TOKEN_SOURCE == "client" else "cookie_auth"
             print_recovery_error(e, auth_context)
@@ -14320,6 +15113,9 @@ def main():
     if args.notify_errors is False:
         ERROR_NOTIFICATION = False
 
+    if args.notify_scrobble_health is not None:
+        SCROBBLE_HEALTH_NOTIFICATION = args.notify_scrobble_health
+
     apply_webhook_cli_overrides(args, parser)
     trace_unresolved_secrets()
 
@@ -14339,7 +15135,9 @@ def main():
         verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
         WEBHOOK_ENABLED = False
 
-    startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH)
+    # Resolved before the summary so it can name both compared accounts, and passed on so the monitor reuses one lookup
+    scrobble_account = spotify_get_scrobble_account() if scrobble_health_mode else None
+    startup_rows = build_startup_summary(target_user_id, cfg_path, env_path, FINAL_LOG_PATH, scrobble_account)
     emit_startup_summary(startup_rows, show_full=bool(VERBOSE_MODE or DEBUG_MODE))
     playback_warning = container_playback_warning()
     if playback_warning is not None:
@@ -14364,7 +15162,7 @@ def main():
         signal.signal(signal.SIGHUP, reload_secrets_signal_handler)
 
     if scrobble_health_mode:
-        spotify_monitor_scrobble_health(scrobble_health_username, SCROBBLE_HEALTH_STATE_FILE)
+        spotify_monitor_scrobble_health(scrobble_health_username, SCROBBLE_HEALTH_STATE_FILE, scrobble_account)
     else:
         spotify_monitor_friend_uri(target_user_id, sp_tracks, CSV_FILE)
 

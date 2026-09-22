@@ -30,6 +30,7 @@ def configure_summary(monkeypatch):
         "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL": 10,
         "SPOTIFY_LIVE_ERROR_INTERVAL": 180,
         "SPOTIFY_LIVE_INACTIVITY_CHECK": 660,
+        "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL": 180,
         "ACTIVE_NOTIFICATION": False,
         "INACTIVE_NOTIFICATION": False,
         "TRACK_NOTIFICATION": False,
@@ -60,6 +61,10 @@ def configure_summary(monkeypatch):
         "SMTP_PASSWORD": "known-smtp-secret",
         "SP_CACHED_ACCESS_TOKEN": "known-access-secret",
         "SP_CACHED_CLIENT_TOKEN": "known-client-secret",
+        # The email rollup reports a channel with no mail server as off, whatever its alert types are
+        "SMTP_HOST": "smtp.example.com",
+        "SMTP_PORT": 587,
+        "RECEIVER_EMAIL": "michal.k@example.com",
     }
     for name, value in values.items():
         monkeypatch.setattr(monitor, name, value)
@@ -591,6 +596,35 @@ def test_the_scrobble_health_summary_reports_the_matching_settings(monkeypatch):
         assert advanced not in concise
     for visible in ("* Comparison period:            6 hours", "* Timestamp tolerance:          5 minutes", "* Scrobble alert reminders:     1 day", "* Error retry timer:            3 minutes", "* Terminal truncation:          Disabled"):
         assert visible in full
+
+
+# Verifies the scrobble health view names the authorized Spotify account beside the compared Last.fm profile
+def test_the_scrobble_health_summary_names_both_compared_accounts(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log", ("spotify-account-id", "Spotify Account"))
+
+    concise = emit_to_string(rows)
+    assert "* Target:                       lastfm-user" in concise
+    assert "* Spotify account:              Spotify Account (spotify-account-id)" in concise
+
+
+# Verifies the account row reports the id alone when Spotify returns no display name
+def test_the_scrobble_health_summary_falls_back_to_the_account_id(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log", ("spotify-account-id", ""))
+
+    assert "* Spotify account:              spotify-account-id" in emit_to_string(rows)
+
+
+# Verifies a failed account lookup is reported instead of leaving the compared Spotify side blank
+def test_the_scrobble_health_summary_flags_an_unresolved_account(monkeypatch):
+    configure_summary(monkeypatch)
+    monkeypatch.setattr(monitor, "MONITOR_MODE", "scrobble_health")
+    rows = monitor.build_startup_summary("lastfm-user", "spotify_monitor.conf", ".env", "spotify_monitor.log")
+
+    assert "* Spotify account:              Unknown, the account lookup did not succeed" in emit_to_string(rows)
 
 
 # Verifies disabled scrobble health reminders and liveness output stay visible in the concise view

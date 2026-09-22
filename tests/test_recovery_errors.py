@@ -180,9 +180,36 @@ def test_recovery_guides_target_relevant_documentation():
         (monitor.classify_recovery_error(context="target_not_visible"), monitor.FOLLOWING_GUIDE_URL),
         (monitor.classify_recovery_error(context="smtp_config"), monitor.SMTP_GUIDE_URL),
         (monitor.classify_recovery_error(make_http_error(429)), monitor.INTERVALS_GUIDE_URL),
+        (monitor.classify_recovery_error(requests.Timeout("request timed out")), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(requests.ConnectionError("connection refused")), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(make_http_error(503)), monitor.CONNECTION_GUIDE_URL),
+        (monitor.classify_recovery_error(PermissionError("denied"), "file_read"), monitor.CONFIG_GUIDE_URL),
+        (monitor.classify_recovery_error(OSError(24, "Too many open files")), monitor.DESCRIPTOR_LIMIT_GUIDE_URL),
     )
     for advice, guide_url in cases:
         assert f"\nGuide: {guide_url}" in advice.fix
+
+
+# A check the monitor retries on its own must not send the reader to Doctor or debug output for a passing network blip
+@pytest.mark.parametrize("error", [requests.Timeout("request timed out"), requests.ConnectionError("connection refused"), make_http_error(503)])
+def test_transient_spotify_failures_do_not_prescribe_diagnostics(error):
+    advice = monitor.classify_recovery_error(error)
+    assert advice.retryable is True
+    assert "--doctor" not in advice.fix
+    assert "--debug" not in advice.fix
+
+
+# A transient failure names the service and says the run handles it, and the troubleshooting page quotes that wording
+@pytest.mark.parametrize("error,summary,fix", [
+    (requests.Timeout("request timed out"), "Spotify did not answer in time", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"),
+    (requests.ConnectionError("connection refused"), "Spotify could not be reached", "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"),
+    (make_http_error(503), "Spotify is temporarily unavailable", "Usually nothing to do, the tool retries on its own. If it continues, wait for Spotify to recover"),
+])
+def test_transient_spotify_failures_keep_their_wording(error, summary, fix):
+    advice = monitor.classify_recovery_error(error)
+
+    assert advice.summary == summary
+    assert advice.fix == f"{fix}\nGuide: {monitor.CONNECTION_GUIDE_URL}"
 
 
 # Verifies manual cookie entry failures link directly to extraction steps
@@ -364,8 +391,6 @@ def test_no_code_outside_the_declared_set_is_produced():
 CLASSIFIER_EXEMPTIONS = {
     "or higher required": "runs at import on an interpreter too old to load the rest of the file",
     "Cannot clear the screen contents": "a cosmetic notice with nothing for the operator to recover from",
-    "Operational alert deferred": "a note about when the alert fires, printed under the classified failure above it",
-    "Scrobble health result: Check failed.": "the failure count and retry interval printed below the classified error",
     "Installation could not start": "a wizard result printed above the question that offers another option",
     "could not be installed": "a wizard result printed above the question that offers another option",
     "need the optional Pillow package": "a wizard hint above the question that offers to switch the feature off",
@@ -628,7 +653,8 @@ def test_a_delivery_or_a_reset_clears_the_hold(capsys):
 # Verifies every alert site in the loop asks the state before sending and records the outcome, so no channel is tracked by a loose flag
 def test_the_loop_tracks_the_error_alert_through_the_state():
     source = inspect.getsource(monitor)
-    assert source.count("error_alert = ErrorAlertState()") == 1
+    # One state per loop, Friend Activity and scrobble health
+    assert source.count("error_alert = ErrorAlertState()") == 2
     assert source.count("error_alert.reset()") >= 1
     assert source.count('error_alert.pending("email"') == source.count('error_alert.record("email"') >= 1
     assert source.count('error_alert.pending("webhook"') == source.count('error_alert.record("webhook"') >= 1

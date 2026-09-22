@@ -298,6 +298,39 @@ def test_optional_profile_resource_exhaustion_stops(monkeypatch):
     assert error.value.code == 1
 
 
+# An explicit backend reaches its own endpoint and skips the live normalization while the other backend stays selected
+def test_friends_can_be_fetched_from_the_other_backend(monkeypatch):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only", "name": "Legacy"}, "track": {}, "timestamp": 1}]}
+    get = Mock(return_value=response_for(legacy))
+    monkeypatch.setattr(monitor.SESSION, "get", get)
+    monkeypatch.setattr(monitor.SESSION, "post", Mock(side_effect=AssertionError("the live feed must not be requested")))
+    assert monitor.spotify_activity_endpoint("buddylist") == (monitor.SPOTIFY_BUDDYLIST_URL, "GET")
+    assert monitor.spotify_get_friends_json("token", backend="buddylist") == legacy
+    assert get.call_args.args[0] == monitor.SPOTIFY_BUDDYLIST_URL
+    assert monitor.other_activity_backend() == "buddylist"
+
+
+# Friend listing names the users only one backend shows and how to switch, or confirms both agree
+def test_list_friends_compares_both_backends(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only"}}, {"user": {"uri": USER_URI}}]}
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
+    feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-only")]})
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert output == '* 1 user visible only through the buddylist backend: legacy-only\n* Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file to monitor them\n* 1 user visible only through the listening_activity backend: live-only\n'
+    monitor.print_other_backend_friends(monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:legacy-only")]}), "token")
+    assert capsys.readouterr().out == "* The buddylist backend lists the same users\n"
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=RuntimeError("HTTP 500")))
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert "* Warning: The buddylist backend could not be checked: " in output
+    assert "To fix:" in output
+    assert "visible only" not in output
+
+
 # Listing resolves live metadata and reports playback state without relying on the legacy feed
 def test_list_live_friends_resolves_names_and_now_playing(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "spotify_get_track_info", live_track_info)
@@ -339,7 +372,8 @@ def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name="", track_
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", Mock(return_value="token"))
     monkeypatch.setattr(monitor, "spotify_get_track_info", track_info)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
-    payloads = [monitor.spotify_normalize_listening_activity({"entities": [snapshot]}) for snapshot in snapshots]
+    # A None snapshot stands for a response without the target, as the feed answers during a private session
+    payloads = [monitor.spotify_normalize_listening_activity({"entities": [snapshot] if snapshot is not None else []}) for snapshot in snapshots]
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads))
     harness.stop_after = len(snapshots) - 1
     with pytest.raises(LoopStopped):
@@ -857,6 +891,46 @@ def test_live_crossfaded_track_is_labelled_before_the_next_track(loop_environmen
     assert "User played the previous track for: 3 minutes, 14 seconds (out of 3 minutes, 20 seconds) (97% - crossfade enabled)\n─" in output
     assert "User played the last track for: 36 seconds (out of 3 minutes, 20 seconds) (18%)\n─" in output
     assert output.count("crossfade enabled") == 1
+
+
+# The live feed drops a user who starts a private session, so a short absence is confirmed by two checks, timed on return, sent as an activity notification and listed in the session summary
+def test_live_target_out_of_view_is_reported_timed_and_summarized(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "ACTIVE_NOTIFICATION", True)
+    monkeypatch.setattr(monitor, "INACTIVE_NOTIFICATION", True)
+    delivery = Mock(return_value=(False, False))
+    monkeypatch.setattr(monitor, "send_notification_channels", delivery)
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    now = loop_environment.now
+    snapshots = [feed_entity(now)] * 2 + [None, None] + [feed_entity(now + 240, track=OTHER_TRACK_URI)] + [feed_entity(now + 270, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert "is no longer visible in listening activity (private session, sharing turned off, unfollowed or blocked). Checking every 3 minutes\nTimestamp:" in output
+    assert "is visible again after 4 minutes\nTimestamp:" in output
+    assert "To fix:" not in output
+    assert "SKIPPED" not in output
+    assert "*** User was not visible 1 times for 4 minutes\n" in output
+    assert [call.args[0] for call in delivery.call_args_list] == ["active", "inactive", "active", "inactive"]
+    assert delivery.call_args_list[1].args[1].endswith("is no longer visible in listening activity!")
+    assert "Last seen: " in delivery.call_args_list[1].args[2]
+    assert "Not visible since: " in delivery.call_args_list[2].args[2]
+    assert "User was not visible 1 times for 4 minutes" in delivery.call_args_list[3].args[2]
+
+
+# A private session ends within hours, so a longer absence earns the follow and sharing advice once
+def test_live_long_absence_prints_the_follow_advice_once(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 4 * 3600)
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    now = loop_environment.now
+    snapshots = [feed_entity(now)] * 2 + [None] * 5
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert output.count("is no longer visible in listening activity") == 1
+    assert "has not been visible for 8 hours, 1 minute, longer than a private session lasts\nTo fix: Follow this profile" in output
+    assert "A private session hides the target until it ends" in output
+    assert output.count("To fix:") == 1
 
 
 # Spotify announces a finishing track a moment before its end, so a finish followed by another track is one complete play and no repeat

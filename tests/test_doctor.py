@@ -64,6 +64,7 @@ def configure_valid_doctor(monkeypatch, target="friend.user"):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ERROR_INTERVAL", 60)
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_INACTIVITY_CHECK", 180)
     monkeypatch.setattr(monitor, "SPOTIFY_DISAPPEARED_CHECK_INTERVAL", 180)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 30)
     monkeypatch.setattr(monitor, "SMTP_PORT", 587)
     monkeypatch.setattr(monitor, "MONITOR_LIST_FILE", "")
     monkeypatch.setattr(monitor, "CSV_FILE", "")
@@ -651,6 +652,58 @@ def test_malformed_target_fails():
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list()), "spotify:track:not-user")[0]
     assert check.status == "FAIL"
     assert require_advice(check).code == "target.invalid"
+
+
+# Verifies Doctor names the follow state of an invisible target, so the reader knows which sharing path to fix
+@pytest.mark.parametrize("followed,expected", [
+    (True, "The monitoring account follows the target, so the target is not sharing listening activity with it or is in a private session"),
+    (False, "The monitoring account does not follow the target"),
+])
+def test_target_not_visible_names_the_follow_state(monkeypatch, followed, expected):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=followed))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    assert check.status == "FAIL"
+    assert check.detail.endswith(expected)
+    advice = require_advice(check)
+    assert "unless the target shares listening activity with that account directly" in advice.fix
+    assert "A private session hides the target until it ends\nGuide: " in advice.fix
+
+
+# Verifies the legacy backend keeps the private session out of the invisible-target explanation and survives a failed follow lookup
+def test_target_not_visible_with_the_legacy_backend_omits_private_sessions(monkeypatch):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=RuntimeError("offline")))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    assert check.status == "FAIL"
+    assert check.detail == "Target 'friend.user' was absent from the authenticated buddylist response"
+    assert "private session" not in require_advice(check).fix
+
+
+# Verifies Doctor points at the other backend when only that one lists the target, since each source can omit users the other shows
+def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monkeypatch):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
+    lookups = []
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: lookups.append(backend) or buddy_list("friend.user"))
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    assert lookups == ["buddylist"]
+    assert check.status == "FAIL"
+    assert check.label == "The target is visible only through the buddylist backend"
+    assert check.detail.endswith("The target is visible through the buddylist backend")
+    advice = require_advice(check)
+    assert advice.fix.startswith('Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nGuide: ')
+    assert "follow" not in advice.fix.lower()
+
+
+# Verifies the other backend is not queried without an access token
+def test_target_lookup_in_the_other_backend_needs_a_token(monkeypatch):
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=AssertionError("no token, no lookup")))
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else")), "friend.user")[0]
+    assert check.status == "FAIL"
+    assert "visible through" not in check.detail
 
 
 # Verifies an absent target is described as invisible with its normalized profile link

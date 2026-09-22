@@ -12,11 +12,17 @@ HOSTILE_ESCAPED = "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"
 # Interpolations that are safe without escape() because the value is a counter or a flag this tool
 # computes itself, never text Spotify returns. Listed explicitly so a new unescaped name cannot slip
 # in behind a blanket exemption
-ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix", "completed_pauses", "paused_percentage"})
+ALLOWED_UNESCAPED = frozenset({"listened_songs", "looped_songs", "song_on_loop", "played_for", "playlist_suffix", "completed_pauses", "paused_percentage", "invisible_periods"})
 
 # Helpers that emit their own markup or render only dates, durations and numbers. None of them can carry
 # Spotify-supplied text, so escaping their output would only mangle the timestamps users read
 SAFE_HELPERS = frozenset({"get_cur_ts", "display_time", "get_date_from_ts", "get_short_date_from_ts", "calculate_timespan", "get_range_of_dates_from_tss", "songs_played_text"})
+
+# Helpers that only wrap markup around HTML that was already escaped, so their argument decides the verdict
+PASSTHROUGH_HELPERS = frozenset({"html_autolink_urls", "html_bold_outage_fields", "html_email_body"})
+
+# Helpers that build a whole HTML fragment and escape every value they are given, so their output is already safe
+FRAGMENT_HELPERS = frozenset({"spotify_user_html"})
 
 
 # Collects every HTML notification body the module builds, as (function, source line, expression) triples
@@ -50,7 +56,9 @@ def interpolation_is_safe(expression):
     if isinstance(parsed, ast.Call):
         function = parsed.func
         name = function.id if isinstance(function, ast.Name) else getattr(function, "attr", "")
-        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS}
+        if name in PASSTHROUGH_HELPERS:
+            return bool(parsed.args) and interpolation_is_safe(ast.unparse(parsed.args[0]))
+        return name in {"escape", "escape_html_attr", "html_text", *SAFE_HELPERS, *FRAGMENT_HELPERS}
 
     return False
 

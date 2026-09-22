@@ -47,7 +47,7 @@ def sample_profiles(tmp_path):
 
 
 # Verifies profiles.ini metadata supplies the friendly Firefox profile name
-def test_firefox_profiles_ini_discovery(tmp_path):
+def test_firefox_profiles_ini_discovery(tmp_path, real_browser_profiles):
     root = tmp_path / ".mozilla/firefox"
     profile_dir = root / "Profiles/abc.default-release"
     create_firefox_database(profile_dir / "cookies.sqlite", [(".spotify.com", "sp_dc", "cookie", 4102444800, 10)])
@@ -62,7 +62,7 @@ def test_firefox_profiles_ini_discovery(tmp_path):
 
 
 # Verifies Firefox scanning finds a profile when profiles.ini is absent
-def test_firefox_fallback_directory_discovery(tmp_path):
+def test_firefox_fallback_directory_discovery(tmp_path, real_browser_profiles):
     cookie_file = tmp_path / ".mozilla/firefox/scan.default-release/cookies.sqlite"
     create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "cookie", 4102444800, 10)])
 
@@ -72,7 +72,7 @@ def test_firefox_fallback_directory_discovery(tmp_path):
 
 
 # Verifies Linux standard, Snap and Flatpak Firefox locations are scanned
-def test_firefox_linux_location_discovery(tmp_path):
+def test_firefox_linux_location_discovery(tmp_path, real_browser_profiles):
     relative_roots = [".mozilla/firefox", "snap/firefox/common/.mozilla/firefox", ".var/app/org.mozilla.firefox/.mozilla/firefox"]
     for index, relative_root in enumerate(relative_roots):
         create_firefox_database(tmp_path / relative_root / f"p{index}.default/cookies.sqlite", [("spotify.com", "sp_dc", f"cookie-{index}", 4102444800, index)])
@@ -151,6 +151,201 @@ def test_firefox_immutable_access_bypasses_exclusive_lock(tmp_path):
         assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-cookie"
 
 
+# Returns two synthetic Firefox profile records naming the given cookie database as the selected one
+def firefox_profile_records(selected_cookie_file):
+    return [
+        {"dir": "aaaa1111.default-release", "name": "default-release", "path": str(Path(selected_cookie_file).parent), "cookie_file": str(selected_cookie_file)},
+        {"dir": "bbbb2222.work", "name": "Work", "path": "/elsewhere/bbbb2222.work", "cookie_file": "/elsewhere/bbbb2222.work/cookies.sqlite"},
+    ]
+
+
+# Verifies the expiry ranking works on current Firefox, which records cookie expiry in milliseconds
+@pytest.mark.parametrize("unit", [1, 1000], ids=["seconds", "milliseconds"])
+def test_firefox_prefers_the_unexpired_cookie_in_either_expiry_unit(tmp_path, unit):
+    now = 1_700_000_000
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [
+        ("spotify.com", "sp_dc", "expired-but-touched-recently", (now - 365 * 86400) * unit, 200),
+        ("open.spotify.com", "sp_dc", "still-valid", (now + 365 * 86400) * unit, 100),
+    ])
+
+    assert monitor.read_firefox_sp_dc(cookie_file, now=now) == "still-valid"
+
+
+# Verifies a millisecond expiry is not mistaken for a date far in the future
+def test_firefox_expiry_unit_is_taken_from_the_magnitude():
+    assert monitor._cookie_expiry_seconds(1_819_314_035_557) == 1_819_314_035.557
+    assert monitor._cookie_expiry_seconds(1_715_811_780) == 1_715_811_780
+    assert monitor._cookie_expiry_seconds(5000) == 5000
+    assert monitor._cookie_expiry_seconds(0) == 0
+
+
+# Verifies a profile whose every sp_dc has lapsed is reported from the database without a Spotify request
+def test_firefox_reports_a_wholly_expired_profile_without_a_request(tmp_path, monkeypatch):
+    now = 1_700_000_000
+    expired_at = now - 400 * 86400
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "lapsed-secret", expired_at * 1000, 200)])
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="expired on") as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=now)
+    message = str(error.value)
+    assert monitor.get_date_from_ts(expired_at) in message
+    assert "aaaa1111.default-release" in message
+    assert "lapsed-secret" not in message
+
+
+# Verifies the whole import stops at the expired cookie rather than asking Spotify about it
+def test_an_expired_firefox_cookie_never_reaches_validation(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "lapsed-secret", 1_600_000_000 * 1000, 200)])
+    monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(side_effect=AssertionError("Spotify was asked about an expired cookie")))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="expired on"):
+        monitor.run_browser_cookie_import(browser="firefox", cookie_file=str(cookie_file), env_file=str(tmp_path / ".env"), interactive=False)
+    assert not (tmp_path / ".env").exists()
+
+
+# Verifies a failure names the profile that failed and the other profiles a session could be in
+def test_firefox_failures_name_the_profile_and_the_alternatives(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "other", "not-secret", 5000, 20)])
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="No sp_dc cookie") as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=1000)
+    message = str(error.value)
+    assert "Firefox profile aaaa1111.default-release (default-release)" in message
+    assert "Other Firefox profiles found: bbbb2222.work (Work)." in message
+
+
+# Verifies a machine carrying many profiles gets a bounded list rather than all of them
+def test_firefox_alternatives_are_capped(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "other", "not-secret", 5000, 20)])
+    extras = [{"dir": f"p{index}.profile{index}", "name": f"profile{index}", "path": f"/x/p{index}", "cookie_file": f"/x/p{index}/cookies.sqlite"} for index in range(12)]
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file)[:1] + extras)
+
+    with pytest.raises(monitor.BrowserCookieImportError) as error:
+        monitor.read_firefox_sp_dc(cookie_file, now=1000)
+    message = str(error.value)
+    assert message.count("cookies.sqlite") == 0
+    assert "and 6 more." in message
+    assert "p6.profile6" not in message
+
+
+# Verifies an unreadable database also names the profile and the alternatives
+def test_firefox_unreadable_database_names_the_alternatives(tmp_path, monkeypatch):
+    cookie_file = tmp_path / "cookies.sqlite"
+    cookie_file.write_text("not a SQLite database", encoding="utf-8")
+    monkeypatch.setattr(monitor, "discover_firefox_profiles", lambda *arguments, **keywords: firefox_profile_records(cookie_file))
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="Close Firefox") as error:
+        monitor.read_firefox_sp_dc(cookie_file)
+    assert "Other Firefox profiles found: bbbb2222.work (Work)." in str(error.value)
+
+
+# Verifies the suite never reaches the browser profiles of the machine running it
+def test_browser_profile_discovery_is_stubbed_by_default():
+    assert monitor.discover_firefox_profiles() == []
+    assert monitor.discover_chromium_profiles("chrome") == []
+
+
+# Verifies a cookie a running Firefox has written only to its write-ahead log is still found
+def test_firefox_reads_a_cookie_left_in_the_write_ahead_log(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "checkpointed-cookie", 5000, 10)])
+    with sqlite3.connect(cookie_file) as setup_connection:
+        setup_connection.execute("PRAGMA journal_mode=WAL")
+        setup_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    writer = sqlite3.connect(cookie_file)
+    try:
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO moz_cookies VALUES (?, ?, ?, ?, ?)", ("spotify.com", "sp_dc", "log-only-cookie", 5000, 20))
+        writer.commit()
+        assert (tmp_path / "cookies.sqlite-wal").stat().st_size > 0
+
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "log-only-cookie"
+    finally:
+        writer.close()
+
+
+# Verifies a cookie database on read-only media stays readable, which is how the container mounts a Firefox profile
+def test_firefox_reads_a_database_on_read_only_media(tmp_path):
+    profile_dir = tmp_path / "readonly"
+    cookie_file = profile_dir / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "mounted-cookie", 5000, 10)])
+    # Firefox keeps its cookie database in write-ahead logging mode, and opening one of those read-only needs to
+    # create a shared-memory file, which is exactly what a read-only mount refuses
+    with sqlite3.connect(cookie_file) as journal_connection:
+        journal_connection.execute("PRAGMA journal_mode=WAL")
+        journal_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    (profile_dir / "cookies.sqlite-wal").unlink(missing_ok=True)
+    (profile_dir / "cookies.sqlite-shm").unlink(missing_ok=True)
+    cookie_file.chmod(0o444)
+    profile_dir.chmod(0o555)
+    try:
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "mounted-cookie"
+    finally:
+        profile_dir.chmod(0o755)
+        cookie_file.chmod(0o644)
+
+
+# Verifies a profile with a write-ahead log that a browser holds locked falls back to the immutable open
+def test_firefox_falls_back_when_a_logged_database_is_locked(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "locked-log-cookie", 5000, 10)])
+    (tmp_path / "cookies.sqlite-wal").write_bytes(b"")
+    attempted = []
+
+    real_connect = sqlite3.connect
+
+    # Refuses the read-only open the way a browser holding the database does, leaving the immutable open to answer
+    def refuse_read_only(database, *arguments, **keywords):
+        attempted.append(database)
+        if isinstance(database, str) and database.endswith("?mode=ro"):
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(database, *arguments, **keywords)
+
+    with patch.object(monitor.sqlite3, "connect", refuse_read_only):
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "locked-log-cookie"
+    assert any(database.endswith("?mode=ro") for database in attempted)
+    assert any(database.endswith("?immutable=1") for database in attempted)
+
+
+# Verifies a profile path holding URI punctuation cannot displace the SQLite access parameters
+def test_firefox_path_punctuation_cannot_displace_uri_parameters(tmp_path):
+    cookie_file = tmp_path / "we?ird#profile" / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "punctuated-cookie", 5000, 10)])
+
+    assert monitor._sqlite_cookie_uri(cookie_file.resolve(), "immutable=1").endswith("we%3Fird%23profile/cookies.sqlite?immutable=1")
+    assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "punctuated-cookie"
+
+
+# Verifies the cookie database connection is closed rather than left to the garbage collector
+def test_firefox_closes_the_cookie_database_connection(tmp_path):
+    cookie_file = tmp_path / "cookies.sqlite"
+    create_firefox_database(cookie_file, [("spotify.com", "sp_dc", "closed-cookie", 5000, 10)])
+    opened = []
+
+    real_connect = sqlite3.connect
+
+    # Records every connection the reader opens so the test can assert each one was closed
+    def record_connect(*arguments, **keywords):
+        connection = real_connect(*arguments, **keywords)
+        opened.append(connection)
+        return connection
+
+    with patch.object(monitor.sqlite3, "connect", record_connect):
+        assert monitor.read_firefox_sp_dc(cookie_file, now=1000) == "closed-cookie"
+    assert opened
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError):
+            connection.execute("SELECT 1")
+
+
 # Verifies reduced Firefox schemas using baseDomain remain supported
 def test_firefox_reduced_schema_is_supported(tmp_path):
     cookie_file = tmp_path / "cookies.sqlite"
@@ -207,22 +402,93 @@ def test_firefox_unreadable_sqlite_database(tmp_path, monkeypatch):
     assert "database is locked" not in str(error.value)
 
 
-# Verifies Chrome, Brave and Chromium paths on macOS and Linux
-def test_chromium_user_data_path_resolution(tmp_path):
-    expected = {
-        ("Darwin", "chrome"): "Library/Application Support/Google/Chrome",
-        ("Darwin", "brave"): "Library/Application Support/BraveSoftware/Brave-Browser",
-        ("Darwin", "chromium"): "Library/Application Support/Chromium",
-        ("Linux", "chrome"): ".config/google-chrome",
-        ("Linux", "brave"): ".config/BraveSoftware/Brave-Browser",
-        ("Linux", "chromium"): ".config/chromium",
-    }
-    for (system_name, browser), relative_path in expected.items():
-        assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=tmp_path) == tmp_path / relative_path
+# Verifies every configured Chromium root is a usable relative path under the home directory
+def test_chromium_roots_are_relative_and_named_per_platform(tmp_path, real_browser_profiles):
+    assert set(monitor.CHROMIUM_USER_DATA_DIRS) == {"Darwin", "Linux"}
+    for system_name, browsers in monitor.CHROMIUM_USER_DATA_DIRS.items():
+        assert set(browsers) == set(monitor.CHROMIUM_IMPORT_BROWSERS)
+        for browser, relative_paths in browsers.items():
+            assert relative_paths, f"{system_name}/{browser} names no root"
+            assert len(set(relative_paths)) == len(relative_paths), f"{system_name}/{browser} repeats a root"
+            for relative_path in relative_paths:
+                assert not Path(relative_path).is_absolute()
+            # With nothing installed the conventional root is still named, so a failure can say where it looked
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=tmp_path) == tmp_path / relative_paths[0]
+
+
+# Verifies a packaged install is found and a distribution install still wins when both are present
+def test_chromium_packaged_roots_are_searched_in_order(tmp_path, real_browser_profiles):
+    for system_name, browsers in monitor.CHROMIUM_USER_DATA_DIRS.items():
+        for browser, relative_paths in browsers.items():
+            home = tmp_path / f"{system_name}-{browser}"
+            packaged = home / relative_paths[-1]
+            packaged.mkdir(parents=True)
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=home) == packaged
+            distribution = home / relative_paths[0]
+            distribution.mkdir(parents=True, exist_ok=True)
+            assert monitor.get_chromium_user_data_dir(browser, system_name=system_name, home=home) == distribution
+
+
+# Verifies Snap and Flatpak Chromium trees are reachable, which a single configured root per browser is not
+def test_chromium_linux_reaches_snap_and_flatpak_trees(real_browser_profiles):
+    linux_roots = monitor.CHROMIUM_USER_DATA_DIRS["Linux"]
+    assert any("snap/" in root for root in linux_roots["chromium"])
+    assert any(".var/app/" in root for root in linux_roots["chromium"])
+    assert any("snap/" in root for root in linux_roots["brave"])
+    assert any(".var/app/" in root for root in linux_roots["brave"])
+
+
+# Verifies an unsupported platform is reported as having no known location rather than as a missing directory
+def test_chromium_unknown_platform_has_no_root(real_browser_profiles, tmp_path):
+    assert monitor.get_chromium_user_data_dir("chrome", system_name="Plan9", home=tmp_path) is None
+    assert "no known Chrome profile location" in monitor.chromium_no_profiles_message("chrome", system_name="Plan9", home=tmp_path)
+
+
+# Verifies each reason a Chromium listing can be empty gets its own fix, since they need different actions
+def test_chromium_empty_listing_separates_its_causes(tmp_path, real_browser_profiles):
+    (tmp_path / "EmptyRoot").mkdir()
+    (tmp_path / "NewProfile" / "Default").mkdir(parents=True)
+
+    not_installed = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "missing")
+    assert "Install Chrome" in not_installed and "Looked in" in not_installed
+
+    no_profiles = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "EmptyRoot")
+    assert "Open Chrome once to create a profile" in no_profiles
+    assert "Install Chrome" not in no_profiles
+
+    no_cookies = monitor.chromium_no_profiles_message("chrome", user_data_dir=tmp_path / "NewProfile")
+    assert "Chrome is installed but none of its profiles (Default) holds a cookie database yet" in no_cookies
+    assert "Install Chrome" not in no_cookies
+
+
+# Verifies the import surfaces the specific reason rather than the generic one
+def test_chromium_import_reports_the_specific_empty_reason(tmp_path, monkeypatch, real_browser_profiles):
+    user_data_dir = tmp_path / "NewProfile"
+    (user_data_dir / "Default").mkdir(parents=True)
+    monkeypatch.setattr(monitor, "get_chromium_user_data_dir", lambda *arguments, **keywords: user_data_dir)
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="holds a cookie database yet") as error:
+        monitor.run_browser_cookie_import(browser="chrome", env_file=str(tmp_path / ".env"), interactive=False)
+    assert "No usable Chrome profiles found" not in str(error.value)
+
+
+# Verifies each keyring failure the supported backends actually raise gets the fix that matches its cause
+@pytest.mark.parametrize("error_text, expected", [
+    ("Can't get password from keychain: Keychain Access Denied", "Unlock the keyring"),
+    ("Could not find a password for the pair (Chrome Safe Storage, Chrome).", "Unlock the keyring"),
+    ("Failed to unlock the collection!", "Unlock the keyring"),
+    ("Failed to unlock the item!", "Unlock the keyring"),
+    ("Failed to unlock the keyring!", "Unlock the keyring"),
+    ("No recommended backend was available. Install a recommended 3rd party backend package", "Install one such as gnome-keyring"),
+])
+def test_chromium_keyring_failures_name_the_real_fix(error_text, expected):
+    message = monitor._safe_chromium_cookie_error("chrome", Exception(error_text))
+    assert expected in message
+    assert "Confirm Spotify is signed in" not in message
 
 
 # Verifies Chromium discovery uses supported directories and Local State names
-def test_chromium_profile_discovery_and_local_state_names(tmp_path):
+def test_chromium_profile_discovery_and_local_state_names(tmp_path, real_browser_profiles):
     base_path = tmp_path / "user-data"
     (base_path / "Default/Network").mkdir(parents=True)
     (base_path / "Default/Network/Cookies").touch()
@@ -332,9 +598,193 @@ def test_single_profile_is_selected_automatically(tmp_path):
 
 # Verifies several profiles can be selected through an interactive prompt
 def test_multiple_profiles_support_interactive_selection(tmp_path, capsys):
-    selected = monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: "2")
+    supplied = iter(["2"])
+    selected = monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
     assert selected["name"] == "Work"
     assert capsys.readouterr().out.startswith("\nMultiple Firefox profiles found:")
+
+
+# Creates a synthetic Chromium cookie database holding only encrypted values
+def create_chromium_database(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as connection:
+        connection.execute("CREATE TABLE cookies (host_key TEXT, name TEXT, encrypted_value BLOB, expires_utc INTEGER, is_persistent INTEGER)")
+        connection.executemany("INSERT INTO cookies VALUES (?, ?, ?, ?, ?)", rows)
+
+
+# Returns profile records for the picker, marking which ones the probe should call live
+def picker_profiles(count, install=""):
+    return [{"dir": f"p{index}.name{index}", "name": f"name{index}", "path": f"/p/p{index}", "cookie_file": f"/p/p{index}/cookies.sqlite", "install": install} for index in range(1, count + 1)]
+
+
+# Verifies invalid input re-asks instead of ending the import, which a typo previously did
+@pytest.mark.parametrize("answers, expected", [
+    (["abc", "2"], "p2.name2"),
+    (["-1", "3"], "p3.name3"),
+    (["99", "1"], "p1.name1"),
+    (["", "2"], "p2.name2"),
+    (["2.5", "1"], "p1.name1"),
+])
+def test_the_picker_re_asks_on_invalid_input(monkeypatch, capsys, answers, expected):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+    supplied = iter(answers)
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    assert selected["dir"] == expected
+    assert "Enter a number between 1 and 3, or 0 to cancel." in capsys.readouterr().out
+
+
+# Verifies a negative number is refused rather than indexing backwards from the end of the list
+def test_the_picker_never_indexes_backwards(monkeypatch):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+    supplied = iter(["-1", "-3", "1"])
+
+    assert monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))["dir"] == "p1.name1"
+
+
+# Verifies a closed input stream cancels rather than looping forever
+@pytest.mark.parametrize("interruption", [EOFError, KeyboardInterrupt])
+def test_the_picker_cancels_on_a_closed_prompt(monkeypatch, interruption):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
+        monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=Mock(side_effect=interruption))
+
+
+# Verifies only profiles holding a current login are marked and the single one becomes the Enter default
+def test_the_picker_marks_and_preselects_the_only_live_profile(monkeypatch, capsys):
+    profiles = picker_profiles(3)
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda cookie_file, **keywords: cookie_file == profiles[1]["cookie_file"])
+
+    prompts = []
+    supplied = iter([""])
+
+    selected = monitor.select_browser_profile(profiles, "firefox", interactive=True, input_func=lambda prompt: (prompts.append(prompt), next(supplied))[1])
+
+    assert selected["dir"] == "p2.name2"
+    output = capsys.readouterr().out
+    assert "* marks a profile holding a current Spotify login" in output
+    assert "2) * name2" in output
+    assert "(default)" in output
+    assert "1) * " not in output
+    assert "Enter for default" in prompts[0]
+
+
+# Verifies nothing is marked or preselected when no profile holds a current login
+def test_the_picker_marks_nothing_when_no_profile_is_live(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: False)
+    supplied = iter(["", "2"])
+    prompts = []
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: (prompts.append(prompt), next(supplied))[1])
+
+    assert selected["dir"] == "p2.name2"
+    output = capsys.readouterr().out
+    assert "marks a profile" not in output
+    assert "(default)" not in output
+    assert "Enter for default" not in prompts[0]
+    assert "Enter a number between 1 and 3" in output
+
+
+# Verifies several live profiles are all marked but none is preselected
+def test_the_picker_preselects_nothing_when_several_are_live(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: True)
+    supplied = iter(["", "3"])
+
+    selected = monitor.select_browser_profile(picker_profiles(3), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    assert selected["dir"] == "p3.name3"
+    output = capsys.readouterr().out
+    assert output.count("* name") == 3
+    assert "(default)" not in output
+
+
+# Verifies profile numbers line up once the list reaches double digits
+def test_the_picker_right_aligns_its_numbers(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    supplied = iter(["1"])
+    monitor.select_browser_profile(picker_profiles(12), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
+
+    output = capsys.readouterr().out
+    assert "   1) name1" in output
+    assert "  12) name12" in output
+
+
+# Verifies the only profile available is warned about when it holds no current login
+def test_a_single_signed_out_profile_is_warned_about(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: False)
+
+    selected = monitor.select_browser_profile(picker_profiles(1), "firefox")
+
+    assert selected["dir"] == "p1.name1"
+    assert "holds no current Spotify login" in capsys.readouterr().out
+
+
+# Verifies an unreadable database leaves the only profile unwarned rather than called signed out
+def test_a_single_unreadable_profile_is_not_called_signed_out(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "profile_has_live_spotify_cookie", lambda *arguments, **keywords: None)
+
+    monitor.select_browser_profile(picker_profiles(1), "firefox")
+
+    assert "holds no current Spotify login" not in capsys.readouterr().out
+
+
+# Verifies two installs sharing one profile directory name are told apart and given advice that works
+def test_a_directory_name_shared_by_two_installs_names_the_cookie_file(real_browser_profiles, tmp_path):
+    for relative_path in (".mozilla/firefox/abcd1234.default-release", "snap/firefox/common/.mozilla/firefox/abcd1234.default-release"):
+        create_firefox_database(tmp_path / relative_path / "cookies.sqlite", [])
+    profiles = monitor.discover_firefox_profiles(system_name="Linux", home=tmp_path)
+    assert [profile["install"] for profile in profiles] == ["", "Snap"]
+
+    with pytest.raises(monitor.BrowserCookieImportError, match="separate Firefox installs") as error:
+        monitor.select_browser_profile(profiles, "firefox", requested_profile="abcd1234.default-release")
+    message = str(error.value)
+    assert "--cookie-file PATH" in message
+    assert "abcd1234.default-release (default-release) [Snap]" in message
+
+
+# Verifies a live Spotify cookie is recognised on both schemas without any value being decrypted
+def test_the_live_cookie_probe_reads_both_schemas(tmp_path):
+    now = 1_700_000_000
+    live_chromium = int((now + 86400 + monitor.CHROMIUM_EPOCH_OFFSET_SECONDS) * 1_000_000)
+    dead_chromium = int((now - 86400 + monitor.CHROMIUM_EPOCH_OFFSET_SECONDS) * 1_000_000)
+
+    create_firefox_database(tmp_path / "ff-live.sqlite", [("spotify.com", "sp_dc", "x", (now + 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-dead.sqlite", [("spotify.com", "sp_dc", "x", (now - 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-legacy.sqlite", [("spotify.com", "sp_dc", "x", now + 86400, 10)])
+    create_firefox_database(tmp_path / "ff-none.sqlite", [("spotify.com", "other", "x", (now + 86400) * 1000, 10)])
+    create_firefox_database(tmp_path / "ff-foreign.sqlite", [("notspotify.com", "sp_dc", "x", (now + 86400) * 1000, 10)])
+    create_chromium_database(tmp_path / "cr-live.sqlite", [(".spotify.com", "sp_dc", b"encrypted", live_chromium, 1)])
+    create_chromium_database(tmp_path / "cr-dead.sqlite", [(".spotify.com", "sp_dc", b"encrypted", dead_chromium, 1)])
+    create_chromium_database(tmp_path / "cr-session.sqlite", [(".spotify.com", "sp_dc", b"encrypted", 0, 0)])
+    (tmp_path / "broken.sqlite").write_text("not a database", encoding="utf-8")
+
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-live.sqlite", firefox=True, now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-legacy.sqlite", firefox=True, now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-dead.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-none.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "ff-foreign.sqlite", firefox=True, now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-live.sqlite", now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-dead.sqlite", now=now) is False
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "cr-session.sqlite", now=now) is True
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "broken.sqlite", now=now) is None
+    assert monitor.profile_has_live_spotify_cookie(tmp_path / "absent.sqlite", now=now) is None
+    assert monitor.profile_has_live_spotify_cookie("", now=now) is None
+
+
+# Verifies each reason a Firefox listing can be empty gets its own fix
+def test_firefox_empty_listing_separates_its_causes(tmp_path, real_browser_profiles):
+    assert "no known Firefox profile location" in monitor.firefox_no_profiles_message(system_name="Plan9", home=tmp_path)
+
+    not_installed = monitor.firefox_no_profiles_message(system_name="Darwin", home=tmp_path)
+    assert "Install Firefox" in not_installed and "Looked in" in not_installed
+
+    (tmp_path / "Library/Application Support/Firefox").mkdir(parents=True)
+    no_cookies = monitor.firefox_no_profiles_message(system_name="Darwin", home=tmp_path)
+    assert "holds a cookie database yet" in no_cookies
+    assert "Install Firefox" not in no_cookies
 
 
 # Verifies several profiles fail actionably in a noninteractive environment
@@ -418,8 +868,9 @@ def test_cli_import_failure_exit_code():
 
 # Verifies interactive profile cancellation is reported as a failure
 def test_profile_selection_cancellation_is_failure(tmp_path):
+    supplied = iter(["0"])
     with pytest.raises(monitor.BrowserCookieImportError, match="cancelled"):
-        monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: "0")
+        monitor.select_browser_profile(sample_profiles(tmp_path), "firefox", interactive=True, input_func=lambda prompt: next(supplied))
 
 
 # Verifies CLI cancellation returns a nonzero exit code

@@ -28,7 +28,11 @@ Doctor uses your normal settings to check authentication, connectivity, the targ
 
 Doctor checks email login and webhook settings without sending messages. It does not create monitoring output files. Friend Activity checks leave configuration and credentials unchanged. Scrobble health checks may save a replacement refresh token if Spotify rotates it.
 
-If Spotify Desktop and `--list-friends` show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy `buddylist` backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. The **Friend Activity backend** row in Doctor names the source in use. See [Friend Activity Backend](configuration.md#friend-activity-backend).
+If Spotify Desktop and `--list-friends` show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy `buddylist` backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. Following is not required when the target shares listening activity with selected people that include the monitoring account. Doctor reports whether the monitoring account follows an invisible target. The **Friend Activity backend** row in Doctor names the source in use. `--list-friends` ends with the users only one backend lists and the command that switches to it. See [Friend Activity Backend](configuration.md#friend-activity-backend).
+
+If a friend you monitored before version 3.4 is now reported as not visible, run `--doctor TARGET`. When the legacy endpoint still lists the friend, Doctor and the monitoring start say so and print the switch command. Such a friend has usually also disappeared from the Spotify desktop client while the old endpoint keeps updating. Run with `--friend-activity-backend buddylist` or save `FRIEND_ACTIVITY_BACKEND = "buddylist"` to keep monitoring them. See [Legacy Backend](configuration.md#legacy-backend).
+
+If monitoring reports `is no longer visible in listening activity` while the user is listening, the user most likely started a private session. The tool reports when the user is visible again and how long that took. After six hours away it prints the follow and sharing advice, since a private session ends sooner.
 
 In an interactive terminal, Doctor offers a delivery test for each ready notification channel. Each test sends one real message only if you answer Yes. The default is No. Ctrl+C ends the run. Delivery tests are not offered in noninteractive runs.
 
@@ -65,7 +69,7 @@ spotify_monitor --authorize-scrobble-health
 
 The command shows the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard), the exact redirect URI plus Spotify's [app creation](https://developer.spotify.com/documentation/web-api/concepts/apps) and [PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) guides. Confirm that the app owner has Premium, Web API is selected and the redirect URI matches exactly. If the Spotify account being authorized is not the app owner, add it under User Management.
 
-If Spotify reports `QUOTA_EXCEEDED`, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports **Check failed**, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long `Retry-After` value. Increase `--scrobble-check-interval` if the response repeats and see Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+If Spotify reports `QUOTA_EXCEEDED`, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports **Check failed**, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only once the failure has lasted five minutes. It does not block for the full long `Retry-After` value. Increase `--scrobble-check-interval` if the response repeats and see Spotify's [quota modes guide](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 
 Scrobble health liveness banners say `Scrobble health monitor running for <lastfm_username>. Current result: <result>.` The result describes the current comparison. **Idle** means no completed Spotify plays were returned within the comparison period, even if an earlier check triggered an alert. **Missing scrobbles** means recent plays met the alert threshold. It does not identify the cause or establish a service outage. See [scrobble health settings](configuration.md#lastfm-scrobble-health) for reminder and matching rules.
 
@@ -98,8 +102,28 @@ Every failure is reported in the same three-part shape: what went wrong, a `To f
 | Webhook alerts never arrive | Provider mismatch or a stale destination | [Webhook Settings](configuration.md#webhook-settings) then run `spotify_monitor --send-test-webhook` |
 | `spotify_monitor` is not found after installation | The shell has not picked up the new command | [Installation and Command Problems](#installation-and-command-problems) |
 | Escape sequences such as `[36m` printed as text or no colour at all | The terminal cannot display ANSI colour or colour was switched off | [Terminal Colours Look Wrong](#terminal-colours-look-wrong) |
+| `Spotify did not answer in time`, `Spotify could not be reached` or `Spotify is temporarily unavailable` | A network problem between this machine and Spotify or a Spotify outage | [Connection Problems](#connection-problems) |
+| `This process ran out of file descriptors` | The operating system limit on open files was reached | [Too Many Open Files](#too-many-open-files) |
 
 A continuing outage produces a `* Monitoring degraded` reminder once an hour, even when the [liveness reminder](usage.md#liveness-reminder) is switched off. `* Monitoring recovered` marks recovery. Use `--verbose` to see the first failed check.
+
+<a id="connection-problems"></a>
+## Connection Problems
+
+`Spotify did not answer in time` and `Spotify could not be reached` mean a check got no answer from Spotify. `Spotify is temporarily unavailable` means Spotify answered with a server error. The report names the interval after which the check is retried, so a short outage needs no action. A failure that lasts produces the hourly `Monitoring degraded` reminder and `Monitoring recovered` when it clears.
+
+If the failure continues, check the internet connection, DNS and any firewall or proxy between this machine and Spotify. `A secure connection to Spotify could not be established` is a TLS problem, see [TLS Verification](configuration.md#tls-verification). A server error that lasts is a Spotify outage, so wait for it to end.
+
+To confirm that Spotify is reachable from this machine, run:
+
+```sh
+spotify_monitor --doctor
+```
+
+<a id="too-many-open-files"></a>
+## Too Many Open Files
+
+`This process ran out of file descriptors` means the operating system limit on open files was reached. It is a local limit and not a Spotify problem. Raise it with `ulimit -n 4096` in the shell that starts the tool or set `LimitNOFILE=` in the systemd unit, then restart the tool.
 
 <a id="terminal-colours-look-wrong"></a>
 ## Terminal Colours Look Wrong

@@ -65,15 +65,14 @@ spotify_monitor other_user_id
 <a id="following-the-monitored-user"></a>
 ## Following the Monitored User
 
-To monitor a user's activity, you must follow them from the Spotify account associated with the `sp_dc` cookie or `client` credentials.
+The target must share listening activity with the monitoring account, the Spotify account behind the `sp_dc` cookie or `client` credentials. Spotify offers two sharing settings:
 
-If the monitoring account does not follow the target, setup offers to follow them. It sends the request only after you confirm.
+- **All followers**: the monitoring account must follow the target.
+- **Selected people**: the target selects the monitoring account. Following is not required.
 
-This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, follow the target manually in Spotify.
+If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
 
-If you configure authentication outside the wizard you can still follow the target manually in the Spotify desktop or mobile app.
-
-Additionally, the user must have sharing of listening activity enabled in their Spotify client settings. Without this, no activity data will be visible.
+Doctor reports whether the monitoring account follows an invisible target, so you know which setting to fix.
 
 ## How to Find a Friend's Spotify Profile URL
 
@@ -110,9 +109,11 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users.
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. Doctor points at the other backend when only that one lists the target.
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
+
+The feed drops a user who starts a private session, turns off activity sharing, blocks the monitoring account or, when sharing with all followers, is no longer followed by it. The tool cannot tell these causes apart. After `SPOTIFY_LIVE_DISAPPEARED_COUNTER` checks in a row without the user, it reports `is no longer visible in listening activity` and checks every `SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL` seconds (`-m`) until the user returns, then reports `is visible again after` with the time away. After six hours away it prints the follow and sharing advice once, since a private session ends sooner. These reports use the inactive and active notification settings. A session stays open while the user is away and its summary lists the time the user was not visible.
 
 Songs on loop are counted when a song is played again from its start `SONG_ON_LOOP_VALUE` times.
 
@@ -130,13 +131,15 @@ Polling can miss short tracks and quick changes between checks.
 | `SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL` | `-k` | 10 seconds | Time between checks while a listening session is open |
 | `SPOTIFY_LIVE_ERROR_INTERVAL` | | 60 seconds | Retry delay after a failed check |
 | `SPOTIFY_LIVE_INACTIVITY_CHECK` | `-o` | 180 seconds | Time without playback after which the session ends |
+| `SPOTIFY_LIVE_DISAPPEARED_COUNTER` | | 2 checks | Checks in a row without the user before the absence is reported |
+| `SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL` | `-m` | 30 seconds | Time between checks while the user is not visible |
 
 `--doctor` warns when an interval is below 5 seconds. The TRAP and ABRT signals adjust the inactivity timer. See [Signal Controls](usage.md#signal-controls-macoslinuxunix) for the full list.
 
 <a id="legacy-backend"></a>
 ### Legacy Backend
 
-The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed.
+The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed. The reverse also happens: a friend from an older approval, followed in both directions with sharing set to all followers, can keep appearing here with live updates after disappearing from the Spotify desktop client and the live feed. Such users can be monitored only through this backend.
 
 To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` in the configuration file or pass `--friend-activity-backend buddylist` for one run:
 
@@ -144,13 +147,15 @@ To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` i
 spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID
 ```
 
-The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c` and `-o` set them when it is selected.
+The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c`, `-o` and `-m` set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports `has disappeared from Friend Activity` only after `REMOVED_DISAPPEARED_COUNTER` checks in a row and prints the follow and sharing advice at once.
 
 | Setting | One-run option | Default | Purpose |
 | --- | --- | ---: | --- |
 | `SPOTIFY_CHECK_INTERVAL` | `-c` | 30 seconds | Time between checks |
 | `SPOTIFY_ERROR_INTERVAL` | | 180 seconds | Retry delay after a failed check |
 | `SPOTIFY_INACTIVITY_CHECK` | `-o` | 660 seconds | Time after the last completed track after which the user is inactive |
+| `REMOVED_DISAPPEARED_COUNTER` | | 4 checks | Checks in a row without the user before the disappearance is reported |
+| `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` | `-m` | 180 seconds | Time between checks while the user is not visible |
 
 <a id="lastfm-scrobble-health"></a>
 ## Last.fm Scrobble Health
@@ -203,10 +208,12 @@ The default alert requires five consecutive unmatched completed plays with the o
 | `SCROBBLE_HEALTH_LOOKBACK` | `--scrobble-lookback` | 21600 seconds | Recent history included in each comparison |
 | `SCROBBLE_HEALTH_REPEAT_INTERVAL` | `--scrobble-repeat-interval` | 86400 seconds | Minimum reminder interval while recent missing plays meet the alert threshold, use 0 to disable |
 | `SCROBBLE_HEALTH_STATE_FILE` | `--scrobble-state-file` | `.spotify-monitor-scrobble-health.json` | Restart-safe alert state |
+| `SCROBBLE_HEALTH_NOTIFICATION` | `--notify-scrobble-health` / `--no-scrobble-health-notify` | `True` | Email alerts for missing and resumed scrobbles |
+| `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` | `--webhook-scrobble-health` / `--no-webhook-scrobble-health-notify` | `True` | Webhook alerts for missing and resumed scrobbles |
 
 **Idle** means no completed Spotify plays were returned within the comparison period. **Waiting** means missing plays have not reached the alert threshold. **Scrobbles matched** means recent Spotify plays were found on Last.fm.
 
-A failed Spotify or Last.fm request produces **Check failed**, not a missing-scrobble alert. The monitor keeps earlier alert history and sends an operational email or webhook after three consecutive failed comparisons. After a brief retry for temporary connection or server failures, it waits for `SPOTIFY_ERROR_INTERVAL`, which defaults to three minutes. For rate-limit or `QUOTA_EXCEEDED` errors, see [Troubleshooting](troubleshooting.md#doctor-preflight).
+A failed Spotify or Last.fm request produces **Check failed**, not a missing-scrobble alert. The monitor keeps earlier alert history and sends a failure alert once the same failure has lasted five minutes, the rule Friend Activity uses. After a brief retry for temporary connection or server failures, it waits for `SPOTIFY_ERROR_INTERVAL`, which defaults to three minutes. For rate-limit or `QUOTA_EXCEEDED` errors, see [Troubleshooting](troubleshooting.md#doctor-preflight).
 
 <a id="spotify-recent-play-authorization"></a>
 ### Spotify Recent-play Authorization
@@ -289,7 +296,7 @@ On Windows, Chrome 127 and newer prevent external programs from reading these co
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
-On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice. For scripts or other noninteractive runs select one by its friendly name or directory basename:
+On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice, marking each profile that holds a current Spotify login with `*`. When exactly one profile is marked it becomes the default and Enter accepts it. For scripts or other noninteractive runs select one by its friendly name or directory basename:
 
 ```sh
 spotify_monitor --import-browser-cookie --browser firefox --browser-profile "default-release"
@@ -313,6 +320,8 @@ spotify_monitor --import-browser-cookie --browser chrome
 ```
 
 Select a Chromium browser profile by its directory name, such as `Default` or `Profile 1`. Friendly names are also accepted.
+
+On Linux, Brave and Chromium installed natively, through Snap or through Flatpak are discovered automatically. A native install is preferred when both are present. Google Chrome is only packaged natively. The profile choice marks a current Spotify login the same way the Firefox one does.
 
 Chromium-based import does not work inside Docker because the container cannot use the host password service needed to decrypt the cookies. Use Firefox as shown under [Container Operation](usage.md#import-firefox-into-container-authentication). You can also perform a Chromium import with a local PyPI or manual installation.
 
@@ -432,6 +441,8 @@ If `SP_APP_CLIENT_ID` and `SP_APP_CLIENT_SECRET` are in `.env`, a running proces
 ## SMTP Settings
 
 Email notifications need SMTP server details for the sending account. Add them to `spotify_monitor.conf` or use the setup wizard. Setup checks the login without sending an email. To replace only the password, run `spotify_monitor --set-smtp-password`. Password entry is hidden and preserves spaces.
+
+Every alert is sent as both HTML and plain text in one message, including the error and scrobble health alerts. Mail clients that render HTML show the friend name, the track, the session times and the values that changed in bold, with the track, album and playlist names linked to their Spotify pages. Clients that do not fall back to the plain text, which is unchanged.
 
 Send one test message to verify the settings:
 
@@ -583,7 +594,7 @@ WEBHOOK_ERROR_NOTIFICATION = True
 
 A `WEBHOOK_URL` that is unset or still at its `your_webhook_url` placeholder switches webhook alerts off at startup instead of failing at the first alert. `--verbose` reports why.
 
-This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
+This sends an alert when the user becomes active, becomes inactive or when monitoring has a problem. A monitoring problem also sends a recovery alert once it clears. See [Webhook Notifications](usage.md#webhook-notifications) if you want different alerts.
 
 Send one test webhook without starting monitoring:
 

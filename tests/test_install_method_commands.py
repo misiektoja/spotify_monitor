@@ -157,9 +157,11 @@ def test_container_paths_already_inside_data_are_preserved():
     assert monitor._wizard_container_path("/data/nested/custom.conf") == "/data/nested/custom.conf"
 
 
-# Verifies Firefox import commands use the selected host profile layout
-@pytest.mark.parametrize("host_os,source", [("macos", '"${HOME}/Library/Application Support/Firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux", '"$HOME/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-snap", '"$HOME/snap/firefox/common/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("linux-flatpak", '"$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox:/home/spotify/.mozilla/firefox:ro"'), ("windows-powershell", '"$env:APPDATA\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"'), ("windows-cmd", '"%APPDATA%\\Mozilla\\Firefox:/home/spotify/.mozilla/firefox:ro"')])
-def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os, source):
+# Verifies Firefox import commands use the selected host profile layout. The mount comes from the table rather than
+# being restated here, so a wrong mount fails the layout test that mounts it rather than passing two matching copies
+@pytest.mark.parametrize("host_os", sorted(monitor.CONTAINER_FIREFOX_HOSTS))
+def test_firefox_import_commands_mount_selected_host_profile(tmp_path, monkeypatch, host_os):
+    source = monitor.CONTAINER_FIREFOX_HOSTS[host_os][1]
     monkeypatch.chdir(tmp_path)
     compose = monitor._wizard_firefox_import_cmd("compose", tmp_path / ".env", host_os=host_os)
     docker = monitor._wizard_firefox_import_cmd("docker", tmp_path / ".env", host_os=host_os)
@@ -369,7 +371,9 @@ def test_the_cookie_recovery_command_skips_a_dotenv_switched_off(monkeypatch):
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
 
-    assert monitor.cookie_auth_recovery_fix().endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox"))
+    fix = monitor.cookie_auth_recovery_fix()
+    assert fix.endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox") + monitor.cookie_auth_recovery_browser_hint())
+    assert "--env-file" not in fix
 
 
 # Verifies the config sentinel is carried, since the import it suggests reads the config rather than writing it
@@ -380,4 +384,5 @@ def test_the_cookie_recovery_command_carries_the_config_sentinel(monkeypatch):
     monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", True)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
 
-    assert monitor.cookie_auth_recovery_fix().endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file none"))
+    fix = monitor.cookie_auth_recovery_fix()
+    assert fix.endswith(runtime_command("python3 spotify_monitor.py --import-browser-cookie --browser firefox --config-file none") + monitor.cookie_auth_recovery_browser_hint())

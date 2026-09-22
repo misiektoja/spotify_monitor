@@ -3,8 +3,7 @@ name: spotify_monitor CodeQL configuration
 queries:
   - uses: security-extended
 
-# The suppression query turns the in-code codeql[...] comments into suppressed alerts. Without it
-# the comments are inert and every marked line stays open in code scanning
+# Mark results covered by source suppression comments for the upload filter
 packs:
   - codeql/python-queries:AlertSuppression.ql
 

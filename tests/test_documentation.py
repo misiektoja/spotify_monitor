@@ -252,6 +252,21 @@ def test_runtime_guide_urls_match_documentation_anchors():
             assert fragment in markdown_anchors(document), f"{name} references missing anchor #{fragment} in {document_path}"
 
 
+# The Debugging Tools page covers token utilities, so a failure pointed there finds nothing about its own cause
+def test_runtime_guide_urls_stay_off_the_debugging_tools_page():
+    for name in (name for name in vars(monitor) if name.endswith("_GUIDE_URL")):
+        assert not getattr(monitor, name).startswith(monitor.DOCS_BASE_URL + "/debugging/"), name
+
+
+# Connection Problems is reached by searching for the line on screen, so it has to quote the failure summaries
+def test_the_connection_problems_page_quotes_the_failure_summaries():
+    text = read_asset("docs/troubleshooting.md")
+    failures = (Exception("Connection timed out"), monitor.req.exceptions.ConnectionError("connection refused"), Exception("503 Server Error: Service Unavailable"))
+
+    for advice in (monitor.classify_recovery_error(failure) for failure in failures):
+        assert f"`{advice.summary}`" in text, f"the troubleshooting page does not quote {advice.summary}"
+
+
 # Verifies debugging downloads retain the supported curl commands
 def test_debugging_docs_use_curl_downloads():
     commands = fenced_code_lines(read_asset("docs/debugging.md"))
@@ -539,19 +554,28 @@ def test_line_ending_policy_is_declared():
         assert pattern in attributes
 
 
-# Verifies the optional local hooks run the same linter version CI installs, or a clean commit still fails CI
-def test_local_hooks_match_the_pinned_linter():
-    pyproject = read_asset("pyproject.toml")
-    pinned = re.search(r'lint = \["ruff==([^"]+)"\]', pyproject)
-    assert pinned is not None
+# Verifies the optional local hooks run the ruff the pinned extra installs, since a second pin here would drift
+# apart from it every time one side is bumped and a locally clean commit would still fail CI
+def test_local_hooks_run_the_pinned_linter():
+    assert re.search(r'lint = \["ruff==([^"]+)"\]', read_asset("pyproject.toml")) is not None
 
-    hooks = read_yaml_asset(".pre-commit-config.yaml")["repos"]
-    ruff_hook = next(entry for entry in hooks if "ruff-pre-commit" in entry["repo"])
-    assert ruff_hook["rev"] == f"v{pinned.group(1)}"
+    repos = read_yaml_asset(".pre-commit-config.yaml")["repos"]
+    assert not any("ruff" in entry["repo"] for entry in repos), "ruff must not be pinned a second time in the hook configuration"
 
-    workflow = read_yaml_asset(".github/workflows/tests.yml")
-    lint_steps = workflow["jobs"]["lint"]["steps"]
-    assert any("ruff check" in step.get("run", "") for step in lint_steps)
+    ruff_hook = next(hook for entry in repos if entry["repo"] == "local" for hook in entry["hooks"] if hook["id"] == "ruff-check")
+    assert ruff_hook["language"] == "system"
+    assert ruff_hook["entry"].split() == ["ruff", "check"]
+
+    lint_steps = read_yaml_asset(".github/workflows/tests.yml")["jobs"]["lint"]["steps"]
+    assert any("[lint]" in step.get("run", "") for step in lint_steps)
+    lint_command = next(step["run"] for step in lint_steps if "ruff check" in step.get("run", ""))
+
+    # Both sides must also reach the same files, or the hook stays quiet about code CI rejects
+    covered = re.compile(ruff_hook["files"])
+    assert covered.match("spotify_monitor.py")
+    assert covered.match("tests/test_documentation.py")
+    assert covered.match("debug/spotify_monitor_totp_test.py")
+    assert "spotify_monitor.py debug tests" in lint_command
 
 
 # Verifies published archives stay verifiable, since an unsigned download cannot be told apart from a tampered one

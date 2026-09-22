@@ -99,16 +99,16 @@ def test_command_line_interval_overrides_the_config_file(backend_config):
 
 
 # Confirms the timing flags only touch the timers of the selected backend
-@pytest.mark.parametrize("backend,changed,untouched", [("listening_activity", ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK"), ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK")), ("buddylist", ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK"), ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK"))])
+@pytest.mark.parametrize("backend,changed,untouched", [("listening_activity", ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK", "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL"), ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK", "SPOTIFY_DISAPPEARED_CHECK_INTERVAL")), ("buddylist", ("SPOTIFY_CHECK_INTERVAL", "SPOTIFY_INACTIVITY_CHECK", "SPOTIFY_DISAPPEARED_CHECK_INTERVAL"), ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_INACTIVITY_CHECK", "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL"))])
 def test_timing_flags_follow_the_selected_backend(backend, changed, untouched):
     names = changed + untouched + ("SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL",)
     probe = PROBE_SETUP + "runtime['spotify_monitor_friend_uri'] = lambda user_id, tracks, csv_file: [print(f'{name}={runtime[name]}') for name in " + repr(names) + "]; "
     with make_temp_directory() as directory_name:
         config_path = write_config(directory_name, f'FRIEND_ACTIVITY_BACKEND = "{backend}"\n')
-        result = run_cli(["--config-file", str(config_path), "--check-interval", "77", "--offline-timer", "555", "--active-check-interval", "7"], probe)
+        result = run_cli(["--config-file", str(config_path), "--check-interval", "77", "--offline-timer", "555", "--active-check-interval", "7", "--disappeared-timer", "44"], probe)
 
     assert result.returncode == 0, result.stderr
-    assert [probe_value(result.stdout, name) for name in changed] == ["77", "555"]
+    assert [probe_value(result.stdout, name) for name in changed] == ["77", "555", "44"]
     assert [probe_value(result.stdout, name) for name in untouched] == [source_default(name) for name in untouched]
     assert probe_value(result.stdout, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL") == "7"
 

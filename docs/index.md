@@ -93,7 +93,7 @@ For the manual single-file method, optional extras and upgrade commands, see [In
 ### 🔍 Real-time Tracking
 - **Friend Activity**: Track what your friends are listening to.
 - **Scrobble Health**: Detect and alert when Spotify scrobbles stop showing up on Last.fm.
-- **Presence Detection**: Detect when friends get **online** or **offline**.
+- **Presence Detection**: Detect when friends get **online** or **offline** and how long they stay **out of view**, such as during a private session.
 - **Session Stats**: Display **duration, track counts, pauses** and **songs on loop**.
 
 ### 🎮 Playback Control
@@ -111,7 +111,7 @@ For the manual single-file method, optional extras and upgrade commands, see [In
 - **Multi-Channel**: Instant alerts via **Email** and **Webhooks** (**Discord**, **ntfy** etc.).
 - **Detailed Alerts**: Choose activity, tracked-song, every-song, loop and error alerts.
 - **Session Summaries**: Receive detailed reports when a friend finishes a session.
-- **Error Reporting**: Be notified if the monitoring process hits a snag.
+- **Error Reporting**: Be notified if the monitoring process hits a snag, with a **recovery alert** once it clears.
 
 ### ⚙️ Power Features
 - **Auth Flexibility**: Sign in with a browser **cookie** or the **Spotify Desktop Client**, no developer app required.

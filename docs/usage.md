@@ -97,6 +97,8 @@ The setup wizard walks you through the whole process. With complete local authen
 
 This mode compares the authorized Spotify account's completed plays with Last.fm recent tracks. It matches artist and track names within a configurable time window. Last.fm's currently playing track is excluded.
 
+The startup summary names both compared accounts: `Target` is the Last.fm profile and `Spotify account` is the account the recent-play authorization belongs to. That row reads `Unknown` when the account lookup does not succeed, which is also when alerts drop the Spotify side.
+
 If you only need to enter or replace the Last.fm API key, run `spotify_monitor --set-lastfm-credentials`. The key is hidden during entry and saved to the selected dotenv file.
 
 To authorize again after the Spotify refresh token expires or is revoked, run:
@@ -124,6 +126,8 @@ To run Friend Activity with a scrobble health config, select Friend Activity and
 ```sh
 spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mode friend_activity SPOTIFY_USER_ID
 ```
+
+The scrobble health alert goes out by email and webhook by default. Turn either channel off for one run with `--no-scrobble-health-notify` or `--no-webhook-scrobble-health-notify`, or back on with `--notify-scrobble-health` or `--webhook-scrobble-health`.
 
 Scrobble-specific settings have one-run options, so every comparison control can be changed without a config file:
 
@@ -358,6 +362,8 @@ To send an email when a user becomes inactive:
 spotify_monitor <spotify_target> -i
 ```
 
+The inactive and active emails also report when the user is no longer visible in listening activity, for example during a private session, and when the user is visible again with the time away.
+
 Inactivity emails list recent tracks from the session with their skipped status, how long the last track played and how long the user paused. Configure the number of recent songs to include via the `INACTIVE_EMAIL_RECENT_SONGS_COUNT` configuration option.
 
 To send an email when a listed track, playlist or album plays:
@@ -412,6 +418,14 @@ spotify_monitor <spotify_target> -e
 
 An error alert goes out once the same failure has lasted **5 minutes**, so a short outage or one lost request reaches nobody, while a failure that cannot clear on its own, such as an expired sp_dc cookie, is alerted at once. Each kind of failure alerts once per channel. A channel that could not deliver is tried again on a later failing check, after **5 minutes** at first and then after twice the previous wait, up to an hour. A run that recovered alerts again when it fails later. The same rule governs the webhook error alert.
 
+Every failure alert uses the subject `Spotify Monitor (<mode>) error: <what went wrong> (user: <display name>, <user URI id>)` and lists the fix, the guide link, how many checks failed in a row, since when and when the next retry happens. `<mode>` is `Friend Activity` or `Spotify-to-Last.fm scrobble health` and qualifies the tool name, so an inbox carrying both says which one failed. The user URI id is used alone until the target has been read once. Everywhere else the target is written as `<display name> (<user URI id>)`, which is how the recovery alert and the console lines name it. When the failure clears, a **recovery alert** with the subject `Spotify Monitor (<mode>) recovered: monitoring <target> resumed after <duration>` follows on each channel that delivered the failure alert. In scrobble health mode the target names both sides of the comparison instead, as `(spotify: <display name>, <user id>, last.fm: <lastfm username>)`, so a Spotify failure is not read as a problem with the Last.fm profile. The Spotify side is the account the recent-play authorization belongs to and is dropped when that lookup fails. The `-e` flag switches off the error email and the recovery email together. `--no-webhook-error-notify` does the same for the webhook. A channel that could not receive the failure alert while the outage lasted is told about the failure and its recovery together, so a blocked channel is not left without any word of an outage.
+
+In scrobble health mode, the alert for missing and resumed scrobbles is sent by email when `SCROBBLE_HEALTH_NOTIFICATION` is `True`, which is the default. Use `--notify-scrobble-health` or `--no-scrobble-health-notify` to change it for one run:
+
+```sh
+spotify_monitor --monitor-mode scrobble_health --no-scrobble-health-notify
+```
+
 All email alerts require valid [SMTP settings](configuration.md#smtp-settings).
 
 Example email:
@@ -429,12 +443,15 @@ You can also change the settings yourself in `spotify_monitor.conf` or use a com
 
 | Event | Config setting | CLI override |
 | --- | --- | --- |
-| User becomes active | `WEBHOOK_ACTIVE_NOTIFICATION` | `--webhook-active` |
-| User becomes inactive | `WEBHOOK_INACTIVE_NOTIFICATION` | `--webhook-inactive` |
+| User becomes active or is visible again | `WEBHOOK_ACTIVE_NOTIFICATION` | `--webhook-active` |
+| User becomes inactive or is no longer visible | `WEBHOOK_INACTIVE_NOTIFICATION` | `--webhook-inactive` |
 | Monitored track, playlist or album plays | `WEBHOOK_TRACK_NOTIFICATION` | `--webhook-track` |
 | Every song change | `WEBHOOK_SONG_NOTIFICATION` | `--webhook-song-changes` |
 | Song loop detected | `WEBHOOK_SONG_ON_LOOP_NOTIFICATION` | `--webhook-loop` |
 | Monitoring error | `WEBHOOK_ERROR_NOTIFICATION` | Enable with `--webhook-errors` or disable with `--no-webhook-error-notify` |
+| Missing or resumed scrobbles (scrobble health mode) | `WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION` | Enable with `--webhook-scrobble-health` or disable with `--no-webhook-scrobble-health-notify` |
+
+A monitoring error webhook carries the same title and text as the error email, without the timestamp the provider adds itself. The recovery alert follows on the same channel when the failure clears.
 
 For example, this sends a webhook alert for every song change during one run:
 
@@ -549,7 +566,7 @@ For scrobble health, set the time between successful comparisons through `SCROBB
 spotify_monitor --monitor-mode scrobble_health --scrobble-check-interval 120
 ```
 
-Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. An operational email or webhook is sent after three consecutive failures. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
+Scrobble health uses `SPOTIFY_ERROR_INTERVAL` after a failed comparison, with a default of three minutes. Its failure alert follows the same **5 minute** rule Friend Activity uses. See [Last.fm Scrobble Health](configuration.md#lastfm-scrobble-health) for alert and retry behavior.
 
 Each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer starts at the pause moment. Set the number of seconds through `SPOTIFY_LIVE_INACTIVITY_CHECK` or `-o`, three minutes by default:
 
@@ -557,10 +574,10 @@ Each check that reports playback keeps the session active, including during long
 spotify_monitor <spotify_target> -o 900
 ```
 
-If a user disappears from Friend Activity, use `-m` or `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` to control the delay between visibility checks:
+When the user is no longer visible, for example during a private session, the tool reports it and checks every `SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL` seconds, 30 by default, until the user returns, then reports how long the user was away. A shorter interval times the return more closely. `-m` sets the timer of the selected backend, the legacy one is `SPOTIFY_DISAPPEARED_CHECK_INTERVAL` with a default of three minutes:
 
 ```sh
-spotify_monitor <spotify_target> -m 180
+spotify_monitor <spotify_target> -m 30
 ```
 
 <a id="liveness-reminder"></a>
