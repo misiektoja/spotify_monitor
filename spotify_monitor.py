@@ -2818,20 +2818,49 @@ def _firefox_profile_roots(system_name=None, home=None, environ=None):
     if selected_system == "Darwin":
         return [home_path / "Library/Application Support/Firefox"]
     if selected_system == "Windows":
-        appdata = environment.get("APPDATA")
-        return [Path(appdata) / "Mozilla/Firefox"] if appdata else [home_path / "AppData/Roaming/Mozilla/Firefox"]
+        return _windows_firefox_profile_roots(home_path, environment)
     if selected_system == "Linux":
         return [home_path / ".mozilla/firefox", home_path / "snap/firefox/common/.mozilla/firefox", home_path / ".var/app/org.mozilla.firefox/.mozilla/firefox"]
     return []
 
 
-# Names the packaging one profile tree belongs to, since Snap, Flatpak and distribution builds keep separate trees
+# Returns the Windows Firefox profile roots, covering a redirected application-data directory and Store packages
+def _windows_firefox_profile_roots(home_path, environment):
+    roaming = environment.get("APPDATA")
+    roots = [Path(roaming) / "Mozilla/Firefox"] if roaming else []
+    roots.append(home_path / "AppData/Roaming/Mozilla/Firefox")
+    local = environment.get("LOCALAPPDATA")
+    package_parents = [Path(local) / "Packages"] if local else []
+    package_parents.append(home_path / "AppData/Local/Packages")
+    for package_parent in _unique_paths(package_parents):
+        # A Store build redirects its application data into its own package directory, whose name carries a
+        # publisher suffix, so the installed package is looked up rather than named
+        try:
+            roots.extend(sorted(package_parent.glob("Mozilla.Firefox_*/LocalCache/Roaming/Mozilla/Firefox")))
+        except OSError:
+            continue
+    return _unique_paths(roots)
+
+
+# Drops repeated paths, keeping the first, since a redirected root routinely names the home-relative one
+def _unique_paths(paths):
+    unique = {}
+    for path in paths:
+        unique.setdefault(os.path.normcase(os.path.normpath(str(path))), path)
+    return list(unique.values())
+
+
+# Names the packaging one profile tree belongs to, since Snap, Flatpak, Microsoft Store and distribution builds keep separate trees
 def packaging_label(profile_path):
-    lowered = str(profile_path).replace(os.sep, "/").lower()
+    # Backslashes are normalized rather than os.sep, since the path classified here can come from another
+    # platform than the host running the check
+    lowered = str(profile_path).replace("\\", "/").lower()
     if "/snap/" in lowered:
         return "Snap"
     if "/.var/app/" in lowered:
         return "Flatpak"
+    if "/packages/mozilla.firefox_" in lowered:
+        return "Microsoft Store"
     return ""
 
 
