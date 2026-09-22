@@ -4,10 +4,11 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.5.1 (TBD)
 
-Version **3.5.1** finds Firefox installed from the Microsoft Store when importing the browser cookie on Windows.
+Version **3.5.1** finds Firefox installed from the Microsoft Store when importing the browser cookie on Windows. Selected notification channels with unusable local settings are shown as unavailable and automatic sends stay quiet until the settings are fixed.
 
 **Bug fixes**:
 
+- **BUGFIX:** **Unavailable notification channels stay quiet** - The startup summary shows **`Unavailable`** and names the missing or invalid email or webhook setting. Automatic sends make no attempt and print no delivery line until that channel is configured. Activity alerts queued after a real delivery failure wait quietly while their channel is unavailable. **`Off`** means alerts are disabled for that channel
 - **BUGFIX:** **Firefox from the Microsoft Store is found on Windows** - Only `%APPDATA%\Mozilla\Firefox` was searched, so a machine whose only Firefox came from the Store was told to **install Firefox** when it already had it. The Store package's own profile folder under `%LOCALAPPDATA%\Packages` is now searched too, its profiles are tagged **`[Microsoft Store]`** so the `default-release` that both installs create can be told apart, and a redirected `APPDATA` or `LOCALAPPDATA` no longer hides the profiles under your home directory. Container imports mount a single fixed path and still cover the regular installer only
 
 # Changes in 3.5 (22 Sep 2026)
