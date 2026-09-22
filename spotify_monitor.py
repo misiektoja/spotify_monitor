@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.5
+v3.5.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.5"
+VERSION = "3.5.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -2133,8 +2133,8 @@ def send_failure_alert(advice: RecoveryAdvice, target: str, retry_seconds: int, 
     # A failure the tool can retry away is alerted once the outage has lasted ERROR_ALERT_AFTER_SECONDS, one it cannot at once
     now = int(time.time())
     alert_due = not advice.retryable or now - outage.since >= ERROR_ALERT_AFTER_SECONDS
-    email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION, now)
-    webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error"), now)
+    email_pending = alert_due and error_alert.pending("email", ERROR_NOTIFICATION and email_settings_problem() is None, now)
+    webhook_pending = alert_due and error_alert.pending("webhook", webhook_event_enabled("error") and webhook_settings_problem() is None, now)
     if not (email_pending or webhook_pending):
         return False
     subject = recovery_alert_subject(advice, target, mode)
@@ -2183,12 +2183,14 @@ def outage_missed_body_html(advice: RecoveryAdvice, target: str, lasted: int, ti
 # Sends the recovery alert on each channel whose failure alert was delivered, returning whether any channel was tried
 def send_outage_recovery_alert(target: str, lasted: int, error_alert: ErrorAlertState, mode: str = MONITOR_MODE_LABEL) -> bool:
     advice = error_alert.advice
-    email_enabled = error_alert.email_sent and bool(ERROR_NOTIFICATION)
-    webhook_enabled = error_alert.webhook_sent and webhook_event_enabled("error")
+    email_ready = bool(ERROR_NOTIFICATION and email_settings_problem() is None)
+    webhook_ready = bool(webhook_event_enabled("error") and webhook_settings_problem() is None)
+    email_enabled = error_alert.email_sent and email_ready
+    webhook_enabled = error_alert.webhook_sent and webhook_ready
     # A channel whose failure alert never got through hears about the outage and its end together, rather than
     # nothing at all, which is what a channel blocked for the length of the outage would otherwise receive
-    email_missed = error_alert.missed("email", ERROR_NOTIFICATION)
-    webhook_missed = error_alert.missed("webhook", webhook_event_enabled("error"))
+    email_missed = error_alert.missed("email", email_ready)
+    webhook_missed = error_alert.missed("webhook", webhook_ready)
     if advice is None or not (email_enabled or webhook_enabled or email_missed or webhook_missed):
         return False
     email_text, email_html = (outage_missed_body, outage_missed_body_html) if email_missed else (outage_recovery_body, outage_recovery_body_html)
@@ -2818,20 +2820,49 @@ def _firefox_profile_roots(system_name=None, home=None, environ=None):
     if selected_system == "Darwin":
         return [home_path / "Library/Application Support/Firefox"]
     if selected_system == "Windows":
-        appdata = environment.get("APPDATA")
-        return [Path(appdata) / "Mozilla/Firefox"] if appdata else [home_path / "AppData/Roaming/Mozilla/Firefox"]
+        return _windows_firefox_profile_roots(home_path, environment)
     if selected_system == "Linux":
         return [home_path / ".mozilla/firefox", home_path / "snap/firefox/common/.mozilla/firefox", home_path / ".var/app/org.mozilla.firefox/.mozilla/firefox"]
     return []
 
 
-# Names the packaging one profile tree belongs to, since Snap, Flatpak and distribution builds keep separate trees
+# Returns the Windows Firefox profile roots, covering a redirected application-data directory and Store packages
+def _windows_firefox_profile_roots(home_path, environment):
+    roaming = environment.get("APPDATA")
+    roots = [Path(roaming) / "Mozilla/Firefox"] if roaming else []
+    roots.append(home_path / "AppData/Roaming/Mozilla/Firefox")
+    local = environment.get("LOCALAPPDATA")
+    package_parents = [Path(local) / "Packages"] if local else []
+    package_parents.append(home_path / "AppData/Local/Packages")
+    for package_parent in _unique_paths(package_parents):
+        # A Store build redirects its application data into its own package directory, whose name carries a
+        # publisher suffix, so the installed package is looked up rather than named
+        try:
+            roots.extend(sorted(package_parent.glob("Mozilla.Firefox_*/LocalCache/Roaming/Mozilla/Firefox")))
+        except OSError:
+            continue
+    return _unique_paths(roots)
+
+
+# Drops repeated paths, keeping the first, since a redirected root routinely names the home-relative one
+def _unique_paths(paths):
+    unique = {}
+    for path in paths:
+        unique.setdefault(os.path.normcase(os.path.normpath(str(path))), path)
+    return list(unique.values())
+
+
+# Names the packaging one profile tree belongs to, since Snap, Flatpak, Microsoft Store and distribution builds keep separate trees
 def packaging_label(profile_path):
-    lowered = str(profile_path).replace(os.sep, "/").lower()
+    # Backslashes are normalized rather than os.sep, since the path classified here can come from another
+    # platform than the host running the check
+    lowered = str(profile_path).replace("\\", "/").lower()
     if "/snap/" in lowered:
         return "Snap"
     if "/.var/app/" in lowered:
         return "Flatpak"
+    if "/packages/mozilla.firefox_" in lowered:
+        return "Microsoft Store"
     return ""
 
 
@@ -5644,8 +5675,9 @@ def send_webhook(title: str, description: str, notification_type: str = "song", 
 
 # Sends one alert through the enabled email and webhook channels
 def send_notification_channels(notification_type: str, subject: str, body: str, body_html: str = "", email_enabled: bool = False, webhook_enabled: Optional[bool] = None, image_url: str = "", subject_short: str = "", body_short: str = "", ntfy_priority: int = 0, ntfy_tags: str = "", retain_failures: bool = True, webhook_body: str = "", webhook_body_html: str = "") -> tuple[bool, bool]:
-    email_selected = bool(email_enabled)
-    webhook_selected = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    email_selected = bool(email_enabled and email_settings_problem() is None)
+    webhook_requested = webhook_event_enabled(notification_type) if webhook_enabled is None else bool(webhook_enabled)
+    webhook_selected = bool(webhook_requested and WEBHOOK_ENABLED and webhook_settings_problem() is None)
     email_succeeded = False
     webhook_succeeded = False
     if email_selected:
@@ -5672,8 +5704,13 @@ def retry_pending_activity_notifications() -> None:
     pending_notifications = list(PENDING_ACTIVITY_NOTIFICATIONS)
     PENDING_ACTIVITY_NOTIFICATIONS.clear()
     for pending in pending_notifications:
+        email_ready = bool(pending["email_enabled"] and email_settings_problem() is None)
+        webhook_ready = bool(pending["webhook_enabled"] and WEBHOOK_ENABLED and webhook_settings_problem() is None)
+        if not (email_ready or webhook_ready):
+            PENDING_ACTIVITY_NOTIFICATIONS.append(pending)
+            continue
         print(f"Retrying pending {pending['notification_type']} notification")
-        email_succeeded, webhook_succeeded = send_notification_channels(pending["notification_type"], pending["subject"], pending["body"], pending["body_html"], pending["email_enabled"], pending["webhook_enabled"], image_url=pending["image_url"], subject_short=pending["subject_short"], body_short=pending["body_short"], ntfy_priority=pending["ntfy_priority"], ntfy_tags=pending["ntfy_tags"], retain_failures=False)
+        email_succeeded, webhook_succeeded = send_notification_channels(pending["notification_type"], pending["subject"], pending["body"], pending["body_html"], email_ready, webhook_ready, image_url=pending["image_url"], subject_short=pending["subject_short"], body_short=pending["body_short"], ntfy_priority=pending["ntfy_priority"], ntfy_tags=pending["ntfy_tags"], retain_failures=False)
         pending["email_enabled"] = pending["email_enabled"] and not email_succeeded
         pending["webhook_enabled"] = pending["webhook_enabled"] and not webhook_succeeded
         if pending["email_enabled"] or pending["webhook_enabled"]:
@@ -8516,11 +8553,25 @@ def webhook_channel_configured() -> bool:
     return bool(normalized_webhook_provider()) and doctor_secret_is_set(WEBHOOK_URL)
 
 
-# Rolls one channel's enabled alerts into the state its summary row reports, which is off while the channel has no destination
-def _startup_notification_state(categories: Sequence[str], configured: bool) -> str:
+# Names the first local webhook setting that prevents automatic alert delivery
+def webhook_settings_problem():
+    if not doctor_secret_is_set(WEBHOOK_URL):
+        return "WEBHOOK_URL is empty or still set to its placeholder"
+    if not validate_webhook_url():
+        return "WEBHOOK_URL must contain a complete HTTPS link"
+    provider = normalized_webhook_provider()
+    if not provider:
+        return "WEBHOOK_PROVIDER must be discord or ntfy"
+    if validate_webhook_customization(provider) is not None:
+        return "Webhook customization is invalid"
+    return validate_webhook_headers(provider)
+
+
+# Rolls selected alerts into the startup state and names an unusable local setting
+def _startup_notification_state(categories: Sequence[str], problem: Optional[str]) -> str:
     if not categories:
         return "Off"
-    return "On (" + ", ".join(categories) + ")" if configured else "Off (not configured)"
+    return f"Unavailable ({problem})" if problem else "On (" + ", ".join(categories) + ")"
 
 
 # Reports the mail server and the recipient an alert would reach, without the account that signs in to the server
@@ -8576,8 +8627,9 @@ def build_startup_summary(target: str, config_path, env_path, output_path, scrob
     authentication = "Client mode, advanced" if TOKEN_SOURCE == "client" else "Cookie mode"
     enabled_notifications = _startup_notification_categories()
     enabled_webhooks = _startup_webhook_notification_categories()
-    notification_state_email = _startup_notification_state(enabled_notifications, email_channel_configured())
-    notification_state_webhook = _startup_notification_state(enabled_webhooks, webhook_channel_configured())
+    email_problem = email_settings_problem() if enabled_notifications else None
+    notification_state_email = _startup_notification_state(enabled_notifications, email_problem[0] if email_problem else None)
+    notification_state_webhook = _startup_notification_state(enabled_webhooks, webhook_settings_problem() if enabled_webhooks else None)
     output_state = str(output_path) if output_path else "Terminal only (logging disabled)"
     if MONITOR_MODE == "scrobble_health":
         return [
@@ -15122,7 +15174,7 @@ def main():
     if args.track_in_spotify is True:
         TRACK_SONGS = True
 
-    if not SMTP_HOST or SMTP_HOST.startswith("your_smtp_server_"):
+    if (not SMTP_HOST or SMTP_HOST.startswith("your_smtp_server_")) and set(_startup_notification_categories()) <= {"errors"}:
         verbose_print("Email notifications are off because SMTP_HOST is still the shipped placeholder")
         ACTIVE_NOTIFICATION = False
         INACTIVE_NOTIFICATION = False
@@ -15131,9 +15183,6 @@ def main():
         SONG_ON_LOOP_NOTIFICATION = False
         ERROR_NOTIFICATION = False
         SCROBBLE_HEALTH_NOTIFICATION = False
-    if WEBHOOK_ENABLED and not validate_webhook_url():
-        verbose_print("Webhook notifications are off because WEBHOOK_URL is not a complete HTTPS link")
-        WEBHOOK_ENABLED = False
 
     # Resolved before the summary so it can name both compared accounts, and passed on so the monitor reuses one lookup
     scrobble_account = spotify_get_scrobble_account() if scrobble_health_mode else None

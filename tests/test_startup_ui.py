@@ -38,7 +38,7 @@ def configure_summary(monkeypatch):
         "SONG_ON_LOOP_NOTIFICATION": False,
         "ERROR_NOTIFICATION": False,
         "WEBHOOK_ENABLED": False,
-        "WEBHOOK_URL": "known-webhook-secret",
+        "WEBHOOK_URL": "https://discord.com/api/webhooks/123/known-webhook-secret",
         "WEBHOOK_ACTIVE_NOTIFICATION": False,
         "WEBHOOK_INACTIVE_NOTIFICATION": False,
         "WEBHOOK_TRACK_NOTIFICATION": False,
@@ -61,9 +61,11 @@ def configure_summary(monkeypatch):
         "SMTP_PASSWORD": "known-smtp-secret",
         "SP_CACHED_ACCESS_TOKEN": "known-access-secret",
         "SP_CACHED_CLIENT_TOKEN": "known-client-secret",
-        # The email rollup reports a channel with no mail server as off, whatever its alert types are
+        # Selected email categories need valid local settings to report On
         "SMTP_HOST": "smtp.example.com",
         "SMTP_PORT": 587,
+        "SMTP_USER": "sender@example.com",
+        "SENDER_EMAIL": "sender@example.com",
         "RECEIVER_EMAIL": "michal.k@example.com",
     }
     for name, value in values.items():

@@ -295,7 +295,7 @@ Normal runs make the current directory available as `/data` in the container. Co
 
 The macOS shell and Windows PowerShell examples use `${PWD}`. In Windows Command Prompt use `%cd%` for the current directory. Native Linux examples use `$PWD` and pass your numeric user and group IDs.
 
-On Windows, configure Docker Desktop or another Docker-compatible runtime to use Linux containers. Guided setup supports Firefox import from the normal `%APPDATA%\Mozilla\Firefox` profile root and prints shell-specific commands for PowerShell or Command Prompt.
+On Windows, configure Docker Desktop or another Docker-compatible runtime to use Linux containers. Guided setup supports Firefox import from the normal `%APPDATA%\Mozilla\Firefox` profile root and prints shell-specific commands for PowerShell or Command Prompt. Firefox from the Microsoft Store keeps its profiles inside its own package folder, which these commands do not mount, so import that profile with a native install of the tool instead.
 
 The `:z` suffix lets Docker relabel the mounted directory on hosts that use SELinux. If your Docker-compatible runtime reports that `:z` is invalid, remove only `:z` and keep the rest of the mount.
 

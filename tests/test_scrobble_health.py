@@ -16,6 +16,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 
 
+@pytest.fixture
+# Gives mocked operational alert senders valid local channel settings
+def configured_alert_channels(monkeypatch):
+    for name, value in (("SMTP_HOST", "smtp.example.com"), ("SMTP_PORT", 587), ("SMTP_USER", "sender@example.com"), ("SMTP_PASSWORD", "test-password"), ("SENDER_EMAIL", "sender@example.com"), ("RECEIVER_EMAIL", "receiver@example.com"), ("WEBHOOK_ENABLED", True), ("WEBHOOK_PROVIDER", "discord"), ("WEBHOOK_URL", "https://discord.com/api/webhooks/123/private-token")):
+        monkeypatch.setattr(monitor, name, value)
+
+
 # Runs one CLI command without raising for a nonzero status
 def run_cli(*arguments):
     environment = os.environ.copy()
@@ -849,7 +856,7 @@ def test_scrobble_health_notification_matches_regular_alert_format(monkeypatch, 
 
 
 # Confirms operational alerts include a timestamp and send before the console timestamp
-def test_scrobble_health_monitor_formats_operational_error_notifications(monkeypatch, capsys):
+def test_scrobble_health_monitor_formats_operational_error_notifications(monkeypatch, capsys, configured_alert_channels):
     timestamp_mock = Mock(side_effect=lambda prefix: print(f"{prefix}CONSOLE-TIMESTAMP"))
     delivery_mock = Mock(side_effect=lambda *args, **kwargs: (print("Sending webhook notification") or False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
@@ -880,7 +887,7 @@ def test_scrobble_health_monitor_formats_operational_error_notifications(monkeyp
 
 # Confirms partial operational-alert success retries only the channel that failed
 @pytest.mark.parametrize(("first_result", "second_result", "retry_email", "retry_webhook"), [((True, False), (False, True), False, True), ((False, True), (True, False), True, False)])
-def test_scrobble_health_operational_alert_retries_failed_channel(monkeypatch, first_result, second_result, retry_email, retry_webhook):
+def test_scrobble_health_operational_alert_retries_failed_channel(monkeypatch, first_result, second_result, retry_email, retry_webhook, configured_alert_channels):
     delivery_mock = Mock(side_effect=[first_result, second_result])
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
     monkeypatch.setattr(monitor, "spotify_get_scrobble_account", lambda *args, **kwargs: ("", ""))
@@ -905,7 +912,7 @@ def test_scrobble_health_operational_alert_retries_failed_channel(monkeypatch, f
 
 
 # Confirms a cleared operational failure is announced and closed on the channel that carried its alert
-def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monkeypatch, capsys):
+def test_scrobble_health_monitor_reports_recovery_after_an_alerted_failure(monkeypatch, capsys, configured_alert_channels):
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), RuntimeError("failure 2"), RuntimeError("failure 3"), [], KeyboardInterrupt])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
@@ -955,7 +962,7 @@ def test_scrobble_health_monitor_stays_quiet_when_an_unalerted_failure_clears(mo
 
 
 # Confirms a successful comparison closes the outage so the next failure opens a new one
-def test_scrobble_health_monitor_starts_a_new_outage_after_success(monkeypatch, capsys):
+def test_scrobble_health_monitor_starts_a_new_outage_after_success(monkeypatch, capsys, configured_alert_channels):
     spotify_mock = Mock(side_effect=[RuntimeError("failure 1"), [], RuntimeError("failure 2"), RuntimeError("failure 3"), RuntimeError("failure 4")])
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
