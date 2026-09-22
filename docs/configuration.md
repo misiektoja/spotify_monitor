@@ -296,6 +296,8 @@ On Windows, Chrome 127 and newer prevent external programs from reading these co
 spotify_monitor --import-browser-cookie --browser firefox
 ```
 
+On Windows, Firefox from the regular installer and from the Microsoft Store are both discovered. The Store package keeps its profiles under `%LOCALAPPDATA%\Packages\Mozilla.Firefox_*\LocalCache\Roaming\Mozilla\Firefox`, and its profiles are listed as `[Microsoft Store]` so the `default-release` that both installs create can be told apart. A redirected `APPDATA` or `LOCALAPPDATA` is followed as well as the home-relative location.
+
 On Linux, Firefox profiles installed natively, through Snap or through Flatpak are discovered automatically. On every platform, the importer reads `profiles.ini` and normal profile directories. If one usable profile exists it is selected automatically. If several profiles exist an interactive terminal shows a numbered choice, marking each profile that holds a current Spotify login with `*`. When exactly one profile is marked it becomes the default and Enter accepts it. For scripts or other noninteractive runs select one by its friendly name or directory basename:
 
 ```sh
