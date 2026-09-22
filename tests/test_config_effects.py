@@ -177,8 +177,8 @@ def test_connectivity_defaults_are_not_bound_at_import():
     assert [parameters[name].default for name in ("url", "timeout", "verify")] == [None, None, None], "resolving these at import time would freeze them before any config file loads"
 
 
-# Confirms an unedited webhook destination switches the channel off while a real one keeps it on
-@pytest.mark.parametrize(("webhook_url", "expected"), (("your_webhook_url", "False"), ("https://ntfy.sh/some-topic", "True")))
+# Confirms an unedited webhook destination remains selected and unavailable
+@pytest.mark.parametrize(("webhook_url", "expected"), (("your_webhook_url", "True"), ("https://ntfy.sh/some-topic", "True")))
 def test_a_placeholder_webhook_url_switches_the_channel_off(webhook_url, expected):
     with make_temp_directory() as directory_name:
         config_path = write_config(directory_name, f'WEBHOOK_ENABLED = True\nWEBHOOK_PROVIDER = "ntfy"\nWEBHOOK_URL = "{webhook_url}"\n')

@@ -88,6 +88,12 @@ def configure_webhook(monkeypatch):
     monkeypatch.setattr(monitor, "WEBHOOK_SONG_NOTIFICATION", True)
 
 
+# Gives email alerts valid local settings without opening an SMTP connection
+def configure_email(monkeypatch):
+    for name, value in (("SMTP_HOST", "smtp.example.com"), ("SMTP_PORT", 587), ("SMTP_USER", "sender@example.com"), ("SMTP_PASSWORD", "test-password"), ("SENDER_EMAIL", "sender@example.com"), ("RECEIVER_EMAIL", "receiver@example.com")):
+        monkeypatch.setattr(monitor, name, value)
+
+
 # Verifies webhook URLs require complete HTTPS endpoints without embedded credentials
 @pytest.mark.parametrize("url,expected", [("https://discord.com/api/webhooks/123/token", True), ("https://hooks.example.test/discord/path", True), ("http://discord.com/api/webhooks/123/token", False), ("https://user:password@example.test/hook", False), ("https://example.test", False), ("not-a-url", False), ("", False)])
 def test_webhook_url_validation(url, expected):
@@ -613,8 +619,28 @@ def test_only_discord_receives_the_formatted_body(monkeypatch, provider, destina
     assert seen == [expected]
 
 
+# Verifies unavailable automatic channels make no attempt or status line
+def test_unavailable_channels_are_silent(monkeypatch, capsys):
+    email = Mock()
+    webhook = Mock()
+    monkeypatch.setattr(monitor, "SMTP_PASSWORD", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
+    monkeypatch.setattr(monitor, "PENDING_ACTIVITY_NOTIFICATIONS", [])
+    monkeypatch.setattr(monitor, "send_email", email)
+    monkeypatch.setattr(monitor, "send_webhook", webhook)
+    assert monitor.send_notification_channels("active", "Subject", "Body", email_enabled=True, webhook_enabled=True) == (False, False)
+    monitor.retry_pending_activity_notifications()
+    assert monitor.PENDING_ACTIVITY_NOTIFICATIONS == []
+    email.assert_not_called()
+    webhook.assert_not_called()
+    assert capsys.readouterr().out == ""
+
+
 # Verifies email and webhook attempts remain independent in both directions
 def test_notification_channels_are_independent(monkeypatch):
+    configure_email(monkeypatch)
+    configure_webhook(monkeypatch)
     email = Mock(return_value=0)
     webhook = Mock(return_value=0)
     monkeypatch.setattr(monitor, "send_email", email)
@@ -630,6 +656,7 @@ def test_notification_channels_are_independent(monkeypatch):
 
 # A webhook provider stamps its own time, so a body meant for the webhook replaces the one the email carries
 def test_a_webhook_body_of_its_own_replaces_the_email_body(monkeypatch):
+    configure_email(monkeypatch)
     configure_webhook(monkeypatch)
     email = Mock(return_value=0)
     webhook = Mock(return_value=0)
@@ -645,6 +672,8 @@ def test_a_webhook_body_of_its_own_replaces_the_email_body(monkeypatch):
 
 # Verifies channel results report delivery success instead of attempted sends
 def test_notification_channels_report_transport_failures(monkeypatch):
+    configure_email(monkeypatch)
+    configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor, "send_email", Mock(return_value=1))
     monkeypatch.setattr(monitor, "send_webhook", Mock(return_value=1))
     assert monitor.send_notification_channels("song", "Title", "Body", email_enabled=True, webhook_enabled=True) == (False, False)
@@ -652,6 +681,8 @@ def test_notification_channels_report_transport_failures(monkeypatch):
 
 # Verifies failed activity transitions remain queued until their channels succeed
 def test_failed_activity_notification_is_retried(monkeypatch):
+    configure_email(monkeypatch)
+    configure_webhook(monkeypatch)
     email = Mock(side_effect=[1, 0])
     webhook = Mock(side_effect=[1, 0])
     monkeypatch.setattr(monitor, "PENDING_ACTIVITY_NOTIFICATIONS", [])
