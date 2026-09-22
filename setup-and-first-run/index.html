@@ -859,10 +859,10 @@
 </div>
 </div>
 </div>
-<p>In friend activity mode, a <strong>target</strong> is the Spotify user whose activity you want to monitor. The <strong>monitoring account</strong> is the Spotify account represented by your saved login cookie or client credentials. The monitoring account must follow the target. They are normally different accounts.</p>
-<p>The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional <code>pycookiecheat</code> package. If it is missing, the wizard can install it in a local Python installation.</p>
+<p>In friend activity mode, a <strong>target</strong> is the Spotify user whose activity you want to monitor. The <strong>monitoring account</strong> is the Spotify account represented by your saved login cookie or client credentials. The target must share listening activity with the monitoring account, either with all followers, which requires the monitoring account to follow the target, or with selected people that include it. They are normally different accounts.</p>
+<p>The wizard recommends importing the monitoring account's saved Firefox login. On macOS and Linux it can also import from Chrome, Brave or Chromium. Those three browsers require the optional <code>pycookiecheat</code> package. If it is missing, the wizard can install it in a local Python installation. The login menu reports how many profiles of each browser hold a current Spotify login, so the choice is not blind. If an import does not complete, the wizard offers to retry it, to import from a different browser or to enter the cookie privately.</p>
 <p>Container setup destinations must stay inside <code>/data</code>, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.</p>
-<p>After saving authentication, the wizard checks whether the monitoring account follows the target. It offers to follow the target only when needed and sends the follow request only after you confirm.</p>
+<p>After saving authentication, the wizard checks whether the target is visible or followed. It offers to follow the target only when neither is the case and sends the follow request only after you confirm.</p>
 <p>With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.</p>
 <h3 id="set-up-lastfm-scrobble-health-instead">Set up Last.fm scrobble health instead<a class="headerlink" href="#set-up-lastfm-scrobble-health-instead" title="Permanent link">&para;</a></h3>
 <p>Spotify's six-month re-authorization requirement can disconnect Spotify Scrobbling. Last.fm currently shows only a website banner and sends no explicit email warning, so the problem can remain unnoticed when someone rarely opens the website.</p>
@@ -881,12 +881,12 @@
 <p>The macOS shell and Windows PowerShell examples use <code>${PWD}</code>. In Windows Command Prompt replace <code>${PWD}</code> with <code>%cd%</code>. Windows hosts must use Linux containers. The <code>:z</code> suffix is for hosts that use SELinux. If your Docker-compatible runtime reports that it is invalid, remove only <code>:z</code>.</p>
 <p><a id="before-you-start"></a></p>
 <h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
-<p>Spotify only shows a person's listening activity when both of these conditions are met:</p>
+<p>Spotify only shows a person's listening activity when that person shares it with the account used by Spotify Monitor, in one of two ways:</p>
 <ol>
-<li>The Spotify account used by Spotify Monitor follows the person you want to monitor.</li>
-<li>That person has enabled listening activity sharing in Spotify.</li>
+<li>With <strong>all followers</strong>: the account used by Spotify Monitor must follow the person you want to monitor.</li>
+<li>With <strong>selected people</strong>: the person selects the account used by Spotify Monitor. Following is not required.</li>
 </ol>
-<p>The setup wizard checks whether the monitoring account follows the target. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use <strong>Share</strong> &gt; <strong>Copy link to profile</strong> and paste the complete link into the wizard. You do not need to extract the user ID. See <a href="../configuration/#following-the-monitored-user">Following the Monitored User</a>.</p>
+<p>The setup wizard checks whether the target is visible or followed and offers to follow the target when neither is the case. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use <strong>Share</strong> &gt; <strong>Copy link to profile</strong> and paste the complete link into the wizard. You do not need to extract the user ID. See <a href="../configuration/#following-the-monitored-user">Following the Monitored User</a>.</p>
 <p><a id="not-sure-which-command-you-need"></a></p>
 <h2 id="not-sure-which-command-you-need">Not sure which command you need?<a class="headerlink" href="#not-sure-which-command-you-need" title="Permanent link">&para;</a></h2>
 <table>
@@ -989,7 +989,7 @@
 <p>The link is entered through a hidden prompt and saved as <code>WEBHOOK_URL</code> in <code>.env</code>. This command only saves the link. It does not turn on webhook alerts or send a message. See <a href="../configuration/#webhook-settings">Webhook Settings</a> to choose your alerts then run <code>spotify_monitor --send-test-webhook</code> to test them.</p>
 <p><a id="start-monitoring"></a></p>
 <h3 id="start-monitoring">Start monitoring<a class="headerlink" href="#start-monitoring" title="Permanent link">&para;</a></h3>
-<p>Before monitoring, <a href="../configuration/#following-the-monitored-user">follow the Spotify user</a> from the account represented by your configured credentials.</p>
+<p>Before monitoring, make sure the target shares listening activity with the account represented by your configured credentials. See <a href="../configuration/#following-the-monitored-user">Following the Monitored User</a>.</p>
 <p>Start monitoring with a complete Spotify profile URL, a <code>spotify:user:</code> URI or a user ID. The first two PyPI examples use a positional target. The third uses a saved <code>TARGET_USER_URI_ID</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>spotify_monitor<span class="w"> </span><span class="s2">"https://open.spotify.com/user/USER_ID"</span>

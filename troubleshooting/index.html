@@ -479,6 +479,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#connection-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#too-many-open-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Too Many Open Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours-look-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -671,6 +693,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#connection-problems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Problems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#too-many-open-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Too Many Open Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#terminal-colours-look-wrong" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -771,7 +815,9 @@
 <p>Every <code>[WARN]</code> and <code>[FAIL]</code> row carries an indented <code>To fix:</code> line under its marker, plus a <code>Guide:</code> link when a documentation page covers that row. A <code>[SKIP]</code> row names a check that could not run and says why.</p>
 <p>Doctor uses your normal settings to check authentication, connectivity, the target, output paths and notifications. It shows the configuration and <code>.env</code> files in use and where credentials came from, without displaying their values. A failed optional legacy metadata check is a warning if the web-player fallback works. It also warns when <a href="../configuration/#tls-verification">TLS verification</a> is off.</p>
 <p>Doctor checks email login and webhook settings without sending messages. It does not create monitoring output files. Friend Activity checks leave configuration and credentials unchanged. Scrobble health checks may save a replacement refresh token if Spotify rotates it.</p>
-<p>If Spotify Desktop and <code>--list-friends</code> show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy <code>buddylist</code> backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. The <strong>Friend Activity backend</strong> row in Doctor names the source in use. See <a href="../configuration/#friend-activity-backend">Friend Activity Backend</a>.</p>
+<p>If Spotify Desktop and <code>--list-friends</code> show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy <code>buddylist</code> backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. Following is not required when the target shares listening activity with selected people that include the monitoring account. Doctor reports whether the monitoring account follows an invisible target. The <strong>Friend Activity backend</strong> row in Doctor names the source in use. <code>--list-friends</code> ends with the users only one backend lists and the command that switches to it. See <a href="../configuration/#friend-activity-backend">Friend Activity Backend</a>.</p>
+<p>If a friend you monitored before version 3.4 is now reported as not visible, run <code>--doctor TARGET</code>. When the legacy endpoint still lists the friend, Doctor and the monitoring start say so and print the switch command. Such a friend has usually also disappeared from the Spotify desktop client while the old endpoint keeps updating. Run with <code>--friend-activity-backend buddylist</code> or save <code>FRIEND_ACTIVITY_BACKEND = "buddylist"</code> to keep monitoring them. See <a href="../configuration/#legacy-backend">Legacy Backend</a>.</p>
+<p>If monitoring reports <code>is no longer visible in listening activity</code> while the user is listening, the user most likely started a private session. The tool reports when the user is visible again and how long that took. After six hours away it prints the follow and sharing advice, since a private session ends sooner.</p>
 <p>In an interactive terminal, Doctor offers a delivery test for each ready notification channel. Each test sends one real message only if you answer Yes. The default is No. Ctrl+C ends the run. Delivery tests are not offered in noninteractive runs.</p>
 <p>The <strong>Next steps</strong> block gives the monitoring command with your target and selected file paths. Resolve failing checks before starting.</p>
 <p>Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:</p>
@@ -791,7 +837,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
 </code></pre></div>
 <p>The command shows the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, the exact redirect URI plus Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation</a> and <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE</a> guides. Confirm that the app owner has Premium, Web API is selected and the redirect URI matches exactly. If the Spotify account being authorized is not the app owner, add it under User Management.</p>
-<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports <strong>Check failed</strong>, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only after three consecutive failures. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
+<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports <strong>Check failed</strong>, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only once the failure has lasted five minutes. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
 <p>Scrobble health liveness banners say <code>Scrobble health monitor running for &lt;lastfm_username&gt;. Current result: &lt;result&gt;.</code> The result describes the current comparison. <strong>Idle</strong> means no completed Spotify plays were returned within the comparison period, even if an earlier check triggered an alert. <strong>Missing scrobbles</strong> means recent plays met the alert threshold. It does not identify the cause or establish a service outage. See <a href="../configuration/#lastfm-scrobble-health">scrobble health settings</a> for reminder and matching rules.</p>
 <p>Each failed check includes a <code>To fix:</code> action. A command in that action matches how you installed the tool and carries the <code>--config-file</code> or <code>--env-file</code> you started with, so it can be pasted as it is. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
@@ -852,9 +898,29 @@
 <td>The terminal cannot display ANSI colour or colour was switched off</td>
 <td><a href="#terminal-colours-look-wrong">Terminal Colours Look Wrong</a></td>
 </tr>
+<tr>
+<td><code>Spotify did not answer in time</code>, <code>Spotify could not be reached</code> or <code>Spotify is temporarily unavailable</code></td>
+<td>A network problem between this machine and Spotify or a Spotify outage</td>
+<td><a href="#connection-problems">Connection Problems</a></td>
+</tr>
+<tr>
+<td><code>This process ran out of file descriptors</code></td>
+<td>The operating system limit on open files was reached</td>
+<td><a href="#too-many-open-files">Too Many Open Files</a></td>
+</tr>
 </tbody>
 </table>
 <p>A continuing outage produces a <code>* Monitoring degraded</code> reminder once an hour, even when the <a href="../usage/#liveness-reminder">liveness reminder</a> is switched off. <code>* Monitoring recovered</code> marks recovery. Use <code>--verbose</code> to see the first failed check.</p>
+<p><a id="connection-problems"></a></p>
+<h2 id="connection-problems">Connection Problems<a class="headerlink" href="#connection-problems" title="Permanent link">&para;</a></h2>
+<p><code>Spotify did not answer in time</code> and <code>Spotify could not be reached</code> mean a check got no answer from Spotify. <code>Spotify is temporarily unavailable</code> means Spotify answered with a server error. The report names the interval after which the check is retried, so a short outage needs no action. A failure that lasts produces the hourly <code>Monitoring degraded</code> reminder and <code>Monitoring recovered</code> when it clears.</p>
+<p>If the failure continues, check the internet connection, DNS and any firewall or proxy between this machine and Spotify. <code>A secure connection to Spotify could not be established</code> is a TLS problem, see <a href="../configuration/#tls-verification">TLS Verification</a>. A server error that lasts is a Spotify outage, so wait for it to end.</p>
+<p>To confirm that Spotify is reachable from this machine, run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>--doctor
+</code></pre></div>
+<p><a id="too-many-open-files"></a></p>
+<h2 id="too-many-open-files">Too Many Open Files<a class="headerlink" href="#too-many-open-files" title="Permanent link">&para;</a></h2>
+<p><code>This process ran out of file descriptors</code> means the operating system limit on open files was reached. It is a local limit and not a Spotify problem. Raise it with <code>ulimit -n 4096</code> in the shell that starts the tool or set <code>LimitNOFILE=</code> in the systemd unit, then restart the tool.</p>
 <p><a id="terminal-colours-look-wrong"></a></p>
 <h2 id="terminal-colours-look-wrong">Terminal Colours Look Wrong<a class="headerlink" href="#terminal-colours-look-wrong" title="Permanent link">&para;</a></h2>
 <p>If escape sequences such as <code>[36m</code> appear as literal text, the terminal does not understand ANSI colour. Start the tool with <code>--no-color</code> or set <code>COLORED_OUTPUT = False</code> in the configuration file. On Windows, <code>pip install colorama</code> fixes the classic Command Prompt.</p>
@@ -874,10 +940,10 @@
 <p><a id="verbose-and-debug-output"></a></p>
 <h2 id="verbose-and-debug-output">Verbose and Debug Output<a class="headerlink" href="#verbose-and-debug-output" title="Permanent link">&para;</a></h2>
 <p><code>--verbose</code> adds the decisions a run made, in the same <code>*</code> lines as the rest of the output:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--verbose
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--verbose
 </code></pre></div>
 <p><code>--debug</code> traces what the tool is doing in timestamped <code>[DEBUG HH:MM:SS]</code> lines:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--debug
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--debug
 </code></pre></div>
 <p>Lines with details read <code>Operation: key=value, key=value</code>. Fields depend on the operation. Some results report <code>outcome=OK</code>, <code>failed</code>, <code>degraded</code> or <code>unavailable</code>.</p>
 <p><a id="installation-and-command-problems"></a></p>
