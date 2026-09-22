@@ -2,7 +2,9 @@
 
 import argparse
 import copy
+from email.header import decode_header, make_header
 import errno
+import http.client
 import os
 import sys
 
@@ -184,3 +186,37 @@ def test_configuration_commands_are_read_from_the_parsed_namespace():
     assert monitor.command_reports_configuration(argparse.Namespace(setup=True))
     assert not monitor.command_reports_configuration(argparse.Namespace(doctor=False, setup=False))
     assert not monitor.command_reports_configuration(argparse.Namespace())
+
+
+@pytest.mark.parametrize("provider,url", [("discord", "https://hooks.example.test/relay"), ("ntfy", "https://ntfy.example.test/topic")])
+# Encodes a custom header built from non-ASCII alert text and keeps a value the user already encoded
+def test_custom_header_with_non_ascii_alert_text_is_encoded(monkeypatch, provider, url):
+    title = "Status of Bj\u00f6rk \u0436\u0438\u0437\u043d\u044c \U0001f3b5"
+    seen = []
+
+    # Captures a prepared requests request and accepts it
+    def requests_reply(self, request, **kwargs):
+        seen.append(request)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b""
+        response.request = request
+        response.url = request.url
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", requests_reply)
+    monkeypatch.setattr(monitor, "WEBHOOK_URL", url)
+    monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", provider)
+    monkeypatch.setattr(monitor, "NTFY_ACCESS_TOKEN", "")
+    monkeypatch.setattr(monitor, "WEBHOOK_HEADERS", {"X-Alert-Title": "{title}", "X-Tags": "=?UTF-8?B?8J+HqfCfh6o=?="})
+    monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", True)
+    monitor.send_webhook(title, "Notification body", force=True)
+    assert seen
+    headers = seen[-1].headers
+    assert str(make_header(decode_header(headers["X-Alert-Title"]))) == title
+    assert headers["X-Tags"] == "=?UTF-8?B?8J+HqfCfh6o=?="
+    # http.client encodes header values as Latin-1 below the adapter, so that step runs here directly
+    connection = http.client.HTTPConnection("127.0.0.1")
+    connection.putrequest("POST", "/")
+    for name, value in headers.items():
+        connection.putheader(name, value)
