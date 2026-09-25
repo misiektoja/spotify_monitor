@@ -206,6 +206,47 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
+# ALT_VIEW prints one compact "[NN] Track - Artist (Album) [Playlist]" line per song change, instead
+# of (or alongside, for the very first check) the normal multi-line block
+def test_alt_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
+    assert song_line.endswith("[Playlist Name]"), song_line
+
+
+# SPOTIFY_SUFFIX is part of the playlist's own identity - ALT_VIEW's compact line embeds it inside
+# the brackets ("[Playlist Name (by Spotify)]"), not after them
+def test_alt_view_embeds_the_spotify_suffix_inside_the_playlist_brackets(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+    monkeypatch.setattr(monitor, "SPOTIFY_SUFFIX", " (by Spotify)")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Spotify", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
+    assert song_line.endswith("[Playlist Name (by Spotify)]"), song_line
+
+
 # Verifies verbose stays quiet on an uneventful cycle instead of printing one line per check
 def test_a_quiet_cycle_stays_silent_in_verbose(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "VERBOSE_MODE", True)

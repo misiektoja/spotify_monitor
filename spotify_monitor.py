@@ -608,7 +608,16 @@ COLORED_OUTPUT = True
 #     "help_command": "bright_white",
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
+#     # ALT_VIEW's own timestamp prefix
+#     "alt_view_timestamp": "bright_yellow",
 # }
+
+# Whether to use a compact, colourised one-line-per-song console view instead of the default
+# multi-line block. Each line looks like: 06/12, 21:04:33: [03] Track - Artist (Album) [Playlist]
+# Everything else the tool would normally print to the screen still goes to the log file when this
+# is enabled (unless logging itself is disabled), just no longer to the terminal
+# Can also be enabled via the --alt-view flag
+ALT_VIEW = False
 
 # Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
@@ -938,6 +947,7 @@ REPORTS_PRINTED = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = False
 COLOR_THEME: dict = {}
+ALT_VIEW = False
 VERBOSE_MODE = False
 DEBUG_MODE = False
 DELIVERY_CONFIRMATIONS = True
@@ -4022,6 +4032,8 @@ DEFAULT_COLOR_THEME = {
     "help_command": "bright_white",
     "help_comment": "bright_black",
     "help_default": "bright_black",
+    # ALT_VIEW's own timestamp prefix
+    "alt_view_timestamp": "bright_yellow",
 }
 
 # A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
@@ -4453,10 +4465,74 @@ def apply_color_to_text(text):
         if chunk.endswith(("\n", "\r")):
             stripped = chunk.rstrip("\r\n")
             newline = chunk[len(stripped):]
-            parts.append(_colorize_line(stripped) + newline)
+            parts.append(_colorize_alt_view_line_or_default(stripped) + newline)
         else:
-            parts.append(_colorize_line(chunk))
+            parts.append(_colorize_alt_view_line_or_default(chunk))
     return "".join(parts)
+
+
+# ALT_VIEW prints its own line shape (see colorize_alt_view_line() below) - dispatched to first,
+# only while ALT_VIEW is on, falling back to the normal-view colouriser for anything it doesn't
+# recognise (its own startup/summary output, error text, etc., which still print normally)
+def _colorize_alt_view_line_or_default(line):
+    colored = colorize_alt_view_line(line) if ALT_VIEW else None
+    return colored if colored is not None else _colorize_line(line)
+
+
+# ALT_VIEW's own line colouring - kept separate from _colorize_line() above since ALT_VIEW prints a
+# single compact "[NN] Track - Artist (Album) [Playlist]" line per song instead of the normal
+# multi-line block, which needs its own dedicated shape-matching rather than reusing the generic
+# label-based rules.
+_ALT_VIEW_LINE_RE = re.compile(r"^(?P<prefix>\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: )(?P<rest>.*)$")
+_ALT_VIEW_SONG_LINE_RE = re.compile(r"^\[(?P<offset>\d+)\] (?P<body>.*)$")
+_ALT_VIEW_TRAILING_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\]]+)\](?P<playlist_suffix>[^\[\]]*)$")
+# TRUNCATE_CHARS cuts a line to the terminal width *before* this colouriser ever runs (Logger
+# truncates first, then colours - see Logger.write()/terminal_only()), so on a narrow or
+# split-screen terminal a playlist tag right at the edge often arrives with its closing "]"
+# already cut off. Without this, _ALT_VIEW_TRAILING_PLAYLIST_RE's required "]$" fails to match and
+# the whole tag falls back to plain, uncoloured text - exactly the moment a user running a narrow
+# terminal is most likely to actually be looking at that edge. This matches the same shape without
+# requiring the closing bracket, so whatever fragment of the name is still visible still gets
+# coloured; it never touches or needs to know about Logger's own truncation logic.
+_ALT_VIEW_TRUNCATED_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\]]*)$")
+
+
+def colorize_alt_view_line(line):
+    """Colours one ALT_VIEW console line. Returns None if `line` isn't shaped like one of ALT_VIEW's
+    own lines, so the caller falls back to the normal-view colouriser."""
+    match = _ALT_VIEW_LINE_RE.match(line)
+    if not match:
+        return None
+    prefix = colorize("alt_view_timestamp", match.group("prefix"))
+    rest = match.group("rest")
+
+    song_match = _ALT_VIEW_SONG_LINE_RE.match(rest)
+    if not song_match:
+        return None
+
+    offset, body = song_match.group("offset"), song_match.group("body")
+    full_match = _ALT_VIEW_TRAILING_PLAYLIST_RE.match(body)
+    truncated_match = None if full_match else _ALT_VIEW_TRUNCATED_PLAYLIST_RE.match(body)
+    if full_match:
+        song_part = full_match.group("song")
+        # A Spotify-curated playlist's name can carry an optional trailing marker outside the
+        # brackets (SPOTIFY_SUFFIX, e.g. " (by Spotify)" by default, but user-configurable to
+        # anything). Without this group, the required "]$" above would fail to match any line with
+        # that trailing text, so the whole tag would fall through uncoloured - not just the suffix,
+        # the playlist name inside the brackets too. Left uncoloured itself (it's not part of the
+        # playlist's name), just appended as-is after the coloured bracket.
+        suffix = full_match.group("playlist_suffix")
+        playlist_part = f" [{colorize('playlist', full_match.group('playlist'))}]{suffix}"
+    elif truncated_match:
+        # No closing "]" here since the raw line didn't have one either - adding one would make the
+        # coloured line one character longer than what Logger actually truncated it to.
+        song_part = truncated_match.group("song")
+        playlist_part = f" [{colorize('playlist', truncated_match.group('playlist'))}"
+    else:
+        song_part = body
+        playlist_part = ""
+
+    return f"{prefix}[{offset}] {song_part}{playlist_part}"
 
 
 # Colours every link in a line, for the screens printed before the output stream colouriser is installed
@@ -4478,6 +4554,13 @@ def unwrap_terminal_stream(stream):
 
 # Logger class to output messages to stdout and log file
 class Logger(object):
+    # Set while ALT_VIEW owns the screen (see enter_alt_view_screen_mode()): an ordinary write()
+    # still records everything in full in the log file, just stops also echoing it to the terminal,
+    # so ALT_VIEW's own compact line (written via terminal_only(), unaffected by this flag) is the
+    # only thing the screen shows. A class attribute rather than one set in __init__, so it still
+    # defaults correctly for a Logger built via Logger.__new__() (bypassing __init__ entirely)
+    screen_quiet = False
+
     def __init__(self, filename):
         # The early sanitizing stream is unwrapped so sanitizing and colouring happen exactly once.
         # Writing through it would colourise every line twice, and the second pass no longer sees the
@@ -4489,10 +4572,11 @@ class Logger(object):
         message = sanitize_terminal_text(message)
         # Expand tabs for file output and strip colour codes so the log file stays plain text
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
-        # Truncate before colouring so escape sequences never count toward the displayed width
-        message = self._truncate_terminal(message)
-        self.terminal.write(apply_color_to_text(message))
-        self.terminal.flush()
+        if not self.screen_quiet:
+            # Truncate before colouring so escape sequences never count toward the displayed width
+            message = self._truncate_terminal(message)
+            self.terminal.write(apply_color_to_text(message))
+            self.terminal.flush()
         self.logfile.flush()
 
     def terminal_only(self, message):
@@ -4572,6 +4656,47 @@ class TerminalStream(object):
     # Forwards remaining stream attributes to the wrapped terminal
     def __getattr__(self, name):
         return getattr(self.terminal, name)
+
+
+# Timestamp prefix for ALT_VIEW's own compact console line, e.g. "06/12, 21:04:33: " - matched by
+# _ALT_VIEW_LINE_RE above, which colorize_alt_view_line() needs to recognise the line at all
+def alt_view_timestamp():
+    return datetime.now().strftime("%m/%d, %H:%M:%S")
+
+
+# Writes one line to the terminal only, bypassing Logger.screen_quiet - this is how ALT_VIEW's own
+# compact per-song line reaches the screen while ordinary print() calls stay in the log file only.
+# Falls back to a plain print() if sys.stdout isn't a Logger/TerminalStream (e.g. main() has not
+# installed one yet), so this is safe to call any time ALT_VIEW is on
+def print_to_screen(message):
+    terminal_only = getattr(sys.stdout, "terminal_only", None)
+    if terminal_only is not None:
+        terminal_only(f"{message}\n")
+    else:
+        print(message)
+
+
+# Writes one line to both the terminal and the log file, ignoring Logger.screen_quiet - for the rare
+# ALT_VIEW message (not just the per-song line) that should reach the screen but still belongs in
+# the log's own record of events, same as everything else
+def print_to_both(message):
+    if isinstance(sys.stdout, Logger):
+        was_quiet, sys.stdout.screen_quiet = sys.stdout.screen_quiet, False
+        try:
+            print(message)
+        finally:
+            sys.stdout.screen_quiet = was_quiet
+    else:
+        print(message)
+
+
+# Switches the screen over to ALT_VIEW's own compact view: ordinary print() calls keep writing to
+# the log file in full, but stop also echoing to the terminal, so print_to_screen()'s per-song line
+# is the only thing shown from here on. A no-op if ALT_VIEW is off or logging is disabled (nothing
+# would preserve the ordinary output if the screen stopped showing it, so it is left alone)
+def enter_alt_view_screen_mode():
+    if ALT_VIEW and isinstance(sys.stdout, Logger):
+        sys.stdout.screen_quiet = True
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -8765,6 +8890,7 @@ def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
         StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})"),
         # The resolved state, not the setting: colour also switches itself off when the output is not a terminal
         StartupSummaryRow("Coloured output", f"{COLOR_ENABLED} (setting: {COLORED_OUTPUT})"),
+        StartupSummaryRow("Visual mode", "Compact (ALT_VIEW)" if ALT_VIEW else "Standard"),
     ]
 
 
@@ -12761,6 +12887,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
 
+    # ALT_VIEW's own compact per-song text - built here rather than at each call site so the one
+    # "[Track - Artist (Album) [Playlist]]" shape stays in one place
+    def time_diff_str():
+        return str(round((sp_ts - sp_active_ts_start) / 60)).zfill(2)
+
+    def alt_view_song_tag():
+        if sp_playlist and is_playlist:
+            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()}) [{sp_playlist.strip()}{playlist_suffix}]"
+        else:
+            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()})"
+
     try:
         if csv_file_name:
             init_csv_file(csv_file_name)
@@ -13041,6 +13178,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             playlist_suffix = ""
             check_count = 0
 
+            # From here on ALT_VIEW's own compact per-song line (below) is what the screen shows -
+            # the initial detailed report above still printed in full, and the log file still gets
+            # everything printed from this point on too, just not the screen
+            enter_alt_view_screen_mode()
+
             # Primary loop
             while True:
                 check_count += 1
@@ -13281,6 +13423,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     else:
                         playlist_m_body = ""
                         playlist_m_body_html = ""
+
+                    if ALT_VIEW:
+                        print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
 
                     if not resumed_live_session and sp_artist == sp_artist_old and sp_track == sp_track_old:
                         song_on_loop += 1
@@ -13808,11 +13953,13 @@ def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None) ->
 
 # Applies diagnostic flags both before config error reporting and after config precedence resolution
 def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
-    global DEBUG_MODE, VERBOSE_MODE
+    global DEBUG_MODE, VERBOSE_MODE, ALT_VIEW
     if args.debug_mode is not None:
         DEBUG_MODE = args.debug_mode
     if args.verbose_mode is not None:
         VERBOSE_MODE = args.verbose_mode
+    if args.alt_view is not None:
+        ALT_VIEW = args.alt_view
 
 
 # Parses command-line options then starts the selected command or monitoring mode
@@ -14398,6 +14545,13 @@ def main():
         action="store_true",
         default=None,
         help="Disable coloured output in the terminal"
+    )
+    opts.add_argument(
+        "--alt-view",
+        dest="alt_view",
+        action="store_true",
+        default=None,
+        help="Use a compact, colourised one-line-per-song console view instead of the default multi-line block"
     )
     opts.add_argument(
         "--debug",
