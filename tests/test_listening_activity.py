@@ -598,6 +598,40 @@ def test_compact_view_frames_each_session_with_activity_banners(loop_environment
     assert events == ["Active", "song", "Inactive", "Active", "song"]
 
 
+# Regression: [NN] used to count from the session start the rest of the tool uses - when the
+# session's first song began - which is earlier than the "Friend is Active..." banner whenever
+# monitoring starts (or a friend comes back) mid-song, so every [NN] in that session ran ahead of the
+# printed timestamps. It now counts whole minutes since the banner, on the same clock as those
+# timestamps.
+def test_compact_view_counts_minutes_from_the_active_banner(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+
+    class HarnessClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(loop_environment.now, tz)
+
+    monkeypatch.setattr(monitor, "datetime", HarnessClock)
+    now = loop_environment.now
+    # Already two minutes into the first song when monitoring starts
+    snapshots = [feed_entity(now - 120)] * 6 + [feed_entity(now + 180, track=OTHER_TRACK_URI)] * 2
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    lines = capsys.readouterr().out.splitlines()
+
+    stamp = r"(\d{2}/\d{2}, \d{2}:\d{2}:\d{2})"
+    banner = next(re.match(stamp, line).group(1) for line in lines if line.endswith("*** Friend is Active..."))
+    songs = [re.match(stamp + r": \[(\d+)\] ", line).groups() for line in lines if re.match(stamp + r": \[\d+\] ", line)]
+    # The printed stamps carry no year; a fixed leap year keeps 29 February parseable
+    def parse(printed):
+        return datetime.strptime(f"2000/{printed}", "%Y/%m/%d, %H:%M:%S")
+
+    banner_at = parse(banner)
+    assert [minutes for _, minutes in songs] == ["00", "02"], songs
+    for printed, minutes in songs:
+        elapsed = (parse(printed) - banner_at).total_seconds()
+        assert int(minutes) == int(elapsed // 60), (printed, minutes)
+
+
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
 def test_live_inactivity_and_same_track_restart(loop_environment, monkeypatch, capsys):
     now = loop_environment.now

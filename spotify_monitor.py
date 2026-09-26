@@ -608,15 +608,20 @@ COLORED_OUTPUT = True
 #     "help_command": "bright_white",
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
-#     # COMPACT_VIEW's own timestamp prefix
+#     # Compact View's timestamp prefix
 #     "compact_view_timestamp": "bright_yellow",
 # }
 
 # Whether to use a compact, colourised one-line-per-song console view instead of the default
-# multi-line block. Each line looks like: 06/12, 21:04:33: [03] Track - Artist (Album) [Playlist]
-# Everything else the tool would normally print to the screen still goes to the log file when this
-# is enabled (unless logging itself is disabled), just no longer to the terminal
+# multi-line block. The tool's standard printing all goes to the log, if log is enabled, 
+# with a succinct presentation to the screen showing all played tracks.
 # Can also be enabled via the --compact-view flag
+# 
+# The format per line is:
+# timestamp: [elapsed minutes] Track - Artist (Album) [Playlist]
+# Example:
+#   09/26, 17:10:18: [00] Chasing Cars - Snow Patrol (Eyes Open) [U2 Radio] (by Spotify)
+#   09/26, 17:10:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
 COMPACT_VIEW = False
 
 # Whether to enable verbose operational output
@@ -4032,7 +4037,7 @@ DEFAULT_COLOR_THEME = {
     "help_command": "bright_white",
     "help_comment": "bright_black",
     "help_default": "bright_black",
-    # COMPACT_VIEW's own timestamp prefix
+    # Compact View's timestamp prefix
     "compact_view_timestamp": "bright_yellow",
 }
 
@@ -4664,8 +4669,8 @@ class TerminalStream(object):
 
 # Timestamp prefix for COMPACT_VIEW's own console line, e.g. "06/12, 21:04:33: " - matched by
 # _COMPACT_VIEW_LINE_RE above, which colorize_compact_view_line() needs to recognise the line at all
-def compact_view_timestamp():
-    return datetime.now().strftime("%m/%d, %H:%M:%S")
+def compact_view_timestamp(moment=None):
+    return (moment or datetime.now()).strftime("%m/%d, %H:%M:%S")
 
 
 # Writes one line to both the terminal and the log file, ignoring Logger.screen_quiet - this is how
@@ -4692,12 +4697,15 @@ def enter_compact_view_screen_mode():
 
 # COMPACT_VIEW's session banners: a blank line and separator open each active session, so consecutive
 # sessions read as separate blocks; the closing line needs neither. Screen messaging only - any
-# active/inactive alerts are still sent (or not) by the normal notification settings
+# active/inactive alerts are still sent (or not) by the normal notification settings. The Active
+# banner returns the moment it printed, which the session's [NN] minute counts start from
 def print_compact_view_activity_banner(active):
+    moment = datetime.now()
     if active:
         print_to_screen_and_log(" ")
         print_to_screen_and_log("----------------------")
-        print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Active...")
+        print_to_screen_and_log(f"{compact_view_timestamp(moment)}: *** Friend is Active...")
+        return moment
     else:
         print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Inactive...")
         # Log-only while COMPACT_VIEW has the screen: separates the banner from the session summary
@@ -12892,19 +12900,24 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
 
-    # COMPACT_VIEW's own per-song text - built here rather than at each call site so the one
-    # "[Track - Artist (Album) [Playlist]]" shape stays in one place
-    # Clamped at zero: with the live-activity backend a resumed session's start is when the resume
-    # was noticed, which can land after the song's own reported timestamp
-    def time_diff_str(session_start=None):
-        start = sp_active_ts_start if session_start is None else session_start
-        return str(max(0, round((sp_ts - start) / 60))).zfill(2)
+    # COMPACT_VIEW's own per-song line - built here rather than at each call site so the one
+    # "[NN] Track - Artist (Album) [Playlist]" shape stays in one place. [NN] is whole minutes since
+    # this session's "Friend is Active..." banner printed, taken from the same clock reading as the
+    # line's own timestamp, so it always agrees with the printed times. It deliberately isn't the
+    # session start the rest of the tool uses ("Songs played"), which is when the session's first song
+    # began - earlier than the banner whenever monitoring starts, or a friend returns, mid-song
+    compact_view_session_started_at = datetime.now()
 
     def compact_view_song_tag():
         if sp_playlist and is_playlist:
             return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()}) [{sp_playlist.strip()}]{playlist_suffix}"
         else:
             return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()})"
+
+    def compact_view_song_line():
+        moment = datetime.now()
+        minutes = max(0, int((moment - compact_view_session_started_at).total_seconds() // 60))
+        return f"{compact_view_timestamp(moment)}: [{minutes:02d}] {compact_view_song_tag()}"
 
     try:
         if csv_file_name:
@@ -13189,8 +13202,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # playlist_suffix is reset just below, so the current song's line keeps its suffix
             enter_compact_view_screen_mode()
             if COMPACT_VIEW and initially_active:
-                print_compact_view_activity_banner(True)
-                print_to_screen_and_log(f"{compact_view_timestamp()}: [{time_diff_str()}] {compact_view_song_tag()}")
+                compact_view_session_started_at = print_compact_view_activity_banner(True)
+                print_to_screen_and_log(compact_view_song_line())
 
             playlist_suffix = ""
             check_count = 0
@@ -13487,17 +13500,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         activity_ts = sp_ts
 
                     # Printed ahead of the song's own block so the log reads compact line first. A friend
-                    # back from offline starts a new session, whose start the "Friend got ACTIVE after
-                    # being offline" block further down only sets later, so [NN] is counted from the start
-                    # that block will set, using the same rules
+                    # back from offline opens a new session here, using the same condition as the
+                    # "Friend got ACTIVE after being offline" block further down
                     if COMPACT_VIEW:
-                        compact_view_session_start = sp_active_ts_start
                         if resumed_live_session or (not live_activity and resumed_after_offline):
-                            compact_view_session_start = int(live_timing.session_started_at) if live_activity else sp_ts - sp_track_duration
-                            if not live_activity and (compact_view_session_start - sp_active_ts_stop) < 30 and sp_active_ts_start_old > 0:
-                                compact_view_session_start = sp_active_ts_start_old
-                            print_compact_view_activity_banner(True)
-                        print_to_screen_and_log(f"{compact_view_timestamp()}: [{time_diff_str(compact_view_session_start)}] {compact_view_song_tag()}")
+                            compact_view_session_started_at = print_compact_view_activity_banner(True)
+                        print_to_screen_and_log(compact_view_song_line())
                         print()
 
                     print(f"Spotify user:\t\t\t{sp_username}")
