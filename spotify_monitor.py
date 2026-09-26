@@ -7955,6 +7955,13 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_
     return access_token
 
 
+# Maps list contexts that stand for an artist page to that artist, as the Spotify web player does
+def spotify_normalize_activity_context_uri(context_uri: str) -> str:
+    # The live feed reports play from an artist's Popular section as this list instead of the artist URI the legacy feed used
+    match = re.fullmatch(r"spotify:list:popular-release-segments-main-roles:artist_([A-Za-z0-9]{22})", context_uri)
+    return f"spotify:artist:{match.group(1)}" if match else context_uri
+
+
 # Converts the live feed to the friend shape while preserving its playback state
 def spotify_normalize_listening_activity(payload):
     if not isinstance(payload, dict) or not isinstance(payload.get("entities"), list):
@@ -8000,6 +8007,7 @@ def spotify_normalize_listening_activity(payload):
         context_uri = activity.get("contextUri", "")
         if not isinstance(context_uri, str):
             raise ValueError("Spotify listening activity context URI is malformed")
+        context_uri = spotify_normalize_activity_context_uri(context_uri)
         friend = {"timestamp": timestamp_ms, "isPlaying": is_playing, "user": {"uri": uri, "name": user_id}, "track": {"uri": track_uri, "name": "", "artist": {"uri": "", "name": ""}, "album": {"uri": "", "name": ""}, "context": {"uri": context_uri, "name": ""}}}
         if uri not in friends or timestamp_ms > friends[uri]["timestamp"]:
             friends[uri] = friend
@@ -8164,6 +8172,9 @@ def spotify_complete_live_activity(info, access_token, track):
         info["sp_playlist"] = info["sp_album"]
     elif context == track.get("sp_artist_uri"):
         info["sp_playlist"] = info["sp_artist"]
+    elif context in (track.get("sp_artists") or {}):
+        # Artist pages also list tracks where that artist is not the first credited one
+        info["sp_playlist"] = track["sp_artists"][context]
     else:
         info["sp_playlist"] = context
 
@@ -9021,6 +9032,11 @@ def spotify_select_largest_image_url(sources: Any) -> str:
     return str(selected["url"])
 
 
+# Maps each track artist URI to its name, skipping entries without both values
+def spotify_track_artist_names(pairs) -> dict:
+    return {uri: name for uri, name in pairs if isinstance(uri, str) and uri.startswith("spotify:artist:") and isinstance(name, str) and name}
+
+
 # Normalizes Spotify web-player track metadata to the existing monitoring shape
 def spotify_normalize_web_track(track):
     if not isinstance(track, dict) or track.get("__typename") != "Track":
@@ -9034,6 +9050,10 @@ def spotify_normalize_web_track(track):
     artist_items = (track.get("firstArtist") or {}).get("items") or []
     artist = artist_items[0] if artist_items and isinstance(artist_items[0], dict) else {}
     artist_profile = artist.get("profile") or {}
+    other_artists = track.get("otherArtists")
+    other_artist_items = other_artists.get("items") if isinstance(other_artists, dict) else None
+    all_artist_items = [*artist_items, *(other_artist_items if isinstance(other_artist_items, list) else [])]
+    artists = spotify_track_artist_names((item.get("uri"), item["profile"].get("name") if isinstance(item.get("profile"), dict) else None) for item in all_artist_items if isinstance(item, dict))
     album = track.get("albumOfTrack") or {}
     if not isinstance(album, dict):
         album = {}
@@ -9045,7 +9065,7 @@ def spotify_normalize_web_track(track):
     sources = coverart.get("sources") if isinstance(coverart, dict) else []
     album_image_url = spotify_select_largest_image_url(sources)
 
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_artists": artists, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Fetches and normalizes public track metadata from the Spotify web-player service
@@ -9223,7 +9243,7 @@ def _spotify_get_track_info_api(access_token, track_uri, oauth_app=False):
     album_uri = album.get("uri", "")
     album_image_url = spotify_select_largest_image_url(album.get("images"))
 
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_artists": spotify_track_artist_names((item.get("uri"), item.get("name")) for item in artists if isinstance(item, dict)), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Selects the legacy or web-player track backend and falls back automatically
