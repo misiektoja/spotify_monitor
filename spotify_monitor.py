@@ -12894,8 +12894,9 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     # "[Track - Artist (Album) [Playlist]]" shape stays in one place
     # Clamped at zero: with the live-activity backend a resumed session's start is when the resume
     # was noticed, which can land after the song's own reported timestamp
-    def time_diff_str():
-        return str(max(0, round((sp_ts - sp_active_ts_start) / 60))).zfill(2)
+    def time_diff_str(session_start=None):
+        start = sp_active_ts_start if session_start is None else session_start
+        return str(max(0, round((sp_ts - start) / 60))).zfill(2)
 
     def compact_view_song_tag():
         if sp_playlist and is_playlist:
@@ -13483,6 +13484,20 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     else:
                         activity_ts = sp_ts
 
+                    # Printed ahead of the song's own block so the log reads compact line first. A friend
+                    # back from offline starts a new session, whose start the "Friend got ACTIVE after
+                    # being offline" block further down only sets later, so [NN] is counted from the start
+                    # that block will set, using the same rules
+                    if COMPACT_VIEW:
+                        compact_view_session_start = sp_active_ts_start
+                        if resumed_live_session or (not live_activity and resumed_after_offline):
+                            compact_view_session_start = int(live_timing.session_started_at) if live_activity else sp_ts - sp_track_duration
+                            if not live_activity and (compact_view_session_start - sp_active_ts_stop) < 30 and sp_active_ts_start_old > 0:
+                                compact_view_session_start = sp_active_ts_start_old
+                            print_compact_view_activity_banner(True)
+                        print_to_screen_and_log(f"{compact_view_timestamp()}: [{time_diff_str(compact_view_session_start)}] {compact_view_song_tag()}")
+                        print()
+
                     print(f"Spotify user:\t\t\t{sp_username}")
                     print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}")
                     print(f"Duration:\t\t\t{display_time(sp_track_duration)}")
@@ -13611,8 +13626,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             flag_file_create()
 
                         print(f"\n*** Friend got ACTIVE after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))} ({get_date_from_ts(sp_active_ts_stop)})")
-                        if COMPACT_VIEW:
-                            print_compact_view_activity_banner(True)
                         m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False)} - {get_short_date_from_ts(sp_active_ts_stop)})"
                         m_subject_short = f"{sp_username} is active after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False, short=True)}"
                         friend_active_m_body = f"Friend got active after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))}\nLast activity (before getting offline): {get_date_from_ts(sp_active_ts_stop)}"
@@ -13644,11 +13657,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             email_succeeded, webhook_succeeded = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
                             webhook_sent = webhook_sent or webhook_succeeded
-
-                    # After the "resumed from offline" block above, so its Active banner comes first
-                    # and [NN] counts from the session start it just reset
-                    if COMPACT_VIEW:
-                        print_to_screen_and_log(f"{compact_view_timestamp()}: [{time_diff_str()}] {compact_view_song_tag()}")
 
                     on_the_list = False
                     if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:

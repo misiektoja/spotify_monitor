@@ -226,6 +226,26 @@ def test_compact_view_prints_a_compact_line_for_each_song(loop_environment, monk
     assert song_line.endswith("[Playlist Name]"), song_line
 
 
+# In the log a song change reads compact line first, then a blank line, then the song's own block
+def test_compact_view_line_leads_the_songs_own_block(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    lines = capsys.readouterr().out.splitlines()
+    spotify_user = lines.index("Spotify user:\t\t\tWatched Friend")
+    assert lines[spotify_user - 1] == ""
+    assert "] Track Name - Artist Name (Album Name) [Playlist Name]" in lines[spotify_user - 2]
+
+
 # A Spotify-curated playlist's SPOTIFY_SUFFIX trails after the brackets ("[Playlist Name] (by
 # Spotify)"), the same way the rest of the tool shows it, rather than being folded into the name
 def test_compact_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
