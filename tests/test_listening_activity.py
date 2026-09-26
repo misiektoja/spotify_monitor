@@ -590,6 +590,8 @@ def test_compact_view_frames_each_session_with_activity_banners(loop_environment
             events.append(banner.group(1))
             if banner.group(1) == "Active":
                 assert lines[index - 2:index] == [" ", "----------------------"], lines[index - 3:index + 1]
+            else:
+                assert lines[index + 1] == "", lines[index:index + 2]
         elif song_re.match(line):
             events.append("song")
 

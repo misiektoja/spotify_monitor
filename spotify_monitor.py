@@ -4700,6 +4700,8 @@ def print_compact_view_activity_banner(active):
         print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Active...")
     else:
         print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Inactive...")
+        # Log-only while COMPACT_VIEW has the screen: separates the banner from the session summary
+        print()
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
