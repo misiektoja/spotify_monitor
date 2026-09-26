@@ -571,11 +571,11 @@ def test_live_track_change_reports_partial_startup_track_without_skip(loop_envir
     assert output.index("User played the previous track for:") < output.index("Spotify user:")
 
 
-# ALT_VIEW frames each listening session on screen: a blank line, a separator and "Friend is
+# COMPACT_VIEW frames each listening session on screen: a blank line, a separator and "Friend is
 # Active..." before its first song line, "Friend is Inactive..." once it ends - at startup and again
 # when the friend comes back
-def test_alt_view_frames_each_session_with_activity_banners(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+def test_compact_view_frames_each_session_with_activity_banners(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     now = loop_environment.now
     snapshots = [feed_entity(now), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now)]
     run_live_snapshots(monkeypatch, loop_environment, snapshots)

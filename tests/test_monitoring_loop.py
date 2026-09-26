@@ -206,10 +206,10 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
-# ALT_VIEW prints one compact "[NN] Track - Artist (Album) [Playlist]" line per song change, instead
+# COMPACT_VIEW prints one compact "[NN] Track - Artist (Album) [Playlist]" line per song change, instead
 # of (or alongside, for the very first check) the normal multi-line block
-def test_alt_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+def test_compact_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     started_at = int(time.time())
@@ -228,8 +228,8 @@ def test_alt_view_prints_a_compact_line_for_each_song(loop_environment, monkeypa
 
 # A Spotify-curated playlist's SPOTIFY_SUFFIX trails after the brackets ("[Playlist Name] (by
 # Spotify)"), the same way the rest of the tool shows it, rather than being folded into the name
-def test_alt_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
-    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+def test_compact_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     monkeypatch.setattr(monitor, "SPOTIFY_SUFFIX", " (by Spotify)")
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")

@@ -808,38 +808,38 @@ def test_a_wide_gap_before_a_date_is_not_read_as_a_weekday():
     assert weekday is not None and weekday.group(0) == "Sun 06 Apr 2025, 21:21:46"
 
 
-# ALT_VIEW's own song-line colouriser (colorize_alt_view_line) - separate rule set from
-# _colorize_line() above, dispatched by apply_color_to_text() only while ALT_VIEW is on. These call
-# it directly, so they don't need ALT_VIEW itself set.
-_ALT_VIEW_PREFIX = "09/24, 12:00:00: "
+# COMPACT_VIEW's own song-line colouriser (colorize_compact_view_line) - separate rule set from
+# _colorize_line() above, dispatched by apply_color_to_text() only while COMPACT_VIEW is on. These call
+# it directly, so they don't need COMPACT_VIEW itself set.
+_COMPACT_VIEW_PREFIX = "09/24, 12:00:00: "
 
 
-def test_alt_view_colors_the_timestamp_and_playlist_name(colored):
-    line = _ALT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner]"
+def test_compact_view_colors_the_timestamp_and_playlist_name(colored):
+    line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner]"
 
-    rendered = monitor.colorize_alt_view_line(line)
+    rendered = monitor.colorize_compact_view_line(line)
 
-    assert rendered.startswith(f"{colored['alt_view_timestamp']}{_ALT_VIEW_PREFIX}{monitor.ANSI_RESET}")
+    assert rendered.startswith(f"{colored['compact_view_timestamp']}{_COMPACT_VIEW_PREFIX}{monitor.ANSI_RESET}")
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}]")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
 
 
-# ALT_VIEW's session banners are painted in the info colour after the usual timestamp prefix
+# COMPACT_VIEW's session banners are painted in the info colour after the usual timestamp prefix
 @pytest.mark.parametrize("banner", ["*** Friend is Active...", "*** Friend is Inactive..."])
-def test_alt_view_colors_the_activity_banners(colored, banner):
-    line = _ALT_VIEW_PREFIX + banner
+def test_compact_view_colors_the_activity_banners(colored, banner):
+    line = _COMPACT_VIEW_PREFIX + banner
 
-    rendered = monitor.colorize_alt_view_line(line)
+    rendered = monitor.colorize_compact_view_line(line)
 
-    assert rendered.startswith(f"{colored['alt_view_timestamp']}{_ALT_VIEW_PREFIX}{monitor.ANSI_RESET}")
+    assert rendered.startswith(f"{colored['compact_view_timestamp']}{_COMPACT_VIEW_PREFIX}{monitor.ANSI_RESET}")
     assert colored["info"] in rendered
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
 
 
-# A line that isn't shaped like one of ALT_VIEW's own lines (e.g. a startup message) must fall
+# A line that isn't shaped like one of COMPACT_VIEW's own lines (e.g. a startup message) must fall
 # through untouched, so apply_color_to_text() can fall back to the normal-view colouriser
-def test_alt_view_ignores_unrelated_lines(colored):
-    assert monitor.colorize_alt_view_line("Monitoring user watched-user") is None
+def test_compact_view_ignores_unrelated_lines(colored):
+    assert monitor.colorize_compact_view_line("Monitoring user watched-user") is None
 
 
 # Regression: a Spotify-curated playlist's SPOTIFY_SUFFIX marker (e.g. " (by Spotify)" by default,
@@ -847,10 +847,10 @@ def test_alt_view_ignores_unrelated_lines(colored):
 # suffix group, the required "]$" would fail to match any line with that trailing text, so the whole
 # tag would fall through uncoloured - not just the suffix, the playlist name inside the brackets too.
 # The suffix itself stays uncoloured either way - it isn't part of the playlist's name.
-def test_alt_view_colors_the_playlist_name_before_a_trailing_spotify_suffix(colored):
-    line = _ALT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Spotify)"
+def test_compact_view_colors_the_playlist_name_before_a_trailing_spotify_suffix(colored):
+    line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Spotify)"
 
-    rendered = monitor.colorize_alt_view_line(line)
+    rendered = monitor.colorize_compact_view_line(line)
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}] (by Spotify)")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
@@ -859,10 +859,10 @@ def test_alt_view_colors_the_playlist_name_before_a_trailing_spotify_suffix(colo
 # A suffix truncated mid-way (Logger truncates to the terminal width *before* this colouriser runs)
 # must still leave the playlist name coloured - the suffix group matches any non-bracket text after
 # "]" to end of line, complete or not, so this needs no separate rule from the full-suffix case
-def test_alt_view_colors_a_playlist_with_a_truncated_suffix(colored):
-    line = _ALT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Sp"
+def test_compact_view_colors_a_playlist_with_a_truncated_suffix(colored):
+    line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Sp"
 
-    rendered = monitor.colorize_alt_view_line(line)
+    rendered = monitor.colorize_compact_view_line(line)
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}] (by Sp")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
@@ -870,17 +870,17 @@ def test_alt_view_colors_a_playlist_with_a_truncated_suffix(colored):
 
 # A playlist name truncated before its own closing "]" (the bracket itself never completes) must
 # still colour whatever fragment of the name survived
-def test_alt_view_colors_a_playlist_name_truncated_before_its_closing_bracket(colored):
-    line = _ALT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Din"
+def test_compact_view_colors_a_playlist_name_truncated_before_its_closing_bracket(colored):
+    line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Din"
 
-    rendered = monitor.colorize_alt_view_line(line)
+    rendered = monitor.colorize_compact_view_line(line)
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Din{monitor.ANSI_RESET}")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
 
 
 # Logger.screen_quiet suppresses write() from reaching the terminal while still recording it in
-# full in the log file - this is what enter_alt_view_screen_mode() flips on
+# full in the log file - this is what enter_compact_view_screen_mode() flips on
 def test_logger_screen_quiet_suppresses_the_terminal_but_not_the_log(tmp_path, monkeypatch):
     terminal = StringIO()
     monkeypatch.setattr(monitor.sys, "stdout", terminal)
@@ -896,9 +896,9 @@ def test_logger_screen_quiet_suppresses_the_terminal_but_not_the_log(tmp_path, m
     assert (tmp_path / "test.log").read_text(encoding="utf-8") == "visible line\nquiet line\n"
 
 
-# While ALT_VIEW has quieted the screen, its own lines (print_to_both) still reach the screen and the
-# log alike - nothing ALT_VIEW shows on screen is missing from the log
-def test_print_to_both_reaches_the_screen_and_the_log_while_the_screen_is_quiet(tmp_path, monkeypatch):
+# While COMPACT_VIEW has quieted the screen, its own lines (print_to_screen_and_log) still reach the screen and the
+# log alike - nothing COMPACT_VIEW shows on screen is missing from the log
+def test_print_to_screen_and_log_reaches_the_screen_and_the_log_while_the_screen_is_quiet(tmp_path, monkeypatch):
     terminal = StringIO()
     monkeypatch.setattr(monitor.sys, "stdout", terminal)
     logger = monitor.Logger(str(tmp_path / "test.log"))
@@ -907,7 +907,7 @@ def test_print_to_both_reaches_the_screen_and_the_log_while_the_screen_is_quiet(
     song_line = "09/26, 12:19:06: [00] Song - Artist (Album) [Playlist]"
 
     print("log only")
-    monitor.print_to_both(song_line)
+    monitor.print_to_screen_and_log(song_line)
 
     logger.logfile.close()
     assert logger.screen_quiet is True
@@ -915,23 +915,23 @@ def test_print_to_both_reaches_the_screen_and_the_log_while_the_screen_is_quiet(
     assert (tmp_path / "test.log").read_text(encoding="utf-8") == f"log only\n{song_line}\n"
 
 
-def test_enter_alt_view_screen_mode_is_a_noop_without_alt_view_or_logging(monkeypatch, tmp_path):
-    monkeypatch.setattr(monitor, "ALT_VIEW", False)
+def test_enter_compact_view_screen_mode_is_a_noop_without_compact_view_or_logging(monkeypatch, tmp_path):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", False)
     logger = monitor.Logger(str(tmp_path / "test.log"))
     monkeypatch.setattr(monitor.sys, "stdout", logger)
 
-    monitor.enter_alt_view_screen_mode()
+    monitor.enter_compact_view_screen_mode()
 
     assert logger.screen_quiet is False
     logger.logfile.close()
 
 
-def test_enter_alt_view_screen_mode_quiets_the_screen_when_alt_view_is_on(monkeypatch, tmp_path):
-    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+def test_enter_compact_view_screen_mode_quiets_the_screen_when_compact_view_is_on(monkeypatch, tmp_path):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     logger = monitor.Logger(str(tmp_path / "test.log"))
     monkeypatch.setattr(monitor.sys, "stdout", logger)
 
-    monitor.enter_alt_view_screen_mode()
+    monitor.enter_compact_view_screen_mode()
 
     assert logger.screen_quiet is True
     logger.logfile.close()
