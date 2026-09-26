@@ -59,7 +59,7 @@ def run_installed_console(package_test_directory: Path, installed_package: tuple
     working_directory = package_test_directory / "working"
     working_directory.mkdir(exist_ok=True)
     environment = installed_environment(installed_package)
-    return subprocess.run([str(console_executable), *arguments], cwd=working_directory, env=environment, check=False, capture_output=True, text=True, timeout=30)
+    return subprocess.run([str(console_executable), *arguments], cwd=working_directory, env=environment, check=False, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
 
 
 # Builds an import path that prefers the tested wheel while reusing installed dependencies
@@ -92,7 +92,7 @@ def test_installed_console_version_and_help(package_test_directory: Path, instal
     python_executable, _console_executable = installed_package
     working_directory = package_test_directory / "working"
     working_directory.mkdir(exist_ok=True)
-    import_result = subprocess.run([str(python_executable), "-c", "import spotify_monitor; print(spotify_monitor.__file__)"], cwd=working_directory, env=installed_environment(installed_package), check=False, capture_output=True, text=True, timeout=30)
+    import_result = subprocess.run([str(python_executable), "-c", "import spotify_monitor; print(spotify_monitor.__file__)"], cwd=working_directory, env=installed_environment(installed_package), check=False, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
     version_result = run_installed_console(package_test_directory, installed_package, "--version")
     help_result = run_installed_console(package_test_directory, installed_package, "--help")
     assert import_result.returncode == 0, import_result.stdout + import_result.stderr

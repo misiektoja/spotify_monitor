@@ -18,7 +18,7 @@ CLI_PATH = PROJECT_ROOT / "spotify_monitor.py"
 def run_cli(*arguments):
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    return subprocess.run([sys.executable, str(CLI_PATH), *arguments], cwd=PROJECT_ROOT, capture_output=True, text=True, env=environment, timeout=30, check=False)
+    return subprocess.run([sys.executable, str(CLI_PATH), *arguments], cwd=PROJECT_ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=environment, timeout=30, check=False)
 
 
 # Verifies private cookie replacement refuses a noninteractive terminal

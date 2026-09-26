@@ -1,5 +1,7 @@
 """Shared fixtures keeping module-level monitor state from leaking between tests."""
 
+import webbrowser
+
 import pytest
 
 import spotify_monitor as monitor
@@ -64,6 +66,26 @@ def stub_browser_profile_discovery(monkeypatch):
 def real_browser_profiles(monkeypatch):
     for name, enumerator in _REAL_BROWSER_PROFILE_ENUMERATORS.items():
         monkeypatch.setattr(monitor, name, enumerator)
+
+
+# Openers the monitor reaches through the webbrowser module when it hands out a Spotify authorization URL
+_BROWSER_OPENER_NAMES = ("open", "open_new", "open_new_tab")
+
+
+@pytest.fixture(autouse=True)
+# Fails any test that reaches a browser opener, so no test run can open a Spotify authorization page on the machine running it
+def refuse_browser_opening(monkeypatch):
+    attempts = []
+
+    # Records the attempt and raises, so a caller that swallows the error is still caught at teardown
+    def refuse(url, *arguments, **keywords):
+        attempts.append(str(url))
+        raise AssertionError(f"A test reached webbrowser and would have opened {url}")
+
+    for name in _BROWSER_OPENER_NAMES:
+        monkeypatch.setattr(webbrowser, name, refuse)
+    yield
+    assert not attempts, f"A test reached webbrowser and would have opened {attempts}"
 
 
 @pytest.fixture(autouse=True)

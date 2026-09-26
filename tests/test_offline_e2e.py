@@ -99,7 +99,7 @@ def test_cli_monitoring_iteration_against_local_spotify_fixture(offline_spotify_
     """)
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    result = subprocess.run([sys.executable, "-c", source], cwd=e2e_directory, env=environment, check=False, capture_output=True, text=True, timeout=30)
+    result = subprocess.run([sys.executable, "-c", source], cwd=e2e_directory, env=environment, check=False, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Monitoring user offline.friend" in result.stdout
     assert "Offline Friend" in result.stdout

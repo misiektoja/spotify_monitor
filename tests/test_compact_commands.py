@@ -39,7 +39,7 @@ def test_help_does_not_display_runtime_paths():
     environment = dict(os.environ, NO_COLOR="1")
     if hasattr(monitor, "INSTALL_METHOD_ENV_VAR"):
         environment.pop(monitor.INSTALL_METHOD_ENV_VAR, None)
-    result = subprocess.run([sys.executable, str(source), "--help"], capture_output=True, text=True, env=environment, timeout=30)
+    result = subprocess.run([sys.executable, str(source), "--help"], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=environment, timeout=30)
     assert result.returncode == 0
     assert str(source) not in result.stdout
     assert sys.executable not in result.stdout

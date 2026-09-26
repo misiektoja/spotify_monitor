@@ -26,7 +26,7 @@ ISOLATED_PRELUDE = "import builtins, requests, runpy, socket, sys; _real_import 
 def run_isolated(source):
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, capture_output=True, text=True, env=env, timeout=30, check=False)
+    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env, timeout=30, check=False)
 
 
 # Runs the command-line entry point with network access and Spotipy imports blocked

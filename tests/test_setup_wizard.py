@@ -1523,7 +1523,7 @@ def test_set_smtp_password_requires_safe_persistence():
     ("--env-file", "--setup has nowhere to write the private settings", "Replace '--env-file none' with a writable path, or drop the flag to write .env in the current directory", "#storing-secrets"),
 ])
 def test_setup_refuses_a_destination_switched_off(tmp_path, flag, summary, fix, guide):
-    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--setup", flag, "none"], cwd=tmp_path, capture_output=True, text=True, check=False)
+    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--setup", flag, "none"], cwd=tmp_path, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
 
     assert result.returncode == 1
     assert f"* Error: {summary}" in result.stdout
