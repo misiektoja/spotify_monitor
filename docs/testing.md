@@ -42,6 +42,8 @@ The suite combines several test types:
 
 No test needs a real Spotify cookie, SMTP password or webhook URL. Loopback transport tests use fake credentials that are accepted only by temporary local servers.
 
+No test opens a browser. A shared fixture fails any test that reaches a browser opener. Tests that start the script as a child process give it no stdin, so running pytest with `-s` cannot hand the terminal to a command that would otherwise open a Spotify authorization page.
+
 ## Supply Chain Checks
 
 A separate [supply chain workflow](https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/supply-chain.yml) runs on every change and again weekly, so a vulnerability published after a merge is still caught. It scans the full commit history for leaked credentials with gitleaks, audits the resolved dependency tree with `pip-audit`, builds a CycloneDX software bill of materials that lists every package a user actually installs and scans the container image for fixable high and critical vulnerabilities.
