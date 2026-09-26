@@ -824,6 +824,18 @@ def test_alt_view_colors_the_timestamp_and_playlist_name(colored):
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
 
 
+# ALT_VIEW's session banners are painted in the info colour after the usual timestamp prefix
+@pytest.mark.parametrize("banner", ["*** Friend is Active...", "*** Friend is Inactive..."])
+def test_alt_view_colors_the_activity_banners(colored, banner):
+    line = _ALT_VIEW_PREFIX + banner
+
+    rendered = monitor.colorize_alt_view_line(line)
+
+    assert rendered.startswith(f"{colored['alt_view_timestamp']}{_ALT_VIEW_PREFIX}{monitor.ANSI_RESET}")
+    assert colored["info"] in rendered
+    assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
+
+
 # A line that isn't shaped like one of ALT_VIEW's own lines (e.g. a startup message) must fall
 # through untouched, so apply_color_to_text() can fall back to the normal-view colouriser
 def test_alt_view_ignores_unrelated_lines(colored):

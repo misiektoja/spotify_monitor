@@ -226,9 +226,9 @@ def test_alt_view_prints_a_compact_line_for_each_song(loop_environment, monkeypa
     assert song_line.endswith("[Playlist Name]"), song_line
 
 
-# SPOTIFY_SUFFIX is part of the playlist's own identity - ALT_VIEW's compact line embeds it inside
-# the brackets ("[Playlist Name (by Spotify)]"), not after them
-def test_alt_view_embeds_the_spotify_suffix_inside_the_playlist_brackets(loop_environment, monkeypatch, capsys):
+# A Spotify-curated playlist's SPOTIFY_SUFFIX trails after the brackets ("[Playlist Name] (by
+# Spotify)"), the same way the rest of the tool shows it, rather than being folded into the name
+def test_alt_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "ALT_VIEW", True)
     monkeypatch.setattr(monitor, "SPOTIFY_SUFFIX", " (by Spotify)")
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
@@ -244,7 +244,7 @@ def test_alt_view_embeds_the_spotify_suffix_inside_the_playlist_brackets(loop_en
 
     output = capsys.readouterr().out
     song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
-    assert song_line.endswith("[Playlist Name (by Spotify)]"), song_line
+    assert song_line.endswith("[Playlist Name] (by Spotify)"), song_line
 
 
 # Verifies verbose stays quiet on an uneventful cycle instead of printing one line per check

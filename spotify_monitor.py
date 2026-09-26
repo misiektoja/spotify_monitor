@@ -4495,6 +4495,7 @@ _ALT_VIEW_TRAILING_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\
 # requiring the closing bracket, so whatever fragment of the name is still visible still gets
 # coloured; it never touches or needs to know about Logger's own truncation logic.
 _ALT_VIEW_TRUNCATED_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\]]*)$")
+_ALT_VIEW_ACTIVITY_BANNER_RE = re.compile(r"^\*\*\* Friend is (?:Active|Inactive)\.\.\.$")
 
 
 def colorize_alt_view_line(line):
@@ -4505,6 +4506,9 @@ def colorize_alt_view_line(line):
         return None
     prefix = colorize("alt_view_timestamp", match.group("prefix"))
     rest = match.group("rest")
+
+    if _ALT_VIEW_ACTIVITY_BANNER_RE.match(rest):
+        return prefix + _apply_style_nested(rest, "info")
 
     song_match = _ALT_VIEW_SONG_LINE_RE.match(rest)
     if not song_match:
@@ -4697,6 +4701,18 @@ def print_to_both(message):
 def enter_alt_view_screen_mode():
     if ALT_VIEW and isinstance(sys.stdout, Logger):
         sys.stdout.screen_quiet = True
+
+
+# ALT_VIEW's session banners: a blank line and separator open each active session, so consecutive
+# sessions read as separate blocks; the closing line needs neither. Screen messaging only - any
+# active/inactive alerts are still sent (or not) by the normal notification settings
+def print_alt_view_activity_banner(active):
+    if active:
+        print_to_screen(" ")
+        print_to_screen("----------------------")
+        print_to_both(f"{alt_view_timestamp()}: *** Friend is Active...")
+    else:
+        print_to_both(f"{alt_view_timestamp()}: *** Friend is Inactive...")
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -12889,12 +12905,14 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     # ALT_VIEW's own compact per-song text - built here rather than at each call site so the one
     # "[Track - Artist (Album) [Playlist]]" shape stays in one place
+    # Clamped at zero: with the live-activity backend a resumed session's start is when the resume
+    # was noticed, which can land after the song's own reported timestamp
     def time_diff_str():
-        return str(round((sp_ts - sp_active_ts_start) / 60)).zfill(2)
+        return str(max(0, round((sp_ts - sp_active_ts_start) / 60))).zfill(2)
 
     def alt_view_song_tag():
         if sp_playlist and is_playlist:
-            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()}) [{sp_playlist.strip()}{playlist_suffix}]"
+            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()}) [{sp_playlist.strip()}]{playlist_suffix}"
         else:
             return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()})"
 
@@ -13175,13 +13193,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             disappeared_counter = 0
 
-            playlist_suffix = ""
-            check_count = 0
-
             # From here on ALT_VIEW's own compact per-song line (below) is what the screen shows -
             # the initial detailed report above still printed in full, and the log file still gets
-            # everything printed from this point on too, just not the screen
+            # everything printed from this point on too, just not the screen. Printed before
+            # playlist_suffix is reset just below, so the current song's line keeps its suffix
             enter_alt_view_screen_mode()
+            if ALT_VIEW and initially_active:
+                print_alt_view_activity_banner(True)
+                print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
+
+            playlist_suffix = ""
+            check_count = 0
 
             # Primary loop
             while True:
@@ -13424,9 +13446,6 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         playlist_m_body = ""
                         playlist_m_body_html = ""
 
-                    if ALT_VIEW:
-                        print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
-
                     if not resumed_live_session and sp_artist == sp_artist_old and sp_track == sp_track_old:
                         song_on_loop += 1
                         if song_on_loop == SONG_ON_LOOP_VALUE:
@@ -13605,6 +13624,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             flag_file_create()
 
                         print(f"\n*** Friend got ACTIVE after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))} ({get_date_from_ts(sp_active_ts_stop)})")
+                        if ALT_VIEW:
+                            print_alt_view_activity_banner(True)
                         m_subject = f"Spotify user {sp_username} is active: '{sp_artist} - {sp_track}' (after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False)} - {get_short_date_from_ts(sp_active_ts_stop)})"
                         m_subject_short = f"{sp_username} is active after {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop), show_seconds=False, short=True)}"
                         friend_active_m_body = f"Friend got active after being offline for {calculate_timespan(int(sp_active_ts_start), int(sp_active_ts_stop))}\nLast activity (before getting offline): {get_date_from_ts(sp_active_ts_stop)}"
@@ -13636,6 +13657,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             email_succeeded, webhook_succeeded = send_notification_channels("active", m_subject, m_body, m_body_html, ACTIVE_NOTIFICATION, image_url=sp_playlist_image_url or sp_album_image_url, subject_short=m_subject_short, body_short=m_body_short)
                             email_sent = email_sent or email_succeeded
                             webhook_sent = webhook_sent or webhook_succeeded
+
+                    # After the "resumed from offline" block above, so its Active banner comes first
+                    # and [NN] counts from the session start it just reset
+                    if ALT_VIEW:
+                        print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
 
                     on_the_list = False
                     if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
@@ -13748,6 +13774,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 invisible_text = f"User was not visible {invisible_periods} times for {display_time(int(invisible_seconds))}"
                                 invisible_m_body = f"\n{invisible_text}"
                                 invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
+                        if ALT_VIEW:
+                            print_alt_view_activity_banner(False)
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:

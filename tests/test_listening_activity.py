@@ -2,6 +2,7 @@
 
 import copy
 import errno
+import re
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -568,6 +569,31 @@ def test_live_track_change_reports_partial_startup_track_without_skip(loop_envir
     assert "Played for:" not in output
     assert "User played the previous track for: 1 second (out of 3 minutes, 20 seconds) (0%)\n─" in output
     assert output.index("User played the previous track for:") < output.index("Spotify user:")
+
+
+# ALT_VIEW frames each listening session on screen: a blank line, a separator and "Friend is
+# Active..." before its first song line, "Friend is Inactive..." once it ends - at startup and again
+# when the friend comes back
+def test_alt_view_frames_each_session_with_activity_banners(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "ALT_VIEW", True)
+    now = loop_environment.now
+    snapshots = [feed_entity(now), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now)]
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    lines = capsys.readouterr().out.splitlines()
+
+    banner_re = re.compile(r"^\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: \*\*\* Friend is (Active|Inactive)\.\.\.$")
+    song_re = re.compile(r"^\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: \[\d+\] First - Artist \(Album\)$")
+    events = []
+    for index, line in enumerate(lines):
+        banner = banner_re.match(line)
+        if banner:
+            events.append(banner.group(1))
+            if banner.group(1) == "Active":
+                assert lines[index - 2:index] == [" ", "----------------------"], lines[index - 3:index + 1]
+        elif song_re.match(line):
+            events.append("song")
+
+    assert events == ["Active", "song", "Inactive", "Active", "song"]
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
