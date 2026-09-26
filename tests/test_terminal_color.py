@@ -896,6 +896,25 @@ def test_logger_screen_quiet_suppresses_the_terminal_but_not_the_log(tmp_path, m
     assert (tmp_path / "test.log").read_text(encoding="utf-8") == "visible line\nquiet line\n"
 
 
+# While ALT_VIEW has quieted the screen, its own lines (print_to_both) still reach the screen and the
+# log alike - nothing ALT_VIEW shows on screen is missing from the log
+def test_print_to_both_reaches_the_screen_and_the_log_while_the_screen_is_quiet(tmp_path, monkeypatch):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", terminal)
+    logger = monitor.Logger(str(tmp_path / "test.log"))
+    monkeypatch.setattr(monitor.sys, "stdout", logger)
+    logger.screen_quiet = True
+    song_line = "09/26, 12:19:06: [00] Song - Artist (Album) [Playlist]"
+
+    print("log only")
+    monitor.print_to_both(song_line)
+
+    logger.logfile.close()
+    assert logger.screen_quiet is True
+    assert terminal.getvalue() == f"{song_line}\n"
+    assert (tmp_path / "test.log").read_text(encoding="utf-8") == f"log only\n{song_line}\n"
+
+
 def test_enter_alt_view_screen_mode_is_a_noop_without_alt_view_or_logging(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "ALT_VIEW", False)
     logger = monitor.Logger(str(tmp_path / "test.log"))

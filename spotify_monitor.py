@@ -4560,8 +4560,8 @@ def unwrap_terminal_stream(stream):
 class Logger(object):
     # Set while ALT_VIEW owns the screen (see enter_alt_view_screen_mode()): an ordinary write()
     # still records everything in full in the log file, just stops also echoing it to the terminal,
-    # so ALT_VIEW's own compact line (written via terminal_only(), unaffected by this flag) is the
-    # only thing the screen shows. A class attribute rather than one set in __init__, so it still
+    # so ALT_VIEW's own lines (written via print_to_both(), which lifts this flag for its write) are
+    # the only thing the screen shows. A class attribute rather than one set in __init__, so it still
     # defaults correctly for a Logger built via Logger.__new__() (bypassing __init__ entirely)
     screen_quiet = False
 
@@ -4668,21 +4668,8 @@ def alt_view_timestamp():
     return datetime.now().strftime("%m/%d, %H:%M:%S")
 
 
-# Writes one line to the terminal only, bypassing Logger.screen_quiet - this is how ALT_VIEW's own
-# compact per-song line reaches the screen while ordinary print() calls stay in the log file only.
-# Falls back to a plain print() if sys.stdout isn't a Logger/TerminalStream (e.g. main() has not
-# installed one yet), so this is safe to call any time ALT_VIEW is on
-def print_to_screen(message):
-    terminal_only = getattr(sys.stdout, "terminal_only", None)
-    if terminal_only is not None:
-        terminal_only(f"{message}\n")
-    else:
-        print(message)
-
-
-# Writes one line to both the terminal and the log file, ignoring Logger.screen_quiet - for the rare
-# ALT_VIEW message (not just the per-song line) that should reach the screen but still belongs in
-# the log's own record of events, same as everything else
+# Writes one line to both the terminal and the log file, ignoring Logger.screen_quiet - this is how
+# ALT_VIEW's own lines reach the screen while ordinary print() calls stay in the log file only
 def print_to_both(message):
     if isinstance(sys.stdout, Logger):
         was_quiet, sys.stdout.screen_quiet = sys.stdout.screen_quiet, False
@@ -4695,8 +4682,8 @@ def print_to_both(message):
 
 
 # Switches the screen over to ALT_VIEW's own compact view: ordinary print() calls keep writing to
-# the log file in full, but stop also echoing to the terminal, so print_to_screen()'s per-song line
-# is the only thing shown from here on. A no-op if ALT_VIEW is off or logging is disabled (nothing
+# the log file in full, but stop also echoing to the terminal, so ALT_VIEW's own print_to_both()
+# lines are the only thing shown from here on. A no-op if ALT_VIEW is off or logging is disabled (nothing
 # would preserve the ordinary output if the screen stopped showing it, so it is left alone)
 def enter_alt_view_screen_mode():
     if ALT_VIEW and isinstance(sys.stdout, Logger):
@@ -4708,8 +4695,8 @@ def enter_alt_view_screen_mode():
 # active/inactive alerts are still sent (or not) by the normal notification settings
 def print_alt_view_activity_banner(active):
     if active:
-        print_to_screen(" ")
-        print_to_screen("----------------------")
+        print_to_both(" ")
+        print_to_both("----------------------")
         print_to_both(f"{alt_view_timestamp()}: *** Friend is Active...")
     else:
         print_to_both(f"{alt_view_timestamp()}: *** Friend is Inactive...")
@@ -13200,7 +13187,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             enter_alt_view_screen_mode()
             if ALT_VIEW and initially_active:
                 print_alt_view_activity_banner(True)
-                print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
+                print_to_both(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
 
             playlist_suffix = ""
             check_count = 0
@@ -13661,7 +13648,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     # After the "resumed from offline" block above, so its Active banner comes first
                     # and [NN] counts from the session start it just reset
                     if ALT_VIEW:
-                        print_to_screen(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
+                        print_to_both(f"{alt_view_timestamp()}: [{time_diff_str()}] {alt_view_song_tag()}")
 
                     on_the_list = False
                     if sp_track.upper() in tracks_upper or sp_playlist.upper() in tracks_upper or sp_album.upper() in tracks_upper:
