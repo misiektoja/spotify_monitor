@@ -327,7 +327,9 @@ def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypa
     monkeypatch.setattr(monitor, "FLAG_FILE", str(flag_path))
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
-    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(user_uri_id="someone-else"))
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list(user_uri_id="someone-else"))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 

@@ -798,6 +798,8 @@ def test_setup_wizard_persists_webhook_channel(monkeypatch, capsys):
         monkeypatch.setattr(monitor, "_doctor_ask_yes_no", lambda question: False)
         monkeypatch.setattr(monitor, "_wizard_collect_cookie_auth", lambda *args, **kwargs: {"complete": False, "validated": False, "browser": None, "source": "not configured", "mount_required": False})
         monkeypatch.setattr(monitor, "_wizard_collect_output_section", lambda state: None)
+        # The accepted Doctor run starts with the connectivity check
+        monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: True)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
         assert error.value.code == 0

@@ -28,6 +28,18 @@ def configure_mail(monkeypatch):
     monkeypatch.setattr(monitor, "RECEIVER_EMAIL", "owner@example.test")
 
 
+# Fails the Spotify sign-in behind the following check as an unreachable Spotify would, so a full wizard run finishes without a network request
+def fail_follow_check_authentication(monkeypatch):
+    advice = monitor.classify_recovery_error(monitor.req.exceptions.ConnectionError("Spotify could not be reached"), "cookie_auth")
+
+    # Records the failure on the report and returns the failed row, as the real check does
+    def authenticate(report):
+        report.authentication_advice = advice
+        return [monitor.make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+
+    monkeypatch.setattr(monitor, "doctor_check_authentication", authenticate)
+
+
 # Keeps wizard scenarios on deterministic Linux behavior and their original notification channel
 @pytest.fixture(autouse=True)
 def disable_webhook_collection_by_default(monkeypatch):
@@ -383,6 +395,7 @@ def test_manual_cookie_setup_persists_secret_only_to_dotenv(monkeypatch, capsys)
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
         monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        fail_follow_check_authentication(monkeypatch)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
         assert error.value.code == 0
@@ -426,6 +439,7 @@ def test_a_rerun_proposes_the_saved_settings(monkeypatch, capsys):
         monkeypatch.setattr(monitor.getpass, "getpass", lambda prompt="": "cookie-private-value")
         monkeypatch.setattr(monitor, "validate_imported_sp_dc", lambda cookie: True)
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+        fail_follow_check_authentication(monkeypatch)
 
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=config_path, env_file=env_path)
@@ -502,6 +516,7 @@ def test_browser_import_reuses_phase2_runner(monkeypatch, capsys):
 
         import_mock = Mock(side_effect=import_cookie)
         monkeypatch.setattr(monitor, "run_browser_cookie_import", import_mock)
+        fail_follow_check_authentication(monkeypatch)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
         assert error.value.code == 0
@@ -530,6 +545,7 @@ def test_a_completed_browser_import_is_followed_directly_by_the_file_summary(mon
         monkeypatch.setattr(monitor, "select_browser_profile", lambda *args, **kwargs: {"name": "default", "dir": str(directory), "cookie_file": str(cookie_file)})
         monkeypatch.setattr(monitor, "read_firefox_sp_dc", Mock(return_value="browser-private-value"))
         monkeypatch.setattr(monitor, "validate_imported_sp_dc", Mock(return_value=True))
+        fail_follow_check_authentication(monkeypatch)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=env_path)
         assert error.value.code == 0
@@ -551,6 +567,7 @@ def test_browser_import_receives_the_persisted_target_decision(monkeypatch, pers
         monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
         import_mock = Mock(side_effect=lambda **kwargs: monitor.update_dotenv_file(kwargs["env_file"], {"SP_DC_COOKIE": "browser-private-value"}))
         monkeypatch.setattr(monitor, "run_browser_cookie_import", import_mock)
+        fail_follow_check_authentication(monkeypatch)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
@@ -618,6 +635,7 @@ def test_client_mode_separates_refresh_token(monkeypatch, capsys):
         install_inputs(monkeypatch, ["target.user", "y", "", "", "2", "y", str(login_path), "n", "n", "y", "", "", "n"])
         monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
         monkeypatch.setattr(monitor, "parse_login_request_body_file", lambda path: ("device-id", "system-id", "account-id", "refresh-private-value"))
+        fail_follow_check_authentication(monkeypatch)
         with pytest.raises(SystemExit) as error:
             monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
         assert error.value.code == 0
