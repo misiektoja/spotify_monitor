@@ -64,7 +64,7 @@ The wizard recommends importing the monitoring account's saved Firefox login. On
 
 Container setup destinations must stay inside `/data`, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.
 
-After saving authentication, the wizard checks whether the target is visible or followed. It offers to follow the target only when neither is the case and sends the follow request only after you confirm.
+After saving authentication, the wizard checks whether the target is visible or followed. It offers to follow the target only when neither is the case and sends the follow request only after you confirm. If only the other [Friend Activity backend](configuration.md#friend-activity-backend) lists the target, the wizard offers to switch to that backend and saves it in the configuration file.
 
 With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.
 
