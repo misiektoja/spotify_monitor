@@ -70,7 +70,7 @@ The target must share listening activity with the monitoring account, the Spotif
 - **All followers**: the monitoring account must follow the target.
 - **Selected people**: the target selects the monitoring account. Following is not required.
 
-If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
+Setup first checks whether the target shares listening activity with the monitoring account. It reads the follow state only when the target is not visible. If the monitoring account does not follow such a target, setup offers to follow it. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
 
 If only the other [Friend Activity backend](#friend-activity-backend) lists the target, setup offers to switch to that backend instead. It asks for that backend's polling interval and saves both in the configuration file.
 
