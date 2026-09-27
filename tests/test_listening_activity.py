@@ -763,6 +763,85 @@ def test_live_timing_classifies_same_track_timestamp_moves():
     assert not timing.repeat_confirmed() and timing.finishes == [(1099, 1049, "start")]
 
 
+# Starts timing a 200 second track whose start at 1000 was observed at a change and confirmed by steady checks until 1075
+def steady_live_timing():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=200, max_gap=60)
+    timing.observe(950, True, 60, 900)
+    timing.observe(1005, True, 60, 1000, track_changed=True)
+    timing.start_track(1005, True, source_ts=1000, duration=200, max_gap=60)
+    for sampled_at in (1015, 1045, 1075):
+        timing.observe(sampled_at, True, 60, 1000)
+    return timing
+
+
+# A track change seen while the feed republishes the playing track starts the new track where the previous one was predicted to finish, since its first timestamp may be a republish
+@pytest.mark.parametrize("finishing", [False, True])
+def test_live_timing_storm_starts_the_next_track_at_the_predicted_finish(finishing):
+    timing = steady_live_timing()
+    for sampled_at in range(1100, 1200, 10):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    assert timing.storming() and timing.finishes == [(1200, 1000, "start")]
+    if finishing:
+        timing.observe(1200, True, 60, 1197)
+        assert timing.repeat_confirmed()
+    timing.observe(1210, True, 60, 1206, track_changed=True)
+    assert timing.track_seconds == 200 and timing.precise
+    assert timing.played_for(200, 1, followed=True) == ("3 minutes, 20 seconds", False, False)
+    timing.start_track(1210, True, source_ts=1206, duration=180, max_gap=60)
+    assert timing.track_started_at == 1200 and timing.precise and timing.finishes == [(1380, 1200, "start")]
+
+
+# A skip during a storm is placed between the two checks around it and leaves both tracks without a precise boundary
+def test_live_timing_storm_places_a_skip_between_the_checks():
+    timing = steady_live_timing()
+    for sampled_at in (1100, 1110, 1120):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    timing.observe(1130, True, 60, 1128, track_changed=True)
+    assert timing.track_seconds == 123 and not timing.precise
+    timing.start_track(1130, True, source_ts=1128, duration=180, max_gap=60)
+    assert timing.track_started_at == 1123 and not timing.precise
+    # The finish follows the latest possible start, so a republish cannot settle it before the track can have ended
+    assert timing.finishes == [(1308, 1128, "unobserved")]
+
+
+# A storm that begins with a track shows that its first timestamp may be a republish, so the start moves to the middle of its window unless a steady check confirmed it first
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_live_timing_storm_reopens_an_unconfirmed_start(confirmed):
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=200, max_gap=60)
+    timing.observe(950, True, 60, 900)
+    timing.observe(1000, True, 60, 900)
+    timing.observe(1010, True, 60, 1008, track_changed=True)
+    timing.start_track(1010, True, source_ts=1008, duration=200, max_gap=60)
+    assert timing.start_window == (997, 1008) and timing.precise
+    if confirmed:
+        timing.observe(1020, True, 60, 1008)
+    for sampled_at in (1030, 1040):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    assert timing.storming()
+    if confirmed:
+        assert timing.track_started_at == 1008 and timing.precise and timing.finishes == [(1208, 1008, "start")]
+    else:
+        assert timing.track_started_at == 1002.5 and not timing.precise and timing.finishes == [(1208, 1008, "unobserved")]
+        assert timing.played_seconds(1040) == 37.5
+
+
+# Moved timestamps separated by a steady check or a pause are position changes rather than a storm and keep their restart proofs
+def test_live_timing_separate_moves_are_not_a_storm():
+    timing = steady_live_timing()
+    timing.observe(1100, True, 60, 1098)
+    timing.observe(1110, True, 60, 1098)
+    timing.observe(1120, True, 60, 1118)
+    timing.observe(1130, False, 60, 1128)
+    timing.observe(1140, True, 60, 1138)
+    timing.observe(1150, True, 60, 1148)
+    assert not timing.storming()
+    assert [kind for _, _, kind in timing.finishes] == ["start", "seek", "seek", "seek"]
+
+
 # Formats the played-for text for HTML bodies with the time and the SKIPPED mark in bold
 @pytest.mark.parametrize("text,expected", [("30 seconds (out of 3 minutes) (16%)", "<b>30 seconds</b> (out of 3 minutes) (16%)"), ("1 minute (out of 3 minutes) - SKIPPED (33%)", "<b>1 minute</b> (out of 3 minutes) - <b>SKIPPED</b> (33%)"), ("3 minutes", "<b>3 minutes</b>")])
 def test_format_played_for_html(text, expected):
@@ -1067,3 +1146,21 @@ def test_live_update_without_a_position_change_does_not_hide_the_repeat(loop_env
     assert "Songs played:\t\t\t3 (3 minutes, 48 seconds)" in output
     assert "User played the last track for: 32 seconds (out of 3 minutes, 20 seconds) (16%)\n─" in output
     assert "*** User played 3 songs" in output
+
+
+# A storm that starts with a track and outlasts it does not turn full plays into short or crossfaded ones
+def test_live_storm_keeps_full_plays_whole(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", True)
+    now = loop_environment.now
+    # The second track starts at +40 and the first one again at +240, but the feed republishes each with a fresh timestamp two seconds before every check until +328
+    storm = [feed_entity(now + 58, track=OTHER_TRACK_URI)] + [feed_entity(now + sampled_at - 2, track=OTHER_TRACK_URI) for sampled_at in range(90, 241, 30)] + [feed_entity(now + sampled_at - 2) for sampled_at in range(270, 331, 30)]
+    snapshots = [feed_entity(now - 5)] * 3 + storm + [feed_entity(now + 328)] * 3 + [feed_entity(now + 440, track=OTHER_TRACK_URI)] + [feed_entity(now + 470, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert output.count("\nTrack:\t\t\t\tArtist - Second") == 2
+    # Only the first track, which the second one cut short, is reported
+    assert output.count("User played the previous track for") == 1
+    assert "crossfade" not in output
+    # The track that followed during the storm starts midway between the checks around it rather than at the republished +268
+    assert "Songs played:\t\t\t3 (4 minutes, 18 seconds)" in output
