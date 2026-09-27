@@ -852,6 +852,7 @@ def test_setup_wizard_persists_ntfy_access_token(monkeypatch, capsys):
 def test_send_test_webhook_cli_is_spotify_independent(monkeypatch):
     delivery = Mock(return_value=0)
     connectivity = Mock(side_effect=AssertionError("Spotify connectivity check attempted"))
+    configure_webhook(monkeypatch)
     monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", "--send-test-webhook", "--env-file", "none"])
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
@@ -898,6 +899,8 @@ def test_send_test_webhook_cli_autodetects_ntfy_provider(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
     monkeypatch.setattr(monitor, "WEBHOOK_PROVIDER", "discord")
+    # Only a provider the configuration file set is warned about, the built-in default follows the URL silently
+    monkeypatch.setattr(monitor, "CONFIGURED_SETTING_NAMES", {"WEBHOOK_PROVIDER"})
     monkeypatch.setattr(monitor, "WEBHOOK_URL", "")
     monkeypatch.setattr(monitor, "WEBHOOK_ENABLED", False)
     monkeypatch.setattr(monitor, "clear_screen", Mock())
@@ -1092,6 +1095,8 @@ def test_the_test_messages_use_the_shared_wording(monkeypatch):
     monkeypatch.setattr(monitor, "send_webhook", delivery)
     monkeypatch.setattr(monitor, "validate_smtp_configuration", lambda: None)
     monkeypatch.setattr(monitor, "validate_webhook_url", lambda *args, **kwargs: True)
+    # The test email checks connectivity first, which would otherwise reach the real Spotify endpoint
+    monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: True)
 
     for flag in ("--send-test-email", "--send-test-webhook"):
         monkeypatch.setattr(monitor.sys, "argv", ["spotify_monitor.py", flag, "--env-file", "none"])
