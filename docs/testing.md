@@ -34,7 +34,7 @@ The suite combines several test types:
 
 - Unit and component tests exercise focused functions with deterministic inputs.
 - Integration tests use temporary files, SQLite databases and real loopback HTTP and SMTP connections.
-- Packaging tests build the wheel, install it into a clean environment and run the installed command outside the source tree.
+- Packaging tests build the wheel from a private copy of the files Git tracks, install it into a clean environment and run the installed command outside the source tree. The build leaves no `build/` or `.egg-info` directory in the checkout, so parallel pytest-xdist workers cannot overwrite each other's build files.
 - The offline E2E test runs one complete CLI monitoring iteration against a loopback Spotify fixture.
 - Monitoring-loop tests drive the Friend Activity loop against fake buddy-list responses to check authentication recovery, retry timing, activity flag transitions and track-change recording.
 - Contract tests validate stable documentation commands, links, container assets and publishing workflows.
