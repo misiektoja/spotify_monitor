@@ -42,6 +42,8 @@ The suite combines several test types:
 
 No test needs a real Spotify cookie, SMTP password or webhook URL. Loopback transport tests use fake credentials that are accepted only by temporary local servers.
 
+Tests do not depend on their order. After every test a shared fixture returns the monitor's module settings, caches, environment variables and signal handlers to their starting state, so a test passes the same way alone, in a full run or on any pytest-xdist worker.
+
 No test opens a browser. A shared fixture fails any test that reaches a browser opener. Tests that start the script as a child process give it no stdin, so running pytest with `-s` cannot hand the terminal to a command that would otherwise open a Spotify authorization page.
 
 ## Supply Chain Checks
