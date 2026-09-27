@@ -1031,6 +1031,7 @@ SP_CACHED_CLIENT_ID = ""
 SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"  # unofficial endpoint behind Spotify's Listening Activity feature, found by @JoaoGabriel-Lima (issue #60)
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
+SPOTIFY_ENTITY_METADATA_URL = "https://spclient.wg.spotify.com/metadata/4"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
 
 # The feed sometimes reports one track start twice a few seconds apart, so a same-track timestamp this close to the previous one is not a position change
@@ -8140,6 +8141,8 @@ def spotify_activity_metadata(kind, uri, access_token):
             response.raise_for_status()
             info = response.json()
             name = info.get("name") if isinstance(info, dict) else None
+        elif kind in ("album", "artist"):
+            name = spotify_get_entity_name_spclient(uri, access_token)
         else:
             # The playlist service resolves personalized playlists such as Liked Songs that the web-player query reports as not found
             name = spotify_get_playlist_name_spclient(uri, access_token) or spotify_get_playlist_info_web(uri).get("sp_playlist_name")
@@ -8182,6 +8185,34 @@ def spotify_get_playlist_name_spclient(playlist_uri, access_token):
     return name if isinstance(name, str) else ""
 
 
+# Converts a base62 Spotify ID to the hexadecimal ID the metadata service expects
+def spotify_id_to_gid(item_id: str) -> str:
+    alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if not re.fullmatch(r"[A-Za-z0-9]{22}", item_id):
+        raise ValueError("Spotify ID must contain 22 letters or digits")
+    number = 0
+    for character in item_id:
+        number = number * 62 + alphabet.index(character)
+    return f"{number:032x}"
+
+
+# Returns an album or artist name from Spotify's metadata service
+def spotify_get_entity_name_spclient(uri, access_token):
+    parts = uri.split(":")
+    if len(parts) != 3 or parts[0] != "spotify" or parts[1] not in ("album", "artist"):
+        raise ValueError("Spotify activity metadata URI is malformed")
+    url = f"{SPOTIFY_ENTITY_METADATA_URL}/{parts[1]}/{spotify_id_to_gid(parts[2])}"
+    headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT, "Accept": "application/json"}
+    if TOKEN_SOURCE == "cookie" and SP_CACHED_CLIENT_ID:
+        headers["Client-Id"] = SP_CACHED_CLIENT_ID
+    debug_print("HTTP GET", url=url, context=f"{parts[1]} metadata", headers=sanitize_debug_headers(headers))
+    response = SESSION.get(url, params={"market": "from_token"}, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL, allow_redirects=False)
+    debug_print("HTTP GET", url=url, context=f"{parts[1]} metadata", status=response.status_code)
+    response.raise_for_status()
+    payload = response.json()
+    return payload.get("name") if isinstance(payload, dict) else None
+
+
 # Completes live activity names from existing metadata backends only when a track is displayed
 def spotify_complete_live_activity(info, access_token, track):
     if "sp_is_playing" not in info:
@@ -8199,6 +8230,9 @@ def spotify_complete_live_activity(info, access_token, track):
     elif context in (track.get("sp_artists") or {}):
         # Artist pages also list tracks where that artist is not the first credited one
         info["sp_playlist"] = track["sp_artists"][context]
+    elif context.startswith(("spotify:album:", "spotify:artist:")):
+        # An album or artist the track does not name is looked up, since its context line would otherwise show a URI
+        info["sp_playlist"] = spotify_activity_metadata(context.split(":")[1], context, access_token) or context
     else:
         info["sp_playlist"] = context
 
