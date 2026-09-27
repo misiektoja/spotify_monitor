@@ -13631,7 +13631,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
-                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
+                    print(f"User '{spotify_user_label(user_uri_id, sp_accessToken)}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
                     other_backend = other_activity_backend()
                     if target_visible_in_other_backend(sp_accessToken, user_uri_id):
                         print(f"The target is visible through the {other_backend} backend. {backend_switch_hint(other_backend)}")
