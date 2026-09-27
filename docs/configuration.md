@@ -671,6 +671,7 @@ Parts with the same name mean the same thing in [spotify_profile_monitor](https:
 | `help_command` | The commands in the help examples |
 | `help_comment` | The `#` comment above each help example |
 | `help_default` | The `(default: ...)` notes |
+| `compact_view_timestamp` | The time at the start of each [compact view](usage.md#compact-view) line |
 
 On Windows, install the optional `colorama` package for the best results in the classic Command Prompt. Windows Terminal needs nothing extra.
 

@@ -608,7 +608,17 @@ COLORED_OUTPUT = True
 #     "help_command": "bright_white",
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
+#     # Compact view
+#     "compact_view_timestamp": "bright_yellow",
 # }
+
+# Whether to show one line per song on screen instead of the full report, Friend Activity monitoring only
+# The log file still gets the full output, including verbose and debug lines. With logging disabled it is not kept
+# [NN] counts minutes since the "Friend is Active..." line, for example:
+#   27 Sep, 17:10:18: [00] Chasing Cars - Snow Patrol (Eyes Open) [U2 Radio] (by Spotify)
+#   27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+# Can also be enabled via the --compact-view flag, which turns it on regardless of this setting
+COMPACT_VIEW = False
 
 # Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
@@ -938,6 +948,7 @@ REPORTS_PRINTED = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = False
 COLOR_THEME: dict = {}
+COMPACT_VIEW = False
 VERBOSE_MODE = False
 DEBUG_MODE = False
 DELIVERY_CONFIRMATIONS = True
@@ -2223,6 +2234,8 @@ class RecoveryHintTracker:
 
 # Prints one built advice through the shared recovery block and returns it
 def print_recovery_advice(advice: RecoveryAdvice, debug: Optional[bool] = None, retry_note: str = "", with_fix: bool = True, label: str = "Error", tracker: Optional[RecoveryHintTracker] = None) -> RecoveryAdvice:
+    if isinstance(sys.stdout, (Logger, TerminalStream)) and sys.stdout.screen_quiet:
+        print_compact_view_failure(advice.summary, label)
     print(render_recovery_advice(advice, debug, retry_note, with_fix and (tracker is None or tracker.should_render(advice)), label))
     return advice
 
@@ -4022,6 +4035,8 @@ DEFAULT_COLOR_THEME = {
     "help_command": "bright_white",
     "help_comment": "bright_black",
     "help_default": "bright_black",
+    # Compact view
+    "compact_view_timestamp": "bright_yellow",
 }
 
 # A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
@@ -4478,6 +4493,9 @@ def unwrap_terminal_stream(stream):
 
 # Logger class to output messages to stdout and log file
 class Logger(object):
+    # Set by compact view so ordinary output reaches only the log file. A class attribute, so a Logger built without __init__ has it too
+    screen_quiet = False
+
     def __init__(self, filename):
         # The early sanitizing stream is unwrapped so sanitizing and colouring happen exactly once.
         # Writing through it would colourise every line twice, and the second pass no longer sees the
@@ -4489,10 +4507,11 @@ class Logger(object):
         message = sanitize_terminal_text(message)
         # Expand tabs for file output and strip colour codes so the log file stays plain text
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
-        # Truncate before colouring so escape sequences never count toward the displayed width
-        message = self._truncate_terminal(message)
-        self.terminal.write(apply_color_to_text(message))
-        self.terminal.flush()
+        if not self.screen_quiet:
+            # Truncate before colouring so escape sequences never count toward the displayed width
+            message = self._truncate_terminal(message)
+            self.terminal.write(apply_color_to_text(message))
+            self.terminal.flush()
         self.logfile.flush()
 
     def terminal_only(self, message):
@@ -4504,6 +4523,13 @@ class Logger(object):
     def log_only(self, message):
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", sanitize_terminal_text(message)).expandtabs(8)))
         self.logfile.flush()
+
+    # Writes one line with its own colours to the log and to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        line = sanitize_terminal_text(line) + "\n"
+        self.log_only(line)
+        self.terminal.write(self._truncate_terminal(line))
+        self.terminal.flush()
 
     def flush(self):
         self.terminal.flush()
@@ -4548,13 +4574,23 @@ class Logger(object):
 
 # Sanitizing stdout wrapper used before logging policy and one-shot mode resolution
 class TerminalStream(object):
+    # Set by compact view so ordinary output is dropped while file logging is disabled
+    screen_quiet = False
+
     # Stores the wrapped terminal stream
     def __init__(self, stream):
         self.terminal = stream
 
     # Writes one sanitized and coloured message to the wrapped terminal
     def write(self, message):
+        if self.screen_quiet:
+            return
         self.terminal.write(apply_color_to_text(sanitize_terminal_text(message)))
+        self.terminal.flush()
+
+    # Writes one line that carries its own colours to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        self.terminal.write(sanitize_terminal_text(line) + "\n")
         self.terminal.flush()
 
     # Writes one message to the terminal while matching the Logger interface
@@ -4572,6 +4608,70 @@ class TerminalStream(object):
     # Forwards remaining stream attributes to the wrapped terminal
     def __getattr__(self, name):
         return getattr(self.terminal, name)
+
+
+# Formats the time that opens every compact view line, e.g. "27 Sep, 21:04:33", with the month named so the order is unambiguous
+def compact_view_timestamp(ts: float) -> str:
+    return datetime.fromtimestamp(ts).strftime("%d %b, %H:%M:%S")
+
+
+# Writes one line that carries its own colours to the screen and the log, even while compact view keeps ordinary output off the screen
+def print_to_screen_and_log(line: str = "") -> None:
+    if isinstance(sys.stdout, (Logger, TerminalStream)):
+        sys.stdout.write_styled_line(line)
+    else:
+        print(line)
+
+
+# Keeps ordinary output off the screen from now on, leaving it to the log file when logging is enabled
+def enter_compact_view_screen_mode() -> None:
+    if COMPACT_VIEW and isinstance(sys.stdout, (Logger, TerminalStream)):
+        sys.stdout.screen_quiet = True
+
+
+# Prints one compact view line after its timestamp
+def print_compact_view_line(text: str, ts: Optional[float] = None) -> None:
+    stamp = compact_view_timestamp(time.time() if ts is None else ts)
+    text = re.sub(r"[\t\r\n\v\f\x85\u2028\u2029]+", " ", text)
+    print_to_screen_and_log(f"{colorize('compact_view_timestamp', stamp + ':')} {text}")
+
+
+# Returns one line of metadata text while accepting missing names
+def _compact_view_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+# Builds the compact view song text, colouring the playlist here because the finished line cannot be parsed back reliably
+def compact_view_song_text(minutes: int, track: Any, artist: Any, album: Any, playlist: str = "", playlist_suffix: str = "") -> str:
+    text = f"[{minutes:02d}] {_compact_view_text(track)} - {_compact_view_text(artist)} ({_compact_view_text(album)})"
+    if playlist:
+        text += f" [{colorize('playlist', _compact_view_text(playlist))}]{playlist_suffix}"
+    return text
+
+
+# Opens a compact view session with a blank line and returns its start, which the [NN] minute counts use
+def print_compact_view_active_banner() -> float:
+    started_at = time.time()
+    print_to_screen_and_log()
+    print_compact_view_line(colorize("info", "*** Friend is Active..."), started_at)
+    return started_at
+
+
+# Closes a compact view session, the blank line reaching only the log
+def print_compact_view_inactive_banner() -> None:
+    print_compact_view_line(colorize("info", "*** Friend is Inactive..."))
+    print()
+
+
+# Reports an actionable diagnostic while its full report stays off the screen
+def print_compact_view_failure(summary: str, label: str = "Error") -> None:
+    detail = " (details in log)" if isinstance(sys.stdout, Logger) else ""
+    print_compact_view_line(colorize("warning" if label == "Warning" else "error", f"*** {label}: {summary}{detail}"))
+
+
+# Reports which part of monitoring recovered in one compact view line
+def print_compact_view_recovery(lasted: int, component: str = "Monitoring") -> None:
+    print_compact_view_line(colorize("info", f"*** {component} recovered after {display_time(max(1, lasted))}"))
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -8840,8 +8940,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path, scrob
         rows.append(StartupSummaryRow("Legacy OAuth cache", SP_APP_TOKENS_FILE or "None (memory only)", concise=True))
     else:
         rows.append(StartupSummaryRow("Legacy OAuth cache", "Not used", concise=False))
+    compact_view_state = ("True" if output_path else "True (logging disabled, the full output is not kept)") if COMPACT_VIEW else "False"
     rows.extend([
         StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        StartupSummaryRow("Compact view", compact_view_state, concise=COMPACT_VIEW),
         *_startup_environment_rows(env_path),
         StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
@@ -12761,6 +12863,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
 
+    # [NN] counts minutes from the "Friend is Active..." line, on the same clock as the printed times, rather than from the first song's start
+    compact_view_started_at = time.time()
+    metadata_outage = OutageReporter()
+
+    # Prints the current song as one compact view line
+    def print_compact_view_song():
+        now = time.time()
+        # A system clock set back must not print a negative count
+        minutes = int(max(0.0, now - compact_view_started_at) // 60)
+        print_compact_view_line(compact_view_song_text(minutes, sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix), now)
+
     try:
         if csv_file_name:
             init_csv_file(csv_file_name)
@@ -13038,6 +13151,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             disappeared_counter = 0
 
+            # Compact view takes the screen after the initial report. The first line prints before playlist_suffix is reset
+            enter_compact_view_screen_mode()
+            if COMPACT_VIEW and initially_active:
+                compact_view_started_at = print_compact_view_active_banner()
+                print_compact_view_song()
+
             playlist_suffix = ""
             check_count = 0
 
@@ -13065,6 +13184,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
+                            if COMPACT_VIEW:
+                                print_compact_view_recovery(outage_lasted, "Activity checks")
                             print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
@@ -13090,8 +13211,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         # A failure is reported once, then left to the hourly reminder rather than repeated on every check
                         outage_outcome = outage.failed(advice)
+                        if COMPACT_VIEW and outage_outcome in ("full", "changed"):
+                            print_compact_view_failure(advice.summary)
                         if outage_outcome == "full":
-                            print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
+                            print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(retry_seconds)}", with_fix=recovery_hint_tracker.should_render(advice)))
                         elif outage_outcome == "changed":
                             print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
                         elif outage_outcome == "reminder":
@@ -13121,9 +13244,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if user_not_found is False:
                         invisible_since = visible_last_at or now
                         absence_advice_shown = False
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("warning", "*** Friend is no longer visible (playback unknown)"))
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
+                            if COMPACT_VIEW:
+                                print_compact_view_failure(not_found_advice.summary)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
@@ -13158,6 +13285,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
                         # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
                         absence_advice_shown = True
+                        if COMPACT_VIEW:
+                            print_compact_view_failure(f"Friend has not been visible for {calculate_timespan(now, invisible_since)}. Check following and activity sharing", label="Warning")
                         print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
                         not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                         print(f"To fix: {not_visible_advice.fix}")
@@ -13177,6 +13306,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             invisible_seconds += max(0, now - invisible_since)
                             invisible_periods += 1
                         invisible_for = calculate_timespan(now, invisible_since)
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("info", f"*** Friend is visible again after {invisible_for}"))
                         if live_activity:
                             status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is visible again after {invisible_for}"
                             status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is visible again after <b>{invisible_for}</b>"
@@ -13239,10 +13370,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if live_activity:
                             # The unreported sample becomes a gap so the retry cannot classify the change as observed
                             live_timing.sampled_at = None
-                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(activity_error_interval())}", tracker=recovery_hint_tracker)
+                        advice = classify_recovery_error(e, "metadata")
+                        if COMPACT_VIEW and metadata_outage.failed(advice) in ("full", "changed"):
+                            print_compact_view_failure(f"Track metadata: {advice.summary}")
+                        print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(activity_error_interval())}", with_fix=recovery_hint_tracker.should_render(advice)))
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(activity_error_interval())
                         continue
+
+                    metadata_outage_lasted = metadata_outage.recovered()
+                    if COMPACT_VIEW and metadata_outage_lasted is not None:
+                        print_compact_view_recovery(metadata_outage_lasted, "Track metadata")
 
                     sp_username = sp_data["sp_username"]
 
@@ -13331,6 +13469,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         activity_ts = int(live_timing.track_started_at)
                     else:
                         activity_ts = sp_ts
+
+                    # A return from offline opens a new session on the same condition as the "Friend got ACTIVE" block below
+                    if COMPACT_VIEW:
+                        if resumed_live_session or (not live_activity and resumed_after_offline):
+                            compact_view_started_at = print_compact_view_active_banner()
+                        print_compact_view_song()
+                        print()
 
                     print(f"Spotify user:\t\t\t{sp_username}")
                     print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}")
@@ -13603,6 +13748,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 invisible_text = f"User was not visible {invisible_periods} times for {display_time(int(invisible_seconds))}"
                                 invisible_m_body = f"\n{invisible_text}"
                                 invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
+                        if COMPACT_VIEW:
+                            print_compact_view_inactive_banner()
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:
@@ -13818,7 +13965,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COMPACT_VIEW, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -14400,6 +14547,13 @@ def main():
         help="Disable coloured output in the terminal"
     )
     opts.add_argument(
+        "--compact-view",
+        dest="compact_view",
+        action="store_true",
+        default=None,
+        help="Show one line per song on screen and keep the full output in the log file"
+    )
+    opts.add_argument(
         "--debug",
         dest="debug_mode",
         action="store_true",
@@ -14877,6 +15031,9 @@ def main():
 
     if args.no_color is True:
         COLORED_OUTPUT = False
+
+    if args.compact_view is True:
+        COMPACT_VIEW = True
 
     # Re-initialise colour output to pick up COLORED_OUTPUT and any COLOR_THEME changes from the config file
     init_color_output(stdout_bck)
