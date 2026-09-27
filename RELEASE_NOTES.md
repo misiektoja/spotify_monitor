@@ -2,7 +2,7 @@
 
 This is a high-level summary of the most important changes.
 
-# Changes in 3.6 (TBD)
+# Changes in 3.6 (27 Sep 2026)
 
 Version **3.6** shows the **artist context** again for tracks played from an artist page with live activity and no longer reports **full plays as cut short** when the live feed keeps repeating an update. A new **compact view** shows one line per song on screen while the log file keeps the full report. `--list-friends`, Doctor, setup and the monitoring name users by **display name and user ID**. Setup checks whether the target **shares listening activity** before it asks about following. When only the other Friend Activity backend lists the target, setup offers to **switch backends** and Doctor prints the setting and command that do it. It also fixes webhook alerts that were dropped when a custom header used a placeholder such as `{title}` and the alert text held emoji or non-Latin letters. The test suite no longer opens a Spotify login page when pytest runs with `-s`, no longer contacts Spotify and no longer fails depending on test order, on parallel `pytest -n auto` workers or with `pytest -v`.
 
@@ -21,6 +21,8 @@ Version **3.6** shows the **artist context** again for tracks played from an art
 - **BUGFIX:** **The test suite no longer opens a Spotify login page** - Running the tests from a source checkout with `pytest -s`, `--capture=sys` or `PYTEST_ADDOPTS=-s` let one test's child process see the terminal and open a **Spotify authorization page** for a dummy Client ID (`aaaaaaaa...`), then fail after 30 seconds. Test child processes now get no stdin and a shared fixture fails any test that reaches a browser opener. Monitoring itself never opened that page
 - **BUGFIX:** **The test suite no longer contacts Spotify** - Some setup, Doctor and monitoring loop tests looked up and sent requests to Spotify hosts such as `open.spotify.com` and `api.spotify.com`, although the suite is documented as offline. They passed anyway because the code under test swallowed the errors. These tests now use test doubles and a **shared fixture fails any test that resolves or connects to a host outside loopback**. Child processes started by tests are not covered
 - **BUGFIX:** **Tests no longer fail depending on their order, on parallel workers or with `-v`** - Some tests passed only when an earlier test had left a webhook URL or another setting behind, so they **failed when run alone**, in some orders or on some `pytest -n auto` workers. A shared fixture now returns the monitor's settings, caches, environment variables and signal handlers to their starting state after every test. The packaging tests also failed with `No such file or directory` when two workers built the wheel at once in the same checkout. Each build now uses a **private copy of the source files** and leaves no `build/` or `.egg-info` directory in the checkout. **`pytest -v`** stopped with an `INTERNALERROR` because two startup tests replaced the terminal width lookup that pytest's own report uses. They now restore it before the test ends
+
+Smaller fixes and development changes are listed in the [full change history](https://github.com/misiektoja/spotify_monitor/compare/v3.5.1...v3.6).
 
 # Changes in 3.5.1 (22 Sep 2026)
 
