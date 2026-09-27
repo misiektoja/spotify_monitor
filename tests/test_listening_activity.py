@@ -619,8 +619,9 @@ def test_compact_view_counts_minutes_from_the_active_banner(loop_environment, mo
     lines = capsys.readouterr().out.splitlines()
 
     stamp = r"(\d{2}/\d{2}, \d{2}:\d{2}:\d{2})"
-    banner = next(re.match(stamp, line).group(1) for line in lines if line.endswith("*** Friend is Active..."))
-    songs = [re.match(stamp + r": \[(\d+)\] ", line).groups() for line in lines if re.match(stamp + r": \[\d+\] ", line)]
+    banners = [match for match in (re.match(stamp + r": \*\*\* Friend is Active\.\.\.$", line) for line in lines) if match]
+    banner = banners[0].group(1)
+    songs = [match.groups() for match in (re.match(stamp + r": \[(\d+)\] ", line) for line in lines) if match]
     # The printed stamps carry no year; a fixed leap year keeps 29 February parseable
     def parse(printed):
         return datetime.strptime(f"2000/{printed}", "%Y/%m/%d, %H:%M:%S")

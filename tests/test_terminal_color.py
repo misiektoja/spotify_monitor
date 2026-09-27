@@ -818,6 +818,7 @@ def test_compact_view_colors_the_timestamp_and_playlist_name(colored):
     line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner]"
 
     rendered = monitor.colorize_compact_view_line(line)
+    assert rendered is not None
 
     assert rendered.startswith(f"{colored['compact_view_timestamp']}{_COMPACT_VIEW_PREFIX}{monitor.ANSI_RESET}")
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}]")
@@ -830,6 +831,7 @@ def test_compact_view_colors_the_activity_banners(colored, banner):
     line = _COMPACT_VIEW_PREFIX + banner
 
     rendered = monitor.colorize_compact_view_line(line)
+    assert rendered is not None
 
     assert rendered.startswith(f"{colored['compact_view_timestamp']}{_COMPACT_VIEW_PREFIX}{monitor.ANSI_RESET}")
     assert colored["info"] in rendered
@@ -851,6 +853,7 @@ def test_compact_view_colors_the_playlist_name_before_a_trailing_spotify_suffix(
     line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Spotify)"
 
     rendered = monitor.colorize_compact_view_line(line)
+    assert rendered is not None
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}] (by Spotify)")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
@@ -863,6 +866,7 @@ def test_compact_view_colors_a_playlist_with_a_truncated_suffix(colored):
     line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Sp"
 
     rendered = monitor.colorize_compact_view_line(line)
+    assert rendered is not None
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Dinner{monitor.ANSI_RESET}] (by Sp")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line
@@ -874,6 +878,7 @@ def test_compact_view_colors_a_playlist_name_truncated_before_its_closing_bracke
     line = _COMPACT_VIEW_PREFIX + "[00] Take 3 - Inner Wave (Apoptosis) [Feel Good Din"
 
     rendered = monitor.colorize_compact_view_line(line)
+    assert rendered is not None
 
     assert rendered.endswith(f"[{colored['playlist']}Feel Good Din{monitor.ANSI_RESET}")
     assert monitor.ANSI_ESCAPE_RE.sub("", rendered) == line

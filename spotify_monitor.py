@@ -613,10 +613,10 @@ COLORED_OUTPUT = True
 # }
 
 # Whether to use a compact, colourised one-line-per-song console view instead of the default
-# multi-line block. The tool's standard printing all goes to the log, if log is enabled, 
+# multi-line block. The tool's standard printing all goes to the log, if log is enabled,
 # with a succinct presentation to the screen showing all played tracks.
 # Can also be enabled via the --compact-view flag
-# 
+#
 # The format per line is:
 # timestamp: [elapsed minutes] Track - Artist (Album) [Playlist]
 # Example:
@@ -4697,19 +4697,21 @@ def enter_compact_view_screen_mode():
 
 # COMPACT_VIEW's session banners: a blank line and separator open each active session, so consecutive
 # sessions read as separate blocks; the closing line needs neither. Screen messaging only - any
-# active/inactive alerts are still sent (or not) by the normal notification settings. The Active
-# banner returns the moment it printed, which the session's [NN] minute counts start from
-def print_compact_view_activity_banner(active):
+# active/inactive alerts are still sent (or not) by the normal notification settings
+
+# Returns the moment it printed, which the session's [NN] minute counts start from
+def print_compact_view_active_banner() -> datetime:
     moment = datetime.now()
-    if active:
-        print_to_screen_and_log(" ")
-        print_to_screen_and_log("----------------------")
-        print_to_screen_and_log(f"{compact_view_timestamp(moment)}: *** Friend is Active...")
-        return moment
-    else:
-        print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Inactive...")
-        # Log-only while COMPACT_VIEW has the screen: separates the banner from the session summary
-        print()
+    print_to_screen_and_log(" ")
+    print_to_screen_and_log("----------------------")
+    print_to_screen_and_log(f"{compact_view_timestamp(moment)}: *** Friend is Active...")
+    return moment
+
+
+def print_compact_view_inactive_banner():
+    print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Inactive...")
+    # Log-only while COMPACT_VIEW has the screen: separates the banner from the session summary
+    print()
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -13202,7 +13204,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
             # playlist_suffix is reset just below, so the current song's line keeps its suffix
             enter_compact_view_screen_mode()
             if COMPACT_VIEW and initially_active:
-                compact_view_session_started_at = print_compact_view_activity_banner(True)
+                compact_view_session_started_at = print_compact_view_active_banner()
                 print_to_screen_and_log(compact_view_song_line())
 
             playlist_suffix = ""
@@ -13504,7 +13506,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     # "Friend got ACTIVE after being offline" block further down
                     if COMPACT_VIEW:
                         if resumed_live_session or (not live_activity and resumed_after_offline):
-                            compact_view_session_started_at = print_compact_view_activity_banner(True)
+                            compact_view_session_started_at = print_compact_view_active_banner()
                         print_to_screen_and_log(compact_view_song_line())
                         print()
 
@@ -13780,7 +13782,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 invisible_m_body = f"\n{invisible_text}"
                                 invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
                         if COMPACT_VIEW:
-                            print_compact_view_activity_banner(False)
+                            print_compact_view_inactive_banner()
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:
