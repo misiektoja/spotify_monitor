@@ -1491,6 +1491,12 @@ class DoctorReport:
     access_token: Optional[str] = field(default=None, repr=False)
     buddy_list: Optional[dict] = None
     authentication_advice: Optional[RecoveryAdvice] = None
+    # The response of the backend that is not selected, fetched only when the selected one fails or omits the target
+    other_buddy_list: Optional[dict] = None
+    # The target and files the printed backend switch command names
+    target_value: Optional[str] = None
+    config_path: Optional[str] = None
+    env_path: Optional[str] = None
 
 
 # Stores one completed Spotify play used by scrobble health comparisons
@@ -8155,23 +8161,36 @@ def spotify_get_other_backend_friends(access_token) -> Optional[dict]:
         return None
 
 
-# Reports whether the target appears in the other Friend Activity backend, or None when it could not be checked
-def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]:
-    if not access_token or not user_uri_id:
-        return None
-    friends = spotify_get_other_backend_friends(access_token)
-    if friends is None:
+# Reports whether one activity response lists the user, or None when there is no readable response
+def activity_lists_user(friend_activity: Optional[dict], user_uri_id) -> Optional[bool]:
+    if friend_activity is None or not user_uri_id:
         return None
     try:
-        found, _ = spotify_get_friend_info(friends, user_uri_id)
+        found, _ = spotify_get_friend_info(friend_activity, user_uri_id)
     except Exception:
         return None
     return bool(found)
 
 
+# Reports whether the target appears in the other Friend Activity backend, or None when it could not be checked
+def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]:
+    if not access_token or not user_uri_id:
+        return None
+    return activity_lists_user(spotify_get_other_backend_friends(access_token), user_uri_id)
+
+
 # Returns the instruction that switches monitoring to the given backend
 def backend_switch_hint(backend: str) -> str:
     return f"Run with --friend-activity-backend {backend} or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in the configuration file"
+
+
+# Returns the steps that move monitoring to the given backend: the setting to save in the named config and a ready one-run command
+def backend_switch_fix(backend: str, target=None, config_path=None, env_path=None) -> str:
+    config = config_path or active_config_path()
+    env = env_path or active_dotenv_path()
+    destination = f"'{Path(config).expanduser().resolve()}'" if config and str(config).casefold() != "none" else "the configuration file"
+    command = _wizard_action_command(_wizard_install_method(), f"--friend-activity-backend {backend}", config, env, _wizard_command_targets(target, TARGET_USER_URI_ID)[1])
+    return f"Save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in {destination}\nOr run once with: {command}"
 
 
 # Returns the user IDs named in one activity response
@@ -10230,16 +10249,44 @@ def doctor_check_authentication(report: DoctorReport) -> List[DoctorCheck]:
             advice = classify_recovery_error(context="config_invalid", detail=f"Unsupported TOKEN_SOURCE: {TOKEN_SOURCE}")
             report.authentication_advice = advice
             return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
-
-        buddy_list = spotify_get_friends_json(access_token)
-        report.access_token = access_token
-        report.buddy_list = buddy_list
-        checks.append(make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {FRIEND_ACTIVITY_BACKEND} endpoint"))
     except Exception as exc:
         advice = classify_recovery_error(exc, context)
         report.authentication_advice = advice
-        checks.append(make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice))
+        return checks + [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+    try:
+        buddy_list = spotify_get_friends_json(access_token)
+    except Exception as exc:
+        advice = classify_recovery_error(exc, context)
+        report.authentication_advice = advice
+        return checks + doctor_activity_request_failure(report, access_token, advice)
+    report.access_token = access_token
+    report.buddy_list = buddy_list
+    checks.append(make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {FRIEND_ACTIVITY_BACKEND} endpoint"))
     return checks
+
+
+# Reports a failed request to the selected backend and points at the other backend when that one answers with the same token
+def doctor_activity_request_failure(report: DoctorReport, access_token, advice: RecoveryAdvice) -> List[DoctorCheck]:
+    # A network or local failure would stop the other request as well, so it is not tried
+    if not advice.code.startswith("network.") and advice.code != "resource.exhausted":
+        report.other_buddy_list = spotify_get_other_backend_friends(access_token)
+    if report.other_buddy_list is None:
+        return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+    other_backend = other_activity_backend()
+    # The classified summary may blame the credentials, which the other backend just accepted, so the raw failure is shown instead
+    summary = f"The {FRIEND_ACTIVITY_BACKEND} backend request failed"
+    detail = f"{advice.detail or advice.summary}. The {other_backend} backend answered with the same access token"
+    switch_fix = backend_switch_fix(other_backend, report.target_value, report.config_path, report.env_path)
+    fix = f"Wait and run --doctor again. If the failure continues, switch backends. {switch_fix}" if advice.retryable else switch_fix
+    switch_advice = make_recovery_advice(advice.code, summary, recovery_fix_with_guide(fix, BACKEND_GUIDE_URL), advice.retryable, detail)
+    return [make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {other_backend} endpoint"), make_doctor_check("Authentication", "FAIL", summary, detail, switch_advice)]
+
+
+# Returns the other backend's activity response for this report, fetching it when the report has none yet
+def doctor_other_backend_list(report: DoctorReport) -> Optional[dict]:
+    if report.other_buddy_list is None and report.access_token:
+        report.other_buddy_list = spotify_get_other_backend_friends(report.access_token)
+    return report.other_buddy_list
 
 
 # Confirms the endpoint the tool checks at startup answers, using the configured URL, timeout and TLS setting
@@ -10257,6 +10304,8 @@ def doctor_check_connectivity(report: DoctorReport, endpoint_check: Optional[Doc
     checks = [doctor_connectivity_endpoint_check() if endpoint_check is None else endpoint_check]
     if report.buddy_list is not None:
         return checks + [make_doctor_check("Connectivity", "PASS", "Spotify is reachable", f"Confirmed through the authenticated {FRIEND_ACTIVITY_BACKEND} request")]
+    if report.other_buddy_list is not None:
+        return checks + [make_doctor_check("Connectivity", "PASS", "Spotify is reachable", f"Confirmed through the authenticated {other_activity_backend()} request")]
     advice = report.authentication_advice
     if advice is not None and advice.code in ("network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable"):
         return checks + [make_doctor_check("Connectivity", "FAIL", advice.summary, advice.detail, advice)]
@@ -10273,7 +10322,11 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
     except ValueError as exc:
         advice = classify_recovery_error(exc, "target_invalid")
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+    other_backend = other_activity_backend()
     if report.buddy_list is None:
+        if report.other_buddy_list is not None:
+            listed = "lists" if activity_lists_user(report.other_buddy_list, target_id) else "does not list"
+            return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", f"The {FRIEND_ACTIVITY_BACKEND} request failed. The {other_backend} backend {listed} target '{target_id}'")]
         return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", "Authentication did not succeed, so no lookup was attempted")]
     try:
         found, info = spotify_get_friend_info(report.buddy_list, target_id)
@@ -10283,19 +10336,18 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
     target_label = spotify_user_label(target_id, report.access_token, info.get("sp_username") or "")
     if found:
         return [make_doctor_check("Target", "PASS", f"Target '{target_label}' can be monitored", "The target is visible in the authenticated activity response")]
+    if activity_lists_user(doctor_other_backend_list(report), target_id):
+        # The target shares listening activity with the account, so the follow state and sharing advice would point at the wrong fix
+        detail = f"Target '{target_label}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response but the {other_backend} backend lists it. Each backend can list users the other omits"
+        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_fix(other_backend, report.target_value, report.config_path, report.env_path), BACKEND_GUIDE_URL), False, detail)
+        return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
     detail = f"Target '{target_label}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
     followed = doctor_target_follow_state(report, target_id)
     if followed is True:
         detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
     elif followed is False:
         detail += ". The monitoring account does not follow the target"
-    other_backend = other_activity_backend()
-    if target_visible_in_other_backend(report.access_token, target_id):
-        # Each source can list users the other omits, so a switch is the fix rather than a follow or sharing change
-        detail += f". The target is visible through the {other_backend} backend"
-        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_hint(other_backend), BACKEND_GUIDE_URL), False, detail)
-    else:
-        advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
+    advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
 
 
@@ -10509,7 +10561,7 @@ def _doctor_print_check(check) -> None:
 
 # Builds all independent and dependent doctor checks before rendering
 def build_doctor_report(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), version_info=None, spec_finder: Optional[Callable[[str], Any]] = None, progress: Optional[Callable[[str], None]] = None) -> DoctorReport:
-    report = DoctorReport()
+    report = DoctorReport(target_value=target_value, config_path=config_path, env_path=env_path)
     if progress is not None:
         progress("environment")
     report.checks.extend(doctor_check_environment(version_info, spec_finder))
