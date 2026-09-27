@@ -1,8 +1,10 @@
 """Shared fixtures keeping module-level monitor state from leaking between tests."""
 
 import copy
+import ipaddress
 import os
 import signal
+import socket
 import types
 import webbrowser
 
@@ -99,6 +101,75 @@ def refuse_browser_opening(monkeypatch):
         monkeypatch.setattr(webbrowser, name, refuse)
     yield
     assert not attempts, f"A test reached webbrowser and would have opened {attempts}"
+
+
+# Forward lookups the socket module offers. requests, smtplib, http.client and asyncio all resolve through getaddrinfo
+_NAME_LOOKUP_NAMES = ("getaddrinfo", "gethostbyname", "gethostbyname_ex")
+
+# Address families whose connections leave the machine unless the peer is loopback
+_INTERNET_FAMILIES = tuple(getattr(socket, name) for name in ("AF_INET", "AF_INET6") if hasattr(socket, name))
+
+
+# Returns a host as lowercase text without the trailing dot of a fully qualified name
+def _host_text(host) -> str:
+    if isinstance(host, (bytes, bytearray)):
+        host = bytes(host).decode("ascii", "replace")
+    return str(host).rstrip(".").lower()
+
+
+# smtplib resolves the machine's own name for its greeting when that name has no domain, even for a loopback server
+_OWN_HOST_NAME = _host_text(socket.gethostname())
+
+
+# Reports whether a host is a loopback address or localhost, the only peers the suite's own servers listen on
+def _is_loopback(host) -> bool:
+    text = _host_text(host)
+    try:
+        address = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return text == "localhost"
+    mapped = getattr(address, "ipv4_mapped", None)
+    return (mapped or address).is_loopback
+
+
+@pytest.fixture(autouse=True)
+# Fails any test that resolves or connects to a host outside loopback, so no test run depends on or contacts a real service
+def refuse_network_access(monkeypatch):
+    attempts = []
+
+    # Records the attempt and raises, so a caller that swallows the error is still caught at teardown
+    def refuse(action, host):
+        attempts.append(f"{action} {host}")
+        raise AssertionError(f"A test tried to {action} {host}, tests must stay offline")
+
+    # Wraps one lookup function so it only answers for loopback names and the machine's own name
+    def guard_lookup(name):
+        lookup = getattr(socket, name)
+
+        # Refuses a lookup of any other host before a DNS query is sent
+        def guarded(host, *arguments, **keywords):
+            if host is not None and not _is_loopback(host) and _host_text(host) != _OWN_HOST_NAME:
+                refuse("resolve", host)
+            return lookup(host, *arguments, **keywords)
+        return guarded
+
+    # Wraps one socket connect method so Internet sockets only reach loopback peers
+    def guard_connect(name):
+        connect = getattr(socket.socket, name)
+
+        # Refuses a connection to any other host, including one given by address that skips the lookup
+        def guarded(sock, address):
+            if sock.family in _INTERNET_FAMILIES and isinstance(address, tuple) and len(address) >= 2 and not _is_loopback(address[0]):
+                refuse("connect to", f"{address[0]}:{address[1]}")
+            return connect(sock, address)
+        return guarded
+
+    for name in _NAME_LOOKUP_NAMES:
+        monkeypatch.setattr(socket, name, guard_lookup(name))
+    for name in ("connect", "connect_ex"):
+        monkeypatch.setattr(socket.socket, name, guard_connect(name))
+    yield
+    assert not attempts, f"A test tried to reach the network outside loopback: {attempts}"
 
 
 @pytest.fixture(autouse=True)
