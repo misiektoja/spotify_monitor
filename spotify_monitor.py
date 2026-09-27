@@ -2234,6 +2234,8 @@ class RecoveryHintTracker:
 
 # Prints one built advice through the shared recovery block and returns it
 def print_recovery_advice(advice: RecoveryAdvice, debug: Optional[bool] = None, retry_note: str = "", with_fix: bool = True, label: str = "Error", tracker: Optional[RecoveryHintTracker] = None) -> RecoveryAdvice:
+    if isinstance(sys.stdout, (Logger, TerminalStream)) and sys.stdout.screen_quiet:
+        print_compact_view_failure(advice.summary, label)
     print(render_recovery_advice(advice, debug, retry_note, with_fix and (tracker is None or tracker.should_render(advice)), label))
     return advice
 
@@ -4630,12 +4632,13 @@ def enter_compact_view_screen_mode() -> None:
 # Prints one compact view line after its timestamp
 def print_compact_view_line(text: str, ts: Optional[float] = None) -> None:
     stamp = compact_view_timestamp(time.time() if ts is None else ts)
+    text = re.sub(r"[\t\r\n\v\f\x85\u2028\u2029]+", " ", text)
     print_to_screen_and_log(f"{colorize('compact_view_timestamp', stamp + ':')} {text}")
 
 
-# Returns a metadata value as display text, since a missing name can arrive as None
+# Returns one line of metadata text while accepting missing names
 def _compact_view_text(value: Any) -> str:
-    return str(value or "").strip()
+    return " ".join(str(value or "").split())
 
 
 # Builds the compact view song text, colouring the playlist here because the finished line cannot be parsed back reliably
@@ -4660,15 +4663,15 @@ def print_compact_view_inactive_banner() -> None:
     print()
 
 
-# Reports a failing check in one compact view line, since its full report stays off the screen
-def print_compact_view_failure(summary: str) -> None:
+# Reports an actionable diagnostic while its full report stays off the screen
+def print_compact_view_failure(summary: str, label: str = "Error") -> None:
     detail = " (details in log)" if isinstance(sys.stdout, Logger) else ""
-    print_compact_view_line(colorize("error", f"*** Error: {summary}{detail}"))
+    print_compact_view_line(colorize("warning" if label == "Warning" else "error", f"*** {label}: {summary}{detail}"))
 
 
-# Reports in one compact view line that the checks work again
-def print_compact_view_recovery(lasted: int) -> None:
-    print_compact_view_line(colorize("info", f"*** Monitoring recovered after {display_time(max(1, lasted))}"))
+# Reports which part of monitoring recovered in one compact view line
+def print_compact_view_recovery(lasted: int, component: str = "Monitoring") -> None:
+    print_compact_view_line(colorize("info", f"*** {component} recovered after {display_time(max(1, lasted))}"))
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -12862,6 +12865,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
     # [NN] counts minutes from the "Friend is Active..." line, on the same clock as the printed times, rather than from the first song's start
     compact_view_started_at = time.time()
+    metadata_outage = OutageReporter()
 
     # Prints the current song as one compact view line
     def print_compact_view_song():
@@ -13181,7 +13185,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
                             if COMPACT_VIEW:
-                                print_compact_view_recovery(outage_lasted)
+                                print_compact_view_recovery(outage_lasted, "Activity checks")
                             print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
@@ -13210,7 +13214,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if COMPACT_VIEW and outage_outcome in ("full", "changed"):
                             print_compact_view_failure(advice.summary)
                         if outage_outcome == "full":
-                            print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
+                            print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(retry_seconds)}", with_fix=recovery_hint_tracker.should_render(advice)))
                         elif outage_outcome == "changed":
                             print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
                         elif outage_outcome == "reminder":
@@ -13240,9 +13244,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if user_not_found is False:
                         invisible_since = visible_last_at or now
                         absence_advice_shown = False
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("warning", "*** Friend is no longer visible (playback unknown)"))
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
+                            if COMPACT_VIEW:
+                                print_compact_view_failure(not_found_advice.summary)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
@@ -13277,6 +13285,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
                         # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
                         absence_advice_shown = True
+                        if COMPACT_VIEW:
+                            print_compact_view_failure(f"Friend has not been visible for {calculate_timespan(now, invisible_since)}. Check following and activity sharing", label="Warning")
                         print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
                         not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                         print(f"To fix: {not_visible_advice.fix}")
@@ -13296,6 +13306,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             invisible_seconds += max(0, now - invisible_since)
                             invisible_periods += 1
                         invisible_for = calculate_timespan(now, invisible_since)
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("info", f"*** Friend is visible again after {invisible_for}"))
                         if live_activity:
                             status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is visible again after {invisible_for}"
                             status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is visible again after <b>{invisible_for}</b>"
@@ -13358,10 +13370,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if live_activity:
                             # The unreported sample becomes a gap so the retry cannot classify the change as observed
                             live_timing.sampled_at = None
-                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(activity_error_interval())}", tracker=recovery_hint_tracker)
+                        advice = classify_recovery_error(e, "metadata")
+                        if COMPACT_VIEW and metadata_outage.failed(advice) in ("full", "changed"):
+                            print_compact_view_failure(f"Track metadata: {advice.summary}")
+                        print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(activity_error_interval())}", with_fix=recovery_hint_tracker.should_render(advice)))
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(activity_error_interval())
                         continue
+
+                    metadata_outage_lasted = metadata_outage.recovered()
+                    if COMPACT_VIEW and metadata_outage_lasted is not None:
+                        print_compact_view_recovery(metadata_outage_lasted, "Track metadata")
 
                     sp_username = sp_data["sp_username"]
 
