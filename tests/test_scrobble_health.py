@@ -1519,7 +1519,7 @@ def test_contradictory_scrobble_health_alert_options_are_rejected(first, second)
 
 
 # Confirms an alert names the Spotify account the token belongs to next to the Last.fm profile it compares against
-def test_scrobble_health_alert_names_both_sides_of_the_comparison(monkeypatch):
+def test_scrobble_health_alert_names_both_sides_of_the_comparison(monkeypatch, configured_alert_channels):
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
@@ -1538,7 +1538,7 @@ def test_scrobble_health_alert_names_both_sides_of_the_comparison(monkeypatch):
 
 
 # Confirms an account lookup that fails costs only the Spotify name, leaving the comparison and its alerts working
-def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch):
+def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch, configured_alert_channels):
     delivery_mock = Mock(return_value=(False, True))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
     monkeypatch.setattr(monitor, "spotify_get_recent_plays", Mock(side_effect=RuntimeError("temporary failure")))
@@ -1557,7 +1557,7 @@ def test_scrobble_health_alert_falls_back_to_the_lastfm_profile(monkeypatch):
 
 
 # Confirms the account resolved for the startup summary is reused, so one run does not look the same account up twice
-def test_scrobble_health_monitor_reuses_the_account_from_the_summary(monkeypatch):
+def test_scrobble_health_monitor_reuses_the_account_from_the_summary(monkeypatch, configured_alert_channels):
     delivery_mock = Mock(return_value=(False, True))
     account_mock = Mock(return_value=("", ""))
     monkeypatch.setattr(monitor, "load_scrobble_health_state", lambda path: {})
