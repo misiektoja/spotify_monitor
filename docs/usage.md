@@ -337,6 +337,8 @@ spotify_monitor -l
 
 The output includes each person's display name, Spotify user ID and profile URL. Either the user ID or profile URL can be used as a monitoring target.
 
+The list ends with the users that only one [Friend Activity backend](configuration.md#friend-activity-backend) shows, as `display name (user ID)` or the user ID alone when both are the same.
+
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
