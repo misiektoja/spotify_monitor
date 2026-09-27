@@ -1103,6 +1103,7 @@ def test_client_mode_without_protobuf_is_incomplete(monkeypatch):
 # Verifies setup reports an existing follow without offering an account mutation
 def test_setup_follow_check_reports_already_followed(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
     follow = Mock()
     ask = Mock()
@@ -1123,6 +1124,8 @@ def test_setup_follow_check_accepts_a_visible_target_without_following(monkeypat
         report.buddy_list = {"friends": []}
         return []
     monkeypatch.setattr(monitor, "doctor_check_authentication", authenticate)
+    lookup = Mock(return_value="Target Name")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=False))
     monkeypatch.setattr(monitor, "spotify_get_friend_info", lambda feed, user_id: (user_id == "target.user", {}))
     follow = Mock()
@@ -1132,12 +1135,14 @@ def test_setup_follow_check_accepts_a_visible_target_without_following(monkeypat
     assert monitor._wizard_offer_target_follow("spotify:user:target.user") == "visible"
     follow.assert_not_called()
     ask.assert_not_called()
-    assert "but the target already shares listening activity with it, so following is not required." in capsys.readouterr().out
+    assert "The monitoring account does not follow 'Target Name (target.user)', but the target already shares listening activity with it, so following is not required." in capsys.readouterr().out
+    lookup.assert_called_once_with("user", "spotify:user:target.user", "authenticated-token")
 
 
 # Verifies declining the follow prompt leaves the Spotify account unchanged
 def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=False))
     follow = Mock()
     ask = Mock(return_value=False)
@@ -1153,25 +1158,30 @@ def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     assert "\n  Follow" not in output
 
 
-# Verifies an approved follow is rechecked before setup reports success
+# Verifies an approved follow is rechecked before setup reports success and names the target with its display name
 def test_setup_follow_check_verifies_approved_mutation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Target Name")
     check = Mock(side_effect=[False, True])
     follow = Mock(return_value=True)
     monkeypatch.setattr(monitor, "spotify_user_is_followed", check)
     monkeypatch.setattr(monitor, "spotify_follow_user", follow)
-    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))
+    ask = Mock(return_value=True)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
     assert monitor._wizard_offer_target_follow("target.user") == "followed"
     follow.assert_called_once_with("authenticated-token", "target.user")
     assert check.call_count == 2
+    ask.assert_called_once_with("Follow 'Target Name (target.user)' now using the configured Spotify account?", default=False)
     output = capsys.readouterr().out
-    assert "\nFollow verified. The monitoring account now follows 'target.user'.\n" in output
+    assert "\nThe monitoring account does not follow 'Target Name (target.user)'.\n" in output
+    assert "\nFollow verified. The monitoring account now follows 'Target Name (target.user)'.\n" in output
     assert "\n  Follow" not in output
 
 
 # Verifies setup does not claim success when the post-mutation follow check stays false
 def test_setup_follow_check_rejects_unverified_mutation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=[False, False]))
     monkeypatch.setattr(monitor, "spotify_follow_user", Mock(return_value=True))
     monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))

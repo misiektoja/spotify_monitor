@@ -336,6 +336,7 @@ def test_friends_can_be_fetched_from_the_other_backend(monkeypatch):
 # Friend listing names the users only one backend shows and how to switch, or confirms both agree
 def test_list_friends_compares_both_backends(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only"}}, {"user": {"uri": USER_URI}}]}
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
     feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-only")]})
@@ -350,6 +351,28 @@ def test_list_friends_compares_both_backends(monkeypatch, capsys):
     assert "* Warning: The buddylist backend could not be checked: " in output
     assert "To fix:" in output
     assert "visible only" not in output
+
+
+# Friend listing shows each differing user as "Name (user ID)", or the ID alone when the name is unknown or the same
+def test_list_friends_names_the_differing_users(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-b", "name": "Zed"}}, {"user": {"uri": "spotify:user:legacy-a", "name": "adam"}}, {"user": {"uri": "spotify:user:legacy-same", "name": "legacy-same"}}, {"user": {"uri": USER_URI, "name": "Watched"}}]}
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
+    lookup = Mock(side_effect=lambda kind, uri, token: {"spotify:user:live-named": "Live Friend"}.get(uri, ""))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
+    feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-named"), feed_entity(user="spotify:user:live-unnamed")]})
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert "* 3 users visible only through the buddylist backend: adam (legacy-a), legacy-same, Zed (legacy-b)\n" in output
+    assert "* 2 users visible only through the listening_activity backend: Live Friend (live-named), live-unnamed\n" in output
+    # Names from the buddylist need no lookup, while live users and names equal to the ID are looked up
+    assert sorted(call.args[1] for call in lookup.call_args_list) == ["spotify:user:legacy-same", "spotify:user:live-named", "spotify:user:live-unnamed"]
+    # Names that the listing already resolved are reused
+    lookup.reset_mock()
+    feed["friends"][1]["user"]["name"] = "Listed Name"
+    monitor.print_other_backend_friends(feed, "token")
+    assert "Listed Name (live-named)" in capsys.readouterr().out
+    assert "spotify:user:live-named" not in [call.args[1] for call in lookup.call_args_list]
 
 
 # Listing resolves live metadata and reports playback state without relying on the legacy feed

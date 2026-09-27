@@ -641,10 +641,22 @@ def test_no_target_is_warning():
     assert check.status == "WARN"
 
 
-# Verifies a visible normalized target passes
+# Verifies a visible normalized target passes and is named with the display name from the activity response
 def test_valid_target_passes():
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list()), "spotify:user:friend.user")[0]
     assert check.status == "PASS"
+    assert check.label == "Target 'Friend (friend.user)' can be monitored"
+
+
+# Verifies a target the live feed lists without a name is named through its profile
+def test_valid_live_target_is_named_through_its_profile(monkeypatch):
+    lookup = Mock(return_value="Profile Name")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
+    feed = buddy_list()
+    feed["friends"][0]["user"]["name"] = "friend.user"
+    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=feed, access_token="token"), "friend.user")[0]
+    assert check.label == "Target 'Profile Name (friend.user)' can be monitored"
+    lookup.assert_called_once_with("user", "spotify:user:friend.user", "token")
 
 
 # Verifies malformed target input fails before a live lookup
@@ -661,6 +673,7 @@ def test_malformed_target_fails():
 ])
 def test_target_not_visible_names_the_follow_state(monkeypatch, followed, expected):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=followed))
     monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
@@ -674,6 +687,7 @@ def test_target_not_visible_names_the_follow_state(monkeypatch, followed, expect
 # Verifies the legacy backend keeps the private session out of the invisible-target explanation and survives a failed follow lookup
 def test_target_not_visible_with_the_legacy_backend_omits_private_sessions(monkeypatch):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=RuntimeError("offline")))
     monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
@@ -685,6 +699,7 @@ def test_target_not_visible_with_the_legacy_backend_omits_private_sessions(monke
 # Verifies Doctor points at the other backend when only that one lists the target, since each source can omit users the other shows
 def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monkeypatch):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
     lookups = []
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: lookups.append(backend) or buddy_list("friend.user"))
@@ -692,6 +707,7 @@ def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monk
     assert lookups == ["buddylist"]
     assert check.status == "FAIL"
     assert check.label == "The target is visible only through the buddylist backend"
+    assert check.detail.startswith("Target 'Friend (friend.user)' was absent from the authenticated listening_activity response")
     assert check.detail.endswith("The target is visible through the buddylist backend")
     advice = require_advice(check)
     assert advice.fix.startswith('Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nGuide: ')
