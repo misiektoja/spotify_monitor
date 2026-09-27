@@ -2611,8 +2611,8 @@ def create_timestamped_backup(destination, attempts=100, redact_secrets=False):
     raise OSError(f"Could not create a unique backup for '{destination_path}' after {attempts} attempts")
 
 
-# Writes validated config content atomically and backs up an existing destination
-def write_config_file(destination, content: str, redact_secrets=False):
+# Writes validated config content atomically and backs up an existing destination unless told not to
+def write_config_file(destination, content: str, redact_secrets=False, backup=True):
     destination_path = Path(destination).expanduser()
     validate_config_content(content, str(destination_path))
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2626,7 +2626,7 @@ def write_config_file(destination, content: str, redact_secrets=False):
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
 
-        if destination_path.exists():
+        if backup and destination_path.exists():
             backup_path = create_timestamped_backup(destination_path, redact_secrets=redact_secrets)
 
         os.replace(temporary_path, destination_path)
@@ -11906,7 +11906,16 @@ def _wizard_target_visible(report: DoctorReport, target_user_id: str) -> bool:
     return bool(found)
 
 
-# Checks the target follow state and offers one confirmed follow mutation when needed
+# Reports whether the backend that is not selected lists the target, which a backend switch can use
+def _wizard_target_visible_in_other_backend(report: DoctorReport, target_user_id: str) -> bool:
+    try:
+        target_id = normalize_spotify_user_id(target_user_id)
+    except ValueError:
+        return False
+    return bool(activity_lists_user(doctor_other_backend_list(report), target_id))
+
+
+# Checks the target follow state and visibility in both backends and offers one confirmed follow mutation when needed
 def _wizard_offer_target_follow(target_user_id: str) -> str:
     print(colorize('header', "\nFollowing check\n"))
     report = DoctorReport()
@@ -11927,15 +11936,23 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print(f"Follow status could not be checked: {sanitize_error_text(exc)}")
         print("No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
+    visible = _wizard_target_visible(report, target_user_id)
+    # Each backend can list users the other omits, so a target missing from the selected one may still be monitorable
+    other_backend_only = not visible and _wizard_target_visible_in_other_backend(report, target_user_id)
     if is_followed:
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
         print(f"The monitoring account already follows '{target_label}'.")
-        return "already_followed"
-    if _wizard_target_visible(report, target_user_id):
+    elif visible or other_backend_only:
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
         print(f"The monitoring account does not follow '{target_label}', but the target already shares listening activity with it, so following is not required.")
+    if other_backend_only:
+        print(f"The target is visible only through the {other_activity_backend()} backend. The configuration uses the {FRIEND_ACTIVITY_BACKEND} backend.")
+        return "other_backend"
+    if is_followed:
+        return "already_followed"
+    if visible:
         return "visible"
     # The target user ID is public profile data, the scanner conflates it with the token that fetched it
     # codeql[py/clear-text-logging-sensitive-data]
@@ -12163,6 +12180,30 @@ def _wizard_collect_polling_section(state: WizardSetupState) -> None:
         return
     current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
     state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
+
+
+# Offers to save the other Friend Activity backend after the following check found the target only there and returns whether it was saved
+def _wizard_offer_backend_switch(state: WizardSetupState) -> bool:
+    current_backend = FRIEND_ACTIVITY_BACKEND
+    other_backend = other_activity_backend()
+    print()
+    if not _wizard_ask_yes_no(f"Switch to the {other_backend} backend and save it in the configuration file?", default=True):
+        print(f"The configuration keeps the {current_backend} backend, which does not list the target.")
+        return False
+    previous_values = dict(state.config_values)
+    state.config_values["FRIEND_ACTIVITY_BACKEND"] = other_backend
+    # Each backend has its own polling timers, so the ones the new backend uses are asked now
+    _wizard_collect_polling_section(state)
+    try:
+        # Setup wrote this file moments ago and already backed up the one it replaced
+        write_config_file(state.config_path, generate_config_with_current_values(state.config_values), redact_secrets=True, backup=False)
+    except Exception:
+        state.config_values.clear()
+        state.config_values.update(previous_values)
+        print(f"Setup could not write configuration file '{state.config_path}'. It still uses the {current_backend} backend.")
+        return False
+    print(f"Saved FRIEND_ACTIVITY_BACKEND = \"{other_backend}\" in '{state.config_path}'.")
+    return True
 
 
 # Describes the polling intervals of the selected activity backend for the setup review
@@ -12665,7 +12706,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
         if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
                 follow_status = _wizard_offer_target_follow(target)
-                if follow_status in ("already_followed", "followed", "visible"):
+                if follow_status == "other_backend" and _wizard_offer_backend_switch(state):
+                    follow_status = "backend_switched"
+                if follow_status in ("already_followed", "followed", "visible", "backend_switched"):
                     auth["validated"] = True
             else:
                 print(colorize('header', "\nFollowing check\n"))
