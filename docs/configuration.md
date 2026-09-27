@@ -72,6 +72,8 @@ The target must share listening activity with the monitoring account, the Spotif
 
 If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
 
+If only the other [Friend Activity backend](#friend-activity-backend) lists the target, setup offers to switch to that backend instead. It asks for that backend's polling interval and saves both in the configuration file.
+
 Doctor reports whether the monitoring account follows an invisible target, so you know which setting to fix.
 
 ## How to Find a Friend's Spotify Profile URL
@@ -109,7 +111,7 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. Doctor points at the other backend when only that one lists the target.
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and Doctor prints the setting to save plus a ready command that uses it for one run. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
 
