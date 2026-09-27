@@ -192,6 +192,27 @@ def test_normalization_merges_duplicate_users_and_keeps_newest_activity():
     assert info["sp_track_uri"] == TRACK_URI
 
 
+# Play from an artist's Popular section reports a list URI that must become that artist's context again
+@pytest.mark.parametrize("context,expected", [("spotify:list:popular-release-segments-main-roles:artist_0zfZmpHTu0MlkkNr5KHeXE", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE"), ("spotify:list:popular-release-segments-main-roles:artist_short", "spotify:list:popular-release-segments-main-roles:artist_short"), ("spotify:list:liked-songs-artist:0zfZmpHTu0MlkkNr5KHeXE", "spotify:list:liked-songs-artist:0zfZmpHTu0MlkkNr5KHeXE"), ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE"), ("", "")])
+def test_artist_page_list_context_becomes_the_artist(context, expected):
+    entity = feed_entity()
+    entity["followEntity"]["activity"]["contextUri"] = context
+    result = monitor.spotify_normalize_listening_activity({"entities": [entity]})
+    assert result["friends"][0]["track"]["context"]["uri"] == expected
+
+
+# An artist context names the first credited artist or any other credited artist
+@pytest.mark.parametrize("context,expected", [("spotify:artist:example", "Artist"), ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "Guest"), ("spotify:artist:1dgdvbogmctybPrGEcnYf6", "spotify:artist:1dgdvbogmctybPrGEcnYf6")])
+def test_artist_context_names_any_credited_artist(monkeypatch, context, expected):
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
+    entity = feed_entity()
+    entity["followEntity"]["activity"]["contextUri"] = context
+    _, info = monitor.spotify_get_friend_info(monitor.spotify_normalize_listening_activity({"entities": [entity]}), "watched-user")
+    track = {"sp_track_name": "Track", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:example", "sp_artists": {"spotify:artist:example": "Artist", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Guest"}, "sp_album_name": "Album", "sp_album_uri": "spotify:album:example"}
+    monitor.spotify_complete_live_activity(info, "token", track)
+    assert info["sp_playlist"] == expected
+
+
 # Treats unsupported media and users without shared activity as absent music activity
 def test_nonmusic_and_missing_activity_are_skipped():
     result = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(track="spotify:episode:example"), {"userEntity": {"uri": USER_URI}}]})
