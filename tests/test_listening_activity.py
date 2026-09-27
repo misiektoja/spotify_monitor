@@ -629,7 +629,7 @@ def test_compact_view_reports_a_failure_and_its_recovery(loop_environment, monke
     lines = capsys.readouterr().out.splitlines()
 
     errors = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Error: ", line)]
-    recoveries = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Monitoring recovered after ", line)]
+    recoveries = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Activity checks recovered after ", line)]
     assert len(errors) == 1 and errors[0].endswith("*** Error: Spotify rejected the sp_dc cookie"), errors
     assert len(recoveries) == 1, recoveries
 
@@ -653,11 +653,139 @@ def test_compact_view_keeps_the_full_output_off_the_screen(loop_environment, mon
     assert all(line == "" or re.match(COMPACT_STAMP + ": ", line) for line in screen[start:]), screen[start:]
     assert any(re.match(COMPACT_STAMP + r": \[\d+\] Second - Artist \(Album\)$", line) for line in screen)
     assert any(line.endswith("*** Error: Spotify rejected the sp_dc cookie" + (" (details in log)" if logging_enabled else "")) for line in screen)
+    assert sum("*** Error:" in line for line in screen) == 1
     if logger is not None:
         logger.logfile.close()
         log = (tmp_path / "monitor.log").read_text(encoding="utf-8")
         for full_output in ("Spotify user:", "* Error: Spotify rejected the sp_dc cookie", "* Monitoring recovered for"):
             assert full_output in log
+
+
+# Builds compact streams for installation during the test call after pytest resets stdout
+@pytest.fixture(params=[False, True], ids=["screen", "log"])
+def compact_output(monkeypatch, tmp_path, request):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    terminal = StringIO()
+    stream = monitor.TerminalStream(terminal)
+    log_path = tmp_path / "monitor.log"
+    with monkeypatch.context() as patch:
+        patch.setattr(monitor.sys, "stdout", stream)
+        logger = monitor.Logger(str(log_path)) if request.param else None
+    yield terminal, log_path if logger is not None else None, logger if logger is not None else stream
+    if logger is not None:
+        logger.logfile.close()
+
+
+# Metadata retries stay visible once per outage and recover independently of feed requests
+@pytest.mark.parametrize("metadata_kind", ["track", "playlist"])
+@pytest.mark.parametrize("feed_outage", [False, True])
+def test_compact_view_reports_metadata_outages(loop_environment, monkeypatch, compact_output, metadata_kind, feed_outage):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    now = loop_environment.now
+    snapshots: list = [feed_entity(now), feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI)]
+    if feed_outage:
+        snapshots.append(requests.Timeout("feed timeout"))
+    snapshots.extend([feed_entity(now + 30, track=OTHER_TRACK_URI)] * 2)
+    first = live_track_info("token", TRACK_URI) if metadata_kind == "track" else ("Spotify", "")
+    recovered = live_track_info("token", OTHER_TRACK_URI) if metadata_kind == "track" else ("Spotify", "")
+    metadata = Mock(side_effect=[first, requests.Timeout("metadata timeout"), requests.Timeout("metadata timeout"), recovered])
+    if metadata_kind == "playlist":
+        for snapshot in snapshots:
+            if isinstance(snapshot, dict):
+                snapshot["followEntity"]["activity"]["contextUri"] = "spotify:playlist:1234567890abcdefghijkl"
+        monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", metadata)
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, track_info=metadata if metadata_kind == "track" else live_track_info)
+
+    screen = terminal.getvalue()
+    assert metadata.call_count == 4
+    assert screen.count("*** Error: Track metadata:") == 1
+    assert screen.count("*** Track metadata recovered after") == 1
+    assert screen.index("*** Error: Track metadata:") < screen.index("*** Track metadata recovered after") < screen.index("Second - Artist")
+    if feed_outage:
+        assert screen.count("*** Activity checks recovered after") == 1
+        assert screen.index("*** Activity checks recovered after") < screen.index("*** Track metadata recovered after")
+        assert "*** Monitoring recovered" not in screen
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# The real metadata selector reports a fatal resource error before exiting a quiet screen
+def test_compact_view_reports_fatal_metadata_errors(loop_environment, monkeypatch, compact_output):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "spotify_has_oauth_app_credentials", lambda: False)
+    error = OSError(errno.EMFILE, "Too many open files")
+    monkeypatch.setattr(monitor, "spotify_get_track_info_web", Mock(side_effect=[live_track_info("token", TRACK_URI), error]))
+    now = loop_environment.now
+    with pytest.raises(SystemExit) as exited:
+        run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI)], track_info=monitor.spotify_get_track_info)
+
+    assert exited.value.code == 1
+    screen = terminal.getvalue()
+    assert screen.count("*** Error:") == 1
+    assert monitor.classify_recovery_error(error).summary in screen
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# A failed CSV write remains visible while later songs keep being reported
+def test_compact_view_reports_csv_errors(loop_environment, monkeypatch, tmp_path, compact_output):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    error = PermissionError("CSV is not writable")
+    writer = Mock(side_effect=[None, error, None])
+    monkeypatch.setattr(monitor, "write_csv_entry", writer)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI), feed_entity(now + 60, track=THIRD_TRACK_URI)], str(tmp_path / "tracks.csv"))
+
+    screen = terminal.getvalue()
+    assert writer.call_count == 3
+    assert screen.count("*** Error:") == 1
+    assert monitor.classify_recovery_error(error, "file_write").summary in screen
+    assert screen.index("*** Error:") < screen.index("Third - Artist")
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# Only confirmed visibility loss and its return get compact status lines without closing the session
+@pytest.mark.parametrize("misses", [1, 3])
+@pytest.mark.parametrize("removed", [False, True])
+def test_compact_view_reports_confirmed_visibility_changes(loop_environment, monkeypatch, compact_output, misses, removed):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    lookup = Mock(return_value=removed)
+    monkeypatch.setattr(monitor, "is_user_removed", lookup)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now)] * 2 + [None] * misses + [feed_entity(now)])
+
+    screen = terminal.getvalue()
+    expected = int(misses >= 2)
+    assert lookup.call_count == expected
+    assert screen.count("*** Friend is no longer visible (playback unknown)") == expected
+    assert screen.count("*** Friend is visible again after") == expected
+    assert screen.count("*** Error: The Spotify target profile returned HTTP 404") == expected * int(removed)
+    assert screen.count("*** Friend is Active...") == 1
+    assert "*** Friend is Inactive..." not in screen
+    if log_path is not None and expected:
+        assert "is visible again after" in log_path.read_text(encoding="utf-8")
+
+
+# A long confirmed absence keeps its follow and sharing advice visible once
+def test_compact_view_reports_long_absence_advice(loop_environment, monkeypatch, compact_output):
+    terminal, _, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 4 * 3600)
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *args, **kwargs: False)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now)] * 2 + [None] * 5)
+
+    screen = terminal.getvalue()
+    assert screen.count("*** Friend is no longer visible") == 1
+    assert screen.count("*** Warning: Friend has not been visible") == 1
+    assert "Check following and activity sharing" in screen
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
