@@ -1121,6 +1121,7 @@ def test_client_mode_without_protobuf_is_incomplete(monkeypatch):
 # Verifies setup reports an existing follow without offering an account mutation
 def test_setup_follow_check_reports_already_followed(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
     follow = Mock()
@@ -1160,6 +1161,7 @@ def test_setup_follow_check_accepts_a_visible_target_without_following(monkeypat
 # Verifies declining the follow prompt leaves the Spotify account unchanged
 def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=False))
     follow = Mock()
@@ -1179,6 +1181,7 @@ def test_setup_follow_check_respects_declined_confirmation(monkeypatch, capsys):
 # Verifies an approved follow is rechecked before setup reports success and names the target with its display name
 def test_setup_follow_check_verifies_approved_mutation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Target Name")
     check = Mock(side_effect=[False, True])
     follow = Mock(return_value=True)
@@ -1199,6 +1202,7 @@ def test_setup_follow_check_verifies_approved_mutation(monkeypatch, capsys):
 # Verifies setup does not claim success when the post-mutation follow check stays false
 def test_setup_follow_check_rejects_unverified_mutation(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "doctor_check_authentication", lambda report: (setattr(report, "access_token", "authenticated-token") or []))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", lambda token: None)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(side_effect=[False, False]))
     monkeypatch.setattr(monitor, "spotify_follow_user", Mock(return_value=True))
@@ -1209,6 +1213,133 @@ def test_setup_follow_check_rejects_unverified_mutation(monkeypatch, capsys):
     assert "\nThe account was not verified as following the target.\n" in output
     assert "\n  Spotify" not in output
     assert "\n  The account" not in output
+
+
+# Authenticates the following check with a selected backend response that omits the target
+def authenticate_without_target(report):
+    report.access_token = "authenticated-token"
+    report.buddy_list = {"friends": []}
+    return []
+
+
+# Returns an activity response that lists only the given user
+def activity_listing(user_id):
+    track = {"name": "Track", "uri": "spotify:track:t", "artist": {"name": "Artist", "uri": ""}, "album": {"name": "Album", "uri": "spotify:album:a"}, "context": {"name": "Album", "uri": "spotify:album:a"}}
+    return {"friends": [{"user": {"uri": f"spotify:user:{user_id}", "name": user_id}, "track": track, "timestamp": 1700000000000}]}
+
+
+@pytest.mark.parametrize(("followed", "follow_line"), [
+    (True, "The monitoring account already follows 'target.user'."),
+    (False, "The monitoring account does not follow 'target.user', but the target already shares listening activity with it, so following is not required."),
+])
+# Verifies a target only the other backend lists is reported for a backend switch instead of a follow offer
+def test_setup_follow_check_reports_a_target_only_the_other_backend_lists(monkeypatch, capsys, followed, follow_line):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "doctor_check_authentication", authenticate_without_target)
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=followed))
+    other_lookup = Mock(return_value=activity_listing("target.user"))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", other_lookup)
+    follow = Mock()
+    ask = Mock()
+    monkeypatch.setattr(monitor, "spotify_follow_user", follow)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
+    assert monitor._wizard_offer_target_follow("target.user") == "other_backend"
+    other_lookup.assert_called_once_with("authenticated-token")
+    follow.assert_not_called()
+    ask.assert_not_called()
+    assert f"\n{follow_line}\nThe target is visible only through the buddylist backend. The configuration uses the listening_activity backend.\n" in capsys.readouterr().out
+
+
+# Verifies a followed target missing from both backends keeps the plain follow result, leaving the sharing problem to Doctor
+def test_setup_follow_check_keeps_the_follow_result_when_no_backend_lists_the_target(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "doctor_check_authentication", authenticate_without_target)
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "spotify_get_other_backend_friends", Mock(return_value=activity_listing("someone.else")))
+    assert monitor._wizard_offer_target_follow("target.user") == "already_followed"
+    assert "backend" not in capsys.readouterr().out
+
+
+# Builds a setup state whose configuration file setup has already written with the live backend
+def saved_live_backend_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    baseline = {name: value for name, value in vars(monitor).items() if name in monitor._config_allowed_names()}
+    state = monitor.WizardSetupState(tmp_path / "spotify_monitor.conf", tmp_path / ".env", baseline, dict(baseline), {}, "target.user", True, {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}, [], [])
+    monitor.write_config_file(state.config_path, monitor.generate_config_with_current_values(state.config_values), redact_secrets=True)
+    return state
+
+
+# Reads the saved configuration file into a namespace
+def saved_config(path):
+    namespace = {}
+    assert monitor.load_config_file(path, namespace=namespace, report_errors=False)
+    return namespace
+
+
+# Verifies an accepted backend switch asks the new backend's polling interval and saves both without a backup of setup's own file
+def test_accepted_backend_switch_saves_the_backend_and_its_interval(monkeypatch, tmp_path, capsys):
+    state = saved_live_backend_state(monkeypatch, tmp_path)
+    ask = Mock(return_value=True)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", ask)
+    durations = []
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: durations.append(question) or 45)
+
+    assert monitor._wizard_offer_backend_switch(state) is True
+
+    ask.assert_called_once_with("Switch to the buddylist backend and save it in the configuration file?", default=True)
+    assert durations == ["Spotify polling interval (seconds or use s/m/h/d)"]
+    saved = saved_config(state.config_path)
+    assert saved["FRIEND_ACTIVITY_BACKEND"] == "buddylist"
+    assert saved["SPOTIFY_CHECK_INTERVAL"] == 45
+    assert list(tmp_path.glob("spotify_monitor.conf.*")) == []
+    assert f"Saved FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{state.config_path}'." in capsys.readouterr().out
+
+
+# Verifies a declined backend switch leaves the saved configuration unchanged
+def test_declined_backend_switch_keeps_the_saved_backend(monkeypatch, tmp_path, capsys):
+    state = saved_live_backend_state(monkeypatch, tmp_path)
+    before = state.config_path.read_text(encoding="utf-8")
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=False))
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda *args, **kwargs: pytest.fail("a polling interval was asked without a switch"))
+
+    assert monitor._wizard_offer_backend_switch(state) is False
+
+    assert state.config_path.read_text(encoding="utf-8") == before
+    assert "The configuration keeps the listening_activity backend, which does not list the target." in capsys.readouterr().out
+
+
+# Verifies a failed write keeps the previous answers, so the state still describes the saved file
+def test_failed_backend_switch_write_restores_the_answers(monkeypatch, tmp_path, capsys):
+    state = saved_live_backend_state(monkeypatch, tmp_path)
+    before = dict(state.config_values)
+    monkeypatch.setattr(monitor, "_wizard_ask_yes_no", Mock(return_value=True))
+    monkeypatch.setattr(monitor, "_wizard_ask_duration", lambda question, default: 45)
+    monkeypatch.setattr(monitor, "write_config_file", Mock(side_effect=OSError("read-only")))
+
+    assert monitor._wizard_offer_backend_switch(state) is False
+
+    assert state.config_values == before
+    assert f"Setup could not write configuration file '{state.config_path}'. It still uses the listening_activity backend." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("switched", "start_offered"), [(True, True), (False, False)])
+# Verifies a saved backend switch validates the setup for the start offer and a declined one does not
+def test_setup_offers_the_backend_switch_after_the_following_check(monkeypatch, switched, start_offered):
+    with make_test_directory() as directory_name:
+        directory = Path(directory_name)
+        auth = {"complete": True, "validated": False, "browser": None, "source": "existing SP_DC_COOKIE"}
+        ask_mock, _ = install_minimal_wizard_flow(monkeypatch, "manual", auth, [])
+        ask_mock.side_effect = lambda question, default=True: not question.startswith(("Run doctor now?", "Start monitoring now?"))
+        monkeypatch.setattr(monitor, "_wizard_offer_target_follow", Mock(return_value="other_backend"))
+        switch = Mock(return_value=switched)
+        monkeypatch.setattr(monitor, "_wizard_offer_backend_switch", switch)
+        with pytest.raises(SystemExit) as error:
+            monitor.run_setup_wizard(config_file=directory / "spotify_monitor.conf", env_file=directory / ".env")
+        assert error.value.code == 0
+        switch.assert_called_once()
+        prompts = [call.args[0] for call in ask_mock.call_args_list]
+        assert any(prompt.startswith("Start monitoring now?") for prompt in prompts) is start_offered
 
 
 # Verifies interactive no-argument welcome launches setup when accepted
