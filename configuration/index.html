@@ -1210,7 +1210,8 @@
 <li><strong>All followers</strong>: the monitoring account must follow the target.</li>
 <li><strong>Selected people</strong>: the target selects the monitoring account. Following is not required.</li>
 </ul>
-<p>If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.</p>
+<p>Setup first checks whether the target shares listening activity with the monitoring account. It reads the follow state only when the target is not visible. If the monitoring account does not follow such a target, setup offers to follow it. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.</p>
+<p>If only the other <a href="#friend-activity-backend">Friend Activity backend</a> lists the target, setup offers to switch to that backend instead. It asks for that backend's polling interval and saves both in the configuration file.</p>
 <p>Doctor reports whether the monitoring account follows an invisible target, so you know which setting to fix.</p>
 <h2 id="how-to-find-a-friends-spotify-profile-url">How to Find a Friend's Spotify Profile URL<a class="headerlink" href="#how-to-find-a-friends-spotify-profile-url" title="Permanent link">&para;</a></h2>
 <p>Use the Spotify desktop or mobile app:</p>
@@ -1255,7 +1256,7 @@
 </code></pre></div>
 <p><a id="friend-activity-backend"></a></p>
 <h2 id="friend-activity-backend">Friend Activity Backend<a class="headerlink" href="#friend-activity-backend" title="Permanent link">&para;</a></h2>
-<p>Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so <code>--list-friends</code> compares both and names the differences. Doctor points at the other backend when only that one lists the target.</p>
+<p>Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so <code>--list-friends</code> compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and Doctor prints the setting to save plus a ready command that uses it for one run. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.</p>
 <p>A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.</p>
 <p>The feed drops a user who starts a private session, turns off activity sharing, blocks the monitoring account or, when sharing with all followers, is no longer followed by it. The tool cannot tell these causes apart. After <code>SPOTIFY_LIVE_DISAPPEARED_COUNTER</code> checks in a row without the user, it reports <code>is no longer visible in listening activity</code> and checks every <code>SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL</code> seconds (<code>-m</code>) until the user returns, then reports <code>is visible again after</code> with the time away. After six hours away it prints the follow and sharing advice once, since a private session ends sooner. These reports use the inactive and active notification settings. A session stays open while the user is away and its summary lists the time the user was not visible.</p>
 <p>Songs on loop are counted when a song is played again from its start <code>SONG_ON_LOOP_VALUE</code> times.</p>
@@ -1705,6 +1706,7 @@
 <a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="na">}</span>
 </code></pre></div>
 <p>Header values support the same placeholders as <code>WEBHOOK_TEMPLATE</code>. They must be strings without line breaks. Headers apply to both Discord and ntfy. Prefer <code>NTFY_ACCESS_TOKEN</code> in <code>.env</code> for Bearer authentication. Basic authentication is available through a custom <code>Authorization</code> header. Long ntfy messages are truncated with a visible marker so they remain notifications rather than attachments.</p>
+<p>A header value that contains emoji or other non-ASCII text after placeholder expansion is sent in RFC 2047 encoded form (<code>=?UTF-8?B?...?=</code>), since a plain HTTP header cannot carry it. ntfy decodes it back to the original text. Other receivers see the encoded form unless they decode RFC 2047. ASCII values are sent exactly as written, including values you already encoded yourself, such as an emoji tag from the ntfy documentation.</p>
 <p><a id="discord"></a></p>
 <h3 id="discord">Discord<a class="headerlink" href="#discord" title="Permanent link">&para;</a></h3>
 <p>If you are new to Discord, follow these steps to get your private webhook URL:</p>
@@ -1917,6 +1919,10 @@
 <tr>
 <td><code>help_default</code></td>
 <td>The <code>(default: ...)</code> notes</td>
+</tr>
+<tr>
+<td><code>compact_view_timestamp</code></td>
+<td>The time at the start of each <a href="../usage/#compact-view">compact view</a> line</td>
 </tr>
 </tbody>
 </table>

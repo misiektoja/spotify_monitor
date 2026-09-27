@@ -585,6 +585,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#compact-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compact View
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1004,6 +1015,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#compact-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compact View
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1352,12 +1374,23 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="na">COLOR_THEME = { "track"</span><span class="o">:</span><span class="w"> </span><span class="s">"bright_magenta bold"</span><span class="na">, "username"</span><span class="o">:</span><span class="w"> </span><span class="s">"green"</span><span class="w"> </span><span class="na">}</span>
 </code></pre></div>
 <p>See <a href="../configuration/#terminal-colours">Terminal Colours</a> for every theme key and the accepted colour and style names.</p>
+<p><a id="compact-view"></a></p>
+<h3 id="compact-view">Compact View<a class="headerlink" href="#compact-view" title="Permanent link">&para;</a></h3>
+<p>Compact view shows one line per song, so the screen keeps a running list of what the friend played. Turn it on with <code>COMPACT_VIEW = True</code> or for one run with <code>--compact-view</code>. It applies to Friend Activity monitoring.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>27 Sep, 17:10:18: *** Friend is Active...
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>27 Sep, 17:10:18: [00] Sunday Bloody Sunday - U2 (War) [U2 Radio] (by Spotify)
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>27 Sep, 17:19:02: *** Friend is Inactive...
+</code></pre></div>
+<p>The startup summary and first full report print as usual. After that, only listening activity, track changes, visibility changes, actionable errors or warnings and recovery messages are shown. Repeated failures are reported only when they change or recover.</p>
+<p>Everything else goes to the log file only. That covers the full song reports, session summaries, replies to <a href="#signal-controls-macoslinuxunix">control signals</a> plus verbose and debug output. Email and webhook alerts are sent as usual. With logging disabled (<code>-d</code>) this output is not kept anywhere and the startup summary says so.</p>
 <p><a id="listing-mode"></a></p>
 <h2 id="listing-mode">Listing Mode<a class="headerlink" href="#listing-mode" title="Permanent link">&para;</a></h2>
 <p>Listing mode shows the Spotify friends visible to the monitoring account and each person's most recently reported track:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>spotify_monitor<span class="w"> </span>-l
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>-l
 </code></pre></div>
 <p>The output includes each person's display name, Spotify user ID and profile URL. Either the user ID or profile URL can be used as a monitoring target.</p>
+<p>The list ends with the users that only one <a href="../configuration/#friend-activity-backend">Friend Activity backend</a> shows, as <code>display name (user ID)</code> or the user ID alone when both are the same.</p>
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
@@ -1369,14 +1402,14 @@
 <li>set <code>ACTIVE_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-a</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-a
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-a
 </code></pre></div>
 <p>To send an email when a user becomes inactive:</p>
 <ul>
 <li>set <code>INACTIVE_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-i</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-i
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-i
 </code></pre></div>
 <p>The inactive and active emails also report when the user is no longer visible in listening activity, for example during a private session, and when the user is visible again with the time away.</p>
 <p>Inactivity emails list recent tracks from the session with their skipped status, how long the last track played and how long the user paused. Configure the number of recent songs to include via the <code>INACTIVE_EMAIL_RECENT_SONGS_COUNT</code> configuration option.</p>
@@ -1386,14 +1419,14 @@
 <li>or use the <code>-t</code> flag</li>
 </ul>
 <p>Create a text file with one track, album or playlist per line. Select it with <code>MONITOR_LIST_FILE</code> or <code>-s</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_USER_ID
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-t<span class="w"> </span>-s<span class="w"> </span>spotify_tracks_USER_ID
 </code></pre></div>
 <p>Example file <code>spotify_tracks_USER_ID</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>we fell in love in october
-<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>Like a Stone
-<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>Half Believing
-<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>Something Changed
-<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>I Will Be There
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>we fell in love in october
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>Like a Stone
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>Half Believing
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>Something Changed
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a>I Will Be There
 </code></pre></div>
 <p>Start a line with <code>#</code> to ignore it.</p>
 <p>To send an email for every reported song change:</p>
@@ -1401,26 +1434,26 @@
 <li>set <code>SONG_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-j</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-j
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-j
 </code></pre></div>
 <p>To send an email when a user repeats the same song:</p>
 <ul>
 <li>set <code>SONG_ON_LOOP_NOTIFICATION</code> to <code>True</code></li>
 <li>or use the <code>-x</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-x
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-x
 </code></pre></div>
 <p>Error emails are enabled by default when SMTP is configured. To disable them:</p>
 <ul>
 <li>set <code>ERROR_NOTIFICATION</code> to <code>False</code></li>
 <li>or use the <code>-e</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-e
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-e
 </code></pre></div>
 <p>An error alert goes out once the same failure has lasted <strong>5 minutes</strong>, so a short outage or one lost request reaches nobody, while a failure that cannot clear on its own, such as an expired sp_dc cookie, is alerted at once. Each kind of failure alerts once per channel. A channel that could not deliver is tried again on a later failing check, after <strong>5 minutes</strong> at first and then after twice the previous wait, up to an hour. A run that recovered alerts again when it fails later. The same rule governs the webhook error alert.</p>
 <p>Every failure alert uses the subject <code>Spotify Monitor (&lt;mode&gt;) error: &lt;what went wrong&gt; (user: &lt;display name&gt;, &lt;user URI id&gt;)</code> and lists the fix, the guide link, how many checks failed in a row, since when and when the next retry happens. <code>&lt;mode&gt;</code> is <code>Friend Activity</code> or <code>Spotify-to-Last.fm scrobble health</code> and qualifies the tool name, so an inbox carrying both says which one failed. The user URI id is used alone until the target has been read once. Everywhere else the target is written as <code>&lt;display name&gt; (&lt;user URI id&gt;)</code>, which is how the recovery alert and the console lines name it. When the failure clears, a <strong>recovery alert</strong> with the subject <code>Spotify Monitor (&lt;mode&gt;) recovered: monitoring &lt;target&gt; resumed after &lt;duration&gt;</code> follows on each channel that delivered the failure alert. In scrobble health mode the target names both sides of the comparison instead, as <code>(spotify: &lt;display name&gt;, &lt;user id&gt;, last.fm: &lt;lastfm username&gt;)</code>, so a Spotify failure is not read as a problem with the Last.fm profile. The Spotify side is the account the recent-play authorization belongs to and is dropped when that lookup fails. The <code>-e</code> flag switches off the error email and the recovery email together. <code>--no-webhook-error-notify</code> does the same for the webhook. A channel that could not receive the failure alert while the outage lasted is told about the failure and its recovery together, so a blocked channel is not left without any word of an outage.</p>
 <p>In scrobble health mode, the alert for missing and resumed scrobbles is sent by email when <code>SCROBBLE_HEALTH_NOTIFICATION</code> is <code>True</code>, which is the default. Use <code>--notify-scrobble-health</code> or <code>--no-scrobble-health-notify</code> to change it for one run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--no-scrobble-health-notify
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--no-scrobble-health-notify
 </code></pre></div>
 <p>All email alerts require valid <a href="../configuration/#smtp-settings">SMTP settings</a>.</p>
 <p>Example email:</p>
@@ -1480,24 +1513,24 @@
 </table>
 <p>A monitoring error webhook carries the same title and text as the error email, without the timestamp the provider adds itself. The recovery alert follows on the same channel when the failure clears.</p>
 <p>For example, this sends a webhook alert for every song change during one run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--webhook-song-changes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--webhook-song-changes
 </code></pre></div>
 <p>Use <code>--webhook</code> or <code>--no-webhook</code> to turn all configured webhook alerts on or off for one run. Standard Discord and public <code>ntfy.sh</code> URLs automatically correct a stale configured provider. Use <code>--webhook-provider {discord,ntfy}</code> as an explicit override for self-hosted ntfy or compatible endpoints. A tracked-song webhook alert uses the same song list as a tracked-song email alert.</p>
 <p>The recommended way to save a private destination is still the hidden <code>--set-webhook-url</code> command. For automation or one-time testing, <code>--webhook-url URL</code> overrides the destination without changing <code>.env</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--webhook-provider<span class="w"> </span>ntfy<span class="w"> </span>--webhook-url<span class="w"> </span><span class="s2">"https://ntfy.sh/your-private-topic"</span><span class="w"> </span>--webhook-song-changes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--webhook-provider<span class="w"> </span>ntfy<span class="w"> </span>--webhook-url<span class="w"> </span><span class="s2">"https://ntfy.sh/your-private-topic"</span><span class="w"> </span>--webhook-song-changes
 </code></pre></div>
 <p>A URL passed on the command line may remain visible in shell history or process listings. See <a href="../configuration/#webhook-settings">Webhook Settings</a> for the setup wizard, advanced payload templates and dynamic headers.</p>
 <p><a id="csv-export"></a></p>
 <h2 id="csv-export">CSV Export<a class="headerlink" href="#csv-export" title="Permanent link">&para;</a></h2>
 <p>To save reported songs in a CSV file, set <code>CSV_FILE</code> or use <code>-b</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_USER_ID.csv
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-b<span class="w"> </span>spotify_tracks_USER_ID.csv
 </code></pre></div>
 <p>Spotify Monitor creates the file if it does not exist.</p>
 <p>The setup wizard adds <code>.csv</code> if the filename has no extension. Declining CSV output during setup clears a previously saved CSV path.</p>
 <p><a id="activity-flag-file"></a></p>
 <h2 id="activity-flag-file">Activity Flag File<a class="headerlink" href="#activity-flag-file" title="Permanent link">&para;</a></h2>
 <p>Set <code>FLAG_FILE</code> or use <code>--flag-file PATH</code> to expose the monitored user's current activity state to another local tool. Spotify Monitor creates the file while the user is active and deletes it after the user becomes inactive:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--flag-file<span class="w"> </span>/path/spotify_user_active
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>--flag-file<span class="w"> </span>/path/spotify_user_active
 </code></pre></div>
 <p>For a container, place the file under <code>/data</code> so it appears in the host directory. Each concurrently monitored user should have a different flag path.</p>
 <p>A stale flag is removed at startup. If it cannot be removed, the tool exits with an error. Later failures to create or remove the flag disable this integration for the rest of the run while monitoring continues. Check the error output and correct the path before restarting.</p>
@@ -1508,7 +1541,7 @@
 <li>set <code>TRACK_SONGS</code> to <code>True</code></li>
 <li>or use the <code>-g</code> flag</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-g
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-g
 </code></pre></div>
 <p>The Spotify client must be installed and running.</p>
 <p>Host Spotify auto-play is unavailable by default inside a container because the container cannot control the Spotify client running on the host. Run Spotify Monitor locally if you need <code>TRACK_SONGS</code> or <code>--track-in-spotify</code>. A container run prints one warning before monitoring and <code>--doctor</code> reports <code>[WARN]</code>, but the setting is not disabled automatically.</p>
@@ -1539,7 +1572,7 @@
 <p><a id="check-intervals"></a></p>
 <h2 id="check-intervals">Check Intervals<a class="headerlink" href="#check-intervals" title="Permanent link">&para;</a></h2>
 <p>If you want to customize the polling intervals, use the <code>-k</code> and <code>-c</code> flags (or the corresponding configuration options):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">30</span><span class="w"> </span>-k<span class="w"> </span><span class="m">10</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-c<span class="w"> </span><span class="m">30</span><span class="w"> </span>-k<span class="w"> </span><span class="m">10</span>
 </code></pre></div>
 <ul>
 <li><code>SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL</code>, <code>-k</code>: check interval during a listening session (seconds)</li>
@@ -1549,20 +1582,20 @@
 <p>In the setup wizard, you can also enter durations such as <code>30s</code>, <code>1.5h</code> or <code>1h 30m</code>. Supported units are <code>s</code>, <code>m</code>, <code>h</code> and <code>d</code>.</p>
 <p><code>--doctor</code> warns when an interval is below 5 seconds. The legacy backend keeps its own timers, see <a href="../configuration/#legacy-backend">Legacy Backend</a>.</p>
 <p>For scrobble health, set the time between successful comparisons through <code>SCROBBLE_HEALTH_CHECK_INTERVAL</code> or <code>--scrobble-check-interval</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--scrobble-check-interval<span class="w"> </span><span class="m">120</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>spotify_monitor<span class="w"> </span>--monitor-mode<span class="w"> </span>scrobble_health<span class="w"> </span>--scrobble-check-interval<span class="w"> </span><span class="m">120</span>
 </code></pre></div>
 <p>Scrobble health uses <code>SPOTIFY_ERROR_INTERVAL</code> after a failed comparison, with a default of three minutes. Its failure alert follows the same <strong>5 minute</strong> rule Friend Activity uses. See <a href="../configuration/#lastfm-scrobble-health">Last.fm Scrobble Health</a> for alert and retry behavior.</p>
 <p>Each check that reports playback keeps the session active, including during long tracks. After playback stops, the inactivity timer starts at the pause moment. Set the number of seconds through <code>SPOTIFY_LIVE_INACTIVITY_CHECK</code> or <code>-o</code>, three minutes by default:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-o<span class="w"> </span><span class="m">900</span>
 </code></pre></div>
 <p>When the user is no longer visible, for example during a private session, the tool reports it and checks every <code>SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL</code> seconds, 30 by default, until the user returns, then reports how long the user was away. A shorter interval times the return more closely. <code>-m</code> sets the timer of the selected backend, the legacy one is <code>SPOTIFY_DISAPPEARED_CHECK_INTERVAL</code> with a default of three minutes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-m<span class="w"> </span><span class="m">30</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>spotify_monitor<span class="w"> </span>&lt;spotify_target&gt;<span class="w"> </span>-m<span class="w"> </span><span class="m">30</span>
 </code></pre></div>
 <p><a id="liveness-reminder"></a></p>
 <h3 id="liveness-reminder">Liveness Reminder<a class="headerlink" href="#liveness-reminder" title="Permanent link">&para;</a></h3>
 <p>In Friend Activity mode, while nothing changes, the tool prints one reminder that it is still running:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>* Monitoring healthy for &lt;spotify_target&gt;. The target is visible with no activity change since the last check
-<a id="__codelineno-47-2" name="__codelineno-47-2" href="#__codelineno-47-2"></a>Liveness check, timestamp:  Mon 08 Sep 2026, 09:15:05
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>* Monitoring healthy for &lt;spotify_target&gt;. The target is visible with no activity change since the last check
+<a id="__codelineno-48-2" name="__codelineno-48-2" href="#__codelineno-48-2"></a>Liveness check, timestamp:  Mon 08 Sep 2026, 09:15:05
 </code></pre></div>
 <p>Set <code>LIVENESS_CHECK_INTERVAL</code> to change it (default: 86400, i.e. 24 hours) or to 0 to switch it off.</p>
 <p>Anything the tool prints about the target restarts the countdown, so a busy run stays quiet.</p>
@@ -1611,7 +1644,7 @@
 </table>
 <p><code>SIGHUP</code> keeps command-line credentials and nonempty environment values exported before startup. Change those values and restart to replace them.</p>
 <p>Send signals with <code>kill</code> or <code>pkill</code>, e.g.:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">"spotify_monitor &lt;spotify_target&gt;"</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>pkill<span class="w"> </span>-USR1<span class="w"> </span>-f<span class="w"> </span><span class="s2">"spotify_monitor &lt;spotify_target&gt;"</span>
 </code></pre></div>
 <p>As Windows supports limited number of signals, this functionality is available only on Linux/Unix/macOS.</p>
 <p><a id="coloring-log-output-with-grc"></a></p>
@@ -1619,12 +1652,12 @@
 <p>Spotify Monitor colours live terminal output through <code>COLORED_OUTPUT</code> and <code>COLOR_THEME</code>. To colour saved log files when you view them later, you can use <a href="https://github.com/garabik/grc">GRC</a>.</p>
 <p>The bundled recipe follows the same colours as the live output. It also covers the other monitors in the family, so one copy in <code>~/.grc/</code> colours every tool's logs.</p>
 <p>Add to your GRC config (<code>~/.grc/grc.conf</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a># monitoring log file
-<a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a>.*_monitor_.*\.log
-<a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>conf.monitor_logs
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a># monitoring log file
+<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>.*_monitor_.*\.log
+<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>conf.monitor_logs
 </code></pre></div>
 <p>Copy <a href="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/grc/conf.monitor_logs">conf.monitor_logs</a> to <code>~/.grc/</code>. Then view a log through <code>grc</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>grc<span class="w"> </span>tail<span class="w"> </span>-F<span class="w"> </span>-n<span class="w"> </span><span class="m">100</span><span class="w"> </span>spotify_monitor_&lt;user_uri_id/file_suffix&gt;.log
 </code></pre></div>
 
 
