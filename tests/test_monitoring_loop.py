@@ -206,8 +206,7 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
-# COMPACT_VIEW prints one compact "[NN] Track - Artist (Album) [Playlist]" line per song change, instead
-# of (or alongside, for the very first check) the normal multi-line block
+# Compact view prints one "[NN] Track - Artist (Album) [Playlist]" line per song change
 def test_compact_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
@@ -246,8 +245,7 @@ def test_compact_view_line_leads_the_songs_own_block(loop_environment, monkeypat
     assert "] Track Name - Artist Name (Album Name) [Playlist Name]" in lines[spotify_user - 2]
 
 
-# A Spotify-curated playlist's SPOTIFY_SUFFIX trails after the brackets ("[Playlist Name] (by
-# Spotify)"), the same way the rest of the tool shows it, rather than being folded into the name
+# SPOTIFY_SUFFIX follows the playlist brackets, as in "[Playlist Name] (by Spotify)"
 def test_compact_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     monkeypatch.setattr(monitor, "SPOTIFY_SUFFIX", " (by Spotify)")
@@ -265,6 +263,30 @@ def test_compact_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_e
     output = capsys.readouterr().out
     song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
     assert song_line.endswith("[Playlist Name] (by Spotify)"), song_line
+
+
+# With the legacy backend a friend first seen offline opens a compact view session with the first new track
+def test_compact_view_opens_a_session_when_a_legacy_friend_returns(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 660)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=(started_at - 3600) * 1000), buddy_list(timestamp_ms=started_at * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    lines = capsys.readouterr().out.splitlines()
+    offline = next(index for index, line in enumerate(lines) if "*** Friend is OFFLINE for:" in line)
+    banner = next(index for index, line in enumerate(lines) if line.endswith("*** Friend is Active..."))
+    assert offline < banner
+    assert lines[banner - 1] == ""
+    assert lines[banner + 1].endswith("[00] Track Name - Artist Name (Album Name) [Playlist Name]")
+    assert sum(line.endswith("*** Friend is Active...") for line in lines) == 1
 
 
 # Verifies verbose stays quiet on an uneventful cycle instead of printing one line per check

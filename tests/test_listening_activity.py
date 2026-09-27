@@ -3,6 +3,7 @@
 import copy
 import errno
 import re
+from io import StringIO
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -482,8 +483,8 @@ def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name="", track_
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", Mock(return_value="token"))
     monkeypatch.setattr(monitor, "spotify_get_track_info", track_info)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
-    # A None snapshot stands for a response without the target, as the feed answers during a private session
-    payloads = [monitor.spotify_normalize_listening_activity({"entities": [snapshot] if snapshot is not None else []}) for snapshot in snapshots]
+    # A None snapshot stands for a response without the target, as the feed answers during a private session. An exception stands for a failed check
+    payloads = [snapshot if isinstance(snapshot, Exception) else monitor.spotify_normalize_listening_activity({"entities": [snapshot] if snapshot is not None else []}) for snapshot in snapshots]
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads))
     harness.stop_after = len(snapshots) - 1
     with pytest.raises(LoopStopped):
@@ -571,9 +572,11 @@ def test_live_track_change_reports_partial_startup_track_without_skip(loop_envir
     assert output.index("User played the previous track for:") < output.index("Spotify user:")
 
 
-# COMPACT_VIEW frames each listening session on screen: a blank line, a separator and "Friend is
-# Active..." before its first song line, "Friend is Inactive..." once it ends - at startup and again
-# when the friend comes back
+# The time that opens every compact view line, such as "27 Sep, 17:10:18"
+COMPACT_STAMP = r"\d{2} [A-Z][a-z]{2}, \d{2}:\d{2}:\d{2}"
+
+
+# Compact view opens each session with a blank line and "Friend is Active..." and closes it with "Friend is Inactive..."
 def test_compact_view_frames_each_session_with_activity_banners(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
     now = loop_environment.now
@@ -581,56 +584,80 @@ def test_compact_view_frames_each_session_with_activity_banners(loop_environment
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     lines = capsys.readouterr().out.splitlines()
 
-    banner_re = re.compile(r"^\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: \*\*\* Friend is (Active|Inactive)\.\.\.$")
-    song_re = re.compile(r"^\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: \[\d+\] First - Artist \(Album\)$")
+    banner_re = re.compile(COMPACT_STAMP + r": \*\*\* Friend is (Active|Inactive)\.\.\.$")
+    song_re = re.compile(COMPACT_STAMP + r": \[\d+\] First - Artist \(Album\)$")
     events = []
     for index, line in enumerate(lines):
         banner = banner_re.match(line)
         if banner:
             events.append(banner.group(1))
-            if banner.group(1) == "Active":
-                assert lines[index - 2:index] == [" ", "----------------------"], lines[index - 3:index + 1]
-            else:
-                assert lines[index + 1] == "", lines[index:index + 2]
+            assert lines[index - 1 if banner.group(1) == "Active" else index + 1] == ""
         elif song_re.match(line):
             events.append("song")
 
     assert events == ["Active", "song", "Inactive", "Active", "song"]
 
 
-# Regression: [NN] used to count from the session start the rest of the tool uses - when the
-# session's first song began - which is earlier than the "Friend is Active..." banner whenever
-# monitoring starts (or a friend comes back) mid-song, so every [NN] in that session ran ahead of the
-# printed timestamps. It now counts whole minutes since the banner, on the same clock as those
-# timestamps.
+# [NN] counts whole minutes from the "Friend is Active..." line, so it agrees with the printed times when monitoring starts mid-song
 def test_compact_view_counts_minutes_from_the_active_banner(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
-
-    class HarnessClock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return datetime.fromtimestamp(loop_environment.now, tz)
-
-    monkeypatch.setattr(monitor, "datetime", HarnessClock)
     now = loop_environment.now
     # Already two minutes into the first song when monitoring starts
     snapshots = [feed_entity(now - 120)] * 6 + [feed_entity(now + 180, track=OTHER_TRACK_URI)] * 2
     run_live_snapshots(monkeypatch, loop_environment, snapshots)
     lines = capsys.readouterr().out.splitlines()
 
-    stamp = r"(\d{2}/\d{2}, \d{2}:\d{2}:\d{2})"
-    banners = [match for match in (re.match(stamp + r": \*\*\* Friend is Active\.\.\.$", line) for line in lines) if match]
-    banner = banners[0].group(1)
+    stamp = f"({COMPACT_STAMP})"
+    banner = next(match.group(1) for match in (re.match(stamp + r": \*\*\* Friend is Active\.\.\.$", line) for line in lines) if match)
     songs = [match.groups() for match in (re.match(stamp + r": \[(\d+)\] ", line) for line in lines) if match]
-    # The printed stamps carry no year; a fixed leap year keeps 29 February parseable
-    def parse(printed):
-        return datetime.strptime(f"2000/{printed}", "%Y/%m/%d, %H:%M:%S")
 
-    banner_at = parse(banner)
+    # The printed times carry no year. A leap year keeps 29 February parseable
+    def parse(printed):
+        return datetime.strptime(f"2000 {printed}", "%Y %d %b, %H:%M:%S")
+
     assert [minutes for _, minutes in songs] == ["00", "02"], songs
     for printed, minutes in songs:
-        elapsed = (parse(printed) - banner_at).total_seconds()
-        assert int(minutes) == int(elapsed // 60), (printed, minutes)
+        assert int(minutes) == int((parse(printed) - parse(banner)).total_seconds() // 60), (printed, minutes)
+
+
+# A failing check and the recovery after it each get one compact view line
+def test_compact_view_reports_a_failure_and_its_recovery(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    now = loop_environment.now
+    rejected = Exception("401 Unauthorized for url: https://spclient.wg.spotify.com/listening-activity/v1/feed")
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now), rejected, feed_entity(now)])
+    lines = capsys.readouterr().out.splitlines()
+
+    errors = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Error: ", line)]
+    recoveries = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Monitoring recovered after ", line)]
+    assert len(errors) == 1 and errors[0].endswith("*** Error: Spotify rejected the sp_dc cookie"), errors
+    assert len(recoveries) == 1, recoveries
+
+
+# After the initial report the screen shows only compact view lines, while the log, when enabled, keeps the full output
+@pytest.mark.parametrize("logging_enabled", [True, False])
+def test_compact_view_keeps_the_full_output_off_the_screen(loop_environment, monkeypatch, tmp_path, logging_enabled):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+    logger = monitor.Logger(str(tmp_path / "monitor.log")) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    now = loop_environment.now
+    rejected = Exception("401 Unauthorized for url: https://spclient.wg.spotify.com/listening-activity/v1/feed")
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 250, track=OTHER_TRACK_URI), rejected, feed_entity(now + 250, track=OTHER_TRACK_URI)])
+
+    screen = terminal.getvalue().splitlines()
+    start = next(index for index, line in enumerate(screen) if line.endswith("*** Friend is Active..."))
+    assert "Username:\t\t\tFriend" in screen[:start]
+    assert all(line == "" or re.match(COMPACT_STAMP + ": ", line) for line in screen[start:]), screen[start:]
+    assert any(re.match(COMPACT_STAMP + r": \[\d+\] Second - Artist \(Album\)$", line) for line in screen)
+    assert any(line.endswith("*** Error: Spotify rejected the sp_dc cookie" + (" (details in log)" if logging_enabled else "")) for line in screen)
+    if logger is not None:
+        logger.logfile.close()
+        log = (tmp_path / "monitor.log").read_text(encoding="utf-8")
+        for full_output in ("Spotify user:", "* Error: Spotify rejected the sp_dc cookie", "* Monitoring recovered for"):
+            assert full_output in log
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
