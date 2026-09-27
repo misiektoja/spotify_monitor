@@ -213,6 +213,32 @@ def test_artist_context_names_any_credited_artist(monkeypatch, context, expected
     assert info["sp_playlist"] == expected
 
 
+# Context shapes the live feed reports: an artist page, an album, a track played from search or its own page
+# and a queued or autoplayed track without any context, which legacy showed as nothing beyond the album either
+@pytest.mark.parametrize("context,expected", [
+    ("spotify:list:popular-release-segments-main-roles:artist_0zfZmpHTu0MlkkNr5KHeXE", "\nContext (Artist):\t\tArtist\n"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", None),
+    (TRACK_URI, None),
+    (None, None),
+])
+def test_list_shows_only_the_contexts_legacy_showed(monkeypatch, capsys, context, expected):
+    track = {"sp_track_duration": 200, "sp_track_name": "First", "sp_track_uri": TRACK_URI, "sp_track_url": "", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "sp_artists": {"spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Artist"}, "sp_artist_url": "", "sp_album_name": "Album", "sp_album_uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "sp_album_url": "", "sp_album_image_url": ""}
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda token, uri: track)
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
+    entity = feed_entity()
+    if context is not None:
+        entity["followEntity"]["activity"]["contextUri"] = context
+    monitor.spotify_list_friends(monitor.spotify_normalize_listening_activity({"entities": [entity]}), "token")
+    output = capsys.readouterr().out
+    assert "Album:\t\t\t\tAlbum" in output
+    assert "Playlist:" not in output
+    assert "spotify:track:" not in output
+    if expected:
+        assert expected in output
+    else:
+        assert "Context (" not in output
+
+
 # Treats unsupported media and users without shared activity as absent music activity
 def test_nonmusic_and_missing_activity_are_skipped():
     result = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(track="spotify:episode:example"), {"userEntity": {"uri": USER_URI}}]})
