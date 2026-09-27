@@ -326,6 +326,26 @@ COLOR_THEME = { "track": "bright_magenta bold", "username": "green" }
 
 See [Terminal Colours](configuration.md#terminal-colours) for every theme key and the accepted colour and style names.
 
+<a id="compact-view"></a>
+### Compact View
+
+Compact view shows one line per song, so the screen keeps a running list of what the friend played. Turn it on with `COMPACT_VIEW = True` or for one run with `--compact-view`. It applies to Friend Activity monitoring.
+
+```text
+27 Sep, 17:10:18: *** Friend is Active...
+27 Sep, 17:10:18: [00] U2 - Sunday Bloody Sunday [U2 Radio] (by Spotify)
+27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+27 Sep, 17:19:02: *** Friend is Inactive...
+```
+
+The startup summary and the first full report print as usual. After that the screen shows only these lines:
+
+- `*** Friend is Active...` when a listening session starts and `*** Friend is Inactive...` when it ends
+- one line per song: the time, `[NN]` minutes since `Friend is Active...`, track, artist, album and the playlist in brackets
+- `*** Error: ...` when checks start failing and `*** Monitoring recovered after ...` when they work again
+
+Everything else goes to the log file only. That covers the full song reports, session summaries, replies to [control signals](#signal-controls-macoslinuxunix) plus verbose and debug output. Email and webhook alerts are sent as usual. With logging disabled (`-d`) this output is not kept anywhere and the startup summary says so.
+
 <a id="listing-mode"></a>
 ## Listing Mode
 
