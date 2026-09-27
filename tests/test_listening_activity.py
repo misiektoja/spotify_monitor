@@ -201,16 +201,55 @@ def test_artist_page_list_context_becomes_the_artist(context, expected):
     assert result["friends"][0]["track"]["context"]["uri"] == expected
 
 
-# An artist context names the first credited artist or any other credited artist
-@pytest.mark.parametrize("context,expected", [("spotify:artist:example", "Artist"), ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "Guest"), ("spotify:artist:1dgdvbogmctybPrGEcnYf6", "spotify:artist:1dgdvbogmctybPrGEcnYf6")])
-def test_artist_context_names_any_credited_artist(monkeypatch, context, expected):
-    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
+# An artist context names any credited artist, while an album or artist the track does not name is looked up
+@pytest.mark.parametrize("context,looked_up,expected", [
+    ("spotify:artist:example", "", "Artist"),
+    ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "", "Guest"),
+    ("spotify:album:example", "", "Album"),
+    ("spotify:artist:1dgdvbogmctybPrGEcnYf6", "Other Artist", "Other Artist"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "Compilation", "Compilation"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "", "spotify:album:4ZD1KnBqghtSAEyqrZAkU4"),
+])
+def test_artist_context_names_any_credited_artist(monkeypatch, context, looked_up, expected):
+    lookups = []
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend" if kind == "user" else lookups.append((kind, uri)) or looked_up)
     entity = feed_entity()
     entity["followEntity"]["activity"]["contextUri"] = context
     _, info = monitor.spotify_get_friend_info(monitor.spotify_normalize_listening_activity({"entities": [entity]}), "watched-user")
     track = {"sp_track_name": "Track", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:example", "sp_artists": {"spotify:artist:example": "Artist", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Guest"}, "sp_album_name": "Album", "sp_album_uri": "spotify:album:example"}
     monitor.spotify_complete_live_activity(info, "token", track)
     assert info["sp_playlist"] == expected
+    assert lookups == ([(context.split(":")[1], context)] if context.endswith(("1dgdvbogmctybPrGEcnYf6", "4ZD1KnBqghtSAEyqrZAkU4")) else [])
+
+
+# The metadata service takes the hexadecimal form of an ID, checked against the gid values Spotify itself returns
+@pytest.mark.parametrize("item_id,gid", [("6eJNFQ3WtEYfEBN7OKV7qd", "ccf3b08fd46e4095a0c7dc2a72ea478d"), ("0zfZmpHTu0MlkkNr5KHeXE", "12af557a79754a7eb0f84b4ab777c4d2"), ("0000000000000000000001", "00000000000000000000000000000001")])
+def test_spotify_id_to_gid_matches_the_metadata_service(item_id, gid):
+    assert monitor.spotify_id_to_gid(item_id) == gid
+
+
+# Rejects IDs that would build a request for some other resource
+@pytest.mark.parametrize("item_id", ["short", "0zfZmpHTu0MlkkNr5KHeX/", "0zfZmpHTu0MlkkNr5KHeXE0"])
+def test_spotify_id_to_gid_rejects_malformed_ids(item_id):
+    with pytest.raises(ValueError):
+        monitor.spotify_id_to_gid(item_id)
+
+
+# Album and artist names come from the metadata service without following redirects and are cached like other names
+def test_album_and_artist_names_use_the_metadata_service(monkeypatch):
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "SP_CACHED_CLIENT_ID", "client-id")
+    service = Mock(return_value=response_for({"name": "AURA"}))
+    monkeypatch.setattr(monitor.SESSION, "get", service)
+    assert monitor.spotify_activity_metadata("album", "spotify:album:6eJNFQ3WtEYfEBN7OKV7qd", "token") == "AURA"
+    assert monitor.spotify_activity_metadata("album", "spotify:album:6eJNFQ3WtEYfEBN7OKV7qd", "token") == "AURA"
+    assert service.call_count == 1
+    assert service.call_args.args[0] == "https://spclient.wg.spotify.com/metadata/4/album/ccf3b08fd46e4095a0c7dc2a72ea478d"
+    assert service.call_args.kwargs["headers"]["Client-Id"] == "client-id"
+    assert service.call_args.kwargs["allow_redirects"] is False
+    service.return_value = response_for({}, status=404)
+    assert monitor.spotify_activity_metadata("artist", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "token") == ""
+    assert monitor.spotify_activity_metadata("artist", "spotify:artist:malformed", "token") == ""
 
 
 # Context shapes the live feed reports: an artist page, an album, a track played from search or its own page
