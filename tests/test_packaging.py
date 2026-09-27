@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import site
 import subprocess
 import sys
@@ -29,11 +30,36 @@ def package_test_directory() -> Iterator[Path]:
         yield Path(directory_name)
 
 
+# Copies the project's source files into a private tree where setuptools can write its build output
+def copy_project_sources(destination: Path) -> None:
+    # Git's tracked files are what CI and a fresh clone build, without untracked local files such as credentials
+    try:
+        listing = subprocess.run(["git", "ls-files", "-z"], cwd=PROJECT_ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8").stdout
+    except (OSError, subprocess.CalledProcessError):
+        listing = ""
+    names = [name for name in listing.split("\0") if name]
+    if not names:
+        # A source archive has no Git metadata. local is skipped because it holds this copy's own destination
+        shutil.copytree(PROJECT_ROOT, destination, ignore=shutil.ignore_patterns(".git", "local", "build", "dist", "*.egg-info", "__pycache__"))
+        return
+    for name in names:
+        source = PROJECT_ROOT / name
+        # A tracked file deleted from the working tree would be missing from a build in place too
+        if source.is_file():
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+
 # Builds the project wheel once for package and installed-CLI tests
 @pytest.fixture(scope="module")
 def built_wheel(package_test_directory: Path) -> Path:
+    # setuptools writes build/ and the egg-info directory into the source tree, so parallel workers building
+    # the checkout itself would overwrite each other's files. Each build gets its own copy instead
+    source_directory = package_test_directory / "source"
+    copy_project_sources(source_directory)
     wheel_directory = package_test_directory / "dist"
-    result = subprocess.run([sys.executable, "-m", "build", "--wheel", "--no-isolation", "--outdir", str(wheel_directory), str(PROJECT_ROOT)], check=False, capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-m", "build", "--wheel", "--no-isolation", "--outdir", str(wheel_directory), str(source_directory)], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     wheels = list(wheel_directory.glob("*.whl"))
     assert len(wheels) == 1
