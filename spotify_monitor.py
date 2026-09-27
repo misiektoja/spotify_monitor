@@ -4660,6 +4660,17 @@ def print_compact_view_inactive_banner() -> None:
     print()
 
 
+# Reports a failing check in one compact view line, since its full report stays off the screen
+def print_compact_view_failure(summary: str) -> None:
+    detail = " (details in log)" if isinstance(sys.stdout, Logger) else ""
+    print_compact_view_line(colorize("error", f"*** Error: {summary}{detail}"))
+
+
+# Reports in one compact view line that the checks work again
+def print_compact_view_recovery(lasted: int) -> None:
+    print_compact_view_line(colorize("info", f"*** Monitoring recovered after {display_time(max(1, lasted))}"))
+
+
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
 # finished help screen rather than to the pieces argparse assembles and the layout stays identical
 _HELP_USAGE_LABEL = "usage:"
@@ -13169,6 +13180,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
+                            if COMPACT_VIEW:
+                                print_compact_view_recovery(outage_lasted)
                             print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
@@ -13194,6 +13207,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         # A failure is reported once, then left to the hourly reminder rather than repeated on every check
                         outage_outcome = outage.failed(advice)
+                        if COMPACT_VIEW and outage_outcome in ("full", "changed"):
+                            print_compact_view_failure(advice.summary)
                         if outage_outcome == "full":
                             print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
                         elif outage_outcome == "changed":
