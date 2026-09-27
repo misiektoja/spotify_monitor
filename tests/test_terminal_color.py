@@ -848,6 +848,62 @@ def test_compact_view_song_text_accepts_missing_names():
     assert monitor.compact_view_song_text(12, "Track", None, None) == "[12] Track -  ()"
 
 
+# Metadata whitespace cannot split a compact song or change its playlist colour
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_compact_view_keeps_multiline_metadata_on_one_line(colored, monkeypatch, tmp_path, logging_enabled):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+    log_path = tmp_path / "monitor.log"
+    logger = monitor.Logger(str(log_path)) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    fields = ("Song\nName", "Artist\tName", "Album\r\nName", "Playlist\u2028Name")
+
+    text = monitor.compact_view_song_text(0, *fields, playlist_suffix="\n(by Spotify)")
+    monitor.print_compact_view_line(text, 0)
+
+    screen = terminal.getvalue()
+    assert len(screen.splitlines()) == 1
+    assert monitor.ANSI_ESCAPE_RE.sub("", screen).endswith("[00] Song Name - Artist Name (Album Name) [Playlist Name] (by Spotify)\n")
+    assert f"{colored['playlist']}Playlist Name{monitor.ANSI_RESET}" in screen
+    if logger is not None:
+        logger.logfile.close()
+        assert len(log_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+# Shared diagnostics remain visible once with their severity while full advice stays in the log
+@pytest.mark.parametrize("label", ["Error", "Warning"])
+@pytest.mark.parametrize("quiet", [False, True])
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_recovery_advice_bypasses_a_quiet_screen(colored, monkeypatch, tmp_path, label, quiet, logging_enabled):
+    terminal = StringIO()
+    stream = monitor.TerminalStream(terminal)
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    log_path = tmp_path / "monitor.log"
+    logger = monitor.Logger(str(log_path)) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    destination = logger if logger is not None else stream
+    destination.screen_quiet = quiet
+    advice = monitor.make_recovery_advice("file.unwritable", "Cannot write\nthe file", "Check permissions", False)
+
+    monitor.print_recovery_advice(advice, label=label)
+
+    screen = terminal.getvalue()
+    assert screen.count(f"{label}:") == 1
+    if quiet:
+        assert len(screen.splitlines()) == 1
+        assert f"*** {label}: Cannot write the file" in screen
+        assert ("(details in log)" in screen) is logging_enabled
+        assert "To fix:" not in screen
+        assert colored["warning" if label == "Warning" else "error"] in screen
+    else:
+        assert "To fix:" in screen
+    if logger is not None:
+        logger.logfile.close()
+        assert "To fix: Check permissions" in log_path.read_text(encoding="utf-8")
+
+
 # A line cut at the terminal width still closes its colour
 def test_compact_view_truncated_line_keeps_the_colour_reset(colored, monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "TRUNCATE_CHARS", 30)
