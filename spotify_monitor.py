@@ -8074,6 +8074,29 @@ def activity_user_ids(friend_activity) -> set:
     return {str(friend["user"]["uri"]).split("spotify:user:", 1)[-1] for friend in friend_activity.get("friends", []) if isinstance(friend, dict) and isinstance(friend.get("user"), dict) and friend["user"].get("uri")}
 
 
+# Returns the display names that one activity response carries, keyed by user ID
+def activity_user_names(friend_activity) -> dict:
+    names = {}
+    for friend in friend_activity.get("friends", []):
+        user = friend.get("user") if isinstance(friend, dict) else None
+        if isinstance(user, dict) and user.get("uri") and isinstance(user.get("name"), str):
+            names[str(user["uri"]).split("spotify:user:", 1)[-1]] = user["name"].strip()
+    return names
+
+
+# Names a user as "Name (user ID)", looking up the profile name when the known one is missing or repeats the ID
+def spotify_user_label(user_id, access_token, name="") -> AlertTarget:
+    # The live feed carries no names, so a name equal to the ID usually means none was resolved yet
+    if access_token and (not name or name == user_id):
+        name = spotify_activity_metadata("user", "spotify:user:" + user_id, access_token)
+    return AlertTarget(user_id, name)
+
+
+# Formats users as a sorted list of "Name (user ID)" labels, or the user ID alone when the name is unknown or the same
+def format_activity_users(user_ids, names, access_token) -> str:
+    return ", ".join(sorted((str(spotify_user_label(user_id, access_token, names.get(user_id, ""))) for user_id in user_ids), key=str.casefold))
+
+
 # Prints the users that only one of the two Friend Activity backends lists, since each can show users the other omits
 def print_other_backend_friends(friend_activity, access_token) -> None:
     other_backend = other_activity_backend()
@@ -8090,11 +8113,12 @@ def print_other_backend_friends(friend_activity, access_token) -> None:
     if not only_other and not only_selected:
         print(f"* The {other_backend} backend lists the same users")
         return
+    names = {**activity_user_names(other_friends), **activity_user_names(friend_activity)}
     if only_other:
-        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {', '.join(only_other)}")
+        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {format_activity_users(only_other, names, access_token)}")
         print(f"* {backend_switch_hint(other_backend)} to monitor them")
     if only_selected:
-        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {', '.join(only_selected)}")
+        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {format_activity_users(only_selected, names, access_token)}")
 
 
 # Fetches and briefly caches optional names omitted from the live activity feed
@@ -10047,13 +10071,14 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
     if report.buddy_list is None:
         return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", "Authentication did not succeed, so no lookup was attempted")]
     try:
-        found, _ = spotify_get_friend_info(report.buddy_list, target_id)
+        found, info = spotify_get_friend_info(report.buddy_list, target_id)
     except Exception as exc:
         advice = classify_recovery_error(exc, "target")
         return [make_doctor_check("Target", "FAIL", "The activity response could not be inspected", advice.detail, advice)]
+    target_label = spotify_user_label(target_id, report.access_token, info.get("sp_username") or "")
     if found:
-        return [make_doctor_check("Target", "PASS", f"Target '{target_id}' can be monitored", "The target is visible in the authenticated activity response")]
-    detail = f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
+        return [make_doctor_check("Target", "PASS", f"Target '{target_label}' can be monitored", "The target is visible in the authenticated activity response")]
+    detail = f"Target '{target_label}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
     followed = doctor_target_follow_state(report, target_id)
     if followed is True:
         detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
@@ -11636,6 +11661,10 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print("No follow request was sent. Run the doctor check below after fixing authentication.")
         return "unavailable"
     try:
+        target_label = spotify_user_label(normalize_spotify_user_id(target_user_id), report.access_token)
+    except ValueError:
+        target_label = AlertTarget(target_user_id)
+    try:
         is_followed = spotify_user_is_followed(report.access_token, target_user_id)
     except Exception as exc:
         print(f"Follow status could not be checked: {sanitize_error_text(exc)}")
@@ -11644,18 +11673,18 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     if is_followed:
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account already follows '{target_user_id}'.")
+        print(f"The monitoring account already follows '{target_label}'.")
         return "already_followed"
     if _wizard_target_visible(report, target_user_id):
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account does not follow '{target_user_id}', but the target already shares listening activity with it, so following is not required.")
+        print(f"The monitoring account does not follow '{target_label}', but the target already shares listening activity with it, so following is not required.")
         return "visible"
     # The target user ID is public profile data, the scanner conflates it with the token that fetched it
     # codeql[py/clear-text-logging-sensitive-data]
-    print(f"The monitoring account does not follow '{target_user_id}'.")
+    print(f"The monitoring account does not follow '{target_label}'.")
     print()
-    if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
+    if not _wizard_ask_yes_no(f"Follow '{target_label}' now using the configured Spotify account?", default=False):
         print("Follow skipped. Spotify Monitor will not change the account.")
         return "declined"
     mutation_error = ""
@@ -11672,7 +11701,7 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     if verified:
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
-        print(f"Follow verified. The monitoring account now follows '{target_user_id}'.")
+        print(f"Follow verified. The monitoring account now follows '{target_label}'.")
         return "followed"
     if mutation_error:
         print(f"Spotify could not follow the target: {mutation_error}")
