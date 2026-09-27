@@ -608,20 +608,16 @@ COLORED_OUTPUT = True
 #     "help_command": "bright_white",
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
-#     # Compact View's timestamp prefix
+#     # Compact view
 #     "compact_view_timestamp": "bright_yellow",
 # }
 
-# Whether to use a compact, colourised one-line-per-song console view instead of the default
-# multi-line block. The tool's standard printing all goes to the log, if log is enabled,
-# with a succinct presentation to the screen showing all played tracks.
-# Can also be enabled via the --compact-view flag
-#
-# The format per line is:
-# timestamp: [elapsed minutes] Track - Artist (Album) [Playlist]
-# Example:
-#   09/26, 17:10:18: [00] Chasing Cars - Snow Patrol (Eyes Open) [U2 Radio] (by Spotify)
-#   09/26, 17:10:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+# Whether to show one line per song on screen instead of the full report, Friend Activity monitoring only
+# The log file still gets the full output, including verbose and debug lines. With logging disabled it is not kept
+# [NN] counts minutes since the "Friend is Active..." line, for example:
+#   27 Sep, 17:10:18: [00] Chasing Cars - Snow Patrol (Eyes Open) [U2 Radio] (by Spotify)
+#   27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+# Can also be enabled via the --compact-view flag, which turns it on regardless of this setting
 COMPACT_VIEW = False
 
 # Whether to enable verbose operational output
@@ -4037,7 +4033,7 @@ DEFAULT_COLOR_THEME = {
     "help_command": "bright_white",
     "help_comment": "bright_black",
     "help_default": "bright_black",
-    # Compact View's timestamp prefix
+    # Compact view
     "compact_view_timestamp": "bright_yellow",
 }
 
@@ -4470,78 +4466,10 @@ def apply_color_to_text(text):
         if chunk.endswith(("\n", "\r")):
             stripped = chunk.rstrip("\r\n")
             newline = chunk[len(stripped):]
-            parts.append(_colorize_compact_view_line_or_default(stripped) + newline)
+            parts.append(_colorize_line(stripped) + newline)
         else:
-            parts.append(_colorize_compact_view_line_or_default(chunk))
+            parts.append(_colorize_line(chunk))
     return "".join(parts)
-
-
-# COMPACT_VIEW prints its own line shape (see colorize_compact_view_line() below) - dispatched to first,
-# only while COMPACT_VIEW is on, falling back to the normal-view colouriser for anything it doesn't
-# recognise (its own startup/summary output, error text, etc., which still print normally)
-def _colorize_compact_view_line_or_default(line):
-    colored = colorize_compact_view_line(line) if COMPACT_VIEW else None
-    return colored if colored is not None else _colorize_line(line)
-
-
-# COMPACT_VIEW's own line colouring - kept separate from _colorize_line() above since COMPACT_VIEW prints a
-# single compact "[NN] Track - Artist (Album) [Playlist]" line per song instead of the normal
-# multi-line block, which needs its own dedicated shape-matching rather than reusing the generic
-# label-based rules.
-_COMPACT_VIEW_LINE_RE = re.compile(r"^(?P<prefix>\d{2}/\d{2}, \d{2}:\d{2}:\d{2}: )(?P<rest>.*)$")
-_COMPACT_VIEW_SONG_LINE_RE = re.compile(r"^\[(?P<offset>\d+)\] (?P<body>.*)$")
-_COMPACT_VIEW_TRAILING_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\]]+)\](?P<playlist_suffix>[^\[\]]*)$")
-# TRUNCATE_CHARS cuts a line to the terminal width *before* this colouriser ever runs (Logger
-# truncates first, then colours - see Logger.write()/terminal_only()), so on a narrow or
-# split-screen terminal a playlist tag right at the edge often arrives with its closing "]"
-# already cut off. Without this, _COMPACT_VIEW_TRAILING_PLAYLIST_RE's required "]$" fails to match and
-# the whole tag falls back to plain, uncoloured text - exactly the moment a user running a narrow
-# terminal is most likely to actually be looking at that edge. This matches the same shape without
-# requiring the closing bracket, so whatever fragment of the name is still visible still gets
-# coloured; it never touches or needs to know about Logger's own truncation logic.
-_COMPACT_VIEW_TRUNCATED_PLAYLIST_RE = re.compile(r"^(?P<song>.*) \[(?P<playlist>[^\[\]]*)$")
-_COMPACT_VIEW_ACTIVITY_BANNER_RE = re.compile(r"^\*\*\* Friend is (?:Active|Inactive)\.\.\.$")
-
-
-def colorize_compact_view_line(line):
-    """Colours one COMPACT_VIEW console line. Returns None if `line` isn't shaped like one of COMPACT_VIEW's
-    own lines, so the caller falls back to the normal-view colouriser."""
-    match = _COMPACT_VIEW_LINE_RE.match(line)
-    if not match:
-        return None
-    prefix = colorize("compact_view_timestamp", match.group("prefix"))
-    rest = match.group("rest")
-
-    if _COMPACT_VIEW_ACTIVITY_BANNER_RE.match(rest):
-        return prefix + _apply_style_nested(rest, "info")
-
-    song_match = _COMPACT_VIEW_SONG_LINE_RE.match(rest)
-    if not song_match:
-        return None
-
-    offset, body = song_match.group("offset"), song_match.group("body")
-    full_match = _COMPACT_VIEW_TRAILING_PLAYLIST_RE.match(body)
-    truncated_match = None if full_match else _COMPACT_VIEW_TRUNCATED_PLAYLIST_RE.match(body)
-    if full_match:
-        song_part = full_match.group("song")
-        # A Spotify-curated playlist's name can carry an optional trailing marker outside the
-        # brackets (SPOTIFY_SUFFIX, e.g. " (by Spotify)" by default, but user-configurable to
-        # anything). Without this group, the required "]$" above would fail to match any line with
-        # that trailing text, so the whole tag would fall through uncoloured - not just the suffix,
-        # the playlist name inside the brackets too. Left uncoloured itself (it's not part of the
-        # playlist's name), just appended as-is after the coloured bracket.
-        suffix = full_match.group("playlist_suffix")
-        playlist_part = f" [{colorize('playlist', full_match.group('playlist'))}]{suffix}"
-    elif truncated_match:
-        # No closing "]" here since the raw line didn't have one either - adding one would make the
-        # coloured line one character longer than what Logger actually truncated it to.
-        song_part = truncated_match.group("song")
-        playlist_part = f" [{colorize('playlist', truncated_match.group('playlist'))}"
-    else:
-        song_part = body
-        playlist_part = ""
-
-    return f"{prefix}[{offset}] {song_part}{playlist_part}"
 
 
 # Colours every link in a line, for the screens printed before the output stream colouriser is installed
@@ -4563,11 +4491,7 @@ def unwrap_terminal_stream(stream):
 
 # Logger class to output messages to stdout and log file
 class Logger(object):
-    # Set while COMPACT_VIEW owns the screen (see enter_compact_view_screen_mode()): an ordinary write()
-    # still records everything in full in the log file, just stops also echoing it to the terminal,
-    # so COMPACT_VIEW's own lines (written via print_to_screen_and_log(), which lifts this flag for its write) are
-    # the only thing the screen shows. A class attribute rather than one set in __init__, so it still
-    # defaults correctly for a Logger built via Logger.__new__() (bypassing __init__ entirely)
+    # Set by compact view so ordinary output reaches only the log file. A class attribute, so a Logger built without __init__ has it too
     screen_quiet = False
 
     def __init__(self, filename):
@@ -4597,6 +4521,13 @@ class Logger(object):
     def log_only(self, message):
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", sanitize_terminal_text(message)).expandtabs(8)))
         self.logfile.flush()
+
+    # Writes one line with its own colours to the log and to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        line = sanitize_terminal_text(line) + "\n"
+        self.log_only(line)
+        self.terminal.write(self._truncate_terminal(line))
+        self.terminal.flush()
 
     def flush(self):
         self.terminal.flush()
@@ -4641,13 +4572,23 @@ class Logger(object):
 
 # Sanitizing stdout wrapper used before logging policy and one-shot mode resolution
 class TerminalStream(object):
+    # Set by compact view so ordinary output is dropped while file logging is disabled
+    screen_quiet = False
+
     # Stores the wrapped terminal stream
     def __init__(self, stream):
         self.terminal = stream
 
     # Writes one sanitized and coloured message to the wrapped terminal
     def write(self, message):
+        if self.screen_quiet:
+            return
         self.terminal.write(apply_color_to_text(sanitize_terminal_text(message)))
+        self.terminal.flush()
+
+    # Writes one line that carries its own colours to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        self.terminal.write(sanitize_terminal_text(line) + "\n")
         self.terminal.flush()
 
     # Writes one message to the terminal while matching the Logger interface
@@ -4667,50 +4608,55 @@ class TerminalStream(object):
         return getattr(self.terminal, name)
 
 
-# Timestamp prefix for COMPACT_VIEW's own console line, e.g. "06/12, 21:04:33: " - matched by
-# _COMPACT_VIEW_LINE_RE above, which colorize_compact_view_line() needs to recognise the line at all
-def compact_view_timestamp(moment=None):
-    return (moment or datetime.now()).strftime("%m/%d, %H:%M:%S")
+# Formats the time that opens every compact view line, e.g. "27 Sep, 21:04:33", with the month named so the order is unambiguous
+def compact_view_timestamp(ts: float) -> str:
+    return datetime.fromtimestamp(ts).strftime("%d %b, %H:%M:%S")
 
 
-# Writes one line to both the terminal and the log file, ignoring Logger.screen_quiet - this is how
-# COMPACT_VIEW's own lines reach the screen while ordinary print() calls stay in the log file only
-def print_to_screen_and_log(message):
-    if isinstance(sys.stdout, Logger):
-        was_quiet, sys.stdout.screen_quiet = sys.stdout.screen_quiet, False
-        try:
-            print(message)
-        finally:
-            sys.stdout.screen_quiet = was_quiet
+# Writes one line that carries its own colours to the screen and the log, even while compact view keeps ordinary output off the screen
+def print_to_screen_and_log(line: str = "") -> None:
+    if isinstance(sys.stdout, (Logger, TerminalStream)):
+        sys.stdout.write_styled_line(line)
     else:
-        print(message)
+        print(line)
 
 
-# Switches the screen over to COMPACT_VIEW: ordinary print() calls keep writing to the log file in
-# full, but stop also echoing to the terminal, so COMPACT_VIEW's own print_to_screen_and_log() lines
-# are the only thing shown from here on. A no-op if COMPACT_VIEW is off or logging is disabled (nothing
-# would preserve the ordinary output if the screen stopped showing it, so it is left alone)
-def enter_compact_view_screen_mode():
-    if COMPACT_VIEW and isinstance(sys.stdout, Logger):
+# Keeps ordinary output off the screen from now on, leaving it to the log file when logging is enabled
+def enter_compact_view_screen_mode() -> None:
+    if COMPACT_VIEW and isinstance(sys.stdout, (Logger, TerminalStream)):
         sys.stdout.screen_quiet = True
 
 
-# COMPACT_VIEW's session banners: a blank line and separator open each active session, so consecutive
-# sessions read as separate blocks; the closing line needs neither. Screen messaging only - any
-# active/inactive alerts are still sent (or not) by the normal notification settings
-
-# Returns the moment it printed, which the session's [NN] minute counts start from
-def print_compact_view_active_banner() -> datetime:
-    moment = datetime.now()
-    print_to_screen_and_log(" ")
-    print_to_screen_and_log("----------------------")
-    print_to_screen_and_log(f"{compact_view_timestamp(moment)}: *** Friend is Active...")
-    return moment
+# Prints one compact view line after its timestamp
+def print_compact_view_line(text: str, ts: Optional[float] = None) -> None:
+    stamp = compact_view_timestamp(time.time() if ts is None else ts)
+    print_to_screen_and_log(f"{colorize('compact_view_timestamp', stamp + ':')} {text}")
 
 
-def print_compact_view_inactive_banner():
-    print_to_screen_and_log(f"{compact_view_timestamp()}: *** Friend is Inactive...")
-    # Log-only while COMPACT_VIEW has the screen: separates the banner from the session summary
+# Returns a metadata value as display text, since a missing name can arrive as None
+def _compact_view_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+# Builds the compact view song text, colouring the playlist here because the finished line cannot be parsed back reliably
+def compact_view_song_text(minutes: int, track: Any, artist: Any, album: Any, playlist: str = "", playlist_suffix: str = "") -> str:
+    text = f"[{minutes:02d}] {_compact_view_text(track)} - {_compact_view_text(artist)} ({_compact_view_text(album)})"
+    if playlist:
+        text += f" [{colorize('playlist', _compact_view_text(playlist))}]{playlist_suffix}"
+    return text
+
+
+# Opens a compact view session with a blank line and returns its start, which the [NN] minute counts use
+def print_compact_view_active_banner() -> float:
+    started_at = time.time()
+    print_to_screen_and_log()
+    print_compact_view_line(colorize("info", "*** Friend is Active..."), started_at)
+    return started_at
+
+
+# Closes a compact view session, the blank line reaching only the log
+def print_compact_view_inactive_banner() -> None:
+    print_compact_view_line(colorize("info", "*** Friend is Inactive..."))
     print()
 
 
@@ -8905,7 +8851,6 @@ def _startup_environment_rows(env_path) -> List[StartupSummaryRow]:
         StartupSummaryRow("ASCII log separators", f"{ascii_log_separators_enabled()} (mode: {ASCII_LOG_SEPARATORS})"),
         # The resolved state, not the setting: colour also switches itself off when the output is not a terminal
         StartupSummaryRow("Coloured output", f"{COLOR_ENABLED} (setting: {COLORED_OUTPUT})"),
-        StartupSummaryRow("Visual mode", "Compact" if COMPACT_VIEW else "Standard"),
     ]
 
 
@@ -8981,8 +8926,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path, scrob
         rows.append(StartupSummaryRow("Legacy OAuth cache", SP_APP_TOKENS_FILE or "None (memory only)", concise=True))
     else:
         rows.append(StartupSummaryRow("Legacy OAuth cache", "Not used", concise=False))
+    compact_view_state = ("True" if output_path else "True (logging disabled, the full output is not kept)") if COMPACT_VIEW else "False"
     rows.extend([
         StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        StartupSummaryRow("Compact view", compact_view_state, concise=COMPACT_VIEW),
         *_startup_environment_rows(env_path),
         StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
@@ -12902,24 +12849,15 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
 
-    # COMPACT_VIEW's own per-song line - built here rather than at each call site so the one
-    # "[NN] Track - Artist (Album) [Playlist]" shape stays in one place. [NN] is whole minutes since
-    # this session's "Friend is Active..." banner printed, taken from the same clock reading as the
-    # line's own timestamp, so it always agrees with the printed times. It deliberately isn't the
-    # session start the rest of the tool uses ("Songs played"), which is when the session's first song
-    # began - earlier than the banner whenever monitoring starts, or a friend returns, mid-song
-    compact_view_session_started_at = datetime.now()
+    # [NN] counts minutes from the "Friend is Active..." line, on the same clock as the printed times, rather than from the first song's start
+    compact_view_started_at = time.time()
 
-    def compact_view_song_tag():
-        if sp_playlist and is_playlist:
-            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()}) [{sp_playlist.strip()}]{playlist_suffix}"
-        else:
-            return f"{sp_track.strip()} - {sp_artist.strip()} ({sp_album.strip()})"
-
-    def compact_view_song_line():
-        moment = datetime.now()
-        minutes = max(0, int((moment - compact_view_session_started_at).total_seconds() // 60))
-        return f"{compact_view_timestamp(moment)}: [{minutes:02d}] {compact_view_song_tag()}"
+    # Prints the current song as one compact view line
+    def print_compact_view_song():
+        now = time.time()
+        # A system clock set back must not print a negative count
+        minutes = int(max(0.0, now - compact_view_started_at) // 60)
+        print_compact_view_line(compact_view_song_text(minutes, sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix), now)
 
     try:
         if csv_file_name:
@@ -13198,14 +13136,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             disappeared_counter = 0
 
-            # From here on COMPACT_VIEW's own per-song line (below) is what the screen shows -
-            # the initial detailed report above still printed in full, and the log file still gets
-            # everything printed from this point on too, just not the screen. Printed before
-            # playlist_suffix is reset just below, so the current song's line keeps its suffix
+            # Compact view takes the screen after the initial report. The first line prints before playlist_suffix is reset
             enter_compact_view_screen_mode()
             if COMPACT_VIEW and initially_active:
-                compact_view_session_started_at = print_compact_view_active_banner()
-                print_to_screen_and_log(compact_view_song_line())
+                compact_view_started_at = print_compact_view_active_banner()
+                print_compact_view_song()
 
             playlist_suffix = ""
             check_count = 0
@@ -13501,13 +13436,11 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     else:
                         activity_ts = sp_ts
 
-                    # Printed ahead of the song's own block so the log reads compact line first. A friend
-                    # back from offline opens a new session here, using the same condition as the
-                    # "Friend got ACTIVE after being offline" block further down
+                    # A return from offline opens a new session on the same condition as the "Friend got ACTIVE" block below
                     if COMPACT_VIEW:
                         if resumed_live_session or (not live_activity and resumed_after_offline):
-                            compact_view_session_started_at = print_compact_view_active_banner()
-                        print_to_screen_and_log(compact_view_song_line())
+                            compact_view_started_at = print_compact_view_active_banner()
+                        print_compact_view_song()
                         print()
 
                     print(f"Spotify user:\t\t\t{sp_username}")
@@ -13988,19 +13921,17 @@ def select_monitor_mode(configured_mode: str, cli_mode: Optional[str] = None) ->
 
 # Applies diagnostic flags both before config error reporting and after config precedence resolution
 def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
-    global DEBUG_MODE, VERBOSE_MODE, COMPACT_VIEW
+    global DEBUG_MODE, VERBOSE_MODE
     if args.debug_mode is not None:
         DEBUG_MODE = args.debug_mode
     if args.verbose_mode is not None:
         VERBOSE_MODE = args.verbose_mode
-    if args.compact_view is not None:
-        COMPACT_VIEW = args.compact_view
 
 
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COMPACT_VIEW, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -14586,7 +14517,7 @@ def main():
         dest="compact_view",
         action="store_true",
         default=None,
-        help="Use a compact, colourised one-line-per-song console view instead of the default multi-line block"
+        help="Show one line per song on screen and keep the full output in the log file"
     )
     opts.add_argument(
         "--debug",
@@ -15066,6 +14997,9 @@ def main():
 
     if args.no_color is True:
         COLORED_OUTPUT = False
+
+    if args.compact_view is True:
+        COMPACT_VIEW = True
 
     # Re-initialise colour output to pick up COLORED_OUTPUT and any COLOR_THEME changes from the config file
     init_color_output(stdout_bck)
