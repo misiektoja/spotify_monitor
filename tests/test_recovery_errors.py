@@ -395,6 +395,7 @@ CLASSIFIER_EXEMPTIONS = {
     "could not be installed": "a wizard result printed above the question that offers another option",
     "need the optional Pillow package": "a wizard hint above the question that offers to switch the feature off",
     "artwork cannot be attached": "a wizard hint above the question that offers to switch the feature off",
+    "Listening activity could not be checked": "a wizard result followed by the step that resumes the setup",
     "Follow status could not be checked": "a wizard result followed by the step that resumes the setup",
     "follow verification failed": "a wizard result followed by the step that resumes the setup",
     "could not follow the target": "a wizard result followed by the step that resumes the setup",
