@@ -697,21 +697,114 @@ def test_target_not_visible_with_the_legacy_backend_omits_private_sessions(monke
 
 
 # Verifies Doctor points at the other backend when only that one lists the target, since each source can omit users the other shows
-def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monkeypatch):
+def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "TARGET_USER_URI_ID", "")
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
-    monkeypatch.setattr(monitor, "spotify_user_is_followed", Mock(return_value=True))
+    follow_lookup = Mock(return_value=True)
+    monkeypatch.setattr(monitor, "spotify_user_is_followed", follow_lookup)
     lookups = []
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: lookups.append(backend) or buddy_list("friend.user"))
-    check = monitor.doctor_check_target(monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token"), "friend.user")[0]
+    config_path = tmp_path / "spotify_monitor.conf"
+    env_path = tmp_path / ".env"
+    report = monitor.DoctorReport(buddy_list=buddy_list("someone.else"), access_token="token", target_value="friend.user", config_path=str(config_path), env_path=str(env_path))
+    check = monitor.doctor_check_target(report, "friend.user")[0]
     assert lookups == ["buddylist"]
     assert check.status == "FAIL"
     assert check.label == "The target is visible only through the buddylist backend"
-    assert check.detail.startswith("Target 'Friend (friend.user)' was absent from the authenticated listening_activity response")
-    assert check.detail.endswith("The target is visible through the buddylist backend")
+    assert check.detail == "Target 'Friend (friend.user)' was absent from the authenticated listening_activity response but the buddylist backend lists it. Each backend can list users the other omits"
+    follow_lookup.assert_not_called()
     advice = require_advice(check)
-    assert advice.fix.startswith('Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nGuide: ')
+    command = f"spotify_monitor --friend-activity-backend buddylist friend.user --config-file {config_path.resolve()} --env-file {env_path.resolve()}"
+    assert advice.fix == f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}'\nOr run once with: {command}\nGuide: {monitor.BACKEND_GUIDE_URL}"
     assert "follow" not in advice.fix.lower()
+
+
+# Verifies the switch command leaves out a target the configuration already saves and names the config generically when there is none
+def test_backend_switch_fix_omits_a_saved_target_and_an_unknown_config(monkeypatch):
+    monkeypatch.setattr(monitor, "TARGET_USER_URI_ID", "friend.user")
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "")
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    assert monitor.backend_switch_fix("listening_activity", "friend.user") == 'Save FRIEND_ACTIVITY_BACKEND = "listening_activity" in the configuration file\nOr run once with: spotify_monitor --friend-activity-backend listening_activity'
+
+
+# Returns a Doctor baseline whose selected backend request fails while the other backend answers with the given response
+def configure_failing_selected_backend(monkeypatch, error, other_response):
+    configure_valid_doctor(monkeypatch)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "TARGET_USER_URI_ID", "")
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    lookups = []
+
+    # Fails the selected backend and answers or fails for the other one
+    def fetch(token, backend=None):
+        lookups.append(backend)
+        if backend is None:
+            raise error
+        if isinstance(other_response, Exception):
+            raise other_response
+        return other_response
+
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", fetch)
+    return lookups
+
+
+# Verifies a failed request to the selected backend points at the other backend when that one accepts the same token
+def test_failed_backend_request_points_at_the_answering_backend(monkeypatch, tmp_path):
+    configure_failing_selected_backend(monkeypatch, RuntimeError("401 Unauthorized for url: https://example.test/listening-activity"), buddy_list("friend.user"))
+    config_path = tmp_path / "spotify_monitor.conf"
+    report = monitor.build_doctor_report("friend.user", config_path=str(config_path), spec_finder=all_dependencies_present)
+    authentication = [check for check in report.checks if check.section == "Authentication"]
+    assert [check.status for check in authentication] == ["PASS", "FAIL"]
+    assert authentication[0].detail == "Access token validated through the buddylist endpoint"
+    failure = authentication[1]
+    assert failure.label == "The listening_activity backend request failed"
+    assert failure.detail == "401 Unauthorized for url: https://example.test/listening-activity. The buddylist backend answered with the same access token"
+    advice = require_advice(failure)
+    assert advice.fix.startswith(f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}'\nOr run once with: spotify_monitor --friend-activity-backend buddylist friend.user --config-file ")
+    assert advice.fix.endswith(f"\nGuide: {monitor.BACKEND_GUIDE_URL}")
+    assert "cookie" not in advice.fix.lower()
+    connectivity = [check for check in report.checks if check.section == "Connectivity" and check.label == "Spotify is reachable"]
+    assert connectivity[0].status == "PASS"
+    assert connectivity[0].detail == "Confirmed through the authenticated buddylist request"
+    target = [check for check in report.checks if check.section == "Target"][0]
+    assert target.status == "SKIP"
+    assert target.detail == "The listening_activity request failed. The buddylist backend lists target 'friend.user'"
+
+
+# Verifies a retryable failure of the selected backend waits for a retry before suggesting the switch
+def test_retryable_backend_failure_suggests_the_switch_only_if_it_continues(monkeypatch):
+    configure_failing_selected_backend(monkeypatch, RuntimeError("503 Server Error: Service Unavailable"), buddy_list("someone.else"))
+    report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
+    failure = [check for check in report.checks if check.section == "Authentication" and check.status == "FAIL"][0]
+    assert require_advice(failure).fix.startswith('Wait and run --doctor again. If the failure continues, switch backends. Save FRIEND_ACTIVITY_BACKEND = "buddylist" in ')
+    target = [check for check in report.checks if check.section == "Target"][0]
+    assert target.detail == "The listening_activity request failed. The buddylist backend does not list target 'friend.user'"
+
+
+# Verifies a network failure is reported as before without a second request that would fail the same way
+def test_network_failure_of_the_selected_backend_does_not_try_the_other(monkeypatch):
+    lookups = configure_failing_selected_backend(monkeypatch, monitor.req.exceptions.ConnectionError("Failed to resolve spotify.example"), buddy_list("friend.user"))
+    report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
+    assert lookups == [None]
+    failure = [check for check in report.checks if check.section == "Authentication"][-1]
+    assert failure.status == "FAIL"
+    assert require_advice(failure).code == "network.unavailable"
+
+
+# Verifies the original failure stays when the other backend fails too, so a rejected login is still reported as one
+def test_backend_failure_keeps_its_advice_when_the_other_backend_fails_too(monkeypatch):
+    lookups = configure_failing_selected_backend(monkeypatch, RuntimeError("401 Unauthorized for url: https://example.test/a"), RuntimeError("401 Unauthorized for url: https://example.test/b"))
+    report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
+    assert lookups == [None, "buddylist"]
+    authentication = [check for check in report.checks if check.section == "Authentication"]
+    assert [check.status for check in authentication] == ["FAIL"]
+    assert require_advice(authentication[0]).code == "auth.cookie_invalid"
+    target = [check for check in report.checks if check.section == "Target"][0]
+    assert target.detail == "Authentication did not succeed, so no lookup was attempted"
 
 
 # Verifies the other backend is not queried without an access token
