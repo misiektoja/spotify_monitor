@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.5.1
+v3.6
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.5.1"
+VERSION = "3.6"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -608,7 +608,17 @@ COLORED_OUTPUT = True
 #     "help_command": "bright_white",
 #     "help_comment": "bright_black",
 #     "help_default": "bright_black",
+#     # Compact view
+#     "compact_view_timestamp": "bright_yellow",
 # }
+
+# Whether to show one line per song on screen instead of the full report, Friend Activity monitoring only
+# The log file still gets the full output, including verbose and debug lines. With logging disabled it is not kept
+# [NN] counts minutes since the "Friend is Active..." line, for example:
+#   27 Sep, 17:10:18: [00] Chasing Cars - Snow Patrol (Eyes Open) [U2 Radio] (by Spotify)
+#   27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+# Can also be enabled via the --compact-view flag, which turns it on regardless of this setting
+COMPACT_VIEW = False
 
 # Whether to enable verbose operational output
 # Shows rare state changes and recoveries without per-poll or debug HTTP noise
@@ -938,6 +948,7 @@ REPORTS_PRINTED = 0
 CLEAR_SCREEN = False
 COLORED_OUTPUT = False
 COLOR_THEME: dict = {}
+COMPACT_VIEW = False
 VERBOSE_MODE = False
 DEBUG_MODE = False
 DELIVERY_CONFIRMATIONS = True
@@ -1031,6 +1042,7 @@ SP_CACHED_CLIENT_ID = ""
 SPOTIFY_LISTENING_ACTIVITY_URL = "https://spclient.wg.spotify.com/listening-activity/v1/feed"  # unofficial endpoint behind Spotify's Listening Activity feature, found by @JoaoGabriel-Lima (issue #60)
 SPOTIFY_BUDDYLIST_URL = "https://guc-spclient.spotify.com/presence-view/v1/buddylist"
 SPOTIFY_PLAYLIST_METADATA_URL = "https://spclient.wg.spotify.com/playlist/v2/playlist"
+SPOTIFY_ENTITY_METADATA_URL = "https://spclient.wg.spotify.com/metadata/4"
 SPOTIFY_ACTIVITY_RESULT_LIMIT = 100
 
 # The feed sometimes reports one track start twice a few seconds apart, so a same-track timestamp this close to the previous one is not a position change
@@ -1041,6 +1053,10 @@ LIVE_REPEAT_TOLERANCE = 5
 
 # A finish this close to one track length after a position change proves that the change restarted the track, since a move landing further into it ends sooner
 LIVE_RESTART_TOLERANCE = 3
+
+# The feed sometimes republishes the playing track with a fresh timestamp every few seconds, so this many consecutive checks with a moved timestamp count as such a storm rather than as seeks
+LIVE_STORM_SAMPLES = 2
+
 # Absence after which the live backend prints the follow and sharing advice, long enough to outlast a private session
 LIVE_ABSENCE_ADVICE_AFTER = 6 * 3600
 
@@ -1475,6 +1491,12 @@ class DoctorReport:
     access_token: Optional[str] = field(default=None, repr=False)
     buddy_list: Optional[dict] = None
     authentication_advice: Optional[RecoveryAdvice] = None
+    # The response of the backend that is not selected, fetched only when the selected one fails or omits the target
+    other_buddy_list: Optional[dict] = None
+    # The target and files the printed backend switch command names
+    target_value: Optional[str] = None
+    config_path: Optional[str] = None
+    env_path: Optional[str] = None
 
 
 # Stores one completed Spotify play used by scrobble health comparisons
@@ -2218,6 +2240,8 @@ class RecoveryHintTracker:
 
 # Prints one built advice through the shared recovery block and returns it
 def print_recovery_advice(advice: RecoveryAdvice, debug: Optional[bool] = None, retry_note: str = "", with_fix: bool = True, label: str = "Error", tracker: Optional[RecoveryHintTracker] = None) -> RecoveryAdvice:
+    if isinstance(sys.stdout, (Logger, TerminalStream)) and sys.stdout.screen_quiet:
+        print_compact_view_failure(advice.summary, label)
     print(render_recovery_advice(advice, debug, retry_note, with_fix and (tracker is None or tracker.should_render(advice)), label))
     return advice
 
@@ -2587,8 +2611,8 @@ def create_timestamped_backup(destination, attempts=100, redact_secrets=False):
     raise OSError(f"Could not create a unique backup for '{destination_path}' after {attempts} attempts")
 
 
-# Writes validated config content atomically and backs up an existing destination
-def write_config_file(destination, content: str, redact_secrets=False):
+# Writes validated config content atomically and backs up an existing destination unless told not to
+def write_config_file(destination, content: str, redact_secrets=False, backup=True):
     destination_path = Path(destination).expanduser()
     validate_config_content(content, str(destination_path))
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2602,7 +2626,7 @@ def write_config_file(destination, content: str, redact_secrets=False):
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
 
-        if destination_path.exists():
+        if backup and destination_path.exists():
             backup_path = create_timestamped_backup(destination_path, redact_secrets=redact_secrets)
 
         os.replace(temporary_path, destination_path)
@@ -4017,6 +4041,8 @@ DEFAULT_COLOR_THEME = {
     "help_command": "bright_white",
     "help_comment": "bright_black",
     "help_default": "bright_black",
+    # Compact view
+    "compact_view_timestamp": "bright_yellow",
 }
 
 # A block style paints a whole line and keeps the colours already inside it, so a value drawn in the
@@ -4473,6 +4499,9 @@ def unwrap_terminal_stream(stream):
 
 # Logger class to output messages to stdout and log file
 class Logger(object):
+    # Set by compact view so ordinary output reaches only the log file. A class attribute, so a Logger built without __init__ has it too
+    screen_quiet = False
+
     def __init__(self, filename):
         # The early sanitizing stream is unwrapped so sanitizing and colouring happen exactly once.
         # Writing through it would colourise every line twice, and the second pass no longer sees the
@@ -4484,10 +4513,11 @@ class Logger(object):
         message = sanitize_terminal_text(message)
         # Expand tabs for file output and strip colour codes so the log file stays plain text
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", message).expandtabs(8)))
-        # Truncate before colouring so escape sequences never count toward the displayed width
-        message = self._truncate_terminal(message)
-        self.terminal.write(apply_color_to_text(message))
-        self.terminal.flush()
+        if not self.screen_quiet:
+            # Truncate before colouring so escape sequences never count toward the displayed width
+            message = self._truncate_terminal(message)
+            self.terminal.write(apply_color_to_text(message))
+            self.terminal.flush()
         self.logfile.flush()
 
     def terminal_only(self, message):
@@ -4499,6 +4529,13 @@ class Logger(object):
     def log_only(self, message):
         self.logfile.write(normalize_log_separators(ANSI_ESCAPE_RE.sub("", sanitize_terminal_text(message)).expandtabs(8)))
         self.logfile.flush()
+
+    # Writes one line with its own colours to the log and to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        line = sanitize_terminal_text(line) + "\n"
+        self.log_only(line)
+        self.terminal.write(self._truncate_terminal(line))
+        self.terminal.flush()
 
     def flush(self):
         self.terminal.flush()
@@ -4543,13 +4580,23 @@ class Logger(object):
 
 # Sanitizing stdout wrapper used before logging policy and one-shot mode resolution
 class TerminalStream(object):
+    # Set by compact view so ordinary output is dropped while file logging is disabled
+    screen_quiet = False
+
     # Stores the wrapped terminal stream
     def __init__(self, stream):
         self.terminal = stream
 
     # Writes one sanitized and coloured message to the wrapped terminal
     def write(self, message):
+        if self.screen_quiet:
+            return
         self.terminal.write(apply_color_to_text(sanitize_terminal_text(message)))
+        self.terminal.flush()
+
+    # Writes one line that carries its own colours to the terminal, even while the screen is quiet
+    def write_styled_line(self, line):
+        self.terminal.write(sanitize_terminal_text(line) + "\n")
         self.terminal.flush()
 
     # Writes one message to the terminal while matching the Logger interface
@@ -4567,6 +4614,70 @@ class TerminalStream(object):
     # Forwards remaining stream attributes to the wrapped terminal
     def __getattr__(self, name):
         return getattr(self.terminal, name)
+
+
+# Formats the time that opens every compact view line, e.g. "27 Sep, 21:04:33", with the month named so the order is unambiguous
+def compact_view_timestamp(ts: float) -> str:
+    return datetime.fromtimestamp(ts).strftime("%d %b, %H:%M:%S")
+
+
+# Writes one line that carries its own colours to the screen and the log, even while compact view keeps ordinary output off the screen
+def print_to_screen_and_log(line: str = "") -> None:
+    if isinstance(sys.stdout, (Logger, TerminalStream)):
+        sys.stdout.write_styled_line(line)
+    else:
+        print(line)
+
+
+# Keeps ordinary output off the screen from now on, leaving it to the log file when logging is enabled
+def enter_compact_view_screen_mode() -> None:
+    if COMPACT_VIEW and isinstance(sys.stdout, (Logger, TerminalStream)):
+        sys.stdout.screen_quiet = True
+
+
+# Prints one compact view line after its timestamp
+def print_compact_view_line(text: str, ts: Optional[float] = None) -> None:
+    stamp = compact_view_timestamp(time.time() if ts is None else ts)
+    text = re.sub(r"[\t\r\n\v\f\x85\u2028\u2029]+", " ", text)
+    print_to_screen_and_log(f"{colorize('compact_view_timestamp', stamp + ':')} {text}")
+
+
+# Returns one line of metadata text while accepting missing names
+def _compact_view_text(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+# Builds the compact view song text, colouring the playlist here because the finished line cannot be parsed back reliably
+def compact_view_song_text(minutes: int, track: Any, artist: Any, album: Any, playlist: str = "", playlist_suffix: str = "") -> str:
+    text = f"[{minutes:02d}] {_compact_view_text(track)} - {_compact_view_text(artist)} ({_compact_view_text(album)})"
+    if playlist:
+        text += f" [{colorize('playlist', _compact_view_text(playlist))}]{playlist_suffix}"
+    return text
+
+
+# Opens a compact view session with a blank line and returns its start, which the [NN] minute counts use
+def print_compact_view_active_banner() -> float:
+    started_at = time.time()
+    print_to_screen_and_log()
+    print_compact_view_line(colorize("info", "*** Friend is Active..."), started_at)
+    return started_at
+
+
+# Closes a compact view session, the blank line reaching only the log
+def print_compact_view_inactive_banner() -> None:
+    print_compact_view_line(colorize("info", "*** Friend is Inactive..."))
+    print()
+
+
+# Reports an actionable diagnostic while its full report stays off the screen
+def print_compact_view_failure(summary: str, label: str = "Error") -> None:
+    detail = " (details in log)" if isinstance(sys.stdout, Logger) else ""
+    print_compact_view_line(colorize("warning" if label == "Warning" else "error", f"*** {label}: {summary}{detail}"))
+
+
+# Reports which part of monitoring recovered in one compact view line
+def print_compact_view_recovery(lasted: int, component: str = "Monitoring") -> None:
+    print_compact_view_line(colorize("info", f"*** {component} recovered after {display_time(max(1, lasted))}"))
 
 
 # Help screen parts. argparse measures its column layout on the plain text, so the palette is applied to the
@@ -5457,6 +5568,18 @@ def validate_webhook_headers(provider: Any = None) -> Optional[str]:
     return None
 
 
+# Returns one text value as a base64 RFC 2047 UTF-8 encoded word
+def rfc2047_encoded_word(text: str) -> str:
+    return "=?UTF-8?B?" + base64.b64encode(text.encode("utf-8")).decode("ascii") + "?="
+
+
+# Encodes one HTTP header value as an RFC 2047 UTF-8 word when it contains non-ASCII text
+def encode_non_ascii_header_value(value: str) -> str:
+    text = str(value)
+    # HTTP clients send header values as Latin-1 or ASCII, which cannot carry emoji or most non-Latin letters
+    return text if text.isascii() else rfc2047_encoded_word(text)
+
+
 # Builds provider-specific headers while formatting placeholders and applying private ntfy authentication
 def build_webhook_headers(provider: str, payload: dict) -> dict:
     validation_error = validate_webhook_headers(provider)
@@ -5479,7 +5602,9 @@ def build_webhook_headers(provider: str, payload: dict) -> dict:
         if token:
             headers = {name: value for name, value in headers.items() if name.casefold() != "authorization"}
             headers["Authorization"] = f"Bearer {token}"
-    return headers
+    # Placeholders can expand to emoji or letters a raw header cannot carry. ASCII values stay as written,
+    # so a value already encoded as RFC 2047, as ntfy documents for emoji tags, is not encoded a second time
+    return {name: encode_non_ascii_header_value(value) for name, value in headers.items()}
 
 
 # Returns whether one image URL is a complete HTTPS URL on a Spotify CDN host
@@ -7941,6 +8066,13 @@ def spotify_get_access_token_from_oauth_app(sp_client_id, sp_client_secret, use_
     return access_token
 
 
+# Maps list contexts that stand for an artist page to that artist, as the Spotify web player does
+def spotify_normalize_activity_context_uri(context_uri: str) -> str:
+    # The live feed reports play from an artist's Popular section as this list instead of the artist URI the legacy feed used
+    match = re.fullmatch(r"spotify:list:popular-release-segments-main-roles:artist_([A-Za-z0-9]{22})", context_uri)
+    return f"spotify:artist:{match.group(1)}" if match else context_uri
+
+
 # Converts the live feed to the friend shape while preserving its playback state
 def spotify_normalize_listening_activity(payload):
     if not isinstance(payload, dict) or not isinstance(payload.get("entities"), list):
@@ -7986,6 +8118,7 @@ def spotify_normalize_listening_activity(payload):
         context_uri = activity.get("contextUri", "")
         if not isinstance(context_uri, str):
             raise ValueError("Spotify listening activity context URI is malformed")
+        context_uri = spotify_normalize_activity_context_uri(context_uri)
         friend = {"timestamp": timestamp_ms, "isPlaying": is_playing, "user": {"uri": uri, "name": user_id}, "track": {"uri": track_uri, "name": "", "artist": {"uri": "", "name": ""}, "album": {"uri": "", "name": ""}, "context": {"uri": context_uri, "name": ""}}}
         if uri not in friends or timestamp_ms > friends[uri]["timestamp"]:
             friends[uri] = friend
@@ -8028,18 +8161,22 @@ def spotify_get_other_backend_friends(access_token) -> Optional[dict]:
         return None
 
 
+# Reports whether one activity response lists the user, or None when there is no readable response
+def activity_lists_user(friend_activity: Optional[dict], user_uri_id) -> Optional[bool]:
+    if friend_activity is None or not user_uri_id:
+        return None
+    try:
+        found, _ = spotify_get_friend_info(friend_activity, user_uri_id)
+    except Exception:
+        return None
+    return bool(found)
+
+
 # Reports whether the target appears in the other Friend Activity backend, or None when it could not be checked
 def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]:
     if not access_token or not user_uri_id:
         return None
-    friends = spotify_get_other_backend_friends(access_token)
-    if friends is None:
-        return None
-    try:
-        found, _ = spotify_get_friend_info(friends, user_uri_id)
-    except Exception:
-        return None
-    return bool(found)
+    return activity_lists_user(spotify_get_other_backend_friends(access_token), user_uri_id)
 
 
 # Returns the instruction that switches monitoring to the given backend
@@ -8047,9 +8184,41 @@ def backend_switch_hint(backend: str) -> str:
     return f"Run with --friend-activity-backend {backend} or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in the configuration file"
 
 
+# Returns the steps that move monitoring to the given backend: the setting to save in the named config and a ready one-run command
+def backend_switch_fix(backend: str, target=None, config_path=None, env_path=None) -> str:
+    config = config_path or active_config_path()
+    env = env_path or active_dotenv_path()
+    destination = f"'{Path(config).expanduser().resolve()}'" if config and str(config).casefold() != "none" else "the configuration file"
+    command = _wizard_action_command(_wizard_install_method(), f"--friend-activity-backend {backend}", config, env, _wizard_command_targets(target, TARGET_USER_URI_ID)[1])
+    return f"Save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in {destination}\nOr run once with: {command}"
+
+
 # Returns the user IDs named in one activity response
 def activity_user_ids(friend_activity) -> set:
     return {str(friend["user"]["uri"]).split("spotify:user:", 1)[-1] for friend in friend_activity.get("friends", []) if isinstance(friend, dict) and isinstance(friend.get("user"), dict) and friend["user"].get("uri")}
+
+
+# Returns the display names that one activity response carries, keyed by user ID
+def activity_user_names(friend_activity) -> dict:
+    names = {}
+    for friend in friend_activity.get("friends", []):
+        user = friend.get("user") if isinstance(friend, dict) else None
+        if isinstance(user, dict) and user.get("uri") and isinstance(user.get("name"), str):
+            names[str(user["uri"]).split("spotify:user:", 1)[-1]] = user["name"].strip()
+    return names
+
+
+# Names a user as "Name (user ID)", looking up the profile name when the known one is missing or repeats the ID
+def spotify_user_label(user_id, access_token, name="") -> AlertTarget:
+    # The live feed carries no names, so a name equal to the ID usually means none was resolved yet
+    if access_token and (not name or name == user_id):
+        name = spotify_activity_metadata("user", "spotify:user:" + user_id, access_token)
+    return AlertTarget(user_id, name)
+
+
+# Formats users as a sorted list of "Name (user ID)" labels, or the user ID alone when the name is unknown or the same
+def format_activity_users(user_ids, names, access_token) -> str:
+    return ", ".join(sorted((str(spotify_user_label(user_id, access_token, names.get(user_id, ""))) for user_id in user_ids), key=str.casefold))
 
 
 # Prints the users that only one of the two Friend Activity backends lists, since each can show users the other omits
@@ -8068,11 +8237,12 @@ def print_other_backend_friends(friend_activity, access_token) -> None:
     if not only_other and not only_selected:
         print(f"* The {other_backend} backend lists the same users")
         return
+    names = {**activity_user_names(other_friends), **activity_user_names(friend_activity)}
     if only_other:
-        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {', '.join(only_other)}")
+        print(f"* {len(only_other)} {'user' if len(only_other) == 1 else 'users'} visible only through the {other_backend} backend: {format_activity_users(only_other, names, access_token)}")
         print(f"* {backend_switch_hint(other_backend)} to monitor them")
     if only_selected:
-        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {', '.join(only_selected)}")
+        print(f"* {len(only_selected)} {'user' if len(only_selected) == 1 else 'users'} visible only through the {FRIEND_ACTIVITY_BACKEND} backend: {format_activity_users(only_selected, names, access_token)}")
 
 
 # Fetches and briefly caches optional names omitted from the live activity feed
@@ -8094,6 +8264,8 @@ def spotify_activity_metadata(kind, uri, access_token):
             response.raise_for_status()
             info = response.json()
             name = info.get("name") if isinstance(info, dict) else None
+        elif kind in ("album", "artist"):
+            name = spotify_get_entity_name_spclient(uri, access_token)
         else:
             # The playlist service resolves personalized playlists such as Liked Songs that the web-player query reports as not found
             name = spotify_get_playlist_name_spclient(uri, access_token) or spotify_get_playlist_info_web(uri).get("sp_playlist_name")
@@ -8136,6 +8308,34 @@ def spotify_get_playlist_name_spclient(playlist_uri, access_token):
     return name if isinstance(name, str) else ""
 
 
+# Converts a base62 Spotify ID to the hexadecimal ID the metadata service expects
+def spotify_id_to_gid(item_id: str) -> str:
+    alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if not re.fullmatch(r"[A-Za-z0-9]{22}", item_id):
+        raise ValueError("Spotify ID must contain 22 letters or digits")
+    number = 0
+    for character in item_id:
+        number = number * 62 + alphabet.index(character)
+    return f"{number:032x}"
+
+
+# Returns an album or artist name from Spotify's metadata service
+def spotify_get_entity_name_spclient(uri, access_token):
+    parts = uri.split(":")
+    if len(parts) != 3 or parts[0] != "spotify" or parts[1] not in ("album", "artist"):
+        raise ValueError("Spotify activity metadata URI is malformed")
+    url = f"{SPOTIFY_ENTITY_METADATA_URL}/{parts[1]}/{spotify_id_to_gid(parts[2])}"
+    headers = {"Authorization": f"Bearer {access_token}", "User-Agent": USER_AGENT, "Accept": "application/json"}
+    if TOKEN_SOURCE == "cookie" and SP_CACHED_CLIENT_ID:
+        headers["Client-Id"] = SP_CACHED_CLIENT_ID
+    debug_print("HTTP GET", url=url, context=f"{parts[1]} metadata", headers=sanitize_debug_headers(headers))
+    response = SESSION.get(url, params={"market": "from_token"}, headers=headers, timeout=FUNCTION_TIMEOUT, verify=VERIFY_SSL, allow_redirects=False)
+    debug_print("HTTP GET", url=url, context=f"{parts[1]} metadata", status=response.status_code)
+    response.raise_for_status()
+    payload = response.json()
+    return payload.get("name") if isinstance(payload, dict) else None
+
+
 # Completes live activity names from existing metadata backends only when a track is displayed
 def spotify_complete_live_activity(info, access_token, track):
     if "sp_is_playing" not in info:
@@ -8150,6 +8350,12 @@ def spotify_complete_live_activity(info, access_token, track):
         info["sp_playlist"] = info["sp_album"]
     elif context == track.get("sp_artist_uri"):
         info["sp_playlist"] = info["sp_artist"]
+    elif context in (track.get("sp_artists") or {}):
+        # Artist pages also list tracks where that artist is not the first credited one
+        info["sp_playlist"] = track["sp_artists"][context]
+    elif context.startswith(("spotify:album:", "spotify:artist:")):
+        # An album or artist the track does not name is looked up, since its context line would otherwise show a URI
+        info["sp_playlist"] = spotify_activity_metadata(context.split(":")[1], context, access_token) or context
     else:
         info["sp_playlist"] = context
 
@@ -8185,6 +8391,10 @@ class LivePlaybackTiming:
     finishes: List[Tuple[float, float, str]] = field(default_factory=list)
     # Finishing update seen by the last sample with the start it matched, settled by the next sample
     pending_finish: Optional[Tuple[float, float, str]] = None
+    # Consecutive checks of the playing track whose timestamp moved without landing on a finish, kept across a track change seen during a storm because storms outlast tracks
+    storm_moves: int = 0
+    # Earliest and latest possible start of a track first seen at a change, kept until a steady timestamp confirms that the reported start was not a republish
+    start_window: Optional[Tuple[float, float]] = None
 
     # Reports whether the sample follows the previous one closely enough to treat the interval as observed
     def continuous(self, now: float, max_gap: float) -> bool:
@@ -8220,6 +8430,38 @@ class LivePlaybackTiming:
                 return finish, origin, kind
         return None
 
+    # Reports whether the feed keeps republishing the playing track, so its timestamps no longer mark playback changes
+    def storming(self) -> bool:
+        return self.storm_moves >= LIVE_STORM_SAMPLES
+
+    # Estimates when a track change seen during a storm happened, using the finish predicted by an observed start when it falls between the two checks and their midpoint otherwise
+    def _storm_change_time(self, now: float, source_ts: Optional[float]) -> Optional[float]:
+        # A timestamp this close to the previous one bounds the change as tightly as any estimate
+        if not self.storming() or source_ts is None or self.source_ts is None or not self.source_ts + LIVE_POSITION_JITTER < source_ts <= now:
+            return None
+        for finish, _, kind in self.finishes:
+            if kind == "start" and self.source_ts - LIVE_REPEAT_TOLERANCE <= finish <= source_ts + LIVE_REPEAT_TOLERANCE:
+                self.event_trusted = True
+                return min(max(finish, self.source_ts), source_ts)
+        # A skip or an early end during a storm is only known to lie between the checks, so neither track keeps a precise boundary
+        self.event_trusted = False
+        self.precise = False
+        return (self.source_ts + source_ts) / 2
+
+    # Moves a start that a storm showed to be a possible republish to the middle of its window and marks the track imprecise
+    def _reopen_start(self) -> None:
+        if self.start_window is None:
+            return
+        earliest, latest = self.start_window
+        self.start_window = None
+        start = (earliest + latest) / 2
+        if self.segment_started_at == latest:
+            self.segment_started_at = start
+        self.track_started_at = start
+        self.precise = False
+        # The finish keeps the latest possible start, so a republish near it cannot pass for a repeat before the track can have ended
+        self.finishes = [(finish, origin, "unobserved" if kind == "start" else kind) for finish, origin, kind in self.finishes]
+
     # Records a sample and reports pause or resume transitions with the playing or paused time they end
     def observe(self, now: float, playing: bool, max_gap: float, source_ts: Optional[float] = None, track_changed: bool = False) -> Tuple[str, float]:
         gap = not self.continuous(now, max_gap)
@@ -8235,7 +8477,11 @@ class LivePlaybackTiming:
             self.finishes = [(self.anchor_ts + self.duration, self.anchor_ts, "unobserved")] if self.anchor_ts is not None else []
             if was_playing:
                 self._close_segment(self.sampled_at if self.sampled_at is not None else now)
-        event, duration = "", 0.0
+        if gap or playing != was_playing:
+            # A storm is recognized only within one uninterrupted stretch of playback
+            self.storm_moves = 0
+            self.start_window = None
+        event, duration, storm_anchor = "", 0.0, None
         if was_playing and not playing:
             at = self._event_time(now, source_ts, self.sampled_at if self.sampled_at is not None else now)
             # A track that finished before the pause is credited up to its finish only
@@ -8257,7 +8503,11 @@ class LivePlaybackTiming:
                 # The playhead keeps its position through a pause, so every predicted finish moves by the paused time
                 self.finishes = [(finish + duration, origin, kind) for finish, origin, kind in self.finishes]
         elif playing and track_changed:
-            if pending is not None and source_ts is not None and 0 <= source_ts - pending[0] <= LIVE_POSITION_JITTER:
+            storm_at = self._storm_change_time(now, source_ts)
+            if storm_at is not None:
+                # The first timestamp of a track seen during a storm may be a republish up to one check late
+                at = storm_at
+            elif pending is not None and source_ts is not None and 0 <= source_ts - pending[0] <= LIVE_POSITION_JITTER:
                 # The sample settling a finish carries the finishing timestamp or one from the restart a moment later
                 at = source_ts
                 self.event_trusted = True
@@ -8267,6 +8517,14 @@ class LivePlaybackTiming:
             if pending is not None:
                 self.track_seconds = max(self.track_seconds, self.duration)
             self.segment_started_at = at
+            if storm_at is not None:
+                # A start taken from the predicted finish also predicts the next one, while an estimated start keeps the latest timestamp so its finish cannot come early
+                storm_anchor = at if self.event_trusted else None
+            else:
+                self.storm_moves = 0
+                # A storm that begins with the track turns its first timestamp into a possible republish, so the start stays open until a steady timestamp confirms it
+                earliest = max(self.source_ts, self.sampled_at - LIVE_POSITION_JITTER) if self.event_trusted and not gap and self.source_ts is not None and self.sampled_at is not None else None
+                self.start_window = (earliest, at) if earliest is not None and earliest < at else None
         elif playing and gap:
             self.segment_started_at = now
         elif playing and source_ts is not None and self.source_ts is not None and self.anchor_ts is not None and source_ts > self.source_ts and source_ts - self.anchor_ts > LIVE_POSITION_JITTER:
@@ -8275,9 +8533,21 @@ class LivePlaybackTiming:
                 # The track reached its end, but whether it started again or another track followed is known from the next sample
                 self.pending_finish = (source_ts, matched[1], matched[2])
             else:
-                # Any other moved timestamp on the same track is a seek or an update without a position change, and a finish one track length later proves it restarted the track
-                self.finishes.append((source_ts + self.duration, source_ts, "seek"))
-        if source_ts is not None and (self.anchor_ts is None or event or track_changed or gap or source_ts < self.anchor_ts or source_ts - self.anchor_ts > LIVE_POSITION_JITTER):
+                self.storm_moves += 1
+                if not self.storming():
+                    # Any other moved timestamp on the same track is a seek or an update without a position change, and a finish one track length later proves it restarted the track
+                    self.finishes.append((source_ts + self.duration, source_ts, "seek"))
+                else:
+                    # Republished timestamps do not move the playhead, so they cannot prove restarts, and a start taken from one is only known to lie in its window
+                    self.finishes = [entry for entry in self.finishes if entry[2] != "seek"]
+                    self._reopen_start()
+        elif playing and source_ts is not None and source_ts == self.source_ts:
+            # A steady timestamp ends a storm and confirms the reported start
+            self.storm_moves = 0
+            self.start_window = None
+        if storm_anchor is not None:
+            self.anchor_ts = storm_anchor
+        elif source_ts is not None and (self.anchor_ts is None or event or track_changed or gap or source_ts < self.anchor_ts or source_ts - self.anchor_ts > LIVE_POSITION_JITTER):
             self.anchor_ts = source_ts
         self.sampled_at = now
         self.source_ts = source_ts
@@ -8310,6 +8580,7 @@ class LivePlaybackTiming:
         self.segment_started_at = restart_ts
         self.track_started_at = restart_ts
         self.anchor_ts = restart_ts
+        self.start_window = None
         self.finishes = [(restart_ts + self.duration, restart_ts, "start")]
         if self.pending_finish is not None:
             self.pending_finish = (self.pending_finish[0], restart_ts, "start")
@@ -8688,8 +8959,10 @@ def build_startup_summary(target: str, config_path, env_path, output_path, scrob
         rows.append(StartupSummaryRow("Legacy OAuth cache", SP_APP_TOKENS_FILE or "None (memory only)", concise=True))
     else:
         rows.append(StartupSummaryRow("Legacy OAuth cache", "Not used", concise=False))
+    compact_view_state = ("True" if output_path else "True (logging disabled, the full output is not kept)") if COMPACT_VIEW else "False"
     rows.extend([
         StartupSummaryRow("Terminal truncation", f"{TRUNCATE_CHARS} chars" if TRUNCATE_CHARS else "Disabled", concise=bool(TRUNCATE_CHARS)),
+        StartupSummaryRow("Compact view", compact_view_state, concise=COMPACT_VIEW),
         *_startup_environment_rows(env_path),
         StartupSummaryRow("Verbose mode", str(VERBOSE_MODE), concise=bool(VERBOSE_MODE)),
         StartupSummaryRow("Debug mode", str(DEBUG_MODE), concise=bool(DEBUG_MODE)),
@@ -9007,6 +9280,11 @@ def spotify_select_largest_image_url(sources: Any) -> str:
     return str(selected["url"])
 
 
+# Maps each track artist URI to its name, skipping entries without both values
+def spotify_track_artist_names(pairs) -> dict:
+    return {uri: name for uri, name in pairs if isinstance(uri, str) and uri.startswith("spotify:artist:") and isinstance(name, str) and name}
+
+
 # Normalizes Spotify web-player track metadata to the existing monitoring shape
 def spotify_normalize_web_track(track):
     if not isinstance(track, dict) or track.get("__typename") != "Track":
@@ -9020,6 +9298,10 @@ def spotify_normalize_web_track(track):
     artist_items = (track.get("firstArtist") or {}).get("items") or []
     artist = artist_items[0] if artist_items and isinstance(artist_items[0], dict) else {}
     artist_profile = artist.get("profile") or {}
+    other_artists = track.get("otherArtists")
+    other_artist_items = other_artists.get("items") if isinstance(other_artists, dict) else None
+    all_artist_items = [*artist_items, *(other_artist_items if isinstance(other_artist_items, list) else [])]
+    artists = spotify_track_artist_names((item.get("uri"), item["profile"].get("name") if isinstance(item.get("profile"), dict) else None) for item in all_artist_items if isinstance(item, dict))
     album = track.get("albumOfTrack") or {}
     if not isinstance(album, dict):
         album = {}
@@ -9031,7 +9313,7 @@ def spotify_normalize_web_track(track):
     sources = coverart.get("sources") if isinstance(coverart, dict) else []
     album_image_url = spotify_select_largest_image_url(sources)
 
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": spotify_get_web_entity_url(track, track_uri), "sp_track_uri": track_uri, "sp_track_name": track.get("name"), "sp_artist_url": spotify_get_web_entity_url(artist, artist_uri), "sp_artist_uri": artist_uri, "sp_artist_name": artist_profile.get("name") if isinstance(artist_profile, dict) else None, "sp_artists": artists, "sp_album_url": spotify_get_web_entity_url(album, album_uri), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Fetches and normalizes public track metadata from the Spotify web-player service
@@ -9209,7 +9491,7 @@ def _spotify_get_track_info_api(access_token, track_uri, oauth_app=False):
     album_uri = album.get("uri", "")
     album_image_url = spotify_select_largest_image_url(album.get("images"))
 
-    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
+    return {"sp_track_duration": int(int(duration_ms) / 1000), "sp_track_url": ((json_response.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(track_uri_value)), "sp_track_uri": track_uri_value, "sp_track_name": json_response.get("name"), "sp_artist_url": ((artist.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(artist_uri)), "sp_artist_uri": artist_uri, "sp_artist_name": artist.get("name"), "sp_artists": spotify_track_artist_names((item.get("uri"), item.get("name")) for item in artists if isinstance(item, dict)), "sp_album_url": ((album.get("external_urls") or {}).get("spotify") or spotify_convert_uri_to_url(album_uri)), "sp_album_uri": album_uri, "sp_album_name": album.get("name"), "sp_album_image_url": album_image_url}
 
 
 # Selects the legacy or web-player track backend and falls back automatically
@@ -9967,16 +10249,44 @@ def doctor_check_authentication(report: DoctorReport) -> List[DoctorCheck]:
             advice = classify_recovery_error(context="config_invalid", detail=f"Unsupported TOKEN_SOURCE: {TOKEN_SOURCE}")
             report.authentication_advice = advice
             return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
-
-        buddy_list = spotify_get_friends_json(access_token)
-        report.access_token = access_token
-        report.buddy_list = buddy_list
-        checks.append(make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {FRIEND_ACTIVITY_BACKEND} endpoint"))
     except Exception as exc:
         advice = classify_recovery_error(exc, context)
         report.authentication_advice = advice
-        checks.append(make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice))
+        return checks + [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+    try:
+        buddy_list = spotify_get_friends_json(access_token)
+    except Exception as exc:
+        advice = classify_recovery_error(exc, context)
+        report.authentication_advice = advice
+        return checks + doctor_activity_request_failure(report, access_token, advice)
+    report.access_token = access_token
+    report.buddy_list = buddy_list
+    checks.append(make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {FRIEND_ACTIVITY_BACKEND} endpoint"))
     return checks
+
+
+# Reports a failed request to the selected backend and points at the other backend when that one answers with the same token
+def doctor_activity_request_failure(report: DoctorReport, access_token, advice: RecoveryAdvice) -> List[DoctorCheck]:
+    # A network or local failure would stop the other request as well, so it is not tried
+    if not advice.code.startswith("network.") and advice.code != "resource.exhausted":
+        report.other_buddy_list = spotify_get_other_backend_friends(access_token)
+    if report.other_buddy_list is None:
+        return [make_doctor_check("Authentication", "FAIL", advice.summary, advice.detail, advice)]
+    other_backend = other_activity_backend()
+    # The classified summary may blame the credentials, which the other backend just accepted, so the raw failure is shown instead
+    summary = f"The {FRIEND_ACTIVITY_BACKEND} backend request failed"
+    detail = f"{advice.detail or advice.summary}. The {other_backend} backend answered with the same access token"
+    switch_fix = backend_switch_fix(other_backend, report.target_value, report.config_path, report.env_path)
+    fix = f"Wait and run --doctor again. If the failure continues, switch backends. {switch_fix}" if advice.retryable else switch_fix
+    switch_advice = make_recovery_advice(advice.code, summary, recovery_fix_with_guide(fix, BACKEND_GUIDE_URL), advice.retryable, detail)
+    return [make_doctor_check("Authentication", "PASS", f"Spotify {TOKEN_SOURCE} authentication succeeded", f"Access token validated through the {other_backend} endpoint"), make_doctor_check("Authentication", "FAIL", summary, detail, switch_advice)]
+
+
+# Returns the other backend's activity response for this report, fetching it when the report has none yet
+def doctor_other_backend_list(report: DoctorReport) -> Optional[dict]:
+    if report.other_buddy_list is None and report.access_token:
+        report.other_buddy_list = spotify_get_other_backend_friends(report.access_token)
+    return report.other_buddy_list
 
 
 # Confirms the endpoint the tool checks at startup answers, using the configured URL, timeout and TLS setting
@@ -9994,6 +10304,8 @@ def doctor_check_connectivity(report: DoctorReport, endpoint_check: Optional[Doc
     checks = [doctor_connectivity_endpoint_check() if endpoint_check is None else endpoint_check]
     if report.buddy_list is not None:
         return checks + [make_doctor_check("Connectivity", "PASS", "Spotify is reachable", f"Confirmed through the authenticated {FRIEND_ACTIVITY_BACKEND} request")]
+    if report.other_buddy_list is not None:
+        return checks + [make_doctor_check("Connectivity", "PASS", "Spotify is reachable", f"Confirmed through the authenticated {other_activity_backend()} request")]
     advice = report.authentication_advice
     if advice is not None and advice.code in ("network.unavailable", "network.timeout", "spotify.rate_limited", "spotify.unavailable"):
         return checks + [make_doctor_check("Connectivity", "FAIL", advice.summary, advice.detail, advice)]
@@ -10010,28 +10322,32 @@ def doctor_check_target(report: DoctorReport, target_value=None) -> List[DoctorC
     except ValueError as exc:
         advice = classify_recovery_error(exc, "target_invalid")
         return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+    other_backend = other_activity_backend()
     if report.buddy_list is None:
+        if report.other_buddy_list is not None:
+            listed = "lists" if activity_lists_user(report.other_buddy_list, target_id) else "does not list"
+            return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", f"The {FRIEND_ACTIVITY_BACKEND} request failed. The {other_backend} backend {listed} target '{target_id}'")]
         return [make_doctor_check("Target", "SKIP", "The monitored profile was not checked", "Authentication did not succeed, so no lookup was attempted")]
     try:
-        found, _ = spotify_get_friend_info(report.buddy_list, target_id)
+        found, info = spotify_get_friend_info(report.buddy_list, target_id)
     except Exception as exc:
         advice = classify_recovery_error(exc, "target")
         return [make_doctor_check("Target", "FAIL", "The activity response could not be inspected", advice.detail, advice)]
+    target_label = spotify_user_label(target_id, report.access_token, info.get("sp_username") or "")
     if found:
-        return [make_doctor_check("Target", "PASS", f"Target '{target_id}' can be monitored", "The target is visible in the authenticated activity response")]
-    detail = f"Target '{target_id}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
+        return [make_doctor_check("Target", "PASS", f"Target '{target_label}' can be monitored", "The target is visible in the authenticated activity response")]
+    if activity_lists_user(doctor_other_backend_list(report), target_id):
+        # The target shares listening activity with the account, so the follow state and sharing advice would point at the wrong fix
+        detail = f"Target '{target_label}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response but the {other_backend} backend lists it. Each backend can list users the other omits"
+        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_fix(other_backend, report.target_value, report.config_path, report.env_path), BACKEND_GUIDE_URL), False, detail)
+        return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
+    detail = f"Target '{target_label}' was absent from the authenticated {FRIEND_ACTIVITY_BACKEND} response"
     followed = doctor_target_follow_state(report, target_id)
     if followed is True:
         detail += ". The monitoring account follows the target, so the target is not sharing listening activity with it" + (" or is in a private session" if live_activity_backend() else "")
     elif followed is False:
         detail += ". The monitoring account does not follow the target"
-    other_backend = other_activity_backend()
-    if target_visible_in_other_backend(report.access_token, target_id):
-        # Each source can list users the other omits, so a switch is the fix rather than a follow or sharing change
-        detail += f". The target is visible through the {other_backend} backend"
-        advice = make_recovery_advice("target.not_visible", f"The target is visible only through the {other_backend} backend", recovery_fix_with_guide(backend_switch_hint(other_backend), BACKEND_GUIDE_URL), False, detail)
-    else:
-        advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
+    advice = classify_recovery_error(context="target_not_visible", detail=detail, target_user_id=target_id)
     return [make_doctor_check("Target", "FAIL", advice.summary, advice.detail, advice)]
 
 
@@ -10245,7 +10561,7 @@ def _doctor_print_check(check) -> None:
 
 # Builds all independent and dependent doctor checks before rendering
 def build_doctor_report(target_value=None, config_path=None, env_path=None, startup_checks: Sequence[DoctorCheck] = (), version_info=None, spec_finder: Optional[Callable[[str], Any]] = None, progress: Optional[Callable[[str], None]] = None) -> DoctorReport:
-    report = DoctorReport()
+    report = DoctorReport(target_value=target_value, config_path=config_path, env_path=env_path)
     if progress is not None:
         progress("environment")
     report.checks.extend(doctor_check_environment(version_info, spec_finder))
@@ -11590,17 +11906,45 @@ def _wizard_target_visible(report: DoctorReport, target_user_id: str) -> bool:
     return bool(found)
 
 
-# Checks the target follow state and offers one confirmed follow mutation when needed
-def _wizard_offer_target_follow(target_user_id: str) -> str:
-    print(colorize('header', "\nFollowing check\n"))
+# Reports whether the backend that is not selected lists the target, which a backend switch can use
+def _wizard_target_visible_in_other_backend(report: DoctorReport, target_user_id: str) -> bool:
+    try:
+        target_id = normalize_spotify_user_id(target_user_id)
+    except ValueError:
+        return False
+    return bool(activity_lists_user(doctor_other_backend_list(report), target_id))
+
+
+# Checks whether the target shares listening activity with the monitoring account and offers one confirmed follow only for a target that does not
+def _wizard_check_target_sharing(target_user_id: str) -> str:
+    print(colorize('header', "\nListening activity check\n"))
     report = DoctorReport()
     checks = doctor_check_authentication(report)
     if report.access_token is None:
         failed_check = next((check for check in checks if check.status == "FAIL"), None)
         detail = failed_check.label if failed_check is not None else "Authentication did not produce an access token"
-        print(f"Follow status could not be checked: {detail}")
+        print(f"Listening activity could not be checked: {detail}")
         print("No follow request was sent. Run the doctor check below after fixing authentication.")
         return "unavailable"
+    try:
+        target_label = spotify_user_label(normalize_spotify_user_id(target_user_id), report.access_token)
+    except ValueError:
+        target_label = AlertTarget(target_user_id)
+    if _wizard_target_visible(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"Target '{target_label}' shares listening activity with the monitoring account.")
+        return "visible"
+    # Each backend can list users the other omits, so a target missing from the selected one may still be monitorable
+    if _wizard_target_visible_in_other_backend(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"Target '{target_label}' shares listening activity with the monitoring account, but only the {other_activity_backend()} backend lists it. The configuration uses the {FRIEND_ACTIVITY_BACKEND} backend.")
+        return "other_backend"
+    # Following matters only for a target that shares with all followers, so the follow state is read once the target is not visible
+    # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+    # codeql[py/clear-text-logging-sensitive-data]
+    print(f"Target '{target_label}' is not visible in listening activity.")
     try:
         is_followed = spotify_user_is_followed(report.access_token, target_user_id)
     except Exception as exc:
@@ -11608,20 +11952,12 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
         print("No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
     if is_followed:
-        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-        # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account already follows '{target_user_id}'.")
+        private_session = " or is in a private session" if live_activity_backend() else ""
+        print(f"The monitoring account follows the target, so the target is not sharing listening activity with this account{private_session}.")
         return "already_followed"
-    if _wizard_target_visible(report, target_user_id):
-        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-        # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account does not follow '{target_user_id}', but the target already shares listening activity with it, so following is not required.")
-        return "visible"
-    # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-    # codeql[py/clear-text-logging-sensitive-data]
-    print(f"The monitoring account does not follow '{target_user_id}'.")
+    print("The monitoring account does not follow the target. Following is needed when the target shares listening activity with all followers. When it shares with selected people, the target has to select this account instead.")
     print()
-    if not _wizard_ask_yes_no(f"Follow '{target_user_id}' now using the configured Spotify account?", default=False):
+    if not _wizard_ask_yes_no(f"Follow '{target_label}' now using the configured Spotify account?", default=False):
         print("Follow skipped. Spotify Monitor will not change the account.")
         return "declined"
     mutation_error = ""
@@ -11638,7 +11974,7 @@ def _wizard_offer_target_follow(target_user_id: str) -> str:
     if verified:
         # The target user ID is public profile data, the scanner conflates it with the token that fetched it
         # codeql[py/clear-text-logging-sensitive-data]
-        print(f"Follow verified. The monitoring account now follows '{target_user_id}'.")
+        print(f"Follow verified. The monitoring account now follows '{target_label}'.")
         return "followed"
     if mutation_error:
         print(f"Spotify could not follow the target: {mutation_error}")
@@ -11843,6 +12179,30 @@ def _wizard_collect_polling_section(state: WizardSetupState) -> None:
         return
     current_interval = int(state.config_values.get("SPOTIFY_CHECK_INTERVAL", SPOTIFY_CHECK_INTERVAL))
     state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
+
+
+# Offers to save the other Friend Activity backend after the listening activity check found the target only there and returns whether it was saved
+def _wizard_offer_backend_switch(state: WizardSetupState) -> bool:
+    current_backend = FRIEND_ACTIVITY_BACKEND
+    other_backend = other_activity_backend()
+    print()
+    if not _wizard_ask_yes_no(f"Switch to the {other_backend} backend and save it in the configuration file?", default=True):
+        print(f"The configuration keeps the {current_backend} backend, which does not list the target.")
+        return False
+    previous_values = dict(state.config_values)
+    state.config_values["FRIEND_ACTIVITY_BACKEND"] = other_backend
+    # Each backend has its own polling timers, so the ones the new backend uses are asked now
+    _wizard_collect_polling_section(state)
+    try:
+        # Setup wrote this file moments ago and already backed up the one it replaced
+        write_config_file(state.config_path, generate_config_with_current_values(state.config_values), redact_secrets=True, backup=False)
+    except Exception:
+        state.config_values.clear()
+        state.config_values.update(previous_values)
+        print(f"Setup could not write configuration file '{state.config_path}'. It still uses the {current_backend} backend.")
+        return False
+    print(f"Saved FRIEND_ACTIVITY_BACKEND = \"{other_backend}\" in '{state.config_path}'.")
+    return True
 
 
 # Describes the polling intervals of the selected activity backend for the setup review
@@ -12267,9 +12627,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     _wizard_print_default_guidance()
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
     print("Cookie mode is recommended. Client mode is advanced.\n")
-    print("The monitoring account must follow the target. Setup checks this after authentication is saved.")
-    print("If needed, the tool offers to follow the target. The target must also share listening activity.")
-    print(colorize_links(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n"))
+    print("The target must share listening activity with the monitoring account. Setup checks this after authentication is saved.")
+    print("Following is needed only when the target shares with all followers. Setup offers it when the target is not visible.")
+    print(colorize_links(f"Sharing and following guide: {FOLLOWING_GUIDE_URL}\n"))
     _wizard_print_setup_destinations(method, config_path, env_path)
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
@@ -12344,12 +12704,14 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
-                follow_status = _wizard_offer_target_follow(target)
-                if follow_status in ("already_followed", "followed", "visible"):
+                sharing_status = _wizard_check_target_sharing(target)
+                if sharing_status == "other_backend" and _wizard_offer_backend_switch(state):
+                    sharing_status = "backend_switched"
+                if sharing_status in ("already_followed", "followed", "visible", "backend_switched"):
                     auth["validated"] = True
             else:
-                print(colorize('header', "\nFollowing check\n"))
-                print("Follow status could not be checked because the saved setup could not be loaded.")
+                print(colorize('header', "\nListening activity check\n"))
+                print("Listening activity could not be checked because the saved setup could not be loaded.")
         # A container Firefox import still has to run on the host, so doctor would only report the missing login
         doctor_offered = bool(target) and not checks_skipped and not (auth.get("browser") and method in ("docker", "compose"))
         if doctor_offered:
@@ -12594,6 +12956,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     check_interval = activity_check_interval()
     recovery_hint_tracker = RecoveryHintTracker()
     outage = OutageReporter()
+
+    # [NN] counts minutes from the "Friend is Active..." line, on the same clock as the printed times, rather than from the first song's start
+    compact_view_started_at = time.time()
+    metadata_outage = OutageReporter()
+
+    # Prints the current song as one compact view line
+    def print_compact_view_song():
+        now = time.time()
+        # A system clock set back must not print a negative count
+        minutes = int(max(0.0, now - compact_view_started_at) // 60)
+        print_compact_view_line(compact_view_song_text(minutes, sp_track, sp_artist, sp_album, sp_playlist if is_playlist else "", playlist_suffix), now)
 
     try:
         if csv_file_name:
@@ -12872,6 +13245,12 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
             disappeared_counter = 0
 
+            # Compact view takes the screen after the initial report. The first line prints before playlist_suffix is reset
+            enter_compact_view_screen_mode()
+            if COMPACT_VIEW and initially_active:
+                compact_view_started_at = print_compact_view_active_banner()
+                print_compact_view_song()
+
             playlist_suffix = ""
             check_count = 0
 
@@ -12899,6 +13278,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         sp_found, sp_data = spotify_get_friend_info(sp_friends, user_uri_id)
                         outage_lasted = outage.recovered()
                         if outage_lasted is not None:
+                            if COMPACT_VIEW:
+                                print_compact_view_recovery(outage_lasted, "Activity checks")
                             print_outage_recovery(AlertTarget(user_uri_id, sp_username), outage_lasted, error_alert)
                         recovery_hint_tracker.reset()
                         email_sent = False
@@ -12924,8 +13305,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
 
                         # A failure is reported once, then left to the hourly reminder rather than repeated on every check
                         outage_outcome = outage.failed(advice)
+                        if COMPACT_VIEW and outage_outcome in ("full", "changed"):
+                            print_compact_view_failure(advice.summary)
                         if outage_outcome == "full":
-                            print_recovery_error(e, failure_context, retry_note=f"retrying in {display_time(retry_seconds)}", tracker=recovery_hint_tracker)
+                            print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(retry_seconds)}", with_fix=recovery_hint_tracker.should_render(advice)))
                         elif outage_outcome == "changed":
                             print_outage_change(AlertTarget(user_uri_id, sp_username), advice)
                         elif outage_outcome == "reminder":
@@ -12955,9 +13338,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if user_not_found is False:
                         invisible_since = visible_last_at or now
                         absence_advice_shown = False
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("warning", "*** Friend is no longer visible (playback unknown)"))
                         if is_user_removed(sp_accessToken, user_uri_id):
                             print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} was probably removed! Retrying in {display_time(activity_disappeared_interval())} intervals")
                             not_found_advice = make_recovery_advice("target.not_found", "The Spotify target profile returned HTTP 404", recovery_fix_with_guide("Check the target ID, URI or profile URL then retry", TARGET_GUIDE_URL), False)
+                            if COMPACT_VIEW:
+                                print_compact_view_failure(not_found_advice.summary)
                             if recovery_hint_tracker.should_render(not_found_advice):
                                 print(f"To fix: {not_found_advice.fix}")
                             if ERROR_NOTIFICATION or webhook_event_enabled("error"):
@@ -12992,6 +13379,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     elif live_activity and not absence_advice_shown and now - invisible_since >= LIVE_ABSENCE_ADVICE_AFTER:
                         # A private session would have ended by now, so the absence most likely comes from a sharing or follow change
                         absence_advice_shown = True
+                        if COMPACT_VIEW:
+                            print_compact_view_failure(f"Friend has not been visible for {calculate_timespan(now, invisible_since)}. Check following and activity sharing", label="Warning")
                         print(f"Spotify user {AlertTarget(user_uri_id, sp_username)} has not been visible for {calculate_timespan(now, invisible_since)}, longer than a private session lasts")
                         not_visible_advice = classify_recovery_error(context="target_not_visible", target_user_id=user_uri_id)
                         print(f"To fix: {not_visible_advice.fix}")
@@ -13011,6 +13400,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             invisible_seconds += max(0, now - invisible_since)
                             invisible_periods += 1
                         invisible_for = calculate_timespan(now, invisible_since)
+                        if COMPACT_VIEW:
+                            print_compact_view_line(colorize("info", f"*** Friend is visible again after {invisible_for}"))
                         if live_activity:
                             status_text = f"Spotify user {AlertTarget(user_uri_id, sp_username)} is visible again after {invisible_for}"
                             status_html = f"Spotify user {spotify_user_html(user_uri_id, sp_username)} is visible again after <b>{invisible_for}</b>"
@@ -13073,10 +13464,17 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         if live_activity:
                             # The unreported sample becomes a gap so the retry cannot classify the change as observed
                             live_timing.sampled_at = None
-                        print_recovery_error(e, "metadata", retry_note=f"retrying in {display_time(activity_error_interval())}", tracker=recovery_hint_tracker)
+                        advice = classify_recovery_error(e, "metadata")
+                        if COMPACT_VIEW and metadata_outage.failed(advice) in ("full", "changed"):
+                            print_compact_view_failure(f"Track metadata: {advice.summary}")
+                        print(render_recovery_advice(advice, retry_note=f"retrying in {display_time(activity_error_interval())}", with_fix=recovery_hint_tracker.should_render(advice)))
                         print_cur_ts("Timestamp:\t\t\t")
                         time.sleep(activity_error_interval())
                         continue
+
+                    metadata_outage_lasted = metadata_outage.recovered()
+                    if COMPACT_VIEW and metadata_outage_lasted is not None:
+                        print_compact_view_recovery(metadata_outage_lasted, "Track metadata")
 
                     sp_username = sp_data["sp_username"]
 
@@ -13165,6 +13563,13 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                         activity_ts = int(live_timing.track_started_at)
                     else:
                         activity_ts = sp_ts
+
+                    # A return from offline opens a new session on the same condition as the "Friend got ACTIVE" block below
+                    if COMPACT_VIEW:
+                        if resumed_live_session or (not live_activity and resumed_after_offline):
+                            compact_view_started_at = print_compact_view_active_banner()
+                        print_compact_view_song()
+                        print()
 
                     print(f"Spotify user:\t\t\t{sp_username}")
                     print(f"\n{activity_label}:{activity_tabs}{sp_artist} - {sp_track}")
@@ -13437,6 +13842,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                 invisible_text = f"User was not visible {invisible_periods} times for {display_time(int(invisible_seconds))}"
                                 invisible_m_body = f"\n{invisible_text}"
                                 invisible_m_body_html = f"<br>User was not visible <b>{invisible_periods}</b> times for <b>{display_time(int(invisible_seconds))}</b>"
+                        if COMPACT_VIEW:
+                            print_compact_view_inactive_banner()
                         print(f"*** Friend got INACTIVE after listening to music for {calculate_timespan(int(sp_active_ts_stop), int(sp_active_ts_start))}")
                         print(f"*** Friend played music from {get_range_of_dates_from_tss(sp_active_ts_start, sp_active_ts_stop, short=True, between_sep=' to ')}")
                         if paused_text:
@@ -13568,7 +13975,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
-                    print(f"User '{user_uri_id}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
+                    print(f"User '{spotify_user_label(user_uri_id, sp_accessToken)}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
                     other_backend = other_activity_backend()
                     if target_visible_in_other_backend(sp_accessToken, user_uri_id):
                         print(f"The target is visible through the {other_backend} backend. {backend_switch_hint(other_backend)}")
@@ -13652,7 +14059,7 @@ def apply_diagnostic_cli_overrides(args: argparse.Namespace) -> None:
 # Parses command-line options then starts the selected command or monitoring mode
 def main():
     global FRIEND_ACTIVITY_BACKEND
-    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
+    global CLI_CONFIG_PATH, DOTENV_FILE, LIVENESS_REMINDER_SECONDS, LOGIN_REQUEST_BODY_FILE, CLIENTTOKEN_REQUEST_BODY_FILE, REFRESH_TOKEN, LOGIN_URL, USER_AGENT, DEVICE_ID, SYSTEM_ID, USER_URI_ID, SP_DC_COOKIE, CSV_FILE, MONITOR_LIST_FILE, FILE_SUFFIX, DISABLE_LOGGING, DEBUG_MODE, VERBOSE_MODE, SP_LOGFILE, ACTIVE_NOTIFICATION, INACTIVE_NOTIFICATION, TRACK_NOTIFICATION, SONG_NOTIFICATION, SONG_ON_LOOP_NOTIFICATION, ERROR_NOTIFICATION, SCROBBLE_HEALTH_NOTIFICATION, WEBHOOK_ENABLED, WEBHOOK_URL, WEBHOOK_ACTIVE_NOTIFICATION, WEBHOOK_INACTIVE_NOTIFICATION, WEBHOOK_TRACK_NOTIFICATION, WEBHOOK_SONG_NOTIFICATION, WEBHOOK_SONG_ON_LOOP_NOTIFICATION, WEBHOOK_ERROR_NOTIFICATION, WEBHOOK_SCROBBLE_HEALTH_NOTIFICATION, SPOTIFY_LIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL, SPOTIFY_LIVE_ERROR_INTERVAL, SPOTIFY_LIVE_INACTIVITY_CHECK, SPOTIFY_CHECK_INTERVAL, SPOTIFY_INACTIVITY_CHECK, SPOTIFY_ERROR_INTERVAL, SPOTIFY_DISAPPEARED_CHECK_INTERVAL, SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL, MONITOR_MODE, LASTFM_USERNAME, LASTFM_API_KEY, SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, SPOTIFY_SCROBBLE_REFRESH_TOKEN, SCROBBLE_HEALTH_CHECK_INTERVAL, SCROBBLE_HEALTH_DEAD_PERIOD, SCROBBLE_HEALTH_MIN_UNMATCHED, SCROBBLE_HEALTH_MATCH_WINDOW, SCROBBLE_HEALTH_LOOKBACK, SCROBBLE_HEALTH_REPEAT_INTERVAL, SCROBBLE_HEALTH_STATE_FILE, TRACK_SONGS, SMTP_PASSWORD, stdout_bck, APP_VERSION, CPU_ARCH, OS_BUILD, PLATFORM, OS_MAJOR, OS_MINOR, CLIENT_MODEL, TOKEN_SOURCE, pyotp, USER_AGENT, FLAG_FILE, TRUNCATE_CHARS, SP_APP_TOKENS_FILE, SP_APP_CLIENT_ID, SP_APP_CLIENT_SECRET, NTFY_IMAGES, NTFY_SHORT, COLORED_OUTPUT, COMPACT_VIEW, COLOR_THEME, EXPORTED_ENVIRONMENT_KEYS, CONFIG_DISCOVERY_DISABLED
 
     if "--generate-config" in sys.argv and "--setup" not in sys.argv and "--setup-scrobble-health" not in sys.argv and "--authorize-scrobble-health" not in sys.argv and "--set-sp-dc" not in sys.argv and "--set-lastfm-credentials" not in sys.argv and "--set-smtp-password" not in sys.argv and "--set-webhook-url" not in sys.argv:
         config_content = generate_config_with_current_values()
@@ -14234,6 +14641,13 @@ def main():
         help="Disable coloured output in the terminal"
     )
     opts.add_argument(
+        "--compact-view",
+        dest="compact_view",
+        action="store_true",
+        default=None,
+        help="Show one line per song on screen and keep the full output in the log file"
+    )
+    opts.add_argument(
         "--debug",
         dest="debug_mode",
         action="store_true",
@@ -14711,6 +15125,9 @@ def main():
 
     if args.no_color is True:
         COLORED_OUTPUT = False
+
+    if args.compact_view is True:
+        COMPACT_VIEW = True
 
     # Re-initialise colour output to pick up COLORED_OUTPUT and any COLOR_THEME changes from the config file
     init_color_output(stdout_bck)

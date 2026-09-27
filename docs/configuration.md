@@ -70,7 +70,9 @@ The target must share listening activity with the monitoring account, the Spotif
 - **All followers**: the monitoring account must follow the target.
 - **Selected people**: the target selects the monitoring account. Following is not required.
 
-If the target is not visible and the monitoring account does not follow it, setup offers to follow the target. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
+Setup first checks whether the target shares listening activity with the monitoring account. It reads the follow state only when the target is not visible. If the monitoring account does not follow such a target, setup offers to follow it. It sends the request only after you confirm. This works in cookie and advanced client modes without a separate OAuth token. If the follow step fails, or you configure authentication outside the wizard, follow the target manually in the Spotify desktop or mobile app.
+
+If only the other [Friend Activity backend](#friend-activity-backend) lists the target, setup offers to switch to that backend instead. It asks for that backend's polling interval and saves both in the configuration file.
 
 Doctor reports whether the monitoring account follows an invisible target, so you know which setting to fix.
 
@@ -109,7 +111,7 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. Doctor points at the other backend when only that one lists the target.
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and Doctor prints the setting to save plus a ready command that uses it for one run. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
 
@@ -522,6 +524,8 @@ WEBHOOK_HEADERS = {
 
 Header values support the same placeholders as `WEBHOOK_TEMPLATE`. They must be strings without line breaks. Headers apply to both Discord and ntfy. Prefer `NTFY_ACCESS_TOKEN` in `.env` for Bearer authentication. Basic authentication is available through a custom `Authorization` header. Long ntfy messages are truncated with a visible marker so they remain notifications rather than attachments.
 
+A header value that contains emoji or other non-ASCII text after placeholder expansion is sent in RFC 2047 encoded form (`=?UTF-8?B?...?=`), since a plain HTTP header cannot carry it. ntfy decodes it back to the original text. Other receivers see the encoded form unless they decode RFC 2047. ASCII values are sent exactly as written, including values you already encoded yourself, such as an emoji tag from the ntfy documentation.
+
 <a id="discord"></a>
 ### Discord
 
@@ -669,6 +673,7 @@ Parts with the same name mean the same thing in [spotify_profile_monitor](https:
 | `help_command` | The commands in the help examples |
 | `help_comment` | The `#` comment above each help example |
 | `help_default` | The `(default: ...)` notes |
+| `compact_view_timestamp` | The time at the start of each [compact view](usage.md#compact-view) line |
 
 On Windows, install the optional `colorama` package for the best results in the classic Command Prompt. Windows Terminal needs nothing extra.
 

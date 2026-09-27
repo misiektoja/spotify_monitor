@@ -26,7 +26,7 @@ ISOLATED_PRELUDE = "import builtins, requests, runpy, socket, sys; _real_import 
 def run_isolated(source):
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, capture_output=True, text=True, env=env, timeout=30, check=False)
+    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=PROJECT_ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env, timeout=30, check=False)
 
 
 # Runs the command-line entry point with network access and Spotipy imports blocked
@@ -264,6 +264,7 @@ class SpotifyWebBackendTests(unittest.TestCase):
             owner, owner_image = monitor.spotify_get_playlist_owner_and_image("legacy-token", PLAYLIST_URI, oauth_app=True)
         self.assertEqual(track["sp_track_duration"], 259)
         self.assertEqual(track["sp_artist_name"], "Route 94")
+        self.assertEqual(track["sp_artists"], {"spotify:artist:1dgdvbogmctybPrGEcnYf6": "Route 94"})
         self.assertEqual(track["sp_album_image_url"], "https://i.scdn.co/image/track-large.jpg")
         self.assertEqual(owner, "Agnes Hali")
         self.assertEqual(owner_image, "https://i.scdn.co/image/large.jpg")
@@ -439,11 +440,20 @@ class SpotifyWebBackendTests(unittest.TestCase):
         self.assertEqual(result["sp_artist_name"], "Route 94")
         self.assertEqual(result["sp_artist_uri"], "spotify:artist:1dgdvbogmctybPrGEcnYf6")
         self.assertEqual(result["sp_artist_url"], "https://open.spotify.com/artist/1dgdvbogmctybPrGEcnYf6?si=1")
+        self.assertEqual(result["sp_artists"], {"spotify:artist:1dgdvbogmctybPrGEcnYf6": "Route 94"})
         self.assertEqual(result["sp_album_name"], "My Love")
         self.assertEqual(result["sp_album_uri"], "spotify:album:4ZD1KnBqghtSAEyqrZAkU4")
         self.assertEqual(result["sp_album_image_url"], "https://i.scdn.co/image/track-large.jpg")
         self.assertIn("open.spotify.com/track/4N1MFKjziFHH4IS3RYYUrU", result["sp_track_url"])
         self.assertIn("open.spotify.com/album/4ZD1KnBqghtSAEyqrZAkU4", result["sp_album_url"])
+
+    # Verifies every credited artist is kept, so an artist-page context can name a featured artist
+    def test_track_normalization_keeps_other_artists(self):
+        track = web_track_fixture()
+        track["otherArtists"] = {"items": [{"uri": "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "profile": {"name": "Guest"}}, {"uri": "spotify:artist:nameless", "profile": None}, "malformed"]}
+        self.assertEqual(monitor.spotify_normalize_web_track(track)["sp_artists"], {"spotify:artist:1dgdvbogmctybPrGEcnYf6": "Route 94", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Guest"})
+        track["otherArtists"] = {"items": None}
+        self.assertEqual(monitor.spotify_normalize_web_track(track)["sp_artists"], {"spotify:artist:1dgdvbogmctybPrGEcnYf6": "Route 94"})
 
     # Verifies Pathfinder playlist owner and name fields normalize for friend listing
     def test_playlist_response_normalization(self):

@@ -34,13 +34,19 @@ The suite combines several test types:
 
 - Unit and component tests exercise focused functions with deterministic inputs.
 - Integration tests use temporary files, SQLite databases and real loopback HTTP and SMTP connections.
-- Packaging tests build the wheel, install it into a clean environment and run the installed command outside the source tree.
+- Packaging tests build the wheel from a private copy of the files Git tracks, install it into a clean environment and run the installed command outside the source tree. The build leaves no `build/` or `.egg-info` directory in the checkout, so parallel pytest-xdist workers cannot overwrite each other's build files.
 - The offline E2E test runs one complete CLI monitoring iteration against a loopback Spotify fixture.
 - Monitoring-loop tests drive the Friend Activity loop against fake buddy-list responses to check authentication recovery, retry timing, activity flag transitions and track-change recording.
 - Contract tests validate stable documentation commands, links, container assets and publishing workflows.
 - CI smoke tests run the application through Windows, Docker and Docker Compose.
 
 No test needs a real Spotify cookie, SMTP password or webhook URL. Loopback transport tests use fake credentials that are accepted only by temporary local servers.
+
+Tests do not depend on their order. After every test a shared fixture returns the monitor's module settings, caches, environment variables and signal handlers to their starting state, so a test passes the same way alone, in a full run or on any pytest-xdist worker.
+
+No test opens a browser. A shared fixture fails any test that reaches a browser opener. Tests that start the script as a child process give it no stdin, so running pytest with `-s` cannot hand the terminal to a command that would otherwise open a Spotify authorization page.
+
+No test reaches the network. A shared fixture fails any test that resolves or connects to a host other than a loopback address or `localhost`, even when the code under test swallows the error. It guards the pytest process only, not the child processes some tests start.
 
 ## Supply Chain Checks
 

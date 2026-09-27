@@ -643,7 +643,8 @@ def test_wizard_prompt_and_menu_are_coloured(colored, capsys, monkeypatch):
 
 
 # Verifies the Doctor report headings and verdict are coloured, matching the sibling monitors
-def test_doctor_report_headings_are_coloured(colored):
+def test_doctor_report_headings_are_coloured(colored, monkeypatch):
+    monkeypatch.setattr(monitor, "check_internet", lambda *args, **kwargs: True)
     built = monitor.build_doctor_report(None, None, "none")
     report = monitor.render_doctor_sections(built) + monitor.render_doctor_summary(built.checks)
 
@@ -805,3 +806,176 @@ def test_a_wide_gap_before_a_date_is_not_read_as_a_weekday():
 
     assert padded is not None and padded.group(0) == "07 Feb 26, 00:05:42"
     assert weekday is not None and weekday.group(0) == "Sun 06 Apr 2025, 21:21:46"
+
+
+# Compact view colours the timestamp and the playlist name and leaves the song text plain
+def test_compact_view_song_line_colours_the_timestamp_and_playlist(colored, monkeypatch, tmp_path):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", terminal)
+    logger = monitor.Logger(str(tmp_path / "test.log"))
+    monkeypatch.setattr(monitor.sys, "stdout", logger)
+    at = monitor.datetime(2026, 9, 27, 17, 10, 18).timestamp()
+
+    monitor.print_compact_view_line(monitor.compact_view_song_text(3, "Take 3", "Inner Wave", "Apoptosis", "Feel Good Dinner", " (by Spotify)"), at)
+
+    logger.logfile.close()
+    plain = "27 Sep, 17:10:18: [03] Take 3 - Inner Wave (Apoptosis) [Feel Good Dinner] (by Spotify)\n"
+    reset = monitor.ANSI_RESET
+    assert terminal.getvalue() == f"{colored['compact_view_timestamp']}27 Sep, 17:10:18:{reset} [03] Take 3 - Inner Wave (Apoptosis) [{colored['playlist']}Feel Good Dinner{reset}] (by Spotify)\n"
+    assert (tmp_path / "test.log").read_text(encoding="utf-8") == plain
+
+
+# Brackets in a track or album name are not read as a playlist. A playlist name keeps its own brackets
+def test_compact_view_colours_only_the_real_playlist(colored):
+    reset = monitor.ANSI_RESET
+    assert monitor.compact_view_song_text(0, "Song [Live]", "Artist", "Album [Deluxe Edition]") == "[00] Song [Live] - Artist (Album [Deluxe Edition])"
+    assert monitor.compact_view_song_text(0, "Song", "Artist", "Album", "My [weird] List").endswith(f"[{colored['playlist']}My [weird] List{reset}]")
+
+
+# A song line skips the generic line colours, so a track name holding a log keyword is not painted as an error
+def test_compact_view_song_line_is_not_painted_by_its_words(colored, monkeypatch):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+
+    monitor.print_compact_view_line(monitor.compact_view_song_text(0, "Fatal Error", "INACTIVE", "Album"), 0)
+
+    assert colored["error"] not in terminal.getvalue()
+    assert colored["status_inactive"] not in terminal.getvalue()
+
+
+# A missing name prints as empty text instead of stopping the monitor
+def test_compact_view_song_text_accepts_missing_names():
+    assert monitor.compact_view_song_text(12, "Track", None, None) == "[12] Track -  ()"
+
+
+# Metadata whitespace cannot split a compact song or change its playlist colour
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_compact_view_keeps_multiline_metadata_on_one_line(colored, monkeypatch, tmp_path, logging_enabled):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+    log_path = tmp_path / "monitor.log"
+    logger = monitor.Logger(str(log_path)) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    fields = ("Song\nName", "Artist\tName", "Album\r\nName", "Playlist\u2028Name")
+
+    text = monitor.compact_view_song_text(0, *fields, playlist_suffix="\n(by Spotify)")
+    monitor.print_compact_view_line(text, 0)
+
+    screen = terminal.getvalue()
+    assert len(screen.splitlines()) == 1
+    assert monitor.ANSI_ESCAPE_RE.sub("", screen).endswith("[00] Song Name - Artist Name (Album Name) [Playlist Name] (by Spotify)\n")
+    assert f"{colored['playlist']}Playlist Name{monitor.ANSI_RESET}" in screen
+    if logger is not None:
+        logger.logfile.close()
+        assert len(log_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+# Shared diagnostics remain visible once with their severity while full advice stays in the log
+@pytest.mark.parametrize("label", ["Error", "Warning"])
+@pytest.mark.parametrize("quiet", [False, True])
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_recovery_advice_bypasses_a_quiet_screen(colored, monkeypatch, tmp_path, label, quiet, logging_enabled):
+    terminal = StringIO()
+    stream = monitor.TerminalStream(terminal)
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    log_path = tmp_path / "monitor.log"
+    logger = monitor.Logger(str(log_path)) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    destination = logger if logger is not None else stream
+    destination.screen_quiet = quiet
+    advice = monitor.make_recovery_advice("file.unwritable", "Cannot write\nthe file", "Check permissions", False)
+
+    monitor.print_recovery_advice(advice, label=label)
+
+    screen = terminal.getvalue()
+    assert screen.count(f"{label}:") == 1
+    if quiet:
+        assert len(screen.splitlines()) == 1
+        assert f"*** {label}: Cannot write the file" in screen
+        assert ("(details in log)" in screen) is logging_enabled
+        assert "To fix:" not in screen
+        assert colored["warning" if label == "Warning" else "error"] in screen
+    else:
+        assert "To fix:" in screen
+    if logger is not None:
+        logger.logfile.close()
+        assert "To fix: Check permissions" in log_path.read_text(encoding="utf-8")
+
+
+# A line cut at the terminal width still closes its colour
+def test_compact_view_truncated_line_keeps_the_colour_reset(colored, monkeypatch, tmp_path):
+    monkeypatch.setattr(monitor, "TRUNCATE_CHARS", 30)
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", terminal)
+    logger = monitor.Logger(str(tmp_path / "test.log"))
+
+    logger.write_styled_line(f"[00] Song - Artist (Album) [{monitor.colorize('playlist', 'A Long Playlist Name')}]")
+
+    logger.logfile.close()
+    screen = terminal.getvalue()
+    assert monitor.ANSI_ESCAPE_RE.sub("", screen) == "[00] Song - Artist (Album) [A \n"
+    assert screen.endswith(f"{monitor.ANSI_RESET}\n")
+
+
+# A quiet Logger keeps ordinary output off the terminal and still writes it to the log
+def test_logger_screen_quiet_suppresses_the_terminal_but_not_the_log(tmp_path, monkeypatch):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", terminal)
+    logger = monitor.Logger(str(tmp_path / "test.log"))
+
+    logger.write("visible line\n")
+    logger.screen_quiet = True
+    logger.write("quiet line\n")
+    logger.terminal_only("still visible\n")
+
+    logger.logfile.close()
+    assert terminal.getvalue() == "visible line\nstill visible\n"
+    assert (tmp_path / "test.log").read_text(encoding="utf-8") == "visible line\nquiet line\n"
+
+
+# Compact view lines reach the screen and the log while ordinary output reaches only the log
+def test_print_to_screen_and_log_reaches_the_screen_and_the_log_while_the_screen_is_quiet(tmp_path, monkeypatch):
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", terminal)
+    logger = monitor.Logger(str(tmp_path / "test.log"))
+    monkeypatch.setattr(monitor.sys, "stdout", logger)
+    logger.screen_quiet = True
+    song_line = "27 Sep, 12:19:06: [00] Song - Artist (Album) [Playlist]"
+
+    print("log only")
+    monitor.print_to_screen_and_log(song_line)
+
+    logger.logfile.close()
+    assert logger.screen_quiet is True
+    assert terminal.getvalue() == f"{song_line}\n"
+    assert (tmp_path / "test.log").read_text(encoding="utf-8") == f"log only\n{song_line}\n"
+
+
+# With logging disabled a quiet screen drops ordinary output and still shows compact view lines
+def test_quiet_terminal_stream_shows_only_compact_view_lines(monkeypatch):
+    terminal = StringIO()
+    stream = monitor.TerminalStream(terminal)
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    stream.screen_quiet = True
+
+    print("dropped")
+    monitor.print_to_screen_and_log("shown")
+
+    assert terminal.getvalue() == "shown\n"
+
+
+# Compact view quiets the screen only when it is on
+@pytest.mark.parametrize("compact_view", [False, True])
+@pytest.mark.parametrize("logging_enabled", [False, True])
+def test_enter_compact_view_screen_mode_follows_the_setting(monkeypatch, tmp_path, compact_view, logging_enabled):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", compact_view)
+    stream = monitor.Logger(str(tmp_path / "test.log")) if logging_enabled else monitor.TerminalStream(StringIO())
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+
+    monitor.enter_compact_view_screen_mode()
+
+    assert stream.screen_quiet is compact_view
+    if logging_enabled:
+        stream.logfile.close()

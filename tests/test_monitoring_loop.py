@@ -1,6 +1,7 @@
 """Offline tests for the Friend Activity monitoring loop's error, auth and state handling."""
 
 import time
+from io import StringIO
 from unittest.mock import Mock
 
 import pytest
@@ -206,6 +207,124 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
+# Compact view prints one "[NN] Track - Artist (Album) [Playlist]" line per song change
+def test_compact_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
+    assert song_line.endswith("[Playlist Name]"), song_line
+
+
+# In the log a song change reads compact line first, then a blank line, then the song's own block
+def test_compact_view_line_leads_the_songs_own_block(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    lines = capsys.readouterr().out.splitlines()
+    spotify_user = lines.index("Spotify user:\t\t\tWatched Friend")
+    assert lines[spotify_user - 1] == ""
+    assert "] Track Name - Artist Name (Album Name) [Playlist Name]" in lines[spotify_user - 2]
+
+
+# SPOTIFY_SUFFIX follows the playlist brackets, as in "[Playlist Name] (by Spotify)"
+def test_compact_view_puts_the_spotify_suffix_after_the_playlist_brackets(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "SPOTIFY_SUFFIX", " (by Spotify)")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=started_at * 1000), buddy_list(timestamp_ms=(started_at + 120) * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Spotify", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    output = capsys.readouterr().out
+    song_line = next(line for line in output.splitlines() if "] Track Name - Artist Name" in line)
+    assert song_line.endswith("[Playlist Name] (by Spotify)"), song_line
+
+
+# With the legacy backend a friend first seen offline opens a compact view session with the first new track
+def test_compact_view_opens_a_session_when_a_legacy_friend_returns(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 660)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    started_at = int(time.time())
+    payloads = [buddy_list(timestamp_ms=(started_at - 3600) * 1000), buddy_list(timestamp_ms=started_at * 1000)]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads + [Exception("no more polls")]))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    loop_environment.stop_after = 2
+
+    run_one_iteration(loop_environment)
+
+    lines = capsys.readouterr().out.splitlines()
+    offline = next(index for index, line in enumerate(lines) if "*** Friend is OFFLINE for:" in line)
+    banner = next(index for index, line in enumerate(lines) if line.endswith("*** Friend is Active..."))
+    assert offline < banner
+    assert lines[banner - 1] == ""
+    assert lines[banner + 1].endswith("[00] Track Name - Artist Name (Album Name) [Playlist Name]")
+    assert sum(line.endswith("*** Friend is Active...") for line in lines) == 1
+
+
+# Legacy visibility changes use the same compact status lines after the configured confirmation count
+@pytest.mark.parametrize("logging_enabled", [False, True])
+@pytest.mark.parametrize("misses", [1, 3])
+def test_compact_view_reports_legacy_visibility_changes(loop_environment, monkeypatch, tmp_path, logging_enabled, misses):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "REMOVED_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "token")
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *args: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *args: ("Owner", ""))
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *args: False)
+    first = buddy_list(timestamp_ms=int(loop_environment.now) * 1000)
+    payloads = [first] * 2 + [{"friends": []}] * misses + [first]
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads))
+    loop_environment.stop_after = len(payloads) - 1
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+    logger = monitor.Logger(str(tmp_path / "monitor.log")) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+
+    try:
+        run_one_iteration(loop_environment)
+    finally:
+        if logger is not None:
+            logger.logfile.close()
+
+    screen = terminal.getvalue()
+    assert screen.count("*** Friend is no longer visible (playback unknown)") == int(misses >= 2)
+    assert screen.count("*** Friend is visible again after") == int(misses >= 2)
+    assert screen.count("*** Friend is Active...") == 1
+    assert "*** Friend is Inactive..." not in screen
+
+
 # Verifies verbose stays quiet on an uneventful cycle instead of printing one line per check
 def test_a_quiet_cycle_stays_silent_in_verbose(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "VERBOSE_MODE", True)
@@ -293,11 +412,14 @@ def test_startup_names_the_other_backend_when_it_lists_the_target(loop_environme
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("watched-user") if backend == "buddylist" else buddy_list("someone-else"))
+    lookup = Mock(return_value="Watched Friend")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
-    assert "User 'watched-user' not found" in output
+    assert "User 'Watched Friend (watched-user)' not found" in output
+    lookup.assert_called_once_with("user", "spotify:user:watched-user", "live-token")
     assert 'The target is visible through the buddylist backend. Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nTimestamp:' in output
     assert "To fix:" not in output
 
@@ -308,10 +430,12 @@ def test_startup_keeps_the_follow_advice_when_no_backend_lists_the_target(loop_e
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("someone-else"))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
+    assert "User 'watched-user' not found" in output
     assert "visible through" not in output
     assert "To fix: Follow this profile" in output
 
@@ -322,7 +446,9 @@ def test_absent_friend_leaves_the_activity_flag_unset(loop_environment, monkeypa
     monkeypatch.setattr(monitor, "FLAG_FILE", str(flag_path))
     monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
-    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(user_uri_id="someone-else"))
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list(user_uri_id="someone-else"))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 

@@ -2,6 +2,8 @@
 
 import copy
 import errno
+import re
+from io import StringIO
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -192,6 +194,92 @@ def test_normalization_merges_duplicate_users_and_keeps_newest_activity():
     assert info["sp_track_uri"] == TRACK_URI
 
 
+# Play from an artist's Popular section reports a list URI that must become that artist's context again
+@pytest.mark.parametrize("context,expected", [("spotify:list:popular-release-segments-main-roles:artist_0zfZmpHTu0MlkkNr5KHeXE", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE"), ("spotify:list:popular-release-segments-main-roles:artist_short", "spotify:list:popular-release-segments-main-roles:artist_short"), ("spotify:list:liked-songs-artist:0zfZmpHTu0MlkkNr5KHeXE", "spotify:list:liked-songs-artist:0zfZmpHTu0MlkkNr5KHeXE"), ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE"), ("", "")])
+def test_artist_page_list_context_becomes_the_artist(context, expected):
+    entity = feed_entity()
+    entity["followEntity"]["activity"]["contextUri"] = context
+    result = monitor.spotify_normalize_listening_activity({"entities": [entity]})
+    assert result["friends"][0]["track"]["context"]["uri"] == expected
+
+
+# An artist context names any credited artist, while an album or artist the track does not name is looked up
+@pytest.mark.parametrize("context,looked_up,expected", [
+    ("spotify:artist:example", "", "Artist"),
+    ("spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "", "Guest"),
+    ("spotify:album:example", "", "Album"),
+    ("spotify:artist:1dgdvbogmctybPrGEcnYf6", "Other Artist", "Other Artist"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "Compilation", "Compilation"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "", "spotify:album:4ZD1KnBqghtSAEyqrZAkU4"),
+])
+def test_artist_context_names_any_credited_artist(monkeypatch, context, looked_up, expected):
+    lookups = []
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend" if kind == "user" else lookups.append((kind, uri)) or looked_up)
+    entity = feed_entity()
+    entity["followEntity"]["activity"]["contextUri"] = context
+    _, info = monitor.spotify_get_friend_info(monitor.spotify_normalize_listening_activity({"entities": [entity]}), "watched-user")
+    track = {"sp_track_name": "Track", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:example", "sp_artists": {"spotify:artist:example": "Artist", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Guest"}, "sp_album_name": "Album", "sp_album_uri": "spotify:album:example"}
+    monitor.spotify_complete_live_activity(info, "token", track)
+    assert info["sp_playlist"] == expected
+    assert lookups == ([(context.split(":")[1], context)] if context.endswith(("1dgdvbogmctybPrGEcnYf6", "4ZD1KnBqghtSAEyqrZAkU4")) else [])
+
+
+# The metadata service takes the hexadecimal form of an ID, checked against the gid values Spotify itself returns
+@pytest.mark.parametrize("item_id,gid", [("6eJNFQ3WtEYfEBN7OKV7qd", "ccf3b08fd46e4095a0c7dc2a72ea478d"), ("0zfZmpHTu0MlkkNr5KHeXE", "12af557a79754a7eb0f84b4ab777c4d2"), ("0000000000000000000001", "00000000000000000000000000000001")])
+def test_spotify_id_to_gid_matches_the_metadata_service(item_id, gid):
+    assert monitor.spotify_id_to_gid(item_id) == gid
+
+
+# Rejects IDs that would build a request for some other resource
+@pytest.mark.parametrize("item_id", ["short", "0zfZmpHTu0MlkkNr5KHeX/", "0zfZmpHTu0MlkkNr5KHeXE0"])
+def test_spotify_id_to_gid_rejects_malformed_ids(item_id):
+    with pytest.raises(ValueError):
+        monitor.spotify_id_to_gid(item_id)
+
+
+# Album and artist names come from the metadata service without following redirects and are cached like other names
+def test_album_and_artist_names_use_the_metadata_service(monkeypatch):
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "SP_CACHED_CLIENT_ID", "client-id")
+    service = Mock(return_value=response_for({"name": "AURA"}))
+    monkeypatch.setattr(monitor.SESSION, "get", service)
+    assert monitor.spotify_activity_metadata("album", "spotify:album:6eJNFQ3WtEYfEBN7OKV7qd", "token") == "AURA"
+    assert monitor.spotify_activity_metadata("album", "spotify:album:6eJNFQ3WtEYfEBN7OKV7qd", "token") == "AURA"
+    assert service.call_count == 1
+    assert service.call_args.args[0] == "https://spclient.wg.spotify.com/metadata/4/album/ccf3b08fd46e4095a0c7dc2a72ea478d"
+    assert service.call_args.kwargs["headers"]["Client-Id"] == "client-id"
+    assert service.call_args.kwargs["allow_redirects"] is False
+    service.return_value = response_for({}, status=404)
+    assert monitor.spotify_activity_metadata("artist", "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "token") == ""
+    assert monitor.spotify_activity_metadata("artist", "spotify:artist:malformed", "token") == ""
+
+
+# Context shapes the live feed reports: an artist page, an album, a track played from search or its own page
+# and a queued or autoplayed track without any context, which legacy showed as nothing beyond the album either
+@pytest.mark.parametrize("context,expected", [
+    ("spotify:list:popular-release-segments-main-roles:artist_0zfZmpHTu0MlkkNr5KHeXE", "\nContext (Artist):\t\tArtist\n"),
+    ("spotify:album:4ZD1KnBqghtSAEyqrZAkU4", None),
+    (TRACK_URI, None),
+    (None, None),
+])
+def test_list_shows_only_the_contexts_legacy_showed(monkeypatch, capsys, context, expected):
+    track = {"sp_track_duration": 200, "sp_track_name": "First", "sp_track_uri": TRACK_URI, "sp_track_url": "", "sp_artist_name": "Artist", "sp_artist_uri": "spotify:artist:0zfZmpHTu0MlkkNr5KHeXE", "sp_artists": {"spotify:artist:0zfZmpHTu0MlkkNr5KHeXE": "Artist"}, "sp_artist_url": "", "sp_album_name": "Album", "sp_album_uri": "spotify:album:4ZD1KnBqghtSAEyqrZAkU4", "sp_album_url": "", "sp_album_image_url": ""}
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda token, uri: track)
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
+    entity = feed_entity()
+    if context is not None:
+        entity["followEntity"]["activity"]["contextUri"] = context
+    monitor.spotify_list_friends(monitor.spotify_normalize_listening_activity({"entities": [entity]}), "token")
+    output = capsys.readouterr().out
+    assert "Album:\t\t\t\tAlbum" in output
+    assert "Playlist:" not in output
+    assert "spotify:track:" not in output
+    if expected:
+        assert expected in output
+    else:
+        assert "Context (" not in output
+
+
 # Treats unsupported media and users without shared activity as absent music activity
 def test_nonmusic_and_missing_activity_are_skipped():
     result = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(track="spotify:episode:example"), {"userEntity": {"uri": USER_URI}}]})
@@ -315,6 +403,7 @@ def test_friends_can_be_fetched_from_the_other_backend(monkeypatch):
 # Friend listing names the users only one backend shows and how to switch, or confirms both agree
 def test_list_friends_compares_both_backends(monkeypatch, capsys):
     monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
     legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-only"}}, {"user": {"uri": USER_URI}}]}
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
     feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-only")]})
@@ -329,6 +418,28 @@ def test_list_friends_compares_both_backends(monkeypatch, capsys):
     assert "* Warning: The buddylist backend could not be checked: " in output
     assert "To fix:" in output
     assert "visible only" not in output
+
+
+# Friend listing shows each differing user as "Name (user ID)", or the ID alone when the name is unknown or the same
+def test_list_friends_names_the_differing_users(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "listening_activity")
+    legacy = {"friends": [{"user": {"uri": "spotify:user:legacy-b", "name": "Zed"}}, {"user": {"uri": "spotify:user:legacy-a", "name": "adam"}}, {"user": {"uri": "spotify:user:legacy-same", "name": "legacy-same"}}, {"user": {"uri": USER_URI, "name": "Watched"}}]}
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: legacy)
+    lookup = Mock(side_effect=lambda kind, uri, token: {"spotify:user:live-named": "Live Friend"}.get(uri, ""))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
+    feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-named"), feed_entity(user="spotify:user:live-unnamed")]})
+    monitor.print_other_backend_friends(feed, "token")
+    output = capsys.readouterr().out
+    assert "* 3 users visible only through the buddylist backend: adam (legacy-a), legacy-same, Zed (legacy-b)\n" in output
+    assert "* 2 users visible only through the listening_activity backend: Live Friend (live-named), live-unnamed\n" in output
+    # Names from the buddylist need no lookup, while live users and names equal to the ID are looked up
+    assert sorted(call.args[1] for call in lookup.call_args_list) == ["spotify:user:legacy-same", "spotify:user:live-named", "spotify:user:live-unnamed"]
+    # Names that the listing already resolved are reused
+    lookup.reset_mock()
+    feed["friends"][1]["user"]["name"] = "Listed Name"
+    monitor.print_other_backend_friends(feed, "token")
+    assert "Listed Name (live-named)" in capsys.readouterr().out
+    assert "spotify:user:live-named" not in [call.args[1] for call in lookup.call_args_list]
 
 
 # Listing resolves live metadata and reports playback state without relying on the legacy feed
@@ -372,8 +483,8 @@ def run_live_snapshots(monkeypatch, harness, snapshots, csv_file_name="", track_
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", Mock(return_value="token"))
     monkeypatch.setattr(monitor, "spotify_get_track_info", track_info)
     monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "Friend")
-    # A None snapshot stands for a response without the target, as the feed answers during a private session
-    payloads = [monitor.spotify_normalize_listening_activity({"entities": [snapshot] if snapshot is not None else []}) for snapshot in snapshots]
+    # A None snapshot stands for a response without the target, as the feed answers during a private session. An exception stands for a failed check
+    payloads = [snapshot if isinstance(snapshot, Exception) else monitor.spotify_normalize_listening_activity({"entities": [snapshot] if snapshot is not None else []}) for snapshot in snapshots]
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=payloads))
     harness.stop_after = len(snapshots) - 1
     with pytest.raises(LoopStopped):
@@ -459,6 +570,222 @@ def test_live_track_change_reports_partial_startup_track_without_skip(loop_envir
     assert "Played for:" not in output
     assert "User played the previous track for: 1 second (out of 3 minutes, 20 seconds) (0%)\n─" in output
     assert output.index("User played the previous track for:") < output.index("Spotify user:")
+
+
+# The time that opens every compact view line, such as "27 Sep, 17:10:18"
+COMPACT_STAMP = r"\d{2} [A-Z][a-z]{2}, \d{2}:\d{2}:\d{2}"
+
+
+# Compact view opens each session with a blank line and "Friend is Active..." and closes it with "Friend is Inactive..."
+def test_compact_view_frames_each_session_with_activity_banners(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    now = loop_environment.now
+    snapshots = [feed_entity(now), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now, playing=False), feed_entity(now)]
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    lines = capsys.readouterr().out.splitlines()
+
+    banner_re = re.compile(COMPACT_STAMP + r": \*\*\* Friend is (Active|Inactive)\.\.\.$")
+    song_re = re.compile(COMPACT_STAMP + r": \[\d+\] First - Artist \(Album\)$")
+    events = []
+    for index, line in enumerate(lines):
+        banner = banner_re.match(line)
+        if banner:
+            events.append(banner.group(1))
+            assert lines[index - 1 if banner.group(1) == "Active" else index + 1] == ""
+        elif song_re.match(line):
+            events.append("song")
+
+    assert events == ["Active", "song", "Inactive", "Active", "song"]
+
+
+# [NN] counts whole minutes from the "Friend is Active..." line, so it agrees with the printed times when monitoring starts mid-song
+def test_compact_view_counts_minutes_from_the_active_banner(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    now = loop_environment.now
+    # Already two minutes into the first song when monitoring starts
+    snapshots = [feed_entity(now - 120)] * 6 + [feed_entity(now + 180, track=OTHER_TRACK_URI)] * 2
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    lines = capsys.readouterr().out.splitlines()
+
+    stamp = f"({COMPACT_STAMP})"
+    banner = next(match.group(1) for match in (re.match(stamp + r": \*\*\* Friend is Active\.\.\.$", line) for line in lines) if match)
+    songs = [match.groups() for match in (re.match(stamp + r": \[(\d+)\] ", line) for line in lines) if match]
+
+    # The printed times carry no year. A leap year keeps 29 February parseable
+    def parse(printed):
+        return datetime.strptime(f"2000 {printed}", "%Y %d %b, %H:%M:%S")
+
+    assert [minutes for _, minutes in songs] == ["00", "02"], songs
+    for printed, minutes in songs:
+        assert int(minutes) == int((parse(printed) - parse(banner)).total_seconds() // 60), (printed, minutes)
+
+
+# A failing check and the recovery after it each get one compact view line
+def test_compact_view_reports_a_failure_and_its_recovery(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    now = loop_environment.now
+    rejected = Exception("401 Unauthorized for url: https://spclient.wg.spotify.com/listening-activity/v1/feed")
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now), rejected, feed_entity(now)])
+    lines = capsys.readouterr().out.splitlines()
+
+    errors = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Error: ", line)]
+    recoveries = [line for line in lines if re.match(COMPACT_STAMP + r": \*\*\* Activity checks recovered after ", line)]
+    assert len(errors) == 1 and errors[0].endswith("*** Error: Spotify rejected the sp_dc cookie"), errors
+    assert len(recoveries) == 1, recoveries
+
+
+# After the initial report the screen shows only compact view lines, while the log, when enabled, keeps the full output
+@pytest.mark.parametrize("logging_enabled", [True, False])
+def test_compact_view_keeps_the_full_output_off_the_screen(loop_environment, monkeypatch, tmp_path, logging_enabled):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    terminal = StringIO()
+    monkeypatch.setattr(monitor.sys, "stdout", monitor.TerminalStream(terminal))
+    logger = monitor.Logger(str(tmp_path / "monitor.log")) if logging_enabled else None
+    if logger is not None:
+        monkeypatch.setattr(monitor.sys, "stdout", logger)
+    now = loop_environment.now
+    rejected = Exception("401 Unauthorized for url: https://spclient.wg.spotify.com/listening-activity/v1/feed")
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 250, track=OTHER_TRACK_URI), rejected, feed_entity(now + 250, track=OTHER_TRACK_URI)])
+
+    screen = terminal.getvalue().splitlines()
+    start = next(index for index, line in enumerate(screen) if line.endswith("*** Friend is Active..."))
+    assert "Username:\t\t\tFriend" in screen[:start]
+    assert all(line == "" or re.match(COMPACT_STAMP + ": ", line) for line in screen[start:]), screen[start:]
+    assert any(re.match(COMPACT_STAMP + r": \[\d+\] Second - Artist \(Album\)$", line) for line in screen)
+    assert any(line.endswith("*** Error: Spotify rejected the sp_dc cookie" + (" (details in log)" if logging_enabled else "")) for line in screen)
+    assert sum("*** Error:" in line for line in screen) == 1
+    if logger is not None:
+        logger.logfile.close()
+        log = (tmp_path / "monitor.log").read_text(encoding="utf-8")
+        for full_output in ("Spotify user:", "* Error: Spotify rejected the sp_dc cookie", "* Monitoring recovered for"):
+            assert full_output in log
+
+
+# Builds compact streams for installation during the test call after pytest resets stdout
+@pytest.fixture(params=[False, True], ids=["screen", "log"])
+def compact_output(monkeypatch, tmp_path, request):
+    monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
+    terminal = StringIO()
+    stream = monitor.TerminalStream(terminal)
+    log_path = tmp_path / "monitor.log"
+    with monkeypatch.context() as patch:
+        patch.setattr(monitor.sys, "stdout", stream)
+        logger = monitor.Logger(str(log_path)) if request.param else None
+    yield terminal, log_path if logger is not None else None, logger if logger is not None else stream
+    if logger is not None:
+        logger.logfile.close()
+
+
+# Metadata retries stay visible once per outage and recover independently of feed requests
+@pytest.mark.parametrize("metadata_kind", ["track", "playlist"])
+@pytest.mark.parametrize("feed_outage", [False, True])
+def test_compact_view_reports_metadata_outages(loop_environment, monkeypatch, compact_output, metadata_kind, feed_outage):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    now = loop_environment.now
+    snapshots: list = [feed_entity(now), feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI)]
+    if feed_outage:
+        snapshots.append(requests.Timeout("feed timeout"))
+    snapshots.extend([feed_entity(now + 30, track=OTHER_TRACK_URI)] * 2)
+    first = live_track_info("token", TRACK_URI) if metadata_kind == "track" else ("Spotify", "")
+    recovered = live_track_info("token", OTHER_TRACK_URI) if metadata_kind == "track" else ("Spotify", "")
+    metadata = Mock(side_effect=[first, requests.Timeout("metadata timeout"), requests.Timeout("metadata timeout"), recovered])
+    if metadata_kind == "playlist":
+        for snapshot in snapshots:
+            if isinstance(snapshot, dict):
+                snapshot["followEntity"]["activity"]["contextUri"] = "spotify:playlist:1234567890abcdefghijkl"
+        monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", metadata)
+    run_live_snapshots(monkeypatch, loop_environment, snapshots, track_info=metadata if metadata_kind == "track" else live_track_info)
+
+    screen = terminal.getvalue()
+    assert metadata.call_count == 4
+    assert screen.count("*** Error: Track metadata:") == 1
+    assert screen.count("*** Track metadata recovered after") == 1
+    assert screen.index("*** Error: Track metadata:") < screen.index("*** Track metadata recovered after") < screen.index("Second - Artist")
+    if feed_outage:
+        assert screen.count("*** Activity checks recovered after") == 1
+        assert screen.index("*** Activity checks recovered after") < screen.index("*** Track metadata recovered after")
+        assert "*** Monitoring recovered" not in screen
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# The real metadata selector reports a fatal resource error before exiting a quiet screen
+def test_compact_view_reports_fatal_metadata_errors(loop_environment, monkeypatch, compact_output):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "spotify_has_oauth_app_credentials", lambda: False)
+    error = OSError(errno.EMFILE, "Too many open files")
+    monkeypatch.setattr(monitor, "spotify_get_track_info_web", Mock(side_effect=[live_track_info("token", TRACK_URI), error]))
+    now = loop_environment.now
+    with pytest.raises(SystemExit) as exited:
+        run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI)], track_info=monitor.spotify_get_track_info)
+
+    assert exited.value.code == 1
+    screen = terminal.getvalue()
+    assert screen.count("*** Error:") == 1
+    assert monitor.classify_recovery_error(error).summary in screen
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# A failed CSV write remains visible while later songs keep being reported
+def test_compact_view_reports_csv_errors(loop_environment, monkeypatch, tmp_path, compact_output):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    error = PermissionError("CSV is not writable")
+    writer = Mock(side_effect=[None, error, None])
+    monkeypatch.setattr(monitor, "write_csv_entry", writer)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now + 30, track=OTHER_TRACK_URI), feed_entity(now + 60, track=THIRD_TRACK_URI)], str(tmp_path / "tracks.csv"))
+
+    screen = terminal.getvalue()
+    assert writer.call_count == 3
+    assert screen.count("*** Error:") == 1
+    assert monitor.classify_recovery_error(error, "file_write").summary in screen
+    assert screen.index("*** Error:") < screen.index("Third - Artist")
+    if log_path is not None:
+        assert "To fix:" in log_path.read_text(encoding="utf-8")
+
+
+# Only confirmed visibility loss and its return get compact status lines without closing the session
+@pytest.mark.parametrize("misses", [1, 3])
+@pytest.mark.parametrize("removed", [False, True])
+def test_compact_view_reports_confirmed_visibility_changes(loop_environment, monkeypatch, compact_output, misses, removed):
+    terminal, log_path, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    lookup = Mock(return_value=removed)
+    monkeypatch.setattr(monitor, "is_user_removed", lookup)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now)] * 2 + [None] * misses + [feed_entity(now)])
+
+    screen = terminal.getvalue()
+    expected = int(misses >= 2)
+    assert lookup.call_count == expected
+    assert screen.count("*** Friend is no longer visible (playback unknown)") == expected
+    assert screen.count("*** Friend is visible again after") == expected
+    assert screen.count("*** Error: The Spotify target profile returned HTTP 404") == expected * int(removed)
+    assert screen.count("*** Friend is Active...") == 1
+    assert "*** Friend is Inactive..." not in screen
+    if log_path is not None and expected:
+        assert "is visible again after" in log_path.read_text(encoding="utf-8")
+
+
+# A long confirmed absence keeps its follow and sharing advice visible once
+def test_compact_view_reports_long_absence_advice(loop_environment, monkeypatch, compact_output):
+    terminal, _, stream = compact_output
+    monkeypatch.setattr(monitor.sys, "stdout", stream)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_COUNTER", 2)
+    monkeypatch.setattr(monitor, "SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL", 4 * 3600)
+    monkeypatch.setattr(monitor, "is_user_removed", lambda *args, **kwargs: False)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now)] * 2 + [None] * 5)
+
+    screen = terminal.getvalue()
+    assert screen.count("*** Friend is no longer visible") == 1
+    assert screen.count("*** Warning: Friend has not been visible") == 1
+    assert "Check following and activity sharing" in screen
 
 
 # Stopped playback ends after the inactivity timer and a same-track restart opens one session
@@ -652,6 +979,85 @@ def test_live_timing_classifies_same_track_timestamp_moves():
     assert timing.played_for(50, 1) == ("50 seconds", False, False)
     timing.start_track(1055, True, source_ts=1049, duration=50, max_gap=60)
     assert not timing.repeat_confirmed() and timing.finishes == [(1099, 1049, "start")]
+
+
+# Starts timing a 200 second track whose start at 1000 was observed at a change and confirmed by steady checks until 1075
+def steady_live_timing():
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=200, max_gap=60)
+    timing.observe(950, True, 60, 900)
+    timing.observe(1005, True, 60, 1000, track_changed=True)
+    timing.start_track(1005, True, source_ts=1000, duration=200, max_gap=60)
+    for sampled_at in (1015, 1045, 1075):
+        timing.observe(sampled_at, True, 60, 1000)
+    return timing
+
+
+# A track change seen while the feed republishes the playing track starts the new track where the previous one was predicted to finish, since its first timestamp may be a republish
+@pytest.mark.parametrize("finishing", [False, True])
+def test_live_timing_storm_starts_the_next_track_at_the_predicted_finish(finishing):
+    timing = steady_live_timing()
+    for sampled_at in range(1100, 1200, 10):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    assert timing.storming() and timing.finishes == [(1200, 1000, "start")]
+    if finishing:
+        timing.observe(1200, True, 60, 1197)
+        assert timing.repeat_confirmed()
+    timing.observe(1210, True, 60, 1206, track_changed=True)
+    assert timing.track_seconds == 200 and timing.precise
+    assert timing.played_for(200, 1, followed=True) == ("3 minutes, 20 seconds", False, False)
+    timing.start_track(1210, True, source_ts=1206, duration=180, max_gap=60)
+    assert timing.track_started_at == 1200 and timing.precise and timing.finishes == [(1380, 1200, "start")]
+
+
+# A skip during a storm is placed between the two checks around it and leaves both tracks without a precise boundary
+def test_live_timing_storm_places_a_skip_between_the_checks():
+    timing = steady_live_timing()
+    for sampled_at in (1100, 1110, 1120):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    timing.observe(1130, True, 60, 1128, track_changed=True)
+    assert timing.track_seconds == 123 and not timing.precise
+    timing.start_track(1130, True, source_ts=1128, duration=180, max_gap=60)
+    assert timing.track_started_at == 1123 and not timing.precise
+    # The finish follows the latest possible start, so a republish cannot settle it before the track can have ended
+    assert timing.finishes == [(1308, 1128, "unobserved")]
+
+
+# A storm that begins with a track shows that its first timestamp may be a republish, so the start moves to the middle of its window unless a steady check confirmed it first
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_live_timing_storm_reopens_an_unconfirmed_start(confirmed):
+    timing = monitor.LivePlaybackTiming()
+    timing.observe(900, True, 60, 900)
+    timing.start_track(900, True, new_session=True, source_ts=900, duration=200, max_gap=60)
+    timing.observe(950, True, 60, 900)
+    timing.observe(1000, True, 60, 900)
+    timing.observe(1010, True, 60, 1008, track_changed=True)
+    timing.start_track(1010, True, source_ts=1008, duration=200, max_gap=60)
+    assert timing.start_window == (997, 1008) and timing.precise
+    if confirmed:
+        timing.observe(1020, True, 60, 1008)
+    for sampled_at in (1030, 1040):
+        timing.observe(sampled_at, True, 60, sampled_at - 2)
+    assert timing.storming()
+    if confirmed:
+        assert timing.track_started_at == 1008 and timing.precise and timing.finishes == [(1208, 1008, "start")]
+    else:
+        assert timing.track_started_at == 1002.5 and not timing.precise and timing.finishes == [(1208, 1008, "unobserved")]
+        assert timing.played_seconds(1040) == 37.5
+
+
+# Moved timestamps separated by a steady check or a pause are position changes rather than a storm and keep their restart proofs
+def test_live_timing_separate_moves_are_not_a_storm():
+    timing = steady_live_timing()
+    timing.observe(1100, True, 60, 1098)
+    timing.observe(1110, True, 60, 1098)
+    timing.observe(1120, True, 60, 1118)
+    timing.observe(1130, False, 60, 1128)
+    timing.observe(1140, True, 60, 1138)
+    timing.observe(1150, True, 60, 1148)
+    assert not timing.storming()
+    assert [kind for _, _, kind in timing.finishes] == ["start", "seek", "seek", "seek"]
 
 
 # Formats the played-for text for HTML bodies with the time and the SKIPPED mark in bold
@@ -958,3 +1364,21 @@ def test_live_update_without_a_position_change_does_not_hide_the_repeat(loop_env
     assert "Songs played:\t\t\t3 (3 minutes, 48 seconds)" in output
     assert "User played the last track for: 32 seconds (out of 3 minutes, 20 seconds) (16%)\n─" in output
     assert "*** User played 3 songs" in output
+
+
+# A storm that starts with a track and outlasts it does not turn full plays into short or crossfaded ones
+def test_live_storm_keeps_full_plays_whole(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "DETECT_CROSSFADED_SONGS", True)
+    now = loop_environment.now
+    # The second track starts at +40 and the first one again at +240, but the feed republishes each with a fresh timestamp two seconds before every check until +328
+    storm = [feed_entity(now + 58, track=OTHER_TRACK_URI)] + [feed_entity(now + sampled_at - 2, track=OTHER_TRACK_URI) for sampled_at in range(90, 241, 30)] + [feed_entity(now + sampled_at - 2) for sampled_at in range(270, 331, 30)]
+    snapshots = [feed_entity(now - 5)] * 3 + storm + [feed_entity(now + 328)] * 3 + [feed_entity(now + 440, track=OTHER_TRACK_URI)] + [feed_entity(now + 470, playing=False, track=OTHER_TRACK_URI)] * 3
+    run_live_snapshots(monkeypatch, loop_environment, snapshots)
+    output = capsys.readouterr().out
+    assert output.count("\nTrack:\t\t\t\tArtist - First") == 2
+    assert output.count("\nTrack:\t\t\t\tArtist - Second") == 2
+    # Only the first track, which the second one cut short, is reported
+    assert output.count("User played the previous track for") == 1
+    assert "crossfade" not in output
+    # The track that followed during the storm starts midway between the checks around it rather than at the republished +268
+    assert "Songs played:\t\t\t3 (4 minutes, 18 seconds)" in output

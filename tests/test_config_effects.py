@@ -39,7 +39,7 @@ def run_cli(arguments, runtime_setup="", cwd=PROJECT_ROOT):
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONIOENCODING"] = "utf-8"
-    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=cwd, capture_output=True, text=True, env=environment, timeout=60, check=False)
+    return subprocess.run([sys.executable, "-c", ISOLATED_PRELUDE + source], cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=environment, timeout=60, check=False)
 
 
 # Writes one config file carrying the supplied settings plus the minimum needed to reach monitoring

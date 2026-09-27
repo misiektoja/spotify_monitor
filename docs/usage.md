@@ -326,6 +326,22 @@ COLOR_THEME = { "track": "bright_magenta bold", "username": "green" }
 
 See [Terminal Colours](configuration.md#terminal-colours) for every theme key and the accepted colour and style names.
 
+<a id="compact-view"></a>
+### Compact View
+
+Compact view shows one line per song, so the screen keeps a running list of what the friend played. Turn it on with `COMPACT_VIEW = True` or for one run with `--compact-view`. It applies to Friend Activity monitoring.
+
+```text
+27 Sep, 17:10:18: *** Friend is Active...
+27 Sep, 17:10:18: [00] Sunday Bloody Sunday - U2 (War) [U2 Radio] (by Spotify)
+27 Sep, 17:14:41: [04] What's Up? - 4 Non Blondes (Bigger, Better, Faster, More !) [U2 Radio] (by Spotify)
+27 Sep, 17:19:02: *** Friend is Inactive...
+```
+
+The startup summary and first full report print as usual. After that, only listening activity, track changes, visibility changes, actionable errors or warnings and recovery messages are shown. Repeated failures are reported only when they change or recover.
+
+Everything else goes to the log file only. That covers the full song reports, session summaries, replies to [control signals](#signal-controls-macoslinuxunix) plus verbose and debug output. Email and webhook alerts are sent as usual. With logging disabled (`-d`) this output is not kept anywhere and the startup summary says so.
+
 <a id="listing-mode"></a>
 ## Listing Mode
 
@@ -336,6 +352,8 @@ spotify_monitor -l
 ```
 
 The output includes each person's display name, Spotify user ID and profile URL. Either the user ID or profile URL can be used as a monitoring target.
+
+The list ends with the users that only one [Friend Activity backend](configuration.md#friend-activity-backend) shows, as `display name (user ID)` or the user ID alone when both are the same.
 
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>

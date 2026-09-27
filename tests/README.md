@@ -77,12 +77,13 @@ same absent-dependency behavior a user would see.
 | `test_container_assets.py` | Dockerfile, Compose and publishing workflow contracts |
 | `test_packaging.py` | Wheel contents, installed console commands, action pinning and version consistency |
 | `test_moved_private_settings.py` | Kept credentials across dotenv destination changes and startup error handling |
-| `conftest.py` | Shared fixture resetting the dotenv and secret state that the monitor mutates in place |
+| `conftest.py` | Shared fixtures returning the monitor's module globals, environment variables and signal handlers to their starting state after every test and failing any test that reaches a browser opener or a host outside loopback |
 
 ## Conventions
 
 * Keep everything offline. If a code path needs network access, stub it with `monkeypatch` rather
-  than skipping the test.
+  than skipping the test. A shared fixture fails any test that resolves or connects to a host other
+  than a loopback address or `localhost`, even when the code swallows the error.
 * Restore module-level globals you change. Tests share one imported module, so a leaked global
   affects whatever runs next.
 * Mark tests that bind a local server `integration`, and full-flow CLI tests `e2e`.

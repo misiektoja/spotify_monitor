@@ -517,8 +517,12 @@ def test_startup_summaries_never_include_secrets(monkeypatch, tmp_path):
 
 # Verifies configured terminal-width autodetection resolves the sentinel before logging starts
 def test_configured_truncation_autodetects_terminal_width(monkeypatch, capsys):
-    monkeypatch.setattr(monitor.shutil, "get_terminal_size", lambda: Mock(columns=120))
-    assert monitor.resolve_truncate_chars(None, 999, False) == 120
+    # monitor.shutil is the real shutil module and pytest's verbose reporter reads the terminal width through it
+    # before teardown, so the patch must end with the call
+    with monkeypatch.context() as patch:
+        patch.setattr(monitor.shutil, "get_terminal_size", lambda: Mock(columns=120))
+        truncate_chars = monitor.resolve_truncate_chars(None, 999, False)
+    assert truncate_chars == 120
     assert capsys.readouterr().out == "The detected terminal screen width is: 120 characters\n\n"
 
 
@@ -531,8 +535,11 @@ def test_cli_truncation_overrides_configured_value(cli_value, configured_value, 
 # Verifies disabled logging suppresses truncation and terminal-width detection
 def test_disabled_logging_skips_truncation_autodetection(monkeypatch, capsys):
     terminal_size = Mock(side_effect=AssertionError("terminal width should not be detected"))
-    monkeypatch.setattr(monitor.shutil, "get_terminal_size", terminal_size)
-    assert monitor.resolve_truncate_chars(None, 999, True) == 0
+    # Scoped for the same reason as in the autodetection test above
+    with monkeypatch.context() as patch:
+        patch.setattr(monitor.shutil, "get_terminal_size", terminal_size)
+        truncate_chars = monitor.resolve_truncate_chars(None, 999, True)
+    assert truncate_chars == 0
     terminal_size.assert_not_called()
     assert capsys.readouterr().out == ""
 

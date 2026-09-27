@@ -64,7 +64,7 @@ The wizard recommends importing the monitoring account's saved Firefox login. On
 
 Container setup destinations must stay inside `/data`, which is the host directory mounted for setup. Files saved there remain on your computer after the container stops.
 
-After saving authentication, the wizard checks whether the target is visible or followed. It offers to follow the target only when neither is the case and sends the follow request only after you confirm.
+After saving authentication, the wizard checks whether the target shares listening activity with the monitoring account. It reads the follow state only when the target is not visible and offers to follow it only when the monitoring account does not. The follow request is sent only after you confirm. If only the other [Friend Activity backend](configuration.md#friend-activity-backend) lists the target, the wizard offers to switch to that backend and saves it in the configuration file.
 
 With a saved target, running Spotify Monitor without a target starts monitoring that user. If no target is saved, an interactive no-argument run offers setup.
 
@@ -106,7 +106,7 @@ Spotify only shows a person's listening activity when that person shares it with
 1. With **all followers**: the account used by Spotify Monitor must follow the person you want to monitor.
 2. With **selected people**: the person selects the account used by Spotify Monitor. Following is not required.
 
-The setup wizard checks whether the target is visible or followed and offers to follow the target when neither is the case. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](configuration.md#following-the-monitored-user).
+The setup wizard checks whether the target shares listening activity with that account and offers to follow the target only when it is neither visible nor followed. It can send the follow request after you confirm. To follow manually, open the target's profile in the Spotify desktop or mobile app. You can use **Share** > **Copy link to profile** and paste the complete link into the wizard. You do not need to extract the user ID. See [Following the Monitored User](configuration.md#following-the-monitored-user).
 
 <a id="not-sure-which-command-you-need"></a>
 ## Not sure which command you need?

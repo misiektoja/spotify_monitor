@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Returns the rendered help screen of the working-tree script
 @pytest.fixture(scope="module")
 def help_screen():
-    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--help"], cwd=PROJECT_ROOT, capture_output=True, text=True, check=False)
+    result = subprocess.run([sys.executable, str(PROJECT_ROOT / "spotify_monitor.py"), "--help"], cwd=PROJECT_ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
     assert result.returncode == 0
     return result.stdout
 
