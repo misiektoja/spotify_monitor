@@ -1,5 +1,9 @@
 """Shared fixtures keeping module-level monitor state from leaking between tests."""
 
+import copy
+import os
+import signal
+import types
 import webbrowser
 
 import pytest
@@ -7,46 +11,55 @@ import pytest
 import spotify_monitor as monitor
 
 
-# Module globals the dotenv, secret-precedence and setup code mutate in place, so one test cannot bias the next.
-# A cache left populated here changes what a later test sees and fails only in a full run, never on its own
-_SHARED_STATE_NAMES = (
-    "SECRET_SOURCES",
-    "DOTENV_MANAGED_KEYS",
-    "DOTENV_BASE_VALUES",
-    "DOTENV_RELOAD_STATE",
-    "EXPORTED_SECRET_KEYS",
-    "EXPORTED_ENVIRONMENT_KEYS",
-    "COMMAND_LINE_SECRET_KEYS",
-    "_WIZARD_BROWSER_LOGIN_COUNTS",
-    # A rotated refresh token and its access-token cache are written back onto the module by the code under
-    # test. Left behind, they send a later monitoring test to the real Spotify endpoints instead of its doubles
-    "SPOTIFY_SCROBBLE_REFRESH_TOKEN",
-    "SP_CACHED_SCROBBLE_ACCESS_TOKEN",
-    "SP_SCROBBLE_ACCESS_TOKEN_EXPIRES_AT",
-    "SP_CACHED_SCROBBLE_AUTH_FINGERPRINT",
-)
+# Every module global as the import left it. main(), the config loader and the dotenv code rebind or mutate
+# settings and caches outside monkeypatch, and a test that relies on such a leftover passes or fails depending
+# on what ran before it on the same worker. Recording every name rather than a list cannot miss a new global
+_BASELINE_GLOBALS = {name: value for name, value in vars(monitor).items() if not name.startswith("__")}
+_BASELINE_CONTENTS = {name: copy.deepcopy(value) for name, value in _BASELINE_GLOBALS.items() if type(value) in (dict, list, set)}
+
+# Attributes the module's functions carry, since some of them keep state there between calls
+_BASELINE_FUNCTION_ATTRIBUTES = {name: dict(value.__dict__) for name, value in _BASELINE_GLOBALS.items() if isinstance(value, types.FunctionType)}
+
+# The variables the dotenv loader and main() write to the process environment. Only these are restored,
+# because pytest keeps its own entries such as PYTEST_CURRENT_TEST there and expects to find them
+_MONITOR_ENVIRONMENT_KEYS = (*monitor.SECRET_KEYS, *monitor.ENVIRONMENT_SETTING_KEYS)
+_BASELINE_ENVIRONMENT = {key: os.environ.get(key) for key in _MONITOR_ENVIRONMENT_KEYS}
+
+# Signals main() binds to the monitor's own handlers, which outlive the call that installed them
+_MONITOR_SIGNALS = tuple(getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP", "SIGUSR1", "SIGUSR2", "SIGCONT", "SIGPIPE", "SIGTRAP", "SIGABRT", "SIGALRM") if hasattr(signal, name))
 
 
-# Returns a snapshot that survives in-place mutation of the original container
-def _snapshot(value):
-    if isinstance(value, dict):
-        return dict(value)
-    if isinstance(value, (list, set)):
-        return type(value)(value)
-    return value
+# Puts a container's import-time contents back in place so references captured elsewhere agree with the module
+def _refill(container, saved):
+    if container == saved:
+        return
+    container.clear()
+    restored = copy.deepcopy(saved)
+    container.extend(restored) if isinstance(container, list) else container.update(restored)
 
 
-# Restores a container's contents in place so references captured elsewhere still see the reset value
-def _restore(current, saved):
-    if isinstance(current, dict) and isinstance(saved, dict):
-        current.clear()
-        current.update(saved)
-        return current
-    if isinstance(current, (list, set)) and isinstance(saved, (list, set)):
-        current.clear()
-        current.update(saved) if isinstance(current, set) else current.extend(saved)
-        return current
-    return saved
+# Returns the module globals and function attributes to their import-time state and drops globals created since
+def _restore_module_state():
+    for name in [name for name in vars(monitor) if not name.startswith("__") and name not in _BASELINE_GLOBALS]:
+        delattr(monitor, name)
+    for name, value in _BASELINE_GLOBALS.items():
+        if name in _BASELINE_CONTENTS:
+            _refill(value, _BASELINE_CONTENTS[name])
+        setattr(monitor, name, value)
+    for name, attributes in _BASELINE_FUNCTION_ATTRIBUTES.items():
+        function = _BASELINE_GLOBALS[name]
+        if function.__dict__ != attributes:
+            function.__dict__.clear()
+            function.__dict__.update(attributes)
+
+
+# Returns the monitor's environment variables to the values the suite started with
+def _restore_environment():
+    for key, value in _BASELINE_ENVIRONMENT.items():
+        if value is None:
+            os.environ.pop(key, None)
+        elif os.environ.get(key) != value:
+            os.environ[key] = value
 
 
 # Enumerators that read whichever browsers are installed on the machine running the suite
@@ -89,12 +102,17 @@ def refuse_browser_opening(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-# Resets the shared dotenv and secret state after every test, since these are mutated rather than reassigned
-def reset_shared_monitor_state():
-    saved = {name: _snapshot(getattr(monitor, name)) for name in _SHARED_STATE_NAMES if hasattr(monitor, name)}
+# Returns the monitor module, its environment variables and its signal handlers to their starting state after every test
+def reset_shared_monitor_state(monkeypatch):
+    handlers = {number: signal.getsignal(number) for number in _MONITOR_SIGNALS}
     yield
-    for name, value in saved.items():
-        setattr(monitor, name, _restore(getattr(monitor, name, None), value))
+    # Undone first, because monkeypatch deletes the globals it created and would fail on one the restore already dropped
+    monkeypatch.undo()
+    _restore_module_state()
+    _restore_environment()
+    for number, handler in handlers.items():
+        if handler is not None and signal.getsignal(number) != handler:
+            signal.signal(number, handler)
 
 
 @pytest.fixture(autouse=True)
