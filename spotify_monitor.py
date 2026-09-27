@@ -1042,6 +1042,10 @@ LIVE_REPEAT_TOLERANCE = 5
 
 # A finish this close to one track length after a position change proves that the change restarted the track, since a move landing further into it ends sooner
 LIVE_RESTART_TOLERANCE = 3
+
+# The feed sometimes republishes the playing track with a fresh timestamp every few seconds, so this many consecutive checks with a moved timestamp count as such a storm rather than as seeks
+LIVE_STORM_SAMPLES = 2
+
 # Absence after which the live backend prints the follow and sharing advice, long enough to outlast a private session
 LIVE_ABSENCE_ADVICE_AFTER = 6 * 3600
 
@@ -8268,6 +8272,10 @@ class LivePlaybackTiming:
     finishes: List[Tuple[float, float, str]] = field(default_factory=list)
     # Finishing update seen by the last sample with the start it matched, settled by the next sample
     pending_finish: Optional[Tuple[float, float, str]] = None
+    # Consecutive checks of the playing track whose timestamp moved without landing on a finish, kept across a track change seen during a storm because storms outlast tracks
+    storm_moves: int = 0
+    # Earliest and latest possible start of a track first seen at a change, kept until a steady timestamp confirms that the reported start was not a republish
+    start_window: Optional[Tuple[float, float]] = None
 
     # Reports whether the sample follows the previous one closely enough to treat the interval as observed
     def continuous(self, now: float, max_gap: float) -> bool:
@@ -8303,6 +8311,38 @@ class LivePlaybackTiming:
                 return finish, origin, kind
         return None
 
+    # Reports whether the feed keeps republishing the playing track, so its timestamps no longer mark playback changes
+    def storming(self) -> bool:
+        return self.storm_moves >= LIVE_STORM_SAMPLES
+
+    # Estimates when a track change seen during a storm happened, using the finish predicted by an observed start when it falls between the two checks and their midpoint otherwise
+    def _storm_change_time(self, now: float, source_ts: Optional[float]) -> Optional[float]:
+        # A timestamp this close to the previous one bounds the change as tightly as any estimate
+        if not self.storming() or source_ts is None or self.source_ts is None or not self.source_ts + LIVE_POSITION_JITTER < source_ts <= now:
+            return None
+        for finish, _, kind in self.finishes:
+            if kind == "start" and self.source_ts - LIVE_REPEAT_TOLERANCE <= finish <= source_ts + LIVE_REPEAT_TOLERANCE:
+                self.event_trusted = True
+                return min(max(finish, self.source_ts), source_ts)
+        # A skip or an early end during a storm is only known to lie between the checks, so neither track keeps a precise boundary
+        self.event_trusted = False
+        self.precise = False
+        return (self.source_ts + source_ts) / 2
+
+    # Moves a start that a storm showed to be a possible republish to the middle of its window and marks the track imprecise
+    def _reopen_start(self) -> None:
+        if self.start_window is None:
+            return
+        earliest, latest = self.start_window
+        self.start_window = None
+        start = (earliest + latest) / 2
+        if self.segment_started_at == latest:
+            self.segment_started_at = start
+        self.track_started_at = start
+        self.precise = False
+        # The finish keeps the latest possible start, so a republish near it cannot pass for a repeat before the track can have ended
+        self.finishes = [(finish, origin, "unobserved" if kind == "start" else kind) for finish, origin, kind in self.finishes]
+
     # Records a sample and reports pause or resume transitions with the playing or paused time they end
     def observe(self, now: float, playing: bool, max_gap: float, source_ts: Optional[float] = None, track_changed: bool = False) -> Tuple[str, float]:
         gap = not self.continuous(now, max_gap)
@@ -8318,7 +8358,11 @@ class LivePlaybackTiming:
             self.finishes = [(self.anchor_ts + self.duration, self.anchor_ts, "unobserved")] if self.anchor_ts is not None else []
             if was_playing:
                 self._close_segment(self.sampled_at if self.sampled_at is not None else now)
-        event, duration = "", 0.0
+        if gap or playing != was_playing:
+            # A storm is recognized only within one uninterrupted stretch of playback
+            self.storm_moves = 0
+            self.start_window = None
+        event, duration, storm_anchor = "", 0.0, None
         if was_playing and not playing:
             at = self._event_time(now, source_ts, self.sampled_at if self.sampled_at is not None else now)
             # A track that finished before the pause is credited up to its finish only
@@ -8340,7 +8384,11 @@ class LivePlaybackTiming:
                 # The playhead keeps its position through a pause, so every predicted finish moves by the paused time
                 self.finishes = [(finish + duration, origin, kind) for finish, origin, kind in self.finishes]
         elif playing and track_changed:
-            if pending is not None and source_ts is not None and 0 <= source_ts - pending[0] <= LIVE_POSITION_JITTER:
+            storm_at = self._storm_change_time(now, source_ts)
+            if storm_at is not None:
+                # The first timestamp of a track seen during a storm may be a republish up to one check late
+                at = storm_at
+            elif pending is not None and source_ts is not None and 0 <= source_ts - pending[0] <= LIVE_POSITION_JITTER:
                 # The sample settling a finish carries the finishing timestamp or one from the restart a moment later
                 at = source_ts
                 self.event_trusted = True
@@ -8350,6 +8398,14 @@ class LivePlaybackTiming:
             if pending is not None:
                 self.track_seconds = max(self.track_seconds, self.duration)
             self.segment_started_at = at
+            if storm_at is not None:
+                # A start taken from the predicted finish also predicts the next one, while an estimated start keeps the latest timestamp so its finish cannot come early
+                storm_anchor = at if self.event_trusted else None
+            else:
+                self.storm_moves = 0
+                # A storm that begins with the track turns its first timestamp into a possible republish, so the start stays open until a steady timestamp confirms it
+                earliest = max(self.source_ts, self.sampled_at - LIVE_POSITION_JITTER) if self.event_trusted and not gap and self.source_ts is not None and self.sampled_at is not None else None
+                self.start_window = (earliest, at) if earliest is not None and earliest < at else None
         elif playing and gap:
             self.segment_started_at = now
         elif playing and source_ts is not None and self.source_ts is not None and self.anchor_ts is not None and source_ts > self.source_ts and source_ts - self.anchor_ts > LIVE_POSITION_JITTER:
@@ -8358,9 +8414,21 @@ class LivePlaybackTiming:
                 # The track reached its end, but whether it started again or another track followed is known from the next sample
                 self.pending_finish = (source_ts, matched[1], matched[2])
             else:
-                # Any other moved timestamp on the same track is a seek or an update without a position change, and a finish one track length later proves it restarted the track
-                self.finishes.append((source_ts + self.duration, source_ts, "seek"))
-        if source_ts is not None and (self.anchor_ts is None or event or track_changed or gap or source_ts < self.anchor_ts or source_ts - self.anchor_ts > LIVE_POSITION_JITTER):
+                self.storm_moves += 1
+                if not self.storming():
+                    # Any other moved timestamp on the same track is a seek or an update without a position change, and a finish one track length later proves it restarted the track
+                    self.finishes.append((source_ts + self.duration, source_ts, "seek"))
+                else:
+                    # Republished timestamps do not move the playhead, so they cannot prove restarts, and a start taken from one is only known to lie in its window
+                    self.finishes = [entry for entry in self.finishes if entry[2] != "seek"]
+                    self._reopen_start()
+        elif playing and source_ts is not None and source_ts == self.source_ts:
+            # A steady timestamp ends a storm and confirms the reported start
+            self.storm_moves = 0
+            self.start_window = None
+        if storm_anchor is not None:
+            self.anchor_ts = storm_anchor
+        elif source_ts is not None and (self.anchor_ts is None or event or track_changed or gap or source_ts < self.anchor_ts or source_ts - self.anchor_ts > LIVE_POSITION_JITTER):
             self.anchor_ts = source_ts
         self.sampled_at = now
         self.source_ts = source_ts
@@ -8393,6 +8461,7 @@ class LivePlaybackTiming:
         self.segment_started_at = restart_ts
         self.track_started_at = restart_ts
         self.anchor_ts = restart_ts
+        self.start_window = None
         self.finishes = [(restart_ts + self.duration, restart_ts, "start")]
         if self.pending_finish is not None:
             self.pending_finish = (self.pending_finish[0], restart_ts, "start")
