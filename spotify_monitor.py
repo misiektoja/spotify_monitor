@@ -11915,48 +11915,47 @@ def _wizard_target_visible_in_other_backend(report: DoctorReport, target_user_id
     return bool(activity_lists_user(doctor_other_backend_list(report), target_id))
 
 
-# Checks the target follow state and visibility in both backends and offers one confirmed follow mutation when needed
-def _wizard_offer_target_follow(target_user_id: str) -> str:
-    print(colorize('header', "\nFollowing check\n"))
+# Checks whether the target shares listening activity with the monitoring account and offers one confirmed follow only for a target that does not
+def _wizard_check_target_sharing(target_user_id: str) -> str:
+    print(colorize('header', "\nListening activity check\n"))
     report = DoctorReport()
     checks = doctor_check_authentication(report)
     if report.access_token is None:
         failed_check = next((check for check in checks if check.status == "FAIL"), None)
         detail = failed_check.label if failed_check is not None else "Authentication did not produce an access token"
-        print(f"Follow status could not be checked: {detail}")
+        print(f"Listening activity could not be checked: {detail}")
         print("No follow request was sent. Run the doctor check below after fixing authentication.")
         return "unavailable"
     try:
         target_label = spotify_user_label(normalize_spotify_user_id(target_user_id), report.access_token)
     except ValueError:
         target_label = AlertTarget(target_user_id)
+    if _wizard_target_visible(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"Target '{target_label}' shares listening activity with the monitoring account.")
+        return "visible"
+    # Each backend can list users the other omits, so a target missing from the selected one may still be monitorable
+    if _wizard_target_visible_in_other_backend(report, target_user_id):
+        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(f"Target '{target_label}' shares listening activity with the monitoring account, but only the {other_activity_backend()} backend lists it. The configuration uses the {FRIEND_ACTIVITY_BACKEND} backend.")
+        return "other_backend"
+    # Following matters only for a target that shares with all followers, so the follow state is read once the target is not visible
+    # The target user ID is public profile data, the scanner conflates it with the token that fetched it
+    # codeql[py/clear-text-logging-sensitive-data]
+    print(f"Target '{target_label}' is not visible in listening activity.")
     try:
         is_followed = spotify_user_is_followed(report.access_token, target_user_id)
     except Exception as exc:
         print(f"Follow status could not be checked: {sanitize_error_text(exc)}")
         print("No follow request was sent. Run setup or doctor again after checking Spotify connectivity.")
         return "unavailable"
-    visible = _wizard_target_visible(report, target_user_id)
-    # Each backend can list users the other omits, so a target missing from the selected one may still be monitorable
-    other_backend_only = not visible and _wizard_target_visible_in_other_backend(report, target_user_id)
     if is_followed:
-        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-        # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account already follows '{target_label}'.")
-    elif visible or other_backend_only:
-        # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-        # codeql[py/clear-text-logging-sensitive-data]
-        print(f"The monitoring account does not follow '{target_label}', but the target already shares listening activity with it, so following is not required.")
-    if other_backend_only:
-        print(f"The target is visible only through the {other_activity_backend()} backend. The configuration uses the {FRIEND_ACTIVITY_BACKEND} backend.")
-        return "other_backend"
-    if is_followed:
+        private_session = " or is in a private session" if live_activity_backend() else ""
+        print(f"The monitoring account follows the target, so the target is not sharing listening activity with this account{private_session}.")
         return "already_followed"
-    if visible:
-        return "visible"
-    # The target user ID is public profile data, the scanner conflates it with the token that fetched it
-    # codeql[py/clear-text-logging-sensitive-data]
-    print(f"The monitoring account does not follow '{target_label}'.")
+    print("The monitoring account does not follow the target. Following is needed when the target shares listening activity with all followers. When it shares with selected people, the target has to select this account instead.")
     print()
     if not _wizard_ask_yes_no(f"Follow '{target_label}' now using the configured Spotify account?", default=False):
         print("Follow skipped. Spotify Monitor will not change the account.")
@@ -12182,7 +12181,7 @@ def _wizard_collect_polling_section(state: WizardSetupState) -> None:
     state.config_values["SPOTIFY_CHECK_INTERVAL"] = _wizard_ask_duration("Spotify polling interval (seconds or use s/m/h/d)", current_interval)
 
 
-# Offers to save the other Friend Activity backend after the following check found the target only there and returns whether it was saved
+# Offers to save the other Friend Activity backend after the listening activity check found the target only there and returns whether it was saved
 def _wizard_offer_backend_switch(state: WizardSetupState) -> bool:
     current_backend = FRIEND_ACTIVITY_BACKEND
     other_backend = other_activity_backend()
@@ -12628,9 +12627,9 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     _wizard_print_default_guidance()
     print("Secrets go to the dotenv file. Non-secret settings go to the config file.")
     print("Cookie mode is recommended. Client mode is advanced.\n")
-    print("The monitoring account must follow the target. Setup checks this after authentication is saved.")
-    print("If needed, the tool offers to follow the target. The target must also share listening activity.")
-    print(colorize_links(f"Following and visibility guide: {FOLLOWING_GUIDE_URL}\n"))
+    print("The target must share listening activity with the monitoring account. Setup checks this after authentication is saved.")
+    print("Following is needed only when the target shares with all followers. Setup offers it when the target is not visible.")
+    print(colorize_links(f"Sharing and following guide: {FOLLOWING_GUIDE_URL}\n"))
     _wizard_print_setup_destinations(method, config_path, env_path)
     try:
         config_path = _wizard_choose_config_destination(config_path, method)
@@ -12705,14 +12704,14 @@ def run_setup_wizard(initial_target: Optional[str] = None, config_file=None, env
     try:
         if auth["complete"] and not checks_skipped:
             if _wizard_load_effective_setup(config_path, env_path):
-                follow_status = _wizard_offer_target_follow(target)
-                if follow_status == "other_backend" and _wizard_offer_backend_switch(state):
-                    follow_status = "backend_switched"
-                if follow_status in ("already_followed", "followed", "visible", "backend_switched"):
+                sharing_status = _wizard_check_target_sharing(target)
+                if sharing_status == "other_backend" and _wizard_offer_backend_switch(state):
+                    sharing_status = "backend_switched"
+                if sharing_status in ("already_followed", "followed", "visible", "backend_switched"):
                     auth["validated"] = True
             else:
-                print(colorize('header', "\nFollowing check\n"))
-                print("Follow status could not be checked because the saved setup could not be loaded.")
+                print(colorize('header', "\nListening activity check\n"))
+                print("Listening activity could not be checked because the saved setup could not be loaded.")
         # A container Firefox import still has to run on the host, so doctor would only report the missing login
         doctor_offered = bool(target) and not checks_skipped and not (auth.get("browser") and method in ("docker", "compose"))
         if doctor_offered:
