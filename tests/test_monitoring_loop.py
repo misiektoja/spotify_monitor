@@ -293,11 +293,14 @@ def test_startup_names_the_other_backend_when_it_lists_the_target(loop_environme
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("watched-user") if backend == "buddylist" else buddy_list("someone-else"))
+    lookup = Mock(return_value="Watched Friend")
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lookup)
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
-    assert "User 'watched-user' not found" in output
+    assert "User 'Watched Friend (watched-user)' not found" in output
+    lookup.assert_called_once_with("user", "spotify:user:watched-user", "live-token")
     assert 'The target is visible through the buddylist backend. Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nTimestamp:' in output
     assert "To fix:" not in output
 
@@ -308,10 +311,12 @@ def test_startup_keeps_the_follow_advice_when_no_backend_lists_the_target(loop_e
     monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
     monkeypatch.setattr(monitor, "is_user_removed", lambda *arguments, **keywords: False)
     monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token, backend=None: buddy_list("someone-else"))
+    monkeypatch.setattr(monitor, "spotify_activity_metadata", lambda kind, uri, token: "")
 
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
+    assert "User 'watched-user' not found" in output
     assert "visible through" not in output
     assert "To fix: Follow this profile" in output
 
