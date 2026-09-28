@@ -1,0 +1,7 @@
+# Known findings in history that cannot be removed without rewriting it.
+# Fingerprint format: commit:file:rule:line
+
+# The RFC 4648 base32 alphabet used as a lookup table by early TOTP code. It is public, not a secret,
+# but its 32 distinct characters give it the maximum entropy the generic rule looks for.
+5db8bfef24562f1663870fc7039fd5f37ce447a1:spotify_monitor.py:generic-api-key:633
+6b1264bf7a6e376fd2cd37f2c27928e8408a9e22:debug/spotify_totp_debug_test.py:generic-api-key:50
