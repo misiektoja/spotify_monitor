@@ -2,6 +2,14 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.6.1 (TBD)
+
+Version **3.6.1** keeps terminal recovery commands usable when their arguments happen to match stored credentials.
+
+**Bug fixes**:
+
+- **BUGFIX:** **Copyable recovery commands** - Doctor, setup and runtime recovery instructions preserve paths, targets and flags even when they contain text identical to a stored credential. Commands use credential files or hidden entry. Error summaries and technical details still redact credentials
+
 # Changes in 3.6 (27 Sep 2026)
 
 Version **3.6** shows the **artist context** again for tracks played from an artist page with live activity and no longer reports **full plays as cut short** when the live feed keeps repeating an update. A new **compact view** shows one line per song on screen while the log file keeps the full report. `--list-friends`, Doctor, setup and the monitoring name users by **display name and user ID**. Setup checks whether the target **shares listening activity** before it asks about following. When only the other Friend Activity backend lists the target, setup offers to **switch backends** and Doctor prints the setting and command that do it. It also fixes webhook alerts that were dropped when a custom header used a placeholder such as `{title}` and the alert text held emoji or non-Latin letters. The test suite no longer opens a Spotify login page when pytest runs with `-s`, no longer contacts Spotify and no longer fails depending on test order, on parallel `pytest -n auto` workers or with `pytest -v`.
