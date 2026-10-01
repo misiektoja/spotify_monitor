@@ -1601,11 +1601,12 @@ def recovery_http_status(error: Any) -> Optional[int]:
         return None
 
 
-# Creates one validated recovery advice value
+# Creates recovery advice with redacted diagnostics and credential-free generated instructions
 def make_recovery_advice(code: str, summary: str, fix: str, retryable: bool, detail: Any = "") -> RecoveryAdvice:
     if code not in RECOVERY_CODES:
         raise ValueError(f"Unsupported recovery code: {code}")
-    return RecoveryAdvice(code, sanitize_error_text(summary), sanitize_error_text(fix), retryable, sanitize_error_text(detail))
+    # Callers build fix from instructions and non-secret arguments, since replacing matching credentials would corrupt commands
+    return RecoveryAdvice(code, sanitize_error_text(summary), fix, retryable, sanitize_error_text(detail))
 
 
 # Adds a directly relevant documentation link on its own line
@@ -10607,9 +10608,9 @@ def render_doctor_sections(report: DoctorReport) -> str:
             continue
         lines.extend(("", colorize("section", section)))
         for check in section_checks:
-            lines.append(f"{render_doctor_marker(check.status)} {check.label}")
+            lines.append(f"{render_doctor_marker(check.status)} {sanitize_error_text(check.label)}")
             if check.detail:
-                lines.append(f"  {colorize_links(check.detail)}")
+                lines.append(f"  {colorize_links(sanitize_error_text(check.detail))}")
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
@@ -10617,7 +10618,7 @@ def render_doctor_sections(report: DoctorReport) -> str:
                 # The fix carries its own guide line, so each line is indented and styled on its own rather
                 # than leaving one colour sequence open across the newline
                 lines.extend(f"  {colorize_fix_line(advice_line)}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
-    return sanitize_error_text("\n".join(lines))
+    return "\n".join(lines)
 
 
 # Renders the one sentence that says whether the setup is usable and where to read more
