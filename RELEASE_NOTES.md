@@ -4,11 +4,13 @@ This is a high-level summary of the most important changes.
 
 # Changes in 3.6.1 (TBD)
 
-Version **3.6.1** keeps terminal recovery commands usable when their arguments happen to match stored credentials.
+Version **3.6.1** clarifies which recovery steps save settings and which command-line options must be repeated. Suggested monitoring commands preserve explicit settings and remain usable when arguments happen to match stored credentials.
 
 **Bug fixes**:
 
 - **BUGFIX:** **Copyable recovery commands** - Doctor, setup and runtime recovery instructions preserve paths, targets and flags even when they contain text identical to a stored credential. Commands use credential files or hidden entry. Error summaries and technical details still redact credentials
+- **BUGFIX:** **Saved settings and command-line choices** - Backend, polling, target and terminal-width guidance distinguishes saved settings from options needed on each run. Backend advice explains when configuration loading is disabled. Monitoring no longer suggests changing sharing settings when the other backend already lists the target
+- **BUGFIX:** **Suggested commands retain your choices** - Doctor's monitoring command keeps explicit backend, timer, output and notification options. Private values appear as placeholders. After scrobble authorization, the Doctor and monitoring commands include the Client ID and redirect URI because authorization saves only the refresh token
 
 # Changes in 3.6 (27 Sep 2026)
 
