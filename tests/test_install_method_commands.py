@@ -248,7 +248,10 @@ def test_manual_help_epilog_exact_raw_text(monkeypatch):
     force_install_environment(monkeypatch, argv0="spotify_monitor.py")
     monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
     monkeypatch.setattr(monitor.sys, "executable", "/usr/bin/python3")
-    assert monitor._build_help_epilog() == runtime_command("""Examples:
+    assert monitor._build_help_epilog() == runtime_command("""Setting options apply to the current run and do not update the configuration file.
+Include them on each run or save the settings through --setup or in a configuration file.
+
+Examples:
 
 Getting started:
   # Guided setup, recommended for the first run

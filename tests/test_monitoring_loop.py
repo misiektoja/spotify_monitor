@@ -418,9 +418,10 @@ def test_startup_names_the_other_backend_when_it_lists_the_target(loop_environme
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
-    assert "User 'Watched Friend (watched-user)' not found" in output
+    assert "User 'Watched Friend (watched-user)' not found in the listening_activity backend" in output
     lookup.assert_called_once_with("user", "spotify:user:watched-user", "live-token")
-    assert 'The target is visible through the buddylist backend. Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nTimestamp:' in output
+    assert 'The target is visible through the buddylist backend. Use --friend-activity-backend buddylist on each run or save FRIEND_ACTIVITY_BACKEND = "buddylist" in a configuration file you load\nTimestamp:' in output
+    assert "make sure your friend is followed" not in output
     assert "To fix:" not in output
 
 

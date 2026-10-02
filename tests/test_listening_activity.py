@@ -409,7 +409,7 @@ def test_list_friends_compares_both_backends(monkeypatch, capsys):
     feed = monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:live-only")]})
     monitor.print_other_backend_friends(feed, "token")
     output = capsys.readouterr().out
-    assert output == '* 1 user visible only through the buddylist backend: legacy-only\n* Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file to monitor them\n* 1 user visible only through the listening_activity backend: live-only\n'
+    assert output == '* 1 user visible only through the buddylist backend: legacy-only\n* Use --friend-activity-backend buddylist on each run or save FRIEND_ACTIVITY_BACKEND = "buddylist" in a configuration file you load to monitor them\n* 1 user visible only through the listening_activity backend: live-only\n'
     monitor.print_other_backend_friends(monitor.spotify_normalize_listening_activity({"entities": [feed_entity(), feed_entity(user="spotify:user:legacy-only")]}), "token")
     assert capsys.readouterr().out == "* The buddylist backend lists the same users\n"
     monkeypatch.setattr(monitor, "spotify_get_friends_json", Mock(side_effect=RuntimeError("HTTP 500")))

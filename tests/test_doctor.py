@@ -717,18 +717,18 @@ def test_target_visible_only_through_the_other_backend_gets_the_switch_hint(monk
     follow_lookup.assert_not_called()
     advice = require_advice(check)
     command = f"spotify_monitor --friend-activity-backend buddylist friend.user --config-file {config_path.resolve()} --env-file {env_path.resolve()}"
-    assert advice.fix == f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}'\nOr run once with: {command}\nGuide: {monitor.BACKEND_GUIDE_URL}"
+    assert advice.fix == f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}' for future runs.\nOr use this command each time you start monitoring (does not change the configuration file):\n  {command}\nGuide: {monitor.BACKEND_GUIDE_URL}"
     assert "follow" not in advice.fix.lower()
 
 
-# Verifies the switch command leaves out a target the configuration already saves and names the config generically when there is none
+# Verifies the switch command leaves out a saved target and explains how to select a configuration
 def test_backend_switch_fix_omits_a_saved_target_and_an_unknown_config(monkeypatch):
     monkeypatch.setattr(monitor, "TARGET_USER_URI_ID", "friend.user")
     monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
     monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", False)
     monkeypatch.setattr(monitor, "DOTENV_FILE", "")
     monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
-    assert monitor.backend_switch_fix("listening_activity", "friend.user") == 'Save FRIEND_ACTIVITY_BACKEND = "listening_activity" in the configuration file\nOr run once with: spotify_monitor --friend-activity-backend listening_activity'
+    assert monitor.backend_switch_fix("listening_activity", "friend.user") == 'Use this command each time you start monitoring:\n  spotify_monitor --friend-activity-backend listening_activity\nTo save this choice, create or select a configuration file, set FRIEND_ACTIVITY_BACKEND = "listening_activity" and load it with --config-file PATH'
 
 
 # Returns a Doctor baseline whose selected backend request fails while the other backend answers with the given response
@@ -764,7 +764,7 @@ def test_failed_backend_request_points_at_the_answering_backend(monkeypatch, tmp
     assert failure.label == "The listening_activity backend request failed"
     assert failure.detail == "401 Unauthorized for url: https://example.test/listening-activity. The buddylist backend answered with the same access token"
     advice = require_advice(failure)
-    assert advice.fix.startswith(f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}'\nOr run once with: spotify_monitor --friend-activity-backend buddylist friend.user --config-file ")
+    assert advice.fix.startswith(f"Save FRIEND_ACTIVITY_BACKEND = \"buddylist\" in '{config_path.resolve()}' for future runs.\nOr use this command each time you start monitoring (does not change the configuration file):\n  spotify_monitor --friend-activity-backend buddylist friend.user --config-file ")
     assert advice.fix.endswith(f"\nGuide: {monitor.BACKEND_GUIDE_URL}")
     assert "cookie" not in advice.fix.lower()
     connectivity = [check for check in report.checks if check.section == "Connectivity" and check.label == "Spotify is reachable"]
@@ -780,7 +780,7 @@ def test_retryable_backend_failure_suggests_the_switch_only_if_it_continues(monk
     configure_failing_selected_backend(monkeypatch, RuntimeError("503 Server Error: Service Unavailable"), buddy_list("someone.else"))
     report = monitor.build_doctor_report("friend.user", spec_finder=all_dependencies_present)
     failure = [check for check in report.checks if check.section == "Authentication" and check.status == "FAIL"][0]
-    assert require_advice(failure).fix.startswith('Wait and run --doctor again. If the failure continues, switch backends. Save FRIEND_ACTIVITY_BACKEND = "buddylist" in ')
+    assert require_advice(failure).fix.startswith('Wait and run --doctor again. If the failure continues, switch backends. Use this command each time you start monitoring:')
     target = [check for check in report.checks if check.section == "Target"][0]
     assert target.detail == "The listening_activity request failed. The buddylist backend does not list target 'friend.user'"
 

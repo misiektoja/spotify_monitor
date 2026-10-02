@@ -48,7 +48,7 @@ def test_doctor_backend_command_preserves_paths_and_target(monkeypatch, tmp_path
     rendered = monitor.render_doctor_sections(monitor.DoctorReport([check]))
     assert ("\x1b[" in rendered) is colored
     output = monitor.ANSI_ESCAPE_RE.sub("", rendered)
-    command = next(line.split("Or run once with: ", 1)[1] for line in output.splitlines() if "Or run once with:" in line)
+    command = next(line.strip() for line in output.splitlines() if line.strip().startswith("spotify_monitor --friend-activity-backend "))
 
     assert shlex.split(command) == ["spotify_monitor", "--friend-activity-backend", "buddylist", "data.friend", "--config-file", str(config), "--env-file", str(env)]
     assert "private-cookie-value" not in output
@@ -96,6 +96,97 @@ def test_doctor_cli_keeps_selected_dotenv_path(monkeypatch, tmp_path, capsys, ov
 
     assert result.value.code == 1
     output = capsys.readouterr().out
-    command = next(line.split("Or run once with: ", 1)[1] for line in output.splitlines() if "Or run once with:" in line)
+    command = next(line.strip() for line in output.splitlines() if line.strip().startswith("spotify_monitor --friend-activity-backend "))
     tokens = shlex.split(command)
     assert tokens[tokens.index("--env-file") + 1] == str(explicit if override else saved)
+
+
+@pytest.mark.parametrize("backend", ["buddylist", "listening_activity"])
+@pytest.mark.parametrize("config", [None, "none", "settings.conf"])
+# Keeps disabled file discovery in the switch command and explains how to save a backend choice
+def test_backend_switch_guidance_distinguishes_configuration_states(monkeypatch, tmp_path, backend, config):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "TARGET_USER_URI_ID", "")
+    monkeypatch.setattr(monitor, "CLI_CONFIG_PATH", None)
+    monkeypatch.setattr(monitor, "CONFIG_DISCOVERY_DISABLED", config == "none")
+    monkeypatch.setattr(monitor, "DOTENV_FILE", "none")
+    selected = str(tmp_path / config) if config == "settings.conf" else config
+
+    fix = monitor.backend_switch_fix(backend, "friend", config_path=selected)
+    command = next(line.strip() for line in fix.splitlines() if line.strip().startswith("spotify_monitor "))
+    tokens = shlex.split(command)
+
+    assert tokens[:4] == ["spotify_monitor", "--friend-activity-backend", backend, "friend"]
+    assert tokens[-2:] == ["--env-file", "none"]
+    assert "each time you start monitoring" in fix
+    assert "run once" not in fix
+    if selected is None:
+        assert "--config-file" not in tokens
+        assert "create or select a configuration file" in fix
+    elif selected == "none":
+        assert tokens[tokens.index("--config-file") + 1] == "none"
+        assert "Configuration loading is disabled by --config-file none" in fix
+        assert "load it with --config-file PATH" in fix
+    else:
+        assert tokens[tokens.index("--config-file") + 1] == selected
+        assert f"in '{selected}' for future runs" in fix
+        assert "does not change the configuration file" in fix
+
+
+@pytest.mark.parametrize("mode", ["friend_activity", "scrobble_health"])
+# Replays the printed Doctor command to verify mode, backend, timers and disabled switches survive
+def test_doctor_next_command_preserves_effective_overrides(monkeypatch, tmp_path, capsys, mode):
+    config = tmp_path / "settings.conf"
+    opposite_mode = "scrobble_health" if mode == "friend_activity" else "friend_activity"
+    saved = f'MONITOR_MODE = "{opposite_mode}"\nLASTFM_USERNAME = "example"\nFRIEND_ACTIVITY_BACKEND = "listening_activity"\nSPOTIFY_CHECK_INTERVAL = 30\nSCROBBLE_HEALTH_CHECK_INTERVAL = 180\nSCROBBLE_HEALTH_REPEAT_INTERVAL = 120\nERROR_NOTIFICATION = True\nWEBHOOK_ENABLED = True\nTRUNCATE_CHARS = 80\n'
+    config.write_text(saved, encoding="utf-8")
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Linux")
+    observations = []
+
+    # Records settings at the Doctor boundary without making remote requests
+    def doctor(*args):
+        observations.append((monitor.MONITOR_MODE, monitor.FRIEND_ACTIVITY_BACKEND, monitor.SPOTIFY_CHECK_INTERVAL, monitor.SCROBBLE_HEALTH_CHECK_INTERVAL, monitor.SCROBBLE_HEALTH_REPEAT_INTERVAL, monitor.ERROR_NOTIFICATION, monitor.WEBHOOK_ENABLED, monitor.TRUNCATE_CHARS, monitor.USER_AGENT))
+        return 0
+
+    monkeypatch.setattr(monitor, "run_doctor", doctor)
+    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", doctor)
+    arguments = ["spotify_monitor", "--doctor", "--monitor-mode", mode, "--config-file", str(config), "--env-file", "none", "--friend-activity-backend", "buddylist", "--check-interval", "70", "--scrobble-check-interval", "300", "--scrobble-repeat-interval", "0", "--no-webhook", "--no-error-notify", "--truncate", "0", "--user-agent=-example agent", "--no-color"]
+    if mode == "friend_activity":
+        arguments.append("friend")
+    monkeypatch.setattr(sys, "argv", arguments)
+    with pytest.raises(SystemExit) as result:
+        monitor.main()
+    assert result.value.code == 0
+    output = capsys.readouterr().out
+    command = next(line.strip() for line in output.splitlines() if line.strip().startswith("spotify_monitor "))
+    tokens = shlex.split(command)
+    assert "--doctor" not in tokens
+    assert tokens[tokens.index("--friend-activity-backend") + 1] == "buddylist"
+    assert "--no-webhook" in tokens
+    assert "--no-error-notify" in tokens
+    monkeypatch.setattr(sys, "argv", [*tokens, "--doctor"])
+    with pytest.raises(SystemExit) as replay:
+        monitor.main()
+    assert replay.value.code == 0
+    assert observations == [(mode, "buddylist", 70, 300, 0, False, False, 0, "-example agent")] * 2
+    assert config.read_text(encoding="utf-8") == saved
+
+
+# Retains private command-line options as placeholders without printing their supplied values
+def test_doctor_next_command_uses_placeholders_for_private_overrides(monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "run_scrobble_health_doctor", lambda *args: 0)
+    arguments = ["spotify_monitor", "--doctor", "--monitor-mode", "scrobble_health", "--lastfm-username", "example", "--config-file", "none", "--env-file", "none", "--spotify-dc-cookie", "private-cookie", "--oauth-app-creds", "app-id:private-app-secret", "--webhook-url", "https://ntfy.sh/private-destination", "--lastfm-api-key", "private-api-key", "--scrobble-refresh-token", "private-refresh", "--no-color"]
+    monkeypatch.setattr(sys, "argv", arguments)
+
+    with pytest.raises(SystemExit) as result:
+        monitor.main()
+
+    assert result.value.code == 0
+    output = capsys.readouterr().out
+    for secret in ("private-cookie", "private-app-secret", "private-destination", "private-api-key", "private-refresh"):
+        assert secret not in output
+    for pair in ("--spotify-dc-cookie SP_DC_COOKIE", "--oauth-app-creds SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET", "--webhook-url WEBHOOK_URL", "--lastfm-api-key LASTFM_API_KEY", "--scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN"):
+        assert pair in output
+    assert "Replace the uppercase credential placeholders before running" in output
