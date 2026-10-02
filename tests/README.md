@@ -68,7 +68,7 @@ same absent-dependency behavior a user would see.
 | `test_help_screen.py` | The `--help` screen: the shared argument group names, the task-grouped examples and the startup banner |
 | `test_tls_verification.py` | Every connection honouring `VERIFY_SSL` and the single shared TLS context builder |
 | `test_recovery_errors.py` | Error classification and install-method-aware recovery advice |
-| `test_recovery_commands.py` | Copyable recovery commands, dotenv path selection and diagnostic credential redaction |
+| `test_recovery_commands.py` | Copyable recovery commands, repeated CLI settings, disabled file discovery, dotenv path selection and diagnostic credential redaction |
 | `test_doctor.py` | `--doctor` report structure, sections, detail indentation and exit status |
 | `test_startup_ui.py` | Startup banner rendering, alignment and machine-friendly `--version` and `--generate-config` output |
 | `test_install_method_commands.py` | Install-method detection and the command prefixes shown for pip, manual, Docker and Compose |
