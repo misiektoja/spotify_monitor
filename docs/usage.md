@@ -355,6 +355,8 @@ The output includes each person's display name, Spotify user ID and profile URL.
 
 The list ends with the users that only one [Friend Activity backend](configuration.md#friend-activity-backend) shows, as `display name (user ID)` or the user ID alone when both are the same.
 
+To monitor those users, save the suggested backend in the configuration file or include its `--friend-activity-backend` option on each run.
+
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
