@@ -454,7 +454,7 @@ SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55%
 
 # Spotify track ID to play when the user goes offline
 # Only applies when TRACK_SONGS or -g is enabled
-# Leave empty to simply pause
+# Leave empty to pause instead, unless playback was already paused when the user paused
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
@@ -13009,6 +13009,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     live_last_sample = None
     live_replay = None
     live_restart_ts = None
+    # Whether the last playback command left the local Spotify client paused, so inactivity does not pause it a second time
+    local_playback_paused = False
     # Check time of the last response listing the target, when a confirmed absence began and whether its long-absence advice was printed
     visible_last_at = 0
     invisible_since = 0
@@ -13568,6 +13570,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             spotify_win_play_song(sp_track_uri_id)
                         else:                                   # Linux variants
                             spotify_linux_play_song(sp_track_uri_id)
+                        local_playback_paused = False
 
                     if is_playlist:
                         sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
@@ -13604,6 +13607,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_macos_play_pause("play")
                                 elif platform.system() != 'Windows':
                                     spotify_linux_play_pause("play")
+                                local_playback_paused = False
                         played_for_m_body = ""
                         played_for_m_body_html = ""
                         if not resumed_live_session:
@@ -13871,6 +13875,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_macos_play_pause(action)
                                 elif platform.system() != 'Windows':
                                     spotify_linux_play_pause(action)
+                                local_playback_paused = action == "pause"
                     # Friend got inactive
                     last_activity_at = live_activity_seen_at if live_activity else sp_ts
                     if (cur_ts - last_activity_at) > activity_inactivity_check() and sp_active_ts_start > 0:
@@ -13956,6 +13961,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     if SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0:
                                         time.sleep(SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE)
                                         spotify_linux_play_pause("pause")
+                                local_playback_paused = SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0
+                            # The pause event already paused the client, so another pause would only stop music started locally since then
+                            elif local_playback_paused:
+                                debug_print("Spotify pause on inactivity", outcome="skipped", reason="already paused when the user paused")
                             else:
                                 if platform.system() == 'Darwin':       # macOS
                                     spotify_macos_play_pause("pause")
@@ -13963,6 +13972,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     pass
                                 else:                                   # Linux variants
                                     spotify_linux_play_pause("pause")
+                                local_playback_paused = True
                         if INACTIVE_NOTIFICATION or webhook_event_enabled("inactive"):
                             # Format recently listened songs list for email (skip if only 1 song)
                             recent_songs_mbody = ""
