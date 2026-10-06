@@ -1137,6 +1137,51 @@ def test_live_resume_with_a_different_track_reports_resume_first(loop_environmen
     assert [call.args[0] for call in control.call_args_list] == ["pause", "play"]
 
 
+# Inactivity after a live pause leaves the local client alone, so music started locally after the pause keeps playing
+@pytest.mark.parametrize("system,function", [("Darwin", "spotify_macos_play_pause"), ("Linux", "spotify_linux_play_pause")])
+def test_live_inactivity_after_a_pause_does_not_pause_again(loop_environment, monkeypatch, capsys, system, function):
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: system)
+    for name in ("spotify_macos_play_song", "spotify_linux_play_song"):
+        monkeypatch.setattr(monitor, name, Mock())
+    control = Mock()
+    monkeypatch.setattr(monitor, function, control)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now)] + [feed_entity(now, playing=False)] * 4)
+    assert capsys.readouterr().out.count("Friend got INACTIVE") == 1
+    assert [call.args[0] for call in control.call_args_list] == ["pause"]
+
+
+# A resume clears the earlier pause, so only the last pause before inactivity counts
+def test_live_inactivity_after_pause_resume_pause_does_not_pause_again(loop_environment, monkeypatch, capsys):
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(monitor, "spotify_macos_play_song", Mock())
+    control = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_pause", control)
+    now = loop_environment.now
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now), feed_entity(now, playing=False), feed_entity(now)] + [feed_entity(now, playing=False)] * 4)
+    assert capsys.readouterr().out.count("Friend got INACTIVE") == 1
+    assert [call.args[0] for call in control.call_args_list] == ["pause", "play", "pause"]
+
+
+# A configured finishing track still plays on inactivity after a live pause and is paused after its delay
+def test_live_inactivity_after_a_pause_still_plays_the_finishing_track(loop_environment, monkeypatch):
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(monitor, "SP_USER_GOT_OFFLINE_TRACK_ID", "finishingtrack")
+    monkeypatch.setattr(monitor, "SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE", 5)
+    start = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_song", start)
+    control = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_pause", control)
+    now = loop_environment.now
+    # The finishing track delay is one more sleep, so one more snapshot keeps the run going until the loop waits again
+    run_live_snapshots(monkeypatch, loop_environment, [feed_entity(now), feed_entity(now)] + [feed_entity(now, playing=False)] * 5)
+    assert [call.args[0] for call in start.call_args_list] == [TRACK_URI.split(":")[-1], "finishingtrack"]
+    assert [call.args[0] for call in control.call_args_list] == ["pause", "pause"]
+
+
 # The live backend polls at the active interval while a session is open and at the offline interval otherwise
 def test_live_polling_follows_the_session_state(loop_environment, monkeypatch):
     monkeypatch.setattr(monitor, "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL", 10)
