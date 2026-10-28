@@ -28,13 +28,17 @@ jobs:
 
   test:
     name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    # ubuntu-latest resolves to Ubuntu 26.04, which has no setup-python build of the end-of-life Python 3.9, so that entry stays on 24.04
+    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          - python-version: "3.9"
+            os: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Python
