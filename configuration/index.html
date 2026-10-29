@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1256,11 +1256,11 @@
 </code></pre></div>
 <p><a id="friend-activity-backend"></a></p>
 <h2 id="friend-activity-backend">Friend Activity Backend<a class="headerlink" href="#friend-activity-backend" title="Permanent link">&para;</a></h2>
-<p>Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so <code>--list-friends</code> compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and Doctor prints the setting to save plus a ready command that uses it for one run. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.</p>
+<p>Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so <code>--list-friends</code> compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and save the choice. Doctor prints the setting to save plus a monitoring command to use each time if you keep the choice on the command line. That command does not change the configuration file. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.</p>
 <p>A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.</p>
 <p>The feed drops a user who starts a private session, turns off activity sharing, blocks the monitoring account or, when sharing with all followers, is no longer followed by it. The tool cannot tell these causes apart. After <code>SPOTIFY_LIVE_DISAPPEARED_COUNTER</code> checks in a row without the user, it reports <code>is no longer visible in listening activity</code> and checks every <code>SPOTIFY_LIVE_DISAPPEARED_CHECK_INTERVAL</code> seconds (<code>-m</code>) until the user returns, then reports <code>is visible again after</code> with the time away. After six hours away it prints the follow and sharing advice once, since a private session ends sooner. These reports use the inactive and active notification settings. A session stays open while the user is away and its summary lists the time the user was not visible.</p>
 <p>Songs on loop are counted when a song is played again from its start <code>SONG_ON_LOOP_VALUE</code> times.</p>
-<p>It is the default mode for activity feed. It can also be set explicitly via <code>FRIEND_ACTIVITY_BACKEND = "listening_activity"</code> in the configuration file or you can pass <code>--friend-activity-backend listening_activity</code> for one run:</p>
+<p>To save this backend as the default, set <code>FRIEND_ACTIVITY_BACKEND = "listening_activity"</code> in the configuration file. Alternatively, include <code>--friend-activity-backend listening_activity</code> each time you run the tool:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--friend-activity-backend<span class="w"> </span>listening_activity<span class="w"> </span>SPOTIFY_USER_ID
 </code></pre></div>
 <p>Polling can miss short tracks and quick changes between checks.</p>
@@ -1316,10 +1316,10 @@
 <p><a id="legacy-backend"></a></p>
 <h3 id="legacy-backend">Legacy Backend<a class="headerlink" href="#legacy-backend" title="Permanent link">&para;</a></h3>
 <p>The legacy Friend Activity endpoint (<code>buddylist</code>) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed. The reverse also happens: a friend from an older approval, followed in both directions with sharing set to all followers, can keep appearing here with live updates after disappearing from the Spotify desktop client and the live feed. Such users can be monitored only through this backend.</p>
-<p>To use the legacy endpoint anyway, set <code>FRIEND_ACTIVITY_BACKEND = "buddylist"</code> in the configuration file or pass <code>--friend-activity-backend buddylist</code> for one run:</p>
+<p>To use the legacy endpoint, save <code>FRIEND_ACTIVITY_BACKEND = "buddylist"</code> in the configuration file or include <code>--friend-activity-backend buddylist</code> each time you run the tool:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>spotify_monitor<span class="w"> </span>--friend-activity-backend<span class="w"> </span>buddylist<span class="w"> </span>SPOTIFY_USER_ID
 </code></pre></div>
-<p>The setting also applies to <code>--list-friends</code>, <code>--doctor</code> and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. <code>-c</code>, <code>-o</code> and <code>-m</code> set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports <code>has disappeared from Friend Activity</code> only after <code>REMOVED_DISAPPEARED_COUNTER</code> checks in a row and prints the follow and sharing advice at once.</p>
+<p>The setting also applies to <code>--list-friends</code>, <code>--doctor</code> and cookie validation. It does not affect scrobble health. With <code>--config-file none</code>, only the command-line choice applies. To use a saved choice, select its configuration with <code>--config-file PATH</code>. The legacy backend has its own timers. <code>-c</code>, <code>-o</code> and <code>-m</code> set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports <code>has disappeared from Friend Activity</code> only after <code>REMOVED_DISAPPEARED_COUNTER</code> checks in a row and prints the follow and sharing advice at once.</p>
 <table>
 <thead>
 <tr>
@@ -1474,6 +1474,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
 </code></pre></div>
 <p>The command reuses the saved app settings, opens or prints a new state-protected authorization URL then replaces only the saved refresh token. Spotify refresh tokens expire after six months. A running process can load a replaced token after <code>SIGHUP</code> or you can restart it. This authorization is separate from reconnecting Spotify Scrobbling at <a href="https://www.last.fm/settings/applications">Last.fm connected applications</a>.</p>
+<p>The printed Doctor and monitoring commands include the Client ID and redirect URI used for authorization. Keep these options on later runs or save <code>SPOTIFY_SCROBBLE_CLIENT_ID</code> and <code>SPOTIFY_SCROBBLE_REDIRECT_URI</code> in the configuration file you use. Authorization does not save those two settings.</p>
 <p><a id="spotify-access-token-source"></a></p>
 <h2 id="spotify-access-token-source">Spotify Access Token Source<a class="headerlink" href="#spotify-access-token-source" title="Permanent link">&para;</a></h2>
 <p>Spotify Monitor uses either the <code>cookie</code> or <code>client</code> token source for Friend Activity.</p>
@@ -2045,10 +2046,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

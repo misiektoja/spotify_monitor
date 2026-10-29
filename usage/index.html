@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1391,6 +1391,7 @@
 </code></pre></div>
 <p>The output includes each person's display name, Spotify user ID and profile URL. Either the user ID or profile URL can be used as a monitoring target.</p>
 <p>The list ends with the users that only one <a href="../configuration/#friend-activity-backend">Friend Activity backend</a> shows, as <code>display name (user ID)</code> or the user ID alone when both are the same.</p>
+<p>To monitor those users, save the suggested backend in the configuration file or include its <code>--friend-activity-backend</code> option on each run.</p>
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
@@ -1567,7 +1568,7 @@
 <li>"trigger-url"</li>
 </ul>
 <p>Keep the default method unless playback does not work on your system.</p>
-<p>Automatic playback starts a track when the friend starts playing or changes track. On Linux and macOS it follows pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. Differences in track length can make your local track repeat or change before it finishes.</p>
+<p>Automatic playback starts a track when the friend starts playing or changes track. On Linux and macOS it follows pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. If the friend's pause already paused your client, inactivity does not pause it again, so music you started after that keeps playing. A track set in <code>SP_USER_GOT_OFFLINE_TRACK_ID</code> still plays on inactivity. Differences in track length can make your local track repeat or change before it finishes.</p>
 <p>For Last.fm-based track progress monitoring, see <a href="https://github.com/misiektoja/lastfm_monitor">lastfm_monitor</a>.</p>
 <p><a id="check-intervals"></a></p>
 <h2 id="check-intervals">Check Intervals<a class="headerlink" href="#check-intervals" title="Permanent link">&para;</a></h2>
@@ -1718,10 +1719,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

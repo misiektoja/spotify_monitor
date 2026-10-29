@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -816,10 +816,10 @@
 <p>Doctor uses your normal settings to check authentication, connectivity, the target, output paths and notifications. It shows the configuration and <code>.env</code> files in use and where credentials came from, without displaying their values. A failed optional legacy metadata check is a warning if the web-player fallback works. It also warns when <a href="../configuration/#tls-verification">TLS verification</a> is off.</p>
 <p>Doctor checks email login and webhook settings without sending messages. It does not create monitoring output files. Friend Activity checks leave configuration and credentials unchanged. Scrobble health checks may save a replacement refresh token if Spotify rotates it.</p>
 <p>If Spotify Desktop and <code>--list-friends</code> show different users, check the target's activity-sharing permissions. The number of people allowed to view your activity describes who can see you, not whose activity you can see. The feed lists up to 100 users. With the legacy <code>buddylist</code> backend the list can differ further, because a user who shares listening activity with selected people only disappears from that endpoint for good. Following is not required when the target shares listening activity with selected people that include the monitoring account. Doctor reports whether the monitoring account follows an invisible target. The <strong>Friend Activity backend</strong> row in Doctor names the source in use. <code>--list-friends</code> ends with the users only one backend lists and the command that switches to it. See <a href="../configuration/#friend-activity-backend">Friend Activity Backend</a>.</p>
-<p>If a friend you monitored before version 3.4 is now reported as not visible, run <code>--doctor TARGET</code>. When the legacy endpoint still lists the friend, setup offers to switch to it. Doctor and the monitoring start say so and print the switch command. Such a friend has usually also disappeared from the Spotify desktop client while the old endpoint keeps updating. Run with <code>--friend-activity-backend buddylist</code> or save <code>FRIEND_ACTIVITY_BACKEND = "buddylist"</code> to keep monitoring them. See <a href="../configuration/#legacy-backend">Legacy Backend</a>.</p>
+<p>If a friend you monitored before version 3.4 is now reported as not visible, run <code>--doctor TARGET</code>. When the legacy endpoint still lists the friend, setup offers to switch to it and save the choice. Doctor and the monitoring start explain how to select that backend. Such a friend has usually also disappeared from the Spotify desktop client while the old endpoint keeps updating. Include <code>--friend-activity-backend buddylist</code> on each run or save <code>FRIEND_ACTIVITY_BACKEND = "buddylist"</code> in the configuration file you use. The command-line option does not update that file. With <code>--config-file none</code>, select a configuration file before relying on a saved choice. See <a href="../configuration/#legacy-backend">Legacy Backend</a>.</p>
 <p>If monitoring reports <code>is no longer visible in listening activity</code> while the user is listening, the user most likely started a private session. The tool reports when the user is visible again and how long that took. After six hours away it prints the follow and sharing advice, since a private session ends sooner.</p>
 <p>In an interactive terminal, Doctor offers a delivery test for each ready notification channel. Each test sends one real message only if you answer Yes. The default is No. Ctrl+C ends the run. Delivery tests are not offered in noninteractive runs.</p>
-<p>The <strong>Next steps</strong> block gives the monitoring command with your target and selected file paths. Resolve failing checks before starting.</p>
+<p>The <strong>Next steps</strong> block gives the monitoring command with your target, selected file paths and explicit monitoring options, including the backend, timers and notification switches. Private command-line values appear as uppercase placeholders to replace before running. These options must remain in later commands unless you save the settings. Resolve failing checks before starting.</p>
 <p>Warnings do not make the command fail. Doctor returns a nonzero exit status if a check or approved delivery test fails, so scripts can detect the failure. Run it without a target to check authentication or pass a target to check one specific user:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>spotify_monitor<span class="w"> </span>--doctor
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>spotify_monitor<span class="w"> </span>--doctor<span class="w"> </span>&lt;spotify_target&gt;
@@ -837,7 +837,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>spotify_monitor<span class="w"> </span>--authorize-scrobble-health
 </code></pre></div>
 <p>The command shows the <a href="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, the exact redirect URI plus Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/apps">app creation</a> and <a href="https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow">PKCE</a> guides. Confirm that the app owner has Premium, Web API is selected and the redirect URI matches exactly. If the Spotify account being authorized is not the app owner, add it under User Management.</p>
-<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports <strong>Check failed</strong>, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only once the failure has lasted five minutes. It does not block for the full long <code>Retry-After</code> value. Increase <code>--scrobble-check-interval</code> if the response repeats and see Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
+<p>If Spotify reports <code>QUOTA_EXCEEDED</code>, the user-owned app has exhausted its Development Mode request quota. Spotify Monitor reports <strong>Check failed</strong>, preserves earlier scrobble alert history, waits for its normal operational retry interval and alerts only once the failure has lasted five minutes. It does not block for the full long <code>Retry-After</code> value. If the response repeats, increase <code>SCROBBLE_HEALTH_CHECK_INTERVAL</code> in the configuration and restart or restart with a larger <code>--scrobble-check-interval</code> value and keep that option on each run. See Spotify's <a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">quota modes guide</a>.</p>
 <p>Scrobble health liveness banners say <code>Scrobble health monitor running for &lt;lastfm_username&gt;. Current result: &lt;result&gt;.</code> The result describes the current comparison. <strong>Idle</strong> means no completed Spotify plays were returned within the comparison period, even if an earlier check triggered an alert. <strong>Missing scrobbles</strong> means recent plays met the alert threshold. It does not identify the cause or establish a service outage. See <a href="../configuration/#lastfm-scrobble-health">scrobble health settings</a> for reminder and matching rules.</p>
 <p>Each failed check includes a <code>To fix:</code> action. A command in that action matches how you installed the tool and carries the <code>--config-file</code> or <code>--env-file</code> you started with, so it can be pasted as it is. For local cookie authentication failures, open <a href="https://open.spotify.com/">Spotify Web Player</a> in Firefox and sign in to the Spotify account used for monitoring. Then run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>spotify_monitor<span class="w"> </span>--import-browser-cookie<span class="w"> </span>--browser<span class="w"> </span>firefox
@@ -865,8 +865,8 @@
 </tr>
 <tr>
 <td>No friend activity appears</td>
-<td>The monitoring account does not follow the target</td>
-<td><a href="../configuration/#following-the-monitored-user">Following the Monitored User</a></td>
+<td>The selected backend omits the target or the target is not sharing activity with the monitoring account</td>
+<td>Run <code>--doctor TARGET</code> to check <a href="../configuration/#friend-activity-backend">backend selection</a> and <a href="../configuration/#following-the-monitored-user">sharing</a></td>
 </tr>
 <tr>
 <td>Scrobble health reports nothing</td>
@@ -1016,10 +1016,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
