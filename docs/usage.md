@@ -355,6 +355,8 @@ The output includes each person's display name, Spotify user ID and profile URL.
 
 The list ends with the users that only one [Friend Activity backend](configuration.md#friend-activity-backend) shows, as `display name (user ID)` or the user ID alone when both are the same.
 
+To monitor those users, save the suggested backend in the configuration file or include its `--friend-activity-backend` option on each run.
+
 <p align="center">
    <img src="https://raw.githubusercontent.com/misiektoja/spotify_monitor/refs/heads/main/assets/spotify_monitor_listing.png" alt="spotify_monitor_listing" width="90%"/>
 </p>
@@ -556,7 +558,7 @@ For **Windows** set `SPOTIFY_WINDOWS_PLAYING_METHOD` to one of the following val
 
 Keep the default method unless playback does not work on your system.
 
-Automatic playback starts a track when the friend starts playing or changes track. On Linux and macOS it follows pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. Differences in track length can make your local track repeat or change before it finishes.
+Automatic playback starts a track when the friend starts playing or changes track. On Linux and macOS it follows pauses and resumes without restarting the track. Starting the monitor while the friend is paused does not start local playback. It does not seek to the friend's playback position. The inactivity timer still controls session-end actions. If the friend's pause already paused your client, inactivity does not pause it again, so music you started after that keeps playing. A track set in `SP_USER_GOT_OFFLINE_TRACK_ID` still plays on inactivity. Differences in track length can make your local track repeat or change before it finishes.
 
 For Last.fm-based track progress monitoring, see [lastfm_monitor](https://github.com/misiektoja/lastfm_monitor).
 

@@ -2,6 +2,17 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.6.1 (29 Oct 2026)
+
+Version **3.6.1** clarifies which recovery steps save settings and which command-line options must be repeated. Suggested monitoring commands preserve explicit settings and remain usable when arguments happen to match stored credentials. Automatic playback no longer pauses your own music a second time when the friend becomes inactive.
+
+**Bug fixes**:
+
+- **BUGFIX:** **No second Spotify pause on inactivity** - With **`-g`** and the live feed, your local Spotify client was paused when the friend paused and paused again when the inactivity timer ran out, which stopped any music you had started in between. Inactivity now pauses the client only when the friend's pause did not already pause it. A **`SP_USER_GOT_OFFLINE_TRACK_ID`** finishing track still plays on inactivity
+- **BUGFIX:** **Copyable recovery commands** - Doctor, setup and runtime recovery instructions preserve paths, targets and flags even when they contain text identical to a stored credential. Commands use credential files or hidden entry. Error summaries and technical details still redact credentials
+- **BUGFIX:** **Saved settings and command-line choices** - Backend, polling, target and terminal-width guidance distinguishes saved settings from options needed on each run. Backend advice explains when configuration loading is disabled. Monitoring no longer suggests changing sharing settings when the other backend already lists the target
+- **BUGFIX:** **Suggested commands retain your choices** - Doctor's monitoring command keeps explicit backend, timer, output and notification options. Private values appear as placeholders. After scrobble authorization, the Doctor and monitoring commands include the Client ID and redirect URI because authorization saves only the refresh token
+
 # Changes in 3.6 (27 Sep 2026)
 
 Version **3.6** shows the **artist context** again for tracks played from an artist page with live activity and no longer reports **full plays as cut short** when the live feed keeps repeating an update. A new **compact view** shows one line per song on screen while the log file keeps the full report. `--list-friends`, Doctor, setup and the monitoring name users by **display name and user ID**. Setup checks whether the target **shares listening activity** before it asks about following. When only the other Friend Activity backend lists the target, setup offers to **switch backends** and Doctor prints the setting and command that do it. It also fixes webhook alerts that were dropped when a custom header used a placeholder such as `{title}` and the alert text held emoji or non-Latin letters. The test suite no longer opens a Spotify login page when pytest runs with `-s`, no longer contacts Spotify and no longer fails depending on test order, on parallel `pytest -n auto` workers or with `pytest -v`.

@@ -2025,7 +2025,7 @@ def test_a_declined_target_ends_the_section_without_the_persist_question(monkeyp
 
     assert state.target == ""
     assert state.config_values["TARGET_USER_URI_ID"] == ""
-    assert "No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line." in capsys.readouterr().out
+    assert "No target selected. Run --setup again to save a target or pass the target on the command line each time you start monitoring." in capsys.readouterr().out
 
 
 # Verifies the doctor is offered whenever a target was given, so a setup without authentication can see what is missing

@@ -116,6 +116,32 @@ def test_target_recovery_categories(context, code):
     assert monitor.classify_recovery_error(context=context).code == code
 
 
+@pytest.mark.parametrize("backend,context,settings,options", [
+    ("listening_activity", "runtime", ("SPOTIFY_LIVE_CHECK_INTERVAL", "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL"), ("--check-interval SECONDS", "--active-check-interval SECONDS")),
+    ("buddylist", "runtime", ("SPOTIFY_CHECK_INTERVAL",), ("--check-interval SECONDS",)),
+    ("listening_activity", "scrobble_health", ("SCROBBLE_HEALTH_CHECK_INTERVAL",), ("--scrobble-check-interval SECONDS",)),
+])
+# Names saved polling settings and repeated options in rate-limit advice across console and alert formats
+def test_rate_limit_advice_explains_saved_and_repeated_settings(monkeypatch, backend, context, settings, options):
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", backend)
+    advice = monitor.classify_recovery_error(make_http_error(429), context)
+    for text in (monitor.render_recovery_advice(advice), monitor.recovery_alert_body(advice, 60), monitor.recovery_alert_body_html(advice, 60)):
+        for setting in settings:
+            assert setting in text
+        for option in options:
+            assert option in text
+        assert "in a configuration file you load and restart" in text
+        assert "include those options on each run" in text
+    if backend == "buddylist":
+        assert "SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL" not in advice.fix
+
+
+# Explains that a positional target must be repeated unless saved in a selected configuration
+def test_missing_target_advice_explains_persistence():
+    fix = monitor.classify_recovery_error(context="target_missing").fix
+    assert "on each run or save TARGET_USER_URI_ID in a configuration file you load" in fix
+
+
 # Verifies target visibility guidance includes a directly usable profile link when the ID is known
 def test_target_visibility_recovery_includes_profile_link():
     advice = monitor.classify_recovery_error(context="target_not_visible", target_user_id="friend.user")

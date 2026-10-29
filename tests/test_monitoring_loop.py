@@ -207,6 +207,29 @@ def test_track_change_is_recorded_for_an_active_friend(loop_environment, monkeyp
     assert all("Track Name" in row for row in rows[1:])
 
 
+# Verifies the buddy list, which reports no pauses, still pauses local playback when the friend becomes inactive
+def test_inactivity_pauses_local_playback_without_reported_pauses(loop_environment, monkeypatch, capsys):
+    started_at = int(time.time())
+    monkeypatch.setattr(monitor, "FRIEND_ACTIVITY_BACKEND", "buddylist")
+    monkeypatch.setattr(monitor, "SPOTIFY_INACTIVITY_CHECK", 60)
+    monkeypatch.setattr(monitor, "TRACK_SONGS", True)
+    monkeypatch.setattr(monitor.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(monitor, "TOKEN_SOURCE", "cookie")
+    monkeypatch.setattr(monitor, "spotify_get_access_token_from_sp_dc", lambda cookie: "live-token")
+    monkeypatch.setattr(monitor, "spotify_get_friends_json", lambda token: buddy_list(timestamp_ms=started_at * 1000))
+    monkeypatch.setattr(monitor, "spotify_get_track_info", lambda *arguments, **keywords: track_metadata())
+    monkeypatch.setattr(monitor, "spotify_get_playlist_owner_and_image", lambda *arguments, **keywords: ("Playlist Owner", ""))
+    monkeypatch.setattr(monitor, "spotify_macos_play_song", Mock())
+    control = Mock()
+    monkeypatch.setattr(monitor, "spotify_macos_play_pause", control)
+    loop_environment.stop_after = 4
+
+    run_one_iteration(loop_environment)
+
+    assert capsys.readouterr().out.count("Friend got INACTIVE") == 1
+    assert [call.args[0] for call in control.call_args_list] == ["pause"]
+
+
 # Compact view prints one "[NN] Track - Artist (Album) [Playlist]" line per song change
 def test_compact_view_prints_a_compact_line_for_each_song(loop_environment, monkeypatch, capsys):
     monkeypatch.setattr(monitor, "COMPACT_VIEW", True)
@@ -418,9 +441,10 @@ def test_startup_names_the_other_backend_when_it_lists_the_target(loop_environme
     run_one_iteration(loop_environment, user_uri_id="watched-user")
 
     output = capsys.readouterr().out
-    assert "User 'Watched Friend (watched-user)' not found" in output
+    assert "User 'Watched Friend (watched-user)' not found in the listening_activity backend" in output
     lookup.assert_called_once_with("user", "spotify:user:watched-user", "live-token")
-    assert 'The target is visible through the buddylist backend. Run with --friend-activity-backend buddylist or save FRIEND_ACTIVITY_BACKEND = "buddylist" in the configuration file\nTimestamp:' in output
+    assert 'The target is visible through the buddylist backend. Use --friend-activity-backend buddylist on each run or save FRIEND_ACTIVITY_BACKEND = "buddylist" in a configuration file you load\nTimestamp:' in output
+    assert "make sure your friend is followed" not in output
     assert "To fix:" not in output
 
 

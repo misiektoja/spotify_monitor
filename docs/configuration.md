@@ -111,7 +111,7 @@ spotify_monitor --config-file spotify_monitor_scrobble_health.conf --monitor-mod
 <a id="friend-activity-backend"></a>
 ## Friend Activity Backend
 
-Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and Doctor prints the setting to save plus a ready command that uses it for one run. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.
+Spotify Monitor by default follows Spotify's Listening Activity live feed, the source behind the Friend Activity panel in the desktop client. It shows the current track as soon as playback starts, reports pauses and skips and also includes friends who share their listening activity with selected people only. The feed lists up to 100 users. The live feed and the legacy endpoint can each list friends the other does not, so `--list-friends` compares both and names the differences. When only the other backend lists the target, setup offers to switch to it and save the choice. Doctor prints the setting to save plus a monitoring command to use each time if you keep the choice on the command line. That command does not change the configuration file. Doctor also tries the other backend when the request to the selected one fails and suggests the switch if that backend answers.
 
 A session starts when playback is observed. Starting the tool while playback is stopped shows the last shared track. During a session, the tool reports each pause and its length. A pause keeps the session open and the session ends when the inactivity timer runs out after playback stops.
 
@@ -119,7 +119,7 @@ The feed drops a user who starts a private session, turns off activity sharing, 
 
 Songs on loop are counted when a song is played again from its start `SONG_ON_LOOP_VALUE` times.
 
-It is the default mode for activity feed. It can also be set explicitly via `FRIEND_ACTIVITY_BACKEND = "listening_activity"` in the configuration file or you can pass `--friend-activity-backend listening_activity` for one run:
+To save this backend as the default, set `FRIEND_ACTIVITY_BACKEND = "listening_activity"` in the configuration file. Alternatively, include `--friend-activity-backend listening_activity` each time you run the tool:
 
 ```sh
 spotify_monitor --friend-activity-backend listening_activity SPOTIFY_USER_ID
@@ -143,13 +143,13 @@ Polling can miss short tracks and quick changes between checks.
 
 The legacy Friend Activity endpoint (`buddylist`) was used by older versions of the tool and reports a track only after it finished, so tracks appear late, pauses are invisible and automatic playback runs one track behind. It also drops a user who has ever shared listening activity with selected people only, even after switching back to all followers. Such users are visible only through the live feed. The reverse also happens: a friend from an older approval, followed in both directions with sharing set to all followers, can keep appearing here with live updates after disappearing from the Spotify desktop client and the live feed. Such users can be monitored only through this backend.
 
-To use the legacy endpoint anyway, set `FRIEND_ACTIVITY_BACKEND = "buddylist"` in the configuration file or pass `--friend-activity-backend buddylist` for one run:
+To use the legacy endpoint, save `FRIEND_ACTIVITY_BACKEND = "buddylist"` in the configuration file or include `--friend-activity-backend buddylist` each time you run the tool:
 
 ```sh
 spotify_monitor --friend-activity-backend buddylist SPOTIFY_USER_ID
 ```
 
-The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. The legacy backend has its own timers. `-c`, `-o` and `-m` set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports `has disappeared from Friend Activity` only after `REMOVED_DISAPPEARED_COUNTER` checks in a row and prints the follow and sharing advice at once.
+The setting also applies to `--list-friends`, `--doctor` and cookie validation. It does not affect scrobble health. With `--config-file none`, only the command-line choice applies. To use a saved choice, select its configuration with `--config-file PATH`. The legacy backend has its own timers. `-c`, `-o` and `-m` set them when it is selected. The endpoint drops a user for a few checks now and then, so the tool reports `has disappeared from Friend Activity` only after `REMOVED_DISAPPEARED_COUNTER` checks in a row and prints the follow and sharing advice at once.
 
 | Setting | One-run option | Default | Purpose |
 | --- | --- | ---: | --- |
@@ -243,6 +243,8 @@ spotify_monitor --authorize-scrobble-health
 ```
 
 The command reuses the saved app settings, opens or prints a new state-protected authorization URL then replaces only the saved refresh token. Spotify refresh tokens expire after six months. A running process can load a replaced token after `SIGHUP` or you can restart it. This authorization is separate from reconnecting Spotify Scrobbling at [Last.fm connected applications](https://www.last.fm/settings/applications).
+
+The printed Doctor and monitoring commands include the Client ID and redirect URI used for authorization. Keep these options on later runs or save `SPOTIFY_SCROBBLE_CLIENT_ID` and `SPOTIFY_SCROBBLE_REDIRECT_URI` in the configuration file you use. Authorization does not save those two settings.
 
 <a id="spotify-access-token-source"></a>
 ## Spotify Access Token Source

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.6
+v3.6.1
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.6"
+VERSION = "3.6.1"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -454,7 +454,7 @@ SKIPPED_SONG_THRESHOLD = 0.55  # song is treated as skipped if played for <= 55%
 
 # Spotify track ID to play when the user goes offline
 # Only applies when TRACK_SONGS or -g is enabled
-# Leave empty to simply pause
+# Leave empty to pause instead, unless playback was already paused when the user paused
 # SP_USER_GOT_OFFLINE_TRACK_ID = "5wCjNjnugSUqGDBrmQhn0e"
 SP_USER_GOT_OFFLINE_TRACK_ID = ""
 
@@ -1601,11 +1601,12 @@ def recovery_http_status(error: Any) -> Optional[int]:
         return None
 
 
-# Creates one validated recovery advice value
+# Creates recovery advice with redacted diagnostics and credential-free generated instructions
 def make_recovery_advice(code: str, summary: str, fix: str, retryable: bool, detail: Any = "") -> RecoveryAdvice:
     if code not in RECOVERY_CODES:
         raise ValueError(f"Unsupported recovery code: {code}")
-    return RecoveryAdvice(code, sanitize_error_text(summary), sanitize_error_text(fix), retryable, sanitize_error_text(detail))
+    # Callers build fix from instructions and non-secret arguments, since replacing matching credentials would corrupt commands
+    return RecoveryAdvice(code, sanitize_error_text(summary), fix, retryable, sanitize_error_text(detail))
 
 
 # Adds a directly relevant documentation link on its own line
@@ -1736,6 +1737,20 @@ def unknown_failure_fix():
 TRANSIENT_NETWORK_FIX = "Usually nothing to do, the tool retries on its own. If it continues, check network access, DNS, firewall and proxy settings"
 
 
+# Explains how to save longer polling intervals or repeat their command-line overrides
+def polling_interval_fix(scrobble_health: bool = False) -> str:
+    if scrobble_health:
+        settings = "SCROBBLE_HEALTH_CHECK_INTERVAL"
+        options = "--scrobble-check-interval SECONDS"
+    elif live_activity_backend():
+        settings = "SPOTIFY_LIVE_CHECK_INTERVAL and SPOTIFY_LIVE_ACTIVE_CHECK_INTERVAL"
+        options = "--check-interval SECONDS and --active-check-interval SECONDS"
+    else:
+        settings = "SPOTIFY_CHECK_INTERVAL"
+        options = "--check-interval SECONDS"
+    return f"Increase {settings} in a configuration file you load and restart. Alternatively, restart with larger values for {options} and include those options on each run"
+
+
 # Tells whether a status code appears in a message as a whole number, so 4290 or a path segment such as /429 does not read as 429
 def mentions_status_code(code, message):
     return re.search(rf"(?<![\w/]){code}(?!\w)", message) is not None
@@ -1757,16 +1772,16 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
 
     if isinstance(error, SpotifyQuotaExceededError):
         wait_text = f" Spotify requested a wait of {display_time(error.retry_after)}." if error.retry_after is not None else ""
-        fix = f"Wait for the user-owned Spotify app quota to recover and increase --scrobble-check-interval if this repeats.{wait_text} Development Mode quota is shared across apps owned by the same developer account"
+        fix = f"Wait for the user-owned Spotify app quota to recover.{wait_text} If this repeats: {polling_interval_fix(True)}. Development Mode quota is shared across apps owned by the same developer account"
         return make_recovery_advice("spotify.quota_exceeded", "Spotify recent-play application quota is exhausted", recovery_fix_with_guide(fix, SPOTIFY_QUOTA_GUIDE_URL), True, safe_detail)
     if isinstance(error, SpotifyScrobbleAuthorizationError):
         if context == "authorize_scrobble_health":
             if "interactive terminal" in raw_message:
                 fix = "Run the command in an interactive terminal so it can open authorization and accept the redirected URL"
             elif "client id" in raw_message:
-                fix = f"Run --setup-scrobble-health or create an app at {SPOTIFY_DEVELOPER_DASHBOARD_URL} then pass its Client ID with --scrobble-client-id"
+                fix = f"Run --setup-scrobble-health to save the app settings or create an app at {SPOTIFY_DEVELOPER_DASHBOARD_URL} and include --scrobble-client-id CLIENT_ID each time you authorize or start monitoring"
             elif "redirect uri" in raw_message:
-                fix = "Register the exact redirect URI in the Spotify app settings then pass the same value with --scrobble-redirect-uri"
+                fix = "Register the exact redirect URI in the Spotify app settings. Save the same value as SPOTIFY_SCROBBLE_REDIRECT_URI in a configuration file you load or include --scrobble-redirect-uri URI each time you authorize or start monitoring"
             else:
                 fix = "Check the Spotify app settings then retry --authorize-scrobble-health"
             return make_recovery_advice("auth.scrobble_expired", safe_detail or "Spotify recent-play authorization did not complete", recovery_fix_with_guide(fix, SCROBBLE_AUTH_GUIDE_URL), False, safe_detail)
@@ -1828,7 +1843,7 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
             fix = "Provide the required secret through a dotenv file, environment variable or supported command-line option"
         return make_recovery_advice("secret.missing", safe_detail or "A required secret is missing", recovery_fix_with_guide(fix, SECRETS_GUIDE_URL), False)
     if context == "target_missing":
-        return make_recovery_advice("target.invalid", "No Spotify target was provided", recovery_fix_with_guide("Provide a positional user ID, spotify:user URI or Spotify profile URL or set TARGET_USER_URI_ID", QUICK_START_GUIDE_URL), False)
+        return make_recovery_advice("target.invalid", "No Spotify target was provided", recovery_fix_with_guide("Provide a positional user ID, spotify:user URI or Spotify profile URL on each run or save TARGET_USER_URI_ID in a configuration file you load", QUICK_START_GUIDE_URL), False)
     if context == "target_invalid":
         return make_recovery_advice("target.invalid", "Invalid Spotify target", recovery_fix_with_guide("Pass a raw user ID, spotify:user:USER_ID or https://open.spotify.com/user/USER_ID", TARGET_GUIDE_URL), False, safe_detail)
     if context == "target_not_visible":
@@ -1900,9 +1915,9 @@ def classify_recovery_error(error: Any = None, context: str = "runtime", detail:
         return make_recovery_advice(code, summary, fix, True, safe_detail)
 
     if status == 429 or mentions_status_code("429", message) or any(term in message for term in ("too many requests", "rate limit")):
-        rate_limit_fix = "Wait before retrying and increase -c or --check-interval to reduce request frequency"
+        rate_limit_fix = f"Wait before retrying. If rate limiting continues: {polling_interval_fix()}"
         if context == "scrobble_health":
-            rate_limit_fix = "The monitor will retry automatically. If rate limiting continues, increase --scrobble-check-interval"
+            rate_limit_fix = f"The monitor will retry automatically. If rate limiting continues: {polling_interval_fix(True)}"
         return make_recovery_advice("spotify.rate_limited", "Spotify is rate limiting requests", recovery_fix_with_guide(rate_limit_fix, INTERVALS_GUIDE_URL), True, safe_detail)
     if status is not None and 500 <= status <= 599 or any(term in message for term in ("500 server", "502 server", "503 server", "504 server")):
         return make_recovery_advice("spotify.unavailable", "Spotify is temporarily unavailable", recovery_fix_with_guide("Usually nothing to do, the tool retries on its own. If it continues, wait for Spotify to recover", CONNECTION_GUIDE_URL), True, safe_detail)
@@ -3670,11 +3685,13 @@ def run_authorize_scrobble_health(client_id: Optional[str] = None, redirect_uri:
         raise SpotifyScrobbleAuthorizationError(f"Could not update dotenv destination '{destination}'. Choose a writable path and check file permissions") from None
     selected_config = config_path or find_scrobble_health_config_file()
     method = _wizard_install_method()
-    doctor_command = _wizard_action_command(method, "--monitor-mode scrobble_health --doctor", selected_config, destination)
-    monitor_command = _wizard_action_command(method, "--monitor-mode scrobble_health", selected_config, destination)
+    action = f"--monitor-mode scrobble_health --scrobble-client-id {_wizard_quote_argument(selected_client_id)} --scrobble-redirect-uri {_wizard_quote_argument(selected_redirect_uri)}"
+    doctor_command = _wizard_action_command(method, f"{action} --doctor", selected_config, destination)
+    monitor_command = _wizard_action_command(method, action, selected_config, destination)
     print("\n* Spotify recent-play authorization succeeded")
     print(f"* Updated dotenv: {destination}")
     print("* Saved: SPOTIFY_SCROBBLE_REFRESH_TOKEN")
+    print("* The commands below include the app settings for each run. To omit those options, save SPOTIFY_SCROBBLE_CLIENT_ID and SPOTIFY_SCROBBLE_REDIRECT_URI in the configuration file you use.")
     _wizard_print_command("Check scrobble health setup:", doctor_command)
     _wizard_print_command("Start scrobble health monitoring:", monitor_command)
     return str(destination)
@@ -7615,18 +7632,7 @@ def parse_protobuf_message(data):
 # Parses the Protobuf-encoded login request body file (as dumped for example by Proxyman) and returns a tuple:
 # (device_id, system_id, user_uri_id, refresh_token)
 def parse_login_request_body_file(file_path):
-    """
-    {
-      1: {
-           1: "device_id",
-           2: "system_id"
-         },
-      100: {
-           1: "user_uri_id",
-           2: "refresh_token"
-         }
-    }
-    """
+    """Read the login fields documented by build_spotify_auth_protobuf."""
     with open(file_path, "rb") as f:
         data = f.read()
     parsed = parse_protobuf_message(data)
@@ -7768,26 +7774,7 @@ def ua_to_app_version(user_agent: str) -> str:
 
 # Builds the Protobuf client token request body
 def build_clienttoken_request_protobuf(app_version, device_id, system_id, cpu_arch=10, os_build=19045, platform=2, os_major=9, os_minor=9, client_model=34404):
-    """
-        1: 1 (const)
-        2: {
-          1: "app_version"
-          2: "device_id"
-          3: {
-            1: {
-              4: {
-                1: "cpu_arch"
-                3: "os_build"
-                4: "platform"
-                5: "os_major"
-                6: "os_minor"
-                8: "client_model"
-              }
-            }
-            2: "system_id"
-          }
-        }
-    """
+    """Encode the field layout documented by parse_clienttoken_request_body_file."""
 
     leaf = (
         encode_varint((1 << 3) | 0) + encode_varint(cpu_arch) + encode_varint((3 << 3) | 0) + encode_varint(os_build) + encode_varint((4 << 3) | 0) + encode_varint(platform) + encode_varint((5 << 3) | 0) + encode_varint(os_major) + encode_varint((6 << 3) | 0) + encode_varint(os_minor) + encode_varint((8 << 3) | 0) + encode_varint(client_model))
@@ -8181,16 +8168,20 @@ def target_visible_in_other_backend(access_token, user_uri_id) -> Optional[bool]
 
 # Returns the instruction that switches monitoring to the given backend
 def backend_switch_hint(backend: str) -> str:
-    return f"Run with --friend-activity-backend {backend} or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in the configuration file"
+    return f"Use --friend-activity-backend {backend} on each run or save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in a configuration file you load"
 
 
-# Returns the steps that move monitoring to the given backend: the setting to save in the named config and a ready one-run command
+# Explains how to save the backend choice or repeat it in the monitoring command
 def backend_switch_fix(backend: str, target=None, config_path=None, env_path=None) -> str:
     config = config_path or active_config_path()
-    env = env_path or active_dotenv_path()
-    destination = f"'{Path(config).expanduser().resolve()}'" if config and str(config).casefold() != "none" else "the configuration file"
+    env = env_path if env_path is not None else DOTENV_FILE or None
     command = _wizard_action_command(_wizard_install_method(), f"--friend-activity-backend {backend}", config, env, _wizard_command_targets(target, TARGET_USER_URI_ID)[1])
-    return f"Save FRIEND_ACTIVITY_BACKEND = \"{backend}\" in {destination}\nOr run once with: {command}"
+    setting = f'FRIEND_ACTIVITY_BACKEND = "{backend}"'
+    if config and str(config).casefold() != "none":
+        destination = Path(config).expanduser().resolve()
+        return f"Save {setting} in '{destination}' for future runs.\nOr use this command each time you start monitoring (does not change the configuration file):\n  {command}"
+    notice = "Configuration loading is disabled by --config-file none.\n" if config else ""
+    return f"Use this command each time you start monitoring:\n  {command}\n{notice}To save this choice, create or select a configuration file, set {setting} and load it with --config-file PATH"
 
 
 # Returns the user IDs named in one activity response
@@ -9647,13 +9638,7 @@ def spotify_win_play_song(sp_track_uri_id, method=SPOTIFY_WINDOWS_PLAYING_METHOD
 
 # Finds one optional config file using the selected default filename
 def _find_config_file(cli_path, default_filename):
-    """
-    Search for an optional config file in:
-      1) CLI-provided path (must exist if given)
-      2) ./{default_filename}
-      3) ~/.{default_filename}
-      4) script-directory/{default_filename}
-    """
+    """Return the first config file, without fallback for a missing explicit path."""
 
     if cli_path:
         p = Path(os.path.expanduser(cli_path))
@@ -10607,9 +10592,9 @@ def render_doctor_sections(report: DoctorReport) -> str:
             continue
         lines.extend(("", colorize("section", section)))
         for check in section_checks:
-            lines.append(f"{render_doctor_marker(check.status)} {check.label}")
+            lines.append(f"{render_doctor_marker(check.status)} {sanitize_error_text(check.label)}")
             if check.detail:
-                lines.append(f"  {colorize_links(check.detail)}")
+                lines.append(f"  {colorize_links(sanitize_error_text(check.detail))}")
             rendered_advice = check.advice
             if check.status == "FAIL" and rendered_advice is None:
                 rendered_advice = classify_recovery_error()
@@ -10617,7 +10602,7 @@ def render_doctor_sections(report: DoctorReport) -> str:
                 # The fix carries its own guide line, so each line is indented and styled on its own rather
                 # than leaving one colour sequence open across the newline
                 lines.extend(f"  {colorize_fix_line(advice_line)}" for advice_line in f"To fix: {rendered_advice.fix}".splitlines())
-    return sanitize_error_text("\n".join(lines))
+    return "\n".join(lines)
 
 
 # Renders the one sentence that says whether the setup is usable and where to read more
@@ -10917,16 +10902,54 @@ def _wizard_action_command(method: str, action: str, config_path, env_path, targ
     return " ".join(parts)
 
 
-def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, saved_target: Optional[str] = None, doctor_exit: int = 0) -> None:
+# Rebuilds explicit monitoring options while replacing private values with named placeholders
+def doctor_monitoring_overrides(args: argparse.Namespace) -> Tuple[str, bool]:
+    parts = []
+    value_names = ("friend_activity_backend", "token_source", "login_request_body_file", "clienttoken_request_body_file", "webhook_provider", "check_interval", "active_check_interval", "offline_timer", "disappeared_timer", "scrobble_check_interval", "scrobble_dead_period", "scrobble_min_unmatched", "scrobble_match_window", "scrobble_lookback", "scrobble_repeat_interval", "csv_file", "monitor_list", "flag_file", "scrobble_state_file", "user_agent", "file_suffix", "truncate")
+    for name in value_names:
+        value = getattr(args, name, None)
+        if value is not None:
+            option = "--" + name.replace("_", "-")
+            # An equals sign keeps a value beginning with a dash from being parsed as another option
+            if str(value).startswith("-"):
+                parts.append(f"{option}={_wizard_quote_argument(value)}")
+            else:
+                parts.extend((option, _wizard_quote_argument(value)))
+    if getattr(args, "monitor_mode", None) == "friend_activity":
+        parts.extend(("--monitor-mode", "friend_activity"))
+    enabled_names = ("notify_active", "notify_inactive", "notify_track", "notify_song_changes", "notify_loop", "webhook_active", "webhook_inactive", "webhook_track", "webhook_song_changes", "webhook_loop", "track_in_spotify", "disable_logging", "no_color", "compact_view")
+    for name in enabled_names:
+        if getattr(args, name, None):
+            parts.append("--" + name.replace("_", "-"))
+    switches = (("notify_errors", "", "--no-error-notify"), ("notify_scrobble_health", "--notify-scrobble-health", "--no-scrobble-health-notify"), ("webhook_enabled", "--webhook", "--no-webhook"), ("webhook_errors", "--webhook-errors", "--no-webhook-error-notify"), ("webhook_scrobble_health", "--webhook-scrobble-health", "--no-webhook-scrobble-health-notify"), ("debug_mode", "--debug", ""), ("verbose_mode", "--verbose", ""))
+    for name, enabled, disabled in switches:
+        value = getattr(args, name, None)
+        option = enabled if value else disabled
+        if value is not None and option:
+            parts.append(option)
+    private_options = (("spotify_dc_cookie", "--spotify-dc-cookie", "SP_DC_COOKIE"), ("oauth_app_creds", "--oauth-app-creds", "SP_APP_CLIENT_ID:SP_APP_CLIENT_SECRET"), ("webhook_url", "--webhook-url", "WEBHOOK_URL"))
+    has_private_values = False
+    for name, option, placeholder in private_options:
+        if getattr(args, name, None) is not None:
+            parts.extend((option, placeholder))
+            has_private_values = True
+    return " ".join(parts), has_private_values
+
+
+# Prints the monitoring command with the settings selected for Doctor
+def _wizard_print_monitor_after_doctor(config_path, env_path, target: Optional[str] = None, saved_target: Optional[str] = None, doctor_exit: int = 0, cli_args: Optional[argparse.Namespace] = None) -> None:
     method = _wizard_install_method()
-    command = _wizard_action_command(method, "", config_path, env_path, _wizard_command_targets(target, saved_target)[1])
+    action, private_values = doctor_monitoring_overrides(cli_args) if cli_args is not None else ("", False)
+    command = _wizard_action_command(method, action, config_path, env_path, _wizard_command_targets(target, saved_target)[1])
     print(colorize('header', "\nNext steps\n"))
     _wizard_print_command("After Doctor passes, start monitoring:" if doctor_exit else "Start monitoring:", command)
+    if private_values:
+        print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
     print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
 
 
 # Prints the install-aware scrobble health command after a successful Doctor run
-def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None, client_id: Optional[str] = None, redirect_uri: Optional[str] = None, include_api_key_placeholder: bool = False, include_refresh_token_placeholder: bool = False, doctor_exit: int = 0) -> None:
+def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, username: Optional[str] = None, client_id: Optional[str] = None, redirect_uri: Optional[str] = None, include_api_key_placeholder: bool = False, include_refresh_token_placeholder: bool = False, doctor_exit: int = 0, cli_args: Optional[argparse.Namespace] = None) -> None:
     method = _wizard_install_method()
     action = "--monitor-mode scrobble_health"
     if username:
@@ -10939,10 +10962,13 @@ def _wizard_print_scrobble_health_monitor_after_doctor(config_path, env_path, us
         action += " --lastfm-api-key LASTFM_API_KEY"
     if include_refresh_token_placeholder:
         action += " --scrobble-refresh-token SPOTIFY_SCROBBLE_REFRESH_TOKEN"
+    overrides, private_values = doctor_monitoring_overrides(cli_args) if cli_args is not None else ("", False)
+    if overrides:
+        action += f" {overrides}"
     command = _wizard_action_command(method, action, config_path, env_path)
     print(colorize('header', "\nNext steps\n"))
     _wizard_print_command("After Doctor passes, start scrobble health monitoring:" if doctor_exit else "Start scrobble health monitoring:", command)
-    if include_api_key_placeholder or include_refresh_token_placeholder:
+    if include_api_key_placeholder or include_refresh_token_placeholder or private_values:
         print("Replace the uppercase credential placeholders before running. Doctor does not repeat private command-line values.\n")
     print(f"Guide: {colorize('link', QUICK_START_GUIDE_URL)}")
 
@@ -11039,7 +11065,8 @@ def _build_help_epilog() -> str:
             ("Start Spotify-to-Last.fm monitoring", f"{prefix} --monitor-mode scrobble_health"),
         )),
     )
-    return _render_help_examples(groups, QUICK_START_GUIDE_URL)
+    notice = "Setting options apply to the current run and do not update the configuration file.\nInclude them on each run or save the settings through --setup or in a configuration file.\n\n"
+    return notice + _render_help_examples(groups, QUICK_START_GUIDE_URL)
 
 
 # Lists browsers supported by the setup wizard in the active environment
@@ -12148,7 +12175,7 @@ def _wizard_collect_target_section(state: WizardSetupState, initial_target: Opti
     state.target = _wizard_target(initial_target or state.target or None)
     # A declined target ends the section, so nothing asks about persisting a target that does not exist
     if not state.target:
-        print("  No target selected. Nothing can be monitored until one is set. Run --setup again or pass the target on the command line.")
+        print("  No target selected. Run --setup again to save a target or pass the target on the command line each time you start monitoring.")
         state.config_values["TARGET_USER_URI_ID"] = ""
         return
     state.persist_target = _wizard_ask_yes_no("Persist this target in the generated config?", default=state.persist_target)
@@ -12946,6 +12973,8 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
     live_last_sample = None
     live_replay = None
     live_restart_ts = None
+    # Whether the last playback command left the local Spotify client paused, so inactivity does not pause it a second time
+    local_playback_paused = False
     # Check time of the last response listing the target, when a confirmed absence began and whether its long-absence advice was printed
     visible_last_at = 0
     invisible_since = 0
@@ -13505,6 +13534,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                             spotify_win_play_song(sp_track_uri_id)
                         else:                                   # Linux variants
                             spotify_linux_play_song(sp_track_uri_id)
+                        local_playback_paused = False
 
                     if is_playlist:
                         sp_playlist_url = spotify_convert_uri_to_url(sp_playlist_uri)
@@ -13541,6 +13571,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_macos_play_pause("play")
                                 elif platform.system() != 'Windows':
                                     spotify_linux_play_pause("play")
+                                local_playback_paused = False
                         played_for_m_body = ""
                         played_for_m_body_html = ""
                         if not resumed_live_session:
@@ -13808,6 +13839,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     spotify_macos_play_pause(action)
                                 elif platform.system() != 'Windows':
                                     spotify_linux_play_pause(action)
+                                local_playback_paused = action == "pause"
                     # Friend got inactive
                     last_activity_at = live_activity_seen_at if live_activity else sp_ts
                     if (cur_ts - last_activity_at) > activity_inactivity_check() and sp_active_ts_start > 0:
@@ -13893,6 +13925,10 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     if SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0:
                                         time.sleep(SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE)
                                         spotify_linux_play_pause("pause")
+                                local_playback_paused = SP_USER_GOT_OFFLINE_DELAY_BEFORE_PAUSE > 0
+                            # The pause event already paused the client, so another pause would only stop music started locally since then
+                            elif local_playback_paused:
+                                debug_print("Spotify pause on inactivity", outcome="skipped", reason="already paused when the user paused")
                             else:
                                 if platform.system() == 'Darwin':       # macOS
                                     spotify_macos_play_pause("pause")
@@ -13900,6 +13936,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                                     pass
                                 else:                                   # Linux variants
                                     spotify_linux_play_pause("pause")
+                                local_playback_paused = True
                         if INACTIVE_NOTIFICATION or webhook_event_enabled("inactive"):
                             # Format recently listened songs list for email (skip if only 1 song)
                             recent_songs_mbody = ""
@@ -13975,7 +14012,7 @@ def spotify_monitor_friend_uri(user_uri_id, tracks, csv_file_name):
                     if recovery_hint_tracker.should_render(not_found_advice):
                         print(f"To fix: {not_found_advice.fix}")
                 else:
-                    print(f"User '{spotify_user_label(user_uri_id, sp_accessToken)}' not found - make sure your friend is followed and has activity sharing enabled. Retrying in {display_time(activity_disappeared_interval())} intervals")
+                    print(f"User '{spotify_user_label(user_uri_id, sp_accessToken)}' not found in the {FRIEND_ACTIVITY_BACKEND} backend. Retrying in {display_time(activity_disappeared_interval())} intervals")
                     other_backend = other_activity_backend()
                     if target_visible_in_other_backend(sp_accessToken, user_uri_id):
                         print(f"The target is visible through the {other_backend} backend. {backend_switch_hint(other_backend)}")
@@ -15276,7 +15313,7 @@ def main():
 
     if args.authorize_scrobble_health:
         try:
-            run_authorize_scrobble_health(SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, env_file=env_path or DOTENV_FILE or None, config_path=cfg_path or CLI_CONFIG_PATH)
+            run_authorize_scrobble_health(SPOTIFY_SCROBBLE_CLIENT_ID, SPOTIFY_SCROBBLE_REDIRECT_URI, env_file=env_path or DOTENV_FILE or None, config_path=cfg_path or active_config_path())
         except (BrowserCookieImportError, SpotifyScrobbleAuthorizationError, OSError, req.RequestException) as exc:
             print_recovery_error(exc, "authorize_scrobble_health")
             sys.exit(1)
@@ -15292,9 +15329,9 @@ def main():
             doctor_target = args.user_id if args.user_id is not None else TARGET_USER_URI_ID
             doctor_exit = run_doctor(doctor_target, doctor_config, env_path, doctor_startup_checks)
         if scrobble_health_mode:
-            _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None, doctor_exit=doctor_exit)
+            _wizard_print_scrobble_health_monitor_after_doctor(command_config, command_env, args.lastfm_username, args.scrobble_client_id, args.scrobble_redirect_uri, args.lastfm_api_key is not None, args.scrobble_refresh_token is not None, doctor_exit=doctor_exit, cli_args=args)
         else:
-            _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, TARGET_USER_URI_ID, doctor_exit=doctor_exit)
+            _wizard_print_monitor_after_doctor(command_config, command_env, args.user_id, TARGET_USER_URI_ID, doctor_exit=doctor_exit, cli_args=args)
         sys.exit(doctor_exit)
 
     LIVENESS_REMINDER_SECONDS = LIVENESS_CHECK_INTERVAL if LIVENESS_CHECK_INTERVAL > 0 else 0
@@ -15549,7 +15586,7 @@ def main():
     try:
         TRUNCATE_CHARS = resolve_truncate_chars(args.truncate, TRUNCATE_CHARS, DISABLE_LOGGING)
     except OSError as e:
-        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", f"Cannot determine the terminal screen width: {e}", recovery_fix_with_guide("Pass a fixed width with --truncate <chars>, since the terminal size cannot be detected here", TERMINAL_GUIDE_URL), False)))
+        print_recovery_error(RecoveryError(make_recovery_advice("config.invalid", f"Cannot determine the terminal screen width: {e}", recovery_fix_with_guide("Set TRUNCATE_CHARS to a fixed width in a configuration file you load or include --truncate <chars> on each run", TERMINAL_GUIDE_URL), False)))
         sys.exit(1)
 
     if not DISABLE_LOGGING:

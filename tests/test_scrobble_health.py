@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -188,29 +189,56 @@ def test_spotify_get_scrobble_access_token_reports_expired_grant(monkeypatch):
     assert "--authorize-scrobble-health" in advice.fix
 
 
-# Confirms standalone authorization guides app creation and stores only the private refresh token
-def test_run_authorize_scrobble_health_guides_and_saves(monkeypatch, capsys):
-    artifact_root = PROJECT_ROOT / "local"
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    env_path = artifact_root / f"test-scrobble-authorize-{os.getpid()}.env"
-    config_path = artifact_root / f"test-scrobble-authorize-{os.getpid()}.conf"
-    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "manual")
+@pytest.mark.parametrize("use_config", [False, True])
+# Confirms authorization saves only the token and carries app settings into both printed commands
+def test_run_authorize_scrobble_health_guides_and_saves(monkeypatch, capsys, tmp_path, use_config):
+    env_path = tmp_path / "credentials.env"
+    config_path = tmp_path / "settings.conf"
+    saved = f'SPOTIFY_SCROBBLE_CLIENT_ID = "{"b" * 32}"\n'
+    config_path.write_text(saved, encoding="utf-8")
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
     monkeypatch.setattr(monitor, "_dotenv_contains_key", lambda path, key: False)
     monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", lambda *args, **kwargs: {"access_token": "access-token", "refresh_token": "private-refresh-token", "expires_in": 3600})
-    try:
-        result = monitor.run_authorize_scrobble_health("a" * 32, "http://127.0.0.1:8888/callback", env_file=env_path, config_path=config_path, interactive=True)
-        values = dotenv.dotenv_values(env_path, interpolate=False)
-        output = capsys.readouterr().out
-        assert result == str(env_path.resolve())
-        assert values == {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": "private-refresh-token"}
-        assert monitor.SPOTIFY_DEVELOPER_DASHBOARD_URL in output
-        assert monitor.SPOTIFY_APPS_GUIDE_URL in output
-        assert monitor.SPOTIFY_PKCE_GUIDE_URL in output
-        assert "--monitor-mode scrobble_health --doctor" in output
-    finally:
-        for path in (config_path, env_path):
-            if path.exists():
-                path.unlink()
+    result = monitor.run_authorize_scrobble_health("a" * 32, "http://127.0.0.1:8888/custom", env_file=env_path, config_path=config_path if use_config else "none", interactive=True)
+    values = dotenv.dotenv_values(env_path, interpolate=False)
+    output = capsys.readouterr().out
+    assert result == str(env_path.resolve())
+    assert values == {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": "private-refresh-token"}
+    assert config_path.read_text(encoding="utf-8") == saved
+    assert monitor.SPOTIFY_DEVELOPER_DASHBOARD_URL in output
+    assert monitor.SPOTIFY_APPS_GUIDE_URL in output
+    assert monitor.SPOTIFY_PKCE_GUIDE_URL in output
+    commands = [shlex.split(line.strip()) for line in output.splitlines() if line.strip().startswith("spotify_monitor ")]
+    assert len(commands) == 2
+    assert "--doctor" in commands[0]
+    assert "--doctor" not in commands[1]
+    for command in commands:
+        assert command[command.index("--scrobble-client-id") + 1] == "a" * 32
+        assert command[command.index("--scrobble-redirect-uri") + 1] == "http://127.0.0.1:8888/custom"
+        assert command[command.index("--config-file") + 1] == (str(config_path) if use_config else "none")
+        assert command[command.index("--env-file") + 1] == str(env_path)
+    assert "private-refresh-token" not in output
+
+
+# Keeps explicitly disabled config discovery in both commands printed by the authorization CLI
+def test_authorize_cli_preserves_disabled_config_discovery(monkeypatch, tmp_path, capsys):
+    env_path = tmp_path / "credentials.env"
+    monkeypatch.setattr(sys, "argv", ["spotify_monitor", "--authorize-scrobble-health", "--scrobble-client-id", "a" * 32, "--config-file", "none", "--env-file", str(env_path)])
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(monitor, "_wizard_install_method", lambda: "pip")
+    monkeypatch.setattr(monitor, "find_scrobble_health_config_file", lambda *args: pytest.fail("Config discovery must stay disabled"))
+    monkeypatch.setattr(monitor, "spotify_authorize_scrobble_health", lambda *args, **kwargs: {"refresh_token": "private-refresh-token"})
+
+    with pytest.raises(SystemExit) as result:
+        monitor.main()
+
+    assert result.value.code == 0
+    output = capsys.readouterr().out
+    commands = [shlex.split(line.strip()) for line in output.splitlines() if line.strip().startswith("spotify_monitor ")]
+    assert len(commands) == 2
+    assert all(command[command.index("--config-file") + 1] == "none" for command in commands)
+    assert dotenv.dotenv_values(env_path, interpolate=False) == {"SPOTIFY_SCROBBLE_REFRESH_TOKEN": "private-refresh-token"}
+    assert "private-refresh-token" not in output
 
 
 # Confirms Spotify recent-play parsing keeps only completed track-shaped records
@@ -1006,7 +1034,9 @@ def test_scrobble_health_recognizes_spotify_quota_exhaustion():
         monitor.spotify_raise_scrobble_http_error(response)
     assert error.value.retry_after == 7200
     advice = monitor.classify_recovery_error(error.value, "scrobble_health")
-    assert "increase --scrobble-check-interval" in advice.fix
+    assert "SCROBBLE_HEALTH_CHECK_INTERVAL" in advice.fix
+    assert "--scrobble-check-interval SECONDS" in advice.fix
+    assert "include those options on each run" in advice.fix
     assert monitor.SPOTIFY_QUOTA_GUIDE_URL in advice.fix
 
 

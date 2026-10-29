@@ -352,5 +352,5 @@ def test_an_undetectable_terminal_width_asks_for_a_fixed_width():
 
     assert result.returncode == 1, result.stdout
     assert "* Error: Cannot determine the terminal screen width: no terminal" in result.stdout
-    assert "To fix: Pass a fixed width with --truncate <chars>" in result.stdout
+    assert "To fix: Set TRUNCATE_CHARS to a fixed width in a configuration file you load or include --truncate <chars> on each run" in result.stdout
     assert f"Guide: {monitor.TERMINAL_GUIDE_URL}" in result.stdout
