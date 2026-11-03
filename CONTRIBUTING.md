@@ -70,4 +70,4 @@ pip install pre-commit
 pre-commit install
 ```
 
-[.editorconfig](.editorconfig) records the whitespace rules the repository already follows: UTF-8, LF line endings, a final newline, no trailing whitespace, four-space indentation for Python and two spaces for YAML and TOML. Most editors apply it automatically, a few need a plugin. The test suite checks tracked files against the same rules, so a change made in an editor that ignores them will fail CI.
+[.editorconfig](.editorconfig) records the whitespace rules the repository already follows: UTF-8, LF line endings, a final newline, no trailing whitespace, four-space indentation for Python and two spaces for YAML and TOML. Most editors apply it automatically, a few need a plugin. The test suite checks tracked files for CRLF line endings and trailing whitespace, so a change made in an editor that ignores those rules will fail CI.
