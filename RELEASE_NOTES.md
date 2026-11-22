@@ -2,6 +2,14 @@
 
 This is a high-level summary of the most important changes.
 
+# Changes in 3.6.2 (22 Nov 2026)
+
+Version **3.6.2** adds official support for **Python 3.15**.
+
+**Features and improvements**:
+
+- **IMPROVE:** **Python 3.15 support** - Spotify Monitor is now tested on **Python 3.15** on Linux and Windows and PyPI lists it as a supported version. Python 3.9 is still the minimum. The Docker images still run Python 3.13
+
 # Changes in 3.6.1 (29 Oct 2026)
 
 Version **3.6.1** clarifies which recovery steps save settings and which command-line options must be repeated. Suggested monitoring commands preserve explicit settings and remain usable when arguments happen to match stored credentials. Automatic playback no longer pauses your own music a second time when the friend becomes inactive.
