@@ -398,7 +398,7 @@ def test_third_party_notices_cover_every_declared_dependency():
 
     missing = sorted(name for name in declared if name.casefold() not in notices.casefold())
     assert missing == []
-    assert_concepts(notices, "GPL-3.0-or-later", "python:3.13-slim-trixie", "spotipy")
+    assert_concepts(notices, "GPL-3.0-or-later", "python:3.14-slim-trixie", "spotipy")
 
 
 # Verifies the secret scanner accepts the placeholder shapes the suite writes, since the scan CI runs over

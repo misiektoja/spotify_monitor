@@ -15,12 +15,12 @@ def read_asset(relative_path: str) -> str:
     return (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
 
 
-# Verifies the main image uses Python 3.13, a non-root user and an exec-form entrypoint
+# Verifies the main image uses Python 3.14, a non-root user and an exec-form entrypoint
 def test_dockerfile_runtime_contract():
     dockerfile = read_asset("Dockerfile")
-    assert "FROM python:3.13-slim-trixie" in dockerfile
+    assert "FROM python:3.14-slim-trixie" in dockerfile
     # The base image is digest-pinned so a rebuilt tag cannot change the runtime silently. Dependabot refreshes the digest
-    assert re.search(r"^FROM python:3\.13-slim-trixie@sha256:[0-9a-f]{64}$", dockerfile, re.M)
+    assert re.search(r"^FROM python:3\.14-slim-trixie@sha256:[0-9a-f]{64}$", dockerfile, re.M)
     # Pending Debian fixes are applied at build time, since the base image lags behind between rebuilds
     assert "apt-get upgrade -y" in dockerfile
     assert "pip uninstall --yes pip" in dockerfile
@@ -67,9 +67,9 @@ def test_compose_contract():
 def test_secret_grabber_container_runtime_contract():
     dockerfile = read_asset("debug/spotify_monitor_secret_grabber_docker/Dockerfile")
     compose = read_asset("debug/spotify_monitor_secret_grabber_docker/compose.yaml")
-    assert "FROM python:3.13-slim-trixie" in dockerfile
+    assert "FROM python:3.14-slim-trixie" in dockerfile
     # The base image is digest-pinned so a rebuilt tag cannot change the runtime silently. Dependabot refreshes the digest
-    assert re.search(r"^FROM python:3\.13-slim-trixie@sha256:[0-9a-f]{64}$", dockerfile, re.M)
+    assert re.search(r"^FROM python:3\.14-slim-trixie@sha256:[0-9a-f]{64}$", dockerfile, re.M)
     assert "apt-get upgrade -y" in dockerfile
     assert "pip uninstall --yes pip setuptools wheel" in dockerfile
     assert "ARG APP_UID=1000" in dockerfile
@@ -133,7 +133,7 @@ def test_reusable_test_workflow_has_container_gate():
     assert "workflow_call:" in workflow
     assert "container-smoke:" in workflow
     assert "docker build --tag spotify-monitor:ci ." in workflow
-    assert "Confirm Python 3.13 runtime" in workflow
+    assert "Confirm Python 3.14 runtime" in workflow
     assert "spotify-monitor:ci --version" in workflow
     assert "spotify-monitor:ci --help" in workflow
     assert "spotify-monitor:ci --setup" in workflow

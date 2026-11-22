@@ -96,7 +96,7 @@ from time import time_ns
 from datetime import datetime
 import random
 from email.utils import parsedate_to_datetime
-import pyotp
+from pyotp.totp import TOTP
 import requests
 import json
 import sys
@@ -483,7 +483,7 @@ def generate_totp():
     secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
 
     _LOGGER.debug("Computed secret: %s", secret)
-    return pyotp.TOTP(secret, digits=6, interval=30)
+    return TOTP(secret, digits=6, interval=30)
 
 
 # Fetches a Spotify access token using the configured cookie and TOTP values

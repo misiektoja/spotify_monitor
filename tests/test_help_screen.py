@@ -208,3 +208,22 @@ def test_the_help_screen_is_not_repainted_by_the_monitoring_rules(colored):
     written = buffer.getvalue()
     assert written == parser.format_help()
     assert colored["error"] not in written
+
+
+# Verifies help renders with the formatter print_help builds instead of the TypeError fallback
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="print_help passes a formatter from Python 3.15")
+def test_the_help_screen_uses_the_formatter_from_print_help(monkeypatch):
+    received = []
+    base_format_help = argparse.ArgumentParser.format_help
+
+    # Records the formatter the base parser renders with
+    def recording_format_help(self, *args, **kwargs):
+        received.append(kwargs.get("formatter", args[0] if args else None))
+        return base_format_help(self, *args, **kwargs)
+
+    monkeypatch.setattr(argparse.ArgumentParser, "format_help", recording_format_help)
+    parser = monitor.ColoredHelpParser(prog="spotify_monitor")
+    parser.print_help(StringIO())
+
+    assert len(received) == 1
+    assert isinstance(received[0], argparse.HelpFormatter)

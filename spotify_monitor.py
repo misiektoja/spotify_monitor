@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Author: Michal Szymanski <misiektoja-github@rm-rf.ninja>
-v3.6.1
+v3.6.2
 
 Tool implementing real-time tracking of Spotify friends music activity:
 https://github.com/misiektoja/spotify_monitor/
@@ -20,7 +20,7 @@ pycookiecheat (optional, used for Chrome, Brave and Chromium cookie import)
 colorama (optional, for better colours on Windows terminals)
 """
 
-VERSION = "3.6.1"
+VERSION = "3.6.2"
 
 # ---------------------------
 # CONFIGURATION SECTION START
@@ -4794,8 +4794,13 @@ def colorize_help_text(text, epilog=None):
 # repaint the finished help with the rules meant for monitoring output
 class ColoredHelpParser(argparse.ArgumentParser):
     # Returns the help screen with the help palette already applied
-    def format_help(self) -> str:
-        return colorize_help_text(super().format_help(), self.epilog)
+    def format_help(self, formatter: Optional[argparse.HelpFormatter] = None) -> str:
+        # From Python 3.15 print_help passes the formatter it built for the output stream
+        if sys.version_info >= (3, 15):
+            text = super().format_help(formatter)
+        else:
+            text = super().format_help()
+        return colorize_help_text(text, self.epilog)
 
     # Writes one parser message straight to the terminal behind any colouring wrapper
     def _print_message(self, message, file=None) -> None:
@@ -6572,7 +6577,8 @@ def totp_cipher_bytes_are_valid(cipher_bytes: Any) -> bool:
 
 # Builds a pyotp TOTP object from the configured web-player cipher bytes
 def generate_totp():
-    import pyotp
+    # Typed pyotp releases do not re-export TOTP from the package root for pyright
+    from pyotp.totp import TOTP
 
     cipher_bytes = TOTP_SECRET_CIPHER_BYTES
     if not totp_cipher_bytes_are_valid(cipher_bytes):
@@ -6585,7 +6591,7 @@ def generate_totp():
     hex_str = joined.encode().hex()
     secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
 
-    return pyotp.TOTP(secret, digits=6, interval=30)
+    return TOTP(secret, digits=6, interval=30)
 
 
 # Refreshes the Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
