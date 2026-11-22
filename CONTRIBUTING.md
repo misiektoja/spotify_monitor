@@ -46,7 +46,7 @@ The default suite is offline. It never contacts Spotify or Last.fm and network f
 
 CodeQL runs the extended security queries. For a verified false positive, put a `codeql[rule-id]` comment immediately above the reported line and explain why it is safe. The workflow filters results with accepted source suppressions before upload. Other findings remain reportable.
 
-CI additionally runs the suite on Python 3.9 through 3.14, a Windows setup-wizard smoke test and container checks that build the image and exercise Docker Compose. The supported Python floor is 3.9, so avoid syntax and standard-library features added after it.
+CI additionally runs the suite on Python 3.9 through 3.15, a Windows setup-wizard smoke test and container checks that build the image and exercise Docker Compose. The supported Python floor is 3.9, so avoid syntax and standard-library features added after it.
 
 A change to token handling, the monitoring loop or metadata backends is not verified by the offline suite alone. Exercise it against a real Spotify account and say so in the pull request, without usernames or credentials.
 
