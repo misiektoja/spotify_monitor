@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
 import spotify_monitor as monitor
 
@@ -249,6 +250,18 @@ def test_the_minimum_python_version_is_declared_once():
     assert f"Programming Language :: Python :: {monitor.MINIMUM_PYTHON_VERSION_TEXT}" in pyproject
     classifiers = re.findall(r"Programming Language :: Python :: (\d+\.\d+)", pyproject)
     assert min(tuple(int(part) for part in version.split(".")) for version in classifiers) == monitor.MINIMUM_PYTHON_VERSION
+
+
+# Verifies CI tests every declared Python version and type checks against the newest one
+def test_ci_covers_every_declared_python_version():
+    pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load((PROJECT_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+
+    declared = re.findall(r"Programming Language :: Python :: (\d+\.\d+)", pyproject)
+    newest = max(declared, key=lambda version: tuple(int(part) for part in version.split(".")))
+    assert set(workflow["jobs"]["test"]["strategy"]["matrix"]["python-version"]) == set(declared)
+    pyright_commands = [step["run"] for step in workflow["jobs"]["quality"]["steps"] if "pyright" in step.get("run", "")]
+    assert any(f"--pythonversion {newest} " in command for command in pyright_commands)
 
 
 # Verifies published rebuilds refresh package updates even when the source is unchanged
