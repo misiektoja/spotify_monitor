@@ -134,8 +134,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build local smoke image
         run: docker build --tag spotify-monitor:ci .
-      - name: Confirm Python 3.13 runtime
-        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | grep -E '^Python 3\.13\.'
+      - name: Confirm Python 3.14 runtime
+        run: docker run --rm --entrypoint /usr/local/bin/python spotify-monitor:ci --version | grep -E '^Python 3\.14\.'
       - name: Run application version and help
         run: |
           docker run --rm spotify-monitor:ci --version
