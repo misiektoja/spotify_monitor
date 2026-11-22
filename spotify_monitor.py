@@ -6572,7 +6572,8 @@ def totp_cipher_bytes_are_valid(cipher_bytes: Any) -> bool:
 
 # Builds a pyotp TOTP object from the configured web-player cipher bytes
 def generate_totp():
-    import pyotp
+    # Typed pyotp releases do not re-export TOTP from the package root for pyright
+    from pyotp.totp import TOTP
 
     cipher_bytes = TOTP_SECRET_CIPHER_BYTES
     if not totp_cipher_bytes_are_valid(cipher_bytes):
@@ -6585,7 +6586,7 @@ def generate_totp():
     hex_str = joined.encode().hex()
     secret = base64.b32encode(bytes.fromhex(hex_str)).decode().rstrip("=")
 
-    return pyotp.TOTP(secret, digits=6, interval=30)
+    return TOTP(secret, digits=6, interval=30)
 
 
 # Refreshes the Spotify access token using the sp_dc cookie, tries first with mode "transport" and if needed with "init"
