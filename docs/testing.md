@@ -1,3 +1,7 @@
+---
+description: "Run the offline pytest suite for spotify_monitor, with test layers, supply chain checks, focused test commands plus coverage and type checking."
+---
+
 # Testing
 
 The [tests directory](https://github.com/misiektoja/spotify_monitor/tree/main/tests/) contains an offline pytest suite for contributors. It checks configuration and target parsing, setup, browser cookie import, recovery advice, Doctor, startup output, notification delivery, metadata fallbacks, packaging and container files. Tests replace Spotify requests with local fixtures. Its [README](https://github.com/misiektoja/spotify_monitor/blob/main/tests/README.md) maps every test file to the area it covers.

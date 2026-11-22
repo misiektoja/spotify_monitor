@@ -1,3 +1,7 @@
+---
+description: "Configure spotify_monitor: target friend, Spotify access token source, Last.fm scrobble health, SMTP email, Discord and ntfy webhooks and secrets."
+---
+
 # Configuration
 
 Examples on this page use the PyPI command `spotify_monitor`. Manual script, Docker Compose and direct Docker users should keep the shown options and use the matching prefix under [Command Format by Installation Method](usage.md#command-format-by-installation-method). Container file paths must point into `/data`.

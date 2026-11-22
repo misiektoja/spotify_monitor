@@ -1,3 +1,7 @@
+---
+description: "About spotify_monitor: change log, how to contribute, security policy, maintainers, license and ways to support the project."
+---
+
 # About
 
 Powerful real-time tracker for Spotify friend music activity, playback synchronization, skipped-track detection and instant notifications.

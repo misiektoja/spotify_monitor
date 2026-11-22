@@ -1,3 +1,7 @@
+---
+description: "Use spotify_monitor day to day: monitoring and scrobble health modes, terminal output, email and webhook alerts, CSV export and Spotify playback sync."
+---
+
 # Usage
 
 <a id="command-format-by-installation-method"></a>

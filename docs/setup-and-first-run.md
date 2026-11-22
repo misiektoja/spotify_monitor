@@ -1,3 +1,7 @@
+---
+description: "Run the spotify_monitor setup wizard, save your Spotify login and notification credentials and start monitoring a friend for the first time."
+---
+
 # Setup & First Run
 
 <a id="run-the-setup-wizard"></a>

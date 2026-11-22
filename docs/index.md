@@ -1,3 +1,8 @@
+---
+title: "Spotify friend activity tracker with real-time alerts"
+description: "Track what your Spotify friends listen to, sync their songs to your local client and get email or webhook alerts with spotify_monitor."
+---
+
 # spotify_monitor
 
 [![GitHub Release](https://img.shields.io/github/v/release/misiektoja/spotify_monitor?style=flat-square&color=blue)](https://github.com/misiektoja/spotify_monitor/releases)

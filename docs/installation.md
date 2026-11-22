@@ -1,3 +1,7 @@
+---
+description: "Install spotify_monitor from PyPI, as a single Python script or with Docker. Covers requirements for Windows, macOS and Linux and upgrades."
+---
+
 # Installation
 
 Choose one installation method. You do not need both Python and Docker.

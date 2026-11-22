@@ -1,3 +1,7 @@
+---
+description: "Fix spotify_monitor problems with the Doctor preflight check, connection errors, too many open files, terminal colours and invalid saved settings."
+---
+
 # Troubleshooting
 
 Examples on this page use the PyPI command `spotify_monitor`. If you chose another installation, replace that command with the matching [command prefix](usage.md#command-format-by-installation-method). The setup wizard and `--help` also print commands for the detected installation.
