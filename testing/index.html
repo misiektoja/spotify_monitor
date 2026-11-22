@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Real-time tracker for Spotify friend activity with playback synchronization and instant alerts">
+        <meta name="description" content="Run the offline pytest suite for spotify_monitor, with test layers, supply chain checks, focused test commands plus coverage and type checking.">
       
       
       
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -698,7 +698,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">'.[lint]'</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>spotify_monitor.py<span class="w"> </span>debug<span class="w"> </span>tests
 </code></pre></div>
-<p>GitHub Actions runs the linter, then the same suite on Python 3.9 through 3.14. It also checks Windows setup, optional dependency installation, the built wheel, strict documentation, Docker and Docker Compose. A separate quality job runs pyright plus subprocess-aware branch coverage. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
+<p>GitHub Actions runs the linter, then the same suite on Python 3.9 through 3.15. It also checks Windows setup, optional dependency installation, the built wheel, strict documentation, Docker and Docker Compose. A separate quality job runs pyright plus subprocess-aware branch coverage. See the <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/tests.yml">test workflow</a>.</p>
 <p>The same suite gates every release. Publishing to <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/publish.yml">PyPI</a> and to <a href="https://github.com/misiektoja/spotify_monitor/blob/main/.github/workflows/publish-docker.yml">Docker Hub</a> runs it first and stops if anything fails, so a release cannot ship ahead of a passing test run.</p>
 <h2 id="test-layers">Test Layers<a class="headerlink" href="#test-layers" title="Permanent link">&para;</a></h2>
 <p>The suite combines several test types:</p>
@@ -740,8 +740,9 @@
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nv">COVERAGE_FILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/local/coverage-data/.coverage"</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>coverage<span class="w"> </span>combine<span class="w"> </span>local/coverage-data
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nv">COVERAGE_FILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">/local/coverage-data/.coverage"</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>coverage<span class="w"> </span>report
 </code></pre></div>
-<p>Run pyright against the application, debug tools and tests while selecting the active interpreter:</p>
+<p>Run pyright against the application, debug tools and tests while selecting the active interpreter. CI repeats the check against the standard library of the newest supported Python:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pyright<span class="w"> </span>--pythonpath<span class="w"> </span><span class="s2">"</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>python<span class="k">)</span><span class="s2">"</span><span class="w"> </span>spotify_monitor.py<span class="w"> </span>debug<span class="w"> </span>tests
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>python<span class="w"> </span>-m<span class="w"> </span>pyright<span class="w"> </span>--pythonpath<span class="w"> </span><span class="s2">"</span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>python<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--pythonversion<span class="w"> </span><span class="m">3</span>.15<span class="w"> </span>spotify_monitor.py<span class="w"> </span>debug<span class="w"> </span>tests
 </code></pre></div>
 <p>The current coverage floor is a baseline rather than a final target. Raise it gradually as meaningful behavior receives new tests.</p>
 
@@ -750,6 +751,9 @@
 
 
 
+
+  
+  
 
 
 
@@ -806,7 +810,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.top", "navigation.sections", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
